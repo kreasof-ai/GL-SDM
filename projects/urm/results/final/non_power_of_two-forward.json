@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "case": {
+    "name": "non_power_of_two",
+    "queries": 257,
+    "sources": 997,
+    "route_width": 7,
+    "value_dim": 190,
+    "dtype": "float32",
+    "distribution": "uniform",
+    "seed": 4
+  },
+  "environment": {
+    "timestamp_utc": "2026-08-25T23:44:19.453748+00:00",
+    "git_revision": "c12d7324736a255a7cc991b03e0b5cf26adc8621",
+    "platform": "Linux-6.12.95-124.187.amzn2023.x86_64-x86_64-with-glibc2.39",
+    "python": "3.12.13",
+    "torch": "2.8.0",
+    "triton": "3.4.0",
+    "cuda": "12.9",
+    "gpu": "NVIDIA A10G",
+    "compute_capability": [
+      8,
+      6
+    ],
+    "total_memory_bytes": 23686938624
+  },
+  "correctness": {
+    "output": {
+      "max_abs_error": 1.9073486328125e-06,
+      "mean_abs_error": 1.1630194052258958e-07
+    }
+  },
+  "measurements": [
+    {
+      "backend": "torch_routed_reduction",
+      "mode": "forward",
+      "cold_compile_or_first_call_ms": 50.66487699969002,
+      "median_ms": 0.09538559913635254,
+      "p95_ms": 0.12072960138320923,
+      "min_ms": 0.09134079813957215,
+      "max_ms": 0.1218559980392456,
+      "samples": 50,
+      "inner_iterations": 10,
+      "useful_tflops": 0.007166909954853601,
+      "peak_allocated_bytes": 3899392,
+      "kernel_metadata": {
+        "backend": "torch_routed_reduction",
+        "schema_version": 1,
+        "accumulation_dtype": "float32"
+      }
+    },
+    {
+      "backend": "triton_routed_reduction",
+      "mode": "forward",
+      "cold_compile_or_first_call_ms": 560.4220860004716,
+      "median_ms": 0.03896320015192032,
+      "p95_ms": 0.043110400438308716,
+      "min_ms": 0.03809280097484589,
+      "max_ms": 0.05294079780578613,
+      "samples": 50,
+      "inner_iterations": 10,
+      "useful_tflops": 0.017545273420420202,
+      "peak_allocated_bytes": 1359872,
+      "kernel_metadata": {
+        "backend": "triton_routed_reduction",
+        "schema_version": 1,
+        "accumulation_dtype": "float32",
+        "index_validation_sync": false,
+        "routes_per_program": 7,
+        "block_d": 256,
+        "num_warps": 4
+      }
+    }
+  ]
+}

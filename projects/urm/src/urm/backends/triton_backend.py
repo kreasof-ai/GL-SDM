@@ -49,6 +49,19 @@ def _validate_index_bounds(indices: object, sources: int) -> None:
         raise ValueError("indices must be in [0, sources)")
 
 
+def _layout_key(tensor: object) -> tuple[object, ...]:
+    return (
+        tuple(tensor.shape),
+        tuple(tensor.stride()),
+        str(tensor.dtype),
+        str(tensor.device),
+        tensor.is_contiguous(),
+    )
+
+
+_SUPPORT_CACHE: dict[tuple[object, ...], tuple[SupportStatus, int, int]] = {}
+
+
 class TritonRoutedReductionBackend:
     name = "triton_routed_reduction"
 
@@ -72,21 +85,31 @@ class TritonRoutedReductionBackend:
         *,
         validate_indices: bool = True,
     ) -> RoutedReductionResult:
-        signature = RoutedReductionSignature.from_tensors(indices, weights, values)
-        self.support_status(signature).require(self.name)
+        key = _layout_key(indices) + _layout_key(weights) + _layout_key(values)
+        cached = _SUPPORT_CACHE.get(key)
+        if cached is not None:
+            status, route_width, value_dim = cached
+            status.require(self.name)
+        else:
+            signature = RoutedReductionSignature.from_tensors(indices, weights, values)
+            status = self.support_status(signature)
+            status.require(self.name)
+            route_width = signature.route_width
+            value_dim = signature.value_dim
+            _SUPPORT_CACHE[key] = (status, route_width, value_dim)
         if validate_indices:
-            _validate_index_bounds(indices, signature.sources)
+            _validate_index_bounds(indices, values.shape[0])
 
         from ..triton_kernels.routed_reduce import launch_metadata, routed_reduce
 
         output = routed_reduce(indices, weights, values)
         metadata: dict[str, object] = {
             "backend": self.name,
-            "schema_version": signature.schema_version,
-            "accumulation_dtype": signature.accumulation_dtype.value,
+            "schema_version": 1,
+            "accumulation_dtype": "float32",
             "index_validation_sync": validate_indices,
         }
-        metadata.update(launch_metadata(signature.route_width, signature.value_dim))
+        metadata.update(launch_metadata(route_width, value_dim, indices.shape[0]))
         return RoutedReductionResult(
             output=output,
             indices=indices,
