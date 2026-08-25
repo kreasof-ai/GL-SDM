@@ -1,5 +1,7 @@
 # Project III: Unified Routed Mixer
 
+[Read the complete proposal](../../docs/research-program.md#proposal-iii).
+
 ## Research question
 
 Can attention, expert routing, parameter-token mixing, linear recurrence, and

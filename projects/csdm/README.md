@@ -1,5 +1,7 @@
 # Project II: Consolidated SDM
 
+[Read the complete proposal](../../docs/research-program.md#proposal-ii).
+
 ## Research question
 
 Can sparse memory overlays support rapid deployment-time learning while offline

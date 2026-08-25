@@ -1,7 +1,12 @@
 # Global Liquid SDM Research Program
 
 This repository is a research monorepo for the three independently falsifiable
-proposals described in the [research program](Global_Liquid_SDM_Research_Program.pdf).
+proposals described in the research program.
+
+## Documentation
+
+- [Research program - Markdown edition](docs/research-program.md)
+- [Research program - archival PDF](archive/Global_Liquid_SDM_Research_Program.pdf)
 
 ## Projects
 

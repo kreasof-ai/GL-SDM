@@ -1,5 +1,7 @@
 # Project I: Global Liquid SDM
 
+[Read the complete proposal](../../docs/research-program.md#proposal-i).
+
 ## Research question
 
 Can a weight-tied model allocate variable computation per token while repeatedly
