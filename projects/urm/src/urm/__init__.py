@@ -28,6 +28,16 @@ from .ir import (
     StateLayout,
 )
 from .reference import ReferenceResult, execute, merge_writes
+from .routed_reduction import (
+    DeviceType,
+    RoutedReductionRegistry,
+    RoutedReductionResult,
+    RoutedReductionSignature,
+    ScalarType,
+    SupportStatus,
+    TensorLayout,
+    TensorMetadata,
+)
 
 __all__ = [
     "Backend",
@@ -37,6 +47,7 @@ __all__ = [
     "CapacityPolicy",
     "CollisionPolicy",
     "DecayGranularity",
+    "DeviceType",
     "Domain",
     "EditGateKind",
     "ExpertFunction",
@@ -50,7 +61,11 @@ __all__ = [
     "RecurrentSpec",
     "ReferenceResult",
     "Residency",
+    "RoutedReductionRegistry",
+    "RoutedReductionResult",
+    "RoutedReductionSignature",
     "RoutingKind",
+    "ScalarType",
     "ScanMode",
     "ScoreActivation",
     "SelectionGranularity",
@@ -58,6 +73,9 @@ __all__ = [
     "SparseAttentionSpec",
     "SparseIndexerKind",
     "StateLayout",
+    "SupportStatus",
+    "TensorLayout",
+    "TensorMetadata",
     "execute",
     "merge_writes",
 ]

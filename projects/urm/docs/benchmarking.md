@@ -55,6 +55,18 @@ coverage set is:
   128, and 256; uniform, Zipfian, and recurrent-reuse traces.
 - Recurrence: sequence 128 to 32K; state dimensions 16, 64, and 128; recurrent
   and chunk-parallel execution.
+- Routed reduction: decode, prefill, memory-reuse, and non-power-of-two cases;
+  route widths 2 to 32 initially; value dimensions 128 to 4096; fp16, bf16, and
+  fp32. These named cases are directly executable by
+  `benchmarks/routed_reduce.py`.
+
+## Triton measurement entrypoint
+
+The first GPU benchmark is documented in
+[Triton backend preparation](triton-backend.md). It compares the transparent
+PyTorch and Triton implementations from identical precomputed routes, captures
+cold compilation separately, and emits JSON conforming to
+`benchmarks/result-schema.json`.
 
 ## Working milestone targets
 

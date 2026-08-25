@@ -20,6 +20,12 @@ work:
   sparse-attention flavors;
 - an explicit baseline matrix and benchmark shape grid.
 
+The first Triton vertical slice is now scaffolded: a frozen routed-reduction
+tensor contract, transparent PyTorch baseline, lazy Triton forward/backward
+backend, capability checks, GPU tests, environment preflight, and reproducible
+benchmark output. GPU execution still requires validation on a supported Linux
+CUDA host; see [Triton backend preparation](docs/triton-backend.md).
+
 Linear recurrence is represented but deliberately not executed by the generic
 oracle: ordered scan semantics require a dedicated lowering.
 
@@ -43,6 +49,8 @@ appropriate optional dependencies.
 projects/urm/
 |-- benchmarks/
 |   |-- cases.toml             # canonical shape and trace grid
+|   |-- routed_reduce.py       # CUDA-event PyTorch/Triton comparison
+|   |-- triton_preflight.py    # environment and GPU readiness report
 |   `-- reference_smoke.py     # dependency-light harness smoke test
 |-- docs/
 |   |-- architecture.md        # target contract and non-goals
@@ -53,6 +61,8 @@ projects/urm/
 |   |-- backends/              # reference and future optimized adapters
 |   |-- ir.py                  # restricted typed operator contract
 |   |-- presets.py             # canonical semantic-family specifications
+|   |-- routed_reduction.py    # frozen v1 tensor/capability contract
+|   |-- triton_kernels/        # lazy GPU kernels and autograd wrappers
 |   `-- reference.py           # slow NumPy oracle and transactional merge
 `-- tests/                     # contract and oracle tests
 ```
@@ -82,6 +92,7 @@ model.
 - Freeze v0 routing, normalization, mutation, residency, and collision enums.
 - Validate dense/masked reduction, stable top-k routing, and transactional merge.
 - Make result metadata and benchmark cases reproducible.
+- Validate the routed-reduction Triton backend on the target Linux CUDA host.
 
 ### Phase 1 - framework baselines
 

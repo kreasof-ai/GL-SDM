@@ -106,13 +106,20 @@ architecture.
 
 ## First vertical slice
 
+The first frozen GPU operation is routed weighted reduction over precomputed
+indices. Its tensor contract, PyTorch baseline, Triton forward/backward kernels,
+capability checks, and benchmark harness are described in
+[Triton backend preparation](triton-backend.md).
+
+Subsequent slices are:
+
 1. Dense and masked sequence reduction against the NumPy oracle.
-2. Stable top-2 expert routing and weighted reduction.
-3. Product-key-style top-k memory routing plus deterministic transactional write
+2. Stable Top-k and threshold route generation.
+3. Product-key-style memory routing plus deterministic transactional write
    merging.
-4. PyTorch adapters for SDPA math/flash dispatch and a naive MoE.
-5. An external adapter to the original SDM implementation and trace format.
-6. A URM top-k gather-reduce prototype after baseline equivalence is established.
+4. PyTorch adapters for SDPA math/flash dispatch and transparent MoE.
+5. External adapters to maintained upstream kernels and trace formats.
+6. Family-specific recurrent and state-mutation lowerings.
 
 ## Non-goals for milestone zero
 

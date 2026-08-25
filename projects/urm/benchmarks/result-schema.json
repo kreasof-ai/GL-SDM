@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "URM routed-reduction benchmark result",
+  "type": "object",
+  "required": ["schema_version", "case", "environment", "measurements"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "case": {"type": "object"},
+    "environment": {
+      "type": "object",
+      "required": ["timestamp_utc", "python", "torch", "triton", "gpu"]
+    },
+    "correctness": {"type": ["object", "null"]},
+    "measurements": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["backend", "median_ms", "p95_ms", "samples"]
+      }
+    }
+  }
+}

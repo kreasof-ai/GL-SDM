@@ -25,3 +25,53 @@ distribution = ["uniform", "zipfian", "recurrent_reuse"]
 sequence = [128, 2048, 8192, 32768]
 state_dim = [16, 64, 128]
 mode = ["recurrent", "chunk_parallel"]
+
+[[routed_reduction.case]]
+name = "smoke"
+queries = 32
+sources = 128
+route_width = 8
+value_dim = 128
+dtype = "float16"
+distribution = "uniform"
+seed = 0
+
+[[routed_reduction.case]]
+name = "decode_top2"
+queries = 1
+sources = 64
+route_width = 2
+value_dim = 4096
+dtype = "bfloat16"
+distribution = "uniform"
+seed = 1
+
+[[routed_reduction.case]]
+name = "prefill_top8"
+queries = 8192
+sources = 256
+route_width = 8
+value_dim = 4096
+dtype = "bfloat16"
+distribution = "skewed"
+seed = 2
+
+[[routed_reduction.case]]
+name = "memory_top32"
+queries = 4096
+sources = 65536
+route_width = 32
+value_dim = 256
+dtype = "float16"
+distribution = "recurrent_reuse"
+seed = 3
+
+[[routed_reduction.case]]
+name = "non_power_of_two"
+queries = 257
+sources = 997
+route_width = 7
+value_dim = 190
+dtype = "float32"
+distribution = "uniform"
+seed = 4

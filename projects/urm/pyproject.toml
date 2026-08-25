@@ -16,6 +16,9 @@ dependencies = [
 test = [
   "pytest>=8",
 ]
+dev = [
+  "ruff>=0.12",
+]
 torch = [
   "torch>=2.7",
 ]
