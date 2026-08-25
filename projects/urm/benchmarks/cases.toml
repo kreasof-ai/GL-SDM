@@ -1,0 +1,27 @@
+[metadata]
+schema_version = 1
+
+[attention]
+batch = [1, 8]
+heads = [16]
+head_dim = [64, 128]
+sequence = [128, 2048, 8192, 32768]
+causal = [false, true]
+
+[moe]
+tokens = [1024, 8192, 32768]
+hidden_dim = [1024, 4096]
+experts = [8, 64, 128]
+top_k = [2, 8]
+distribution = ["uniform", "skewed"]
+
+[memory]
+addresses = [1024, 65536, 1048576]
+top_k = [4, 8, 32]
+page_size = [64, 128, 256]
+distribution = ["uniform", "zipfian", "recurrent_reuse"]
+
+[recurrence]
+sequence = [128, 2048, 8192, 32768]
+state_dim = [16, 64, 128]
+mode = ["recurrent", "chunk_parallel"]
