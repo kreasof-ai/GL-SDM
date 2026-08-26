@@ -9,5 +9,14 @@ from .dense_attention import (
     DenseAttentionSpec,
     UrmDenseCausalAttentionAdapter,
 )
+from .gated_delta_rule import (
+    GatedDeltaRuleSpec,
+    UrmGatedDeltaRuleAdapter,
+)
 
-__all__ = ["DenseAttentionSpec", "UrmDenseCausalAttentionAdapter"]
+__all__ = [
+    "DenseAttentionSpec",
+    "GatedDeltaRuleSpec",
+    "UrmDenseCausalAttentionAdapter",
+    "UrmGatedDeltaRuleAdapter",
+]

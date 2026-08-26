@@ -18,8 +18,11 @@
     "ruff": "0.16.4",
     "jsonschema": "4.23.0",
     "flash-attn": "2.8.3",
-    "flash-attn-pin": "v2.8.3 release wheel cu12torch2.8cxx11abiTRUE-cp312 from Dao-AILab/flash-attention GitHub releases"
+    "flash-attn-pin": "v2.8.3 release wheel cu12torch2.8cxx11abiTRUE-cp312 from Dao-AILab/flash-attention GitHub releases",
+    "flash-linear-attention": "0.5.2",
+    "fla-core": "0.5.2",
+    "fla-pin": "PyPI flash-linear-attention==0.5.2 (GitHub tag v0.5.2 of fla-org/flash-linear-attention), MIT license, called externally"
   },
   "cuda_runtime": "12.9",
-  "notes": "gpu extra pins triton>=3.4,<3.5; dev pins ruff==0.16.4 for reproducible formatting"
+  "notes": "gpu extra pins triton>=3.4,<3.5; dev pins ruff==0.16.4 for reproducible formatting; fla extra pins flash-linear-attention==0.5.2 for the gated delta-rule comparator"
 }

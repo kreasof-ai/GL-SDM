@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "case": {
+    "name": "smoke",
+    "queries": 32,
+    "sources": 128,
+    "route_width": 8,
+    "value_dim": 128,
+    "dtype": "float16",
+    "distribution": "uniform",
+    "seed": 0
+  },
+  "environment": {
+    "timestamp_utc": "2026-08-26T03:13:11.244668+00:00",
+    "git_revision": "e9863c95cfd945c4924cb48405a0ccbe5a4b1aa2",
+    "platform": "Linux-6.12.95-124.187.amzn2023.x86_64-x86_64-with-glibc2.39",
+    "python": "3.12.13",
+    "torch": "2.8.0",
+    "triton": "3.4.0",
+    "cuda": "12.9",
+    "gpu": "NVIDIA A10G",
+    "compute_capability": [
+      8,
+      6
+    ],
+    "total_memory_bytes": 23686938624
+  },
+  "correctness": {
+    "output": {
+      "max_abs_error": 0.0,
+      "mean_abs_error": 0.0
+    },
+    "grad_weights": {
+      "max_abs_error": 0.0,
+      "mean_abs_error": 0.0
+    },
+    "grad_values": {
+      "max_abs_error": 0.0078125,
+      "mean_abs_error": 0.00017783610383048654
+    }
+  },
+  "measurements": [
+    {
+      "backend": "torch_routed_reduction",
+      "mode": "backward",
+      "cold_compile_or_first_call_ms": 467.4896169999556,
+      "median_ms": 0.47170560359954833,
+      "p95_ms": 0.5136384010314942,
+      "min_ms": 0.41840639114379885,
+      "max_ms": 0.5192704200744629,
+      "samples": 50,
+      "inner_iterations": 10,
+      "useful_tflops": 0.000138934113777534,
+      "peak_allocated_bytes": 464384,
+      "kernel_metadata": {
+        "backend": "torch_routed_reduction",
+        "schema_version": 1,
+        "accumulation_dtype": "float32"
+      }
+    },
+    {
+      "backend": "triton_routed_reduction",
+      "mode": "backward",
+      "cold_compile_or_first_call_ms": 547.7857940022659,
+      "median_ms": 0.33126399517059324,
+      "p95_ms": 0.39485440254211424,
+      "min_ms": 0.27412478923797606,
+      "max_ms": 0.4444159984588623,
+      "samples": 50,
+      "inner_iterations": 10,
+      "useful_tflops": 0.00019783616980846493,
+      "peak_allocated_bytes": 192000,
+      "kernel_metadata": {
+        "backend": "triton_routed_reduction",
+        "schema_version": 1,
+        "accumulation_dtype": "float32",
+        "index_validation_sync": false,
+        "routes_per_program": 8,
+        "block_d": 128,
+        "num_warps": 4
+      }
+    }
+  ]
+}

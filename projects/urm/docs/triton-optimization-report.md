@@ -105,7 +105,8 @@ addresses, not DRAM (static-MBU 0.94 confirms under-utilized DRAM).
 **Accepted change**: full-row tiles for the per-query grad-values kernel when
 `value_dim >= 1024` (BLOCK_D = min(4096, next_pow2(D)), 16 warps): removes
 masks and repeated grad_output fragment loads, keeps one wide atomic stream
-per program. Prefill backward 5186 -> **4347 us median (-19%)**; every other
+per program. Prefill backward 5186 -> **4347 us median (16.2% latency
+reduction, a 1.19x speedup)**; every other
 committed case unchanged within noise; correctness/memory/p95/sanitizer gates
 re-run clean. Config confined to the per-query path after a first attempt
 regressed small-Q per-route launches (rejected intermediate retained in
@@ -124,8 +125,7 @@ regressed small-Q per-route launches (rejected intermediate retained in
 
 First four-level slice per docs/baselines.md, semantics matched exactly
 (causal alignment, BHSD boundary layout, GQA `heads % kv_heads == 0`,
-scale `1/sqrt(head_dim)`, dropout disabled, bf16, warm steady state, cold
-first call recorded separately):
+scale `1/sqrt(head_dim)`, dropout disabled, bf16):
 
 1. oracle: explicit fp32 softmax-reduce (evaluated where the S^2 fp32 matrix
    fits an 8 GiB budget; larger sequences are `not_applicable` by memory
@@ -134,39 +134,144 @@ first call recorded separately):
 3. pinned FlashAttention upstream called directly (flash-attn 2.8.3);
 4. `UrmDenseCausalAttentionAdapter` invoking the same upstream call.
 
-Plus SDPA-flash and its adapter variant as a second optimized pair. Backend
-evidence: FA identity recorded from the package; SDPA forced to FLASH-only via
-backend flags around each call (save/force/restore); oracle error <= 0.0156
-max-abs in bf16 across all evaluated cases; GQA forward/backward covered by
-tests against an explicit oracle.
+Plus SDPA-flash and its adapter variant as a second optimized pair.
 
-Grid: batch {1,8} x heads 16 x head_dim {64,128} x seq {128, 2048, 8192,
-32768}, causal, bf16 - all 16 combinations ran on A10G (no OOM exclusions).
+### Methodology correction (this iteration)
 
-### Adapter overhead (median, steady-state shapes)
+The first committed comparator cloned Q/K/V inside every timed iteration and
+derived adapter overhead from two independent median timings. Both choices
+were wrong for a dispatch-bound comparison and were fixed:
 
-| Shape class | FA direct -> URM | SDPA-flash -> URM |
+- Q/K/V and the output gradient are preallocated leaf tensors; nothing is
+  cloned, generated, or allocated inside a timed region. Backward builds a
+  fresh graph from those leaves, applies a fixed preallocated output
+  gradient, and clears gradients outside the timed region.
+- Direct-versus-adapter samples are paired and interleaved (A/B, B/A order
+  alternating per pair) on one clock; overhead is reported as the
+  distribution of per-pair fractions with a percentile bootstrap CI for the
+  median, not as a ratio of two independent medians.
+- Every sample records wall latency (end-to-end, host dispatch included) and
+  CUDA-event device span separately.
+- FlashAttention identity is resolved dynamically from installed package
+  metadata (`direct_url.json` provenance), no hardcoded wheel tag.
+- SDPA-flash calls run inside an SDPA-context restricted to
+  FLASH_ATTENTION, which raises instead of silently falling back;
+  backend-selection evidence is recorded per result row.
+
+### Adapter overhead results (v2 methodology, 30 pairs/case)
+
+| Shape class | FA direct -> URM (median paired) | SDPA-flash -> URM |
 | --- | --- | --- |
-| seq >= 2048 (all 12 cases) | -0.9% .. +1.4% | -1.0% .. +0.4% |
-| seq 128 (dispatch-bound) | +2..14% (~10 us absolute) | +/- noise (~100 us calls) |
+| seq >= 2048 steady state, fwd+bwd (24 case-modes) | **-0.42% .. +1.68%** | similar range |
+| seq 128 (dispatch-bound, ~0.14-0.5 ms) | -10.7% .. +5.0% | same order |
 
-**Working gate met**: URM dispatch is within 5% median latency of the same
-dense-attention implementation on every covered steady-state shape; tiny
-seq=128 shapes are explicitly marked dispatch-bound rather than treated as
-gate failures.
+Every steady-state case passes the <=5% median gate with margin; the largest
+observed bootstrap-CI upper bound among them is +6.6% on a +1.7% median
+(b1/d64/s2048 forward). seq=128 shapes are explicitly marked
+dispatch-bound: their absolute deltas are tens of microseconds and co-host
+noise dominates (the negative "overhead" rows show the adapter's saved-flag
+SDPA path measuring *faster* than per-call context construction - clock and
+host noise, both sides identical kernels).
 
-### Efficiency findings
+FlashAttention reaches ~96% of the measured BF16 tensor-core peak at
+b8/h16/d128/s32768 forward (63.4 TFLOP/s useful) and ~54% at s=2048 -
+consistent with wave quantization at shorter sequences.
 
-- FlashAttention reaches 85-94% of the *measured* BF16 tensor-core peak at
-  s >= 8192 (62 TFLOP/s useful at b8/h16/d128/s32768 fwd) and ~42-67% at
-  s=2048 - consistent with known wave-quantization behavior at shorter
-  sequences.
-- SDPA-flash tracks FA within ~2-4% (its backward is ~7% slower than FA's at
-  large S).
-
-Artifacts: `results/attention/dense-causal.json`, schema
+Artifacts: `results/attention/dense-causal.json` (schema v2), schema
 `benchmarks/attention-result-schema.json`, tests in
 `tests/test_dense_attention_adapter.py`.
+
+## Phase 5 - FLA gated delta-rule four-level comparator
+
+New family per docs/fla-gated-delta-rule.md (frozen contract, upstream pin
+flash-linear-attention==0.5.2 / GitHub tag v0.5.2, PyPI install, MIT license,
+called externally). Levels:
+
+1. explicit fp32 recurrent oracle (token budget 2048; 14 larger cases are
+   `not_applicable`, never zero);
+2. transparent eager PyTorch recurrence (differentiable);
+3. direct pinned FLA: chunk prefill / fused-recurrent token-by-token decode;
+4. the same operations behind the typed `UrmGatedDeltaRuleAdapter`.
+
+Upstream facts honored and verified in the installed package: the
+fused-recurrent decode kernel ships **no backward** (`NotImplementedError`),
+so decode is forward-only and all backward measurements target the chunk
+path. Chunked prefill and step-by-step recurrent decode agree to
+reassociation level (max |diff| <= 0.0156 output / 0.0071 state across all
+evaluated cases).
+
+### Correctness results (tests/test_gated_delta_rule_adapter.py)
+
+Forward output and final state vs the fp32 oracle for bf16 and fp16;
+initial/final-state semantics (carried vs zero vs absent); q/k/v/g/beta and
+initial-state gradients vs the eager baseline (atol 5e-2, rtol 2e-2,
+dtype-scaled); T=1 decode equals chunk prefill; non-power-of-two lengths
+(1, 7, 37, 100); gate limits (g=0 no decay, g=-20 full decay) and beta
+boundaries (beta->0 suppresses writes leaving pure decay, beta=1 exact write
+with L2-normalized k); multi-batch/head plus GVA grouping (HV>H via upstream
+repeat_interleave semantics); bitwise-deterministic repeated forward.
+Committed benchmark artifact: zero tolerance failures across 40 measured
+cases.
+
+### Direct FLA versus URM adapter (30 interleaved pairs per case)
+
+| Regime | Paired median overhead | Notes |
+| --- | --- | --- |
+| Prefill forward, steady state (s >= 2048, 20 case-modes) | **-0.74% .. +2.26%** | gate <=10% met everywhere |
+| Prefill forward, s=128 small shapes | +1.5% .. +2.9% | dispatch-bound but already inside the gate |
+| Prefill backward (32 case-modes) | median +0.17%, range -2.0% .. +2.2% | chunk path |
+| Decode, token-by-token t=256 loops | +4.9% .. +8.6% relative | host-bound; see below |
+
+Decode is host-bound: one fused-recurrent kernel launch per token
+(~155-225 us/token end-to-end wall on this co-hosted CPU, device span near
+zero). The adapter adds ~12-13 us per token for typed validation and
+dispatch - reported as absolute microseconds (+4.9..8.6% relative), which is
+the honest lens for host-bound regimes; MFU/MBU are not meaningful there and
+are marked ineligible via the >20% dispatch-share rule.
+
+### Decode versus prefill
+
+Token-by-token decode costs ~155 us/token (b1/k64/v64) to ~235 us/token
+(b8/k128/v128) versus chunked prefill throughput of 0.54-9.6M tokens/s:
+prefill amortizes the recurrence over T tokens per kernel launch while
+decode pays launch+dispatch per token. This quantifies the incentive to
+batch or fuse decode steps before any native URM recurrent kernel work.
+
+### Utilization interpretation
+
+At the largest GPU-bound prefills the chunk kernel reaches ~8.5 TFLOP/s
+useful (MFU ~12.9% of the measured BF16 tensor-core peak) and static-analytic
+MBU ~17% against measured sustainable bandwidth. The recurrence moves far
+more bytes than its FLOP model implies and the analytic bound excludes
+intermediate chunk traffic, so these denominators bound rather than explain
+performance; measured DRAM counters remain unavailable on this host
+(ERR_NVGPUCTRPERM).
+
+Final-state materialization adds at most ~64 us (b8/s2048/k128v128, 8 MiB
+state) and is within noise elsewhere.
+
+Unsupported configurations: b8/s32768/k128/v128 prefill (zero and carried)
+exceed 22 GiB on this A10G during chunk-backward graph construction and are
+recorded as `not_applicable` with reasons, never as failed performance.
+
+Artifacts: `results/fla-gated-delta-rule/benchmark.json` (schema v1),
+schema `benchmarks/gated-delta-rule-result-schema.json`.
+
+## Phase 5 - reacceptance check (post-report correction)
+
+The accepted `gv-fullrow` state was re-measured from a clean tree
+(`results/p0-reacceptance/`) and checked against both the original baseline and
+the previously shipped `results/final` directory with `compare_results.py`:
+
+- vs `results/baseline`: no violations; prefill-backward triton now 1.41x.
+- vs `results/final`: no violations; prefill-backward improvement reproduces
+  (5186 -> 4346 us median = 16.2% reduction, 1.19x speedup); every other case
+  unchanged within the calibrated allowances.
+- One host-bound wobble (`non_power_of_two` backward median 270 -> 313 us,
+  p95 improved 411 -> 351 us) was re-run twice from identical code
+  (`results/p0-reacceptance-rerun/*.r{1,2}.json`): medians 252 / 293 / 313 us
+  and p95 322-351 us on the same binary path. This is co-tenant timing noise,
+  not a reproducible regression; no incremental p95 gate tripped.
 
 ## Limitations
 
@@ -178,17 +283,25 @@ Artifacts: `results/attention/dense-causal.json`, schema
    comparisons carry ordering wiggle; tolerances live in the adapters/tests.
 3. The attention comparator measures URM *dispatch* overhead only; routed
    reduction does not compete with attention kernels and no such claim is
-   made.
+   made. The same holds for the FLA comparator: URM calls the pinned FLA
+   kernels externally and adds validation/dispatch only.
 4. Host-bound timing noise on this co-hosted machine is +-10-15% below 1 ms;
-   constraint checks use a torch-drift-calibrated allowance.
+   paired interleaved sampling cancels most of it for A/B comparisons, but
+   single-sided small-case medians still wobble (see the Phase 5 reacceptance
+   reruns).
+5. Decode backward does not exist upstream (fused-recurrent is
+   forward-only), so recurrent training cost is measured on the chunk path
+   only.
 
 ## Next recommendation
 
-Single next kernel family: **Flash Linear Attention (FLA) gated delta-rule /
-chunked linear-attention scan**, reached through the same four-level harness
-(oracle = explicit recurrent reference; framework = eager PyTorch scan;
-upstream = pinned FLA; URM = adapter overhead measurement). Rationale: the
-recurrence family is the largest uncovered semantic group in the baseline
-catalog, FLA publishes pip wheels, and its chunk-parallel form shares the
-gather-reduce structure this repo already profiles well. Sparse-memory
-(SDM-style page-local gather/merge) should follow once recurrence lands.
+With dense attention and gated delta-rule recurrence both covered at four
+levels with measured adapter overhead, the next family per docs/baselines.md
+is sparse memory: an external adapter to the original Sparse Delta Memory
+Triton/CUDA implementation (pinned revision, outputs and address traces as
+the baseline), followed by GL-SDM page-local gather/merge. A native URM
+recurrent lowering stays deferred until a second upstream point (FLA 0.6.x or
+a Mamba-3 kernel) can be compared against the same frozen contract; if decode
+dispatch cost matters before then, batching decode steps behind one adapter
+call removes most of the measured ~12-13 us/token integration cost without
+any new kernel.

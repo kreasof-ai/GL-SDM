@@ -22,9 +22,15 @@ optimized, profiled, and compared against a pinned production kernel:
 - an explicit baseline matrix and benchmark shape grid;
 - a validated Triton routed-reduction backend (forward 2.6-3.0x and backward
   1.2-1.6x faster than the transparent PyTorch baseline across committed
-  cases), with roofline profiling, measured device-limit denominators, and a
-  four-level dense-causal-attention comparator whose URM dispatch overhead is
-  within 0.5% median of direct upstream calls on steady-state shapes.
+  cases), with roofline profiling, measured device-limit denominators;
+- a four-level dense-causal-attention comparator (methodology v2: no cloning
+  in timed regions, paired interleaved direct-vs-adapter sampling with
+  bootstrap-CI overhead distributions) whose URM dispatch overhead is within
+  1.7% median on every steady-state shape; and
+- a four-level FLA gated-delta-rule comparator (fp32 recurrent oracle, eager
+  recurrence, pinned flash-linear-attention 0.5.2 direct, and the same calls
+  behind a typed URM adapter) with separate prefill and token-by-token
+  decode regimes and the frozen contract in docs/fla-gated-delta-rule.md.
 
 See [Triton backend preparation](docs/triton-backend.md),
 [the optimization and profiling report](docs/triton-optimization-report.md),
@@ -69,15 +75,18 @@ projects/urm/
 |   |-- baselines.md             # comparator catalog and scope rules
 |   |-- benchmarking.md          # correctness, measurement, and acceptance gates
 |   |-- triton-backend.md        # routed-reduction v1 contract and workflows
-|   `-- triton-optimization-report.md # optimization, profiling, comparator report
+|   |-- triton-optimization-report.md # optimization, profiling, comparator report
+|   `-- fla-gated-delta-rule.md  # frozen FLA gated delta-rule contract (v1)
 |-- results/
 |   |-- baseline/ ... final/     # before/after benchmark matrices per change
 |   |-- profiling/               # committed roofline summaries
 |   |-- device-limits.json       # measured bandwidth / FP32 / BF16 peaks
-|   `-- attention/               # dense causal attention comparison artifacts
+|   |-- attention/               # dense causal attention comparison artifacts
+|   `-- fla-gated-delta-rule/    # gated delta-rule comparison artifacts
 |-- src/urm/
 |   |-- backend.py               # explicit backend protocol and registry
-|   |-- adapters/                # pinned upstream adapters (dense attention)
+|   |-- adapters/                # pinned upstream adapters (dense attention,
+|   |                            #   gated delta rule) and shared references
 |   |-- backends/                # reference and optimized routed-reduction backends
 |   |-- ir.py                    # restricted typed operator contract
 |   |-- presets.py               # canonical semantic-family specifications
@@ -120,7 +129,11 @@ model.
 
 - Add PyTorch SDPA math and flash-dispatch adapters (dense causal attention is
   done via `src/urm/adapters` and `benchmarks/dense_attention.py`; the URM
-  dispatch overhead gate of 5% median is met with <=0.5% measured).
+  dispatch overhead gate of 5% median is met with <=1.7% measured on every
+  steady-state shape under paired interleaved sampling).
+- Add the FLA gated-delta-rule comparator (typed adapter, four levels,
+  prefill + decode; see docs/fla-gated-delta-rule.md) - first recurrence
+  family comparator landed.
 - Add a transparent top-k MoE and sparse-memory gather/scatter baseline.
 - Capture correctness, route, and memory-traffic metadata in one result schema.
 

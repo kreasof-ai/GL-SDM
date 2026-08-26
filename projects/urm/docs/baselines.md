@@ -10,7 +10,7 @@ result rather than treated as permanent defaults.
 | --- | --- | --- | --- | --- | --- |
 | Dense causal attention | NumPy dense softmax-reduce | PyTorch SDPA math backend | PyTorch SDPA flash backend and FlashAttention | Dense sequence lowering | 1 |
 | Block/local/sparse attention | NumPy masked softmax-reduce | PyTorch FlexAttention | FlexAttention compiled block-sparse backend | Block-sparse sequence lowering | 2 |
-| Linear attention | Explicit recurrent/chunk reference | PyTorch eager recurrence | Flash Linear Attention | Recurrent lowering | 2 |
+| Linear attention | Explicit recurrent/chunk reference | PyTorch eager recurrence | Flash Linear Attention (pinned 0.5.2 gated delta-rule comparator landed; see docs/fla-gated-delta-rule.md) | Recurrent lowering | 2 |
 | Selective SSM | Explicit scan reference | PyTorch eager scan | Mamba selective scan | Recurrent lowering | 2 |
 | Top-k MoE | NumPy stable top-k gate | PyTorch per-expert eager | MegaBlocks; SonicMoE on supported hardware | Expert grouped-GEMM lowering | 1-2 |
 | Advanced MoE routing | Per-family routing/dispatch oracle | PyTorch explicit dispatch | Original model implementation plus grouped-GEMM backend | Typed score/select/balance lowering | 2 |

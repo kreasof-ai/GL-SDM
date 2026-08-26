@@ -7,11 +7,13 @@
   "gpu",
   "torch",
   "flash_attention_upstream",
+  "methodology",
   "semantics",
   "cases"
  ],
  "properties": {
-  "schema_version": {"const": 1},
+  "schema_version": {"const": 2},
+  "timestamp_utc": {"type": "string"},
   "gpu": {"type": "string"},
   "compute_capability": {
    "type": "array",
@@ -26,7 +28,13 @@
    "properties": {
     "package": {"type": "string"},
     "version": {"type": "string"},
-    "pin": {"type": "string"},
+    "module_version": {"type": ["string", "null"]},
+    "location": {"type": "string"},
+    "import_path": {"type": "string"},
+    "entry_point": {"type": "string"},
+    "installed_from_wheel": {"type": "string"},
+    "provenance_source": {"type": "string"},
+    "repository": {"type": "string"},
     "status": {"const": "not_applicable"},
     "reason": {"type": "string"}
    }
@@ -35,11 +43,24 @@
    "type": "object",
    "required": ["bf16_tensor_core_tfps_measured", "source"],
    "properties": {
-    "bf16_tensor_core_tfps_measured": {"type": "number"},
+    "bf16_tensor_core_tfps_measured": {"type": ["number", "null"]},
     "note": {
      "description": "Tensor-core peak is the correct denominator for MMA-based attention kernels."
     }
    }
+  },
+  "methodology": {
+   "type": "object",
+   "required": [
+    "timed_region",
+    "input_handling",
+    "latency_fields",
+    "sampling",
+    "overhead_reporting",
+    "cold_vs_warm",
+    "steady_state_min_seq",
+    "overhead_gate_fraction"
+   ]
   },
   "semantics": {
    "type": "object",
@@ -49,24 +70,31 @@
    "type": "object",
    "additionalProperties": {
     "type": "object",
-    "required": ["case", "implementations"],
+    "required": [
+     "case",
+     "implementations",
+     "adapter_overhead",
+     "oracle_evaluated"
+    ],
     "properties": {
+     "case": {"type": "object"},
+     "input_preparation_ms": {"type": "number"},
      "correctness": {"type": "object"},
+     "oracle_evaluated": {"type": "boolean"},
      "implementations": {
       "type": "object",
       "additionalProperties": {
        "type": "object",
-       "properties": {
-        "forward": {
-         "$ref": "#/definitions/level_metrics"
-        },
-        "backward": {
-         "$ref": "#/definitions/level_metrics"
-        }
-       }
+       "additionalProperties": {"$ref": "#/definitions/level_metrics"}
       }
      },
-     "adapter_overhead": {"type": "object"}
+     "adapter_overhead": {
+      "type": "object",
+      "additionalProperties": {
+       "type": "object",
+       "additionalProperties": {"$ref": "#/definitions/paired_overhead"}
+      }
+     }
     }
    }
   }
@@ -75,11 +103,112 @@
   "level_metrics": {
    "type": "object",
    "required": [
+    "mode",
     "cold_first_call_ms",
+    "backend_selection",
+    "wall_ms",
+    "device_span_ms",
     "median_ms",
     "p95_ms",
-    "useful_tflops"
+    "useful_tflops",
+    "tokens_per_second",
+    "peak_allocated_bytes"
+   ],
+   "properties": {
+    "mode": {"enum": ["forward", "backward"]},
+    "cold_first_call_ms": {"type": "number"},
+    "median_ms": {"type": "number"},
+    "p95_ms": {"type": "number"},
+    "useful_tflops": {"type": "number"},
+    "tokens_per_second": {"type": "number"},
+    "peak_allocated_bytes": {"type": "integer"},
+    "wall_ms": {"$ref": "#/definitions/distribution"},
+    "device_span_ms": {"$ref": "#/definitions/distribution"},
+    "backend_selection": {
+     "type": "object",
+     "required": ["implementation", "kernel", "silent_fallback_possible"],
+     "properties": {
+      "implementation": {"type": "string"},
+      "kernel": {"type": "string"},
+      "silent_fallback_possible": {"type": "boolean"},
+      "dispatcher_forced_to": {"type": "array", "items": {"type": "string"}},
+      "flash_sdp_enabled_flag": {"type": "boolean"}
+     }
+    }
+   }
+  },
+  "paired_overhead": {
+   "type": "object",
+   "required": [
+    "interleaved",
+    "pairs",
+    "wall_fraction",
+    "device_span_fraction",
+    "absolute_delta_us",
+    "gate"
+   ],
+   "properties": {
+    "interleaved": {"const": true},
+    "pairs": {"type": "integer"},
+    "wall_fraction": {"$ref": "#/definitions/fraction_stats"},
+    "device_span_fraction": {"$ref": "#/definitions/distribution"},
+    "absolute_delta_us": {"$ref": "#/definitions/distribution"},
+    "ratio_of_independent_medians_minus_one": {"type": "number"},
+    "gate": {
+     "type": "object",
+     "required": [
+      "limit_fraction",
+      "steady_state",
+      "dispatch_bound_shape",
+      "pass"
+     ],
+     "properties": {
+      "limit_fraction": {"type": "number"},
+      "steady_state": {"type": "boolean"},
+      "dispatch_bound_shape": {"type": "boolean"},
+      "pass": {"type": "boolean"}
+     }
+    }
+   }
+  },
+  "distribution": {
+   "type": "object",
+   "required": [
+    "n",
+    "median",
+    "p95",
+    "min",
+    "max",
+    "iqr",
+    "median_abs_deviation",
+    "stdev"
    ]
+  },
+  "fraction_stats": {
+   "type": "object",
+   "required": [
+    "n",
+    "median",
+    "p95",
+    "min",
+    "max",
+    "iqr",
+    "median_abs_deviation",
+    "stdev",
+    "bootstrap_ci95_median"
+   ],
+   "properties": {
+    "bootstrap_ci95_median": {
+     "type": "object",
+     "required": ["level", "resamples", "lower", "upper"],
+     "properties": {
+      "level": {"type": "number"},
+      "resamples": {"type": "integer"},
+      "lower": {"type": "number"},
+      "upper": {"type": "number"}
+     }
+    }
+   }
   }
  }
 }

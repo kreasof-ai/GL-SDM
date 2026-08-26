@@ -19,8 +19,10 @@ scale ``1/sqrt(head_dim)`` unless overridden, dropout disabled, fp16/bf16.
 from __future__ import annotations
 
 import importlib.metadata
+import json
 import math
 from dataclasses import dataclass
+from urllib.parse import unquote
 
 import torch
 
@@ -81,18 +83,35 @@ class DenseAttentionSpec:
 
 
 def flash_attn_version() -> dict[str, object]:
-    """Identity of the pinned FlashAttention upstream, when installed."""
+    """Identity of the installed FlashAttention upstream, resolved dynamically.
+
+    Package name and version come from the installed distribution metadata;
+    wheel provenance (local version / ABI / Python tag) is read from the
+    installer's ``direct_url.json`` when present, i.e. it describes the
+    artifact that is actually installed instead of an assumed build string.
+    Nothing here is hardcoded; a missing field simply stays absent.
+    """
     try:
-        version = importlib.metadata.version("flash-attn")  # noqa: F841
+        distribution = importlib.metadata.distribution("flash-attn")
         import flash_attn
 
-        return {
+        identity: dict[str, object] = {
             "package": "flash-attn",
-            "version": flash_attn.__version__,
-            "wheel_tag": "cu12torch2.8cxx11abiTRUE-cp312",
+            "version": distribution.metadata["Version"],
+            "module_version": getattr(flash_attn, "__version__", None),
+            "location": str(distribution.locate_file("")),
+            "import_path": flash_attn.__file__,
+            "entry_point": "flash_attn.flash_attn_func",
             "repository": "https://github.com/Dao-AILab/flash-attention",
-            "pin": "v2.8.3 release wheel",
         }
+        direct_url = distribution.read_text("direct_url.json")
+        if direct_url:
+            url = json.loads(direct_url).get("url", "")
+            wheel = unquote(url.rsplit("/", 1)[-1])
+            if wheel.endswith(".whl"):
+                identity["installed_from_wheel"] = wheel
+                identity["provenance_source"] = "direct_url.json"
+        return identity
     except Exception as error:  # noqa: BLE001 - identity probing is best-effort
         return {"status": "not_applicable", "reason": repr(error)}
 

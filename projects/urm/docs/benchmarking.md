@@ -94,7 +94,22 @@ cold compilation separately, and emits JSON conforming to
   comparison (semantic oracle, SDPA math, pinned FlashAttention upstream
   direct, and the same call behind the URM adapter) over the committed
   attention shape grid. Unsupported configurations are recorded as
-  `not_applicable` with a reason, never as zero performance.
+  `not_applicable` with a reason, never as zero performance. Timed regions
+  contain no input cloning or allocation; direct-versus-adapter samples are
+  paired and interleaved; overhead is reported as a paired-fraction
+  distribution with a bootstrap CI; wall and device-span latencies are
+  recorded separately.
+- `benchmarks/gated_delta_rule.py`: four-level FLA gated delta-rule
+  comparison (fp32 recurrent oracle within a documented 2048-token budget,
+  eager PyTorch recurrence, pinned FLA chunk/fused-recurrent direct calls,
+  and the same calls behind the typed URM adapter) across separate prefill
+  and token-by-token decode regimes. Reports cold first call, median/p95
+  forward and backward, tokens/s, useful FLOP/s from a documented recurrence
+  model, static-analytic MBU, MFU against the measured BF16 tensor-core peak
+  (host-bound decode cases report absolute microseconds and dispatch share
+  instead), peak/temporary memory, paired direct-versus-adapter overhead,
+  and final-state materialization cost. Nsight Compute fields remain
+  explicit `not_available` on this host.
 
 ## Working milestone targets
 
@@ -105,7 +120,7 @@ These are engineering gates, not paper claims:
 | Semantic coverage | Dense attention, block-sparse attention, top-k MoE, recurrent mixer, parameter-token mixer, and sparse transactional memory all represented without arbitrary tensor escape hatches |
 | Correctness | All reference and adapter tests pass; no silent semantic fallback |
 | Dense attention overhead | URM dispatch/lowering is within 5% median latency of the selected upstream kernel on covered steady-state shapes |
-| Other mature kernels | Within 10% median latency of the selected upstream implementation, or a documented reason to keep a specialized path |
+| Other mature kernels | Within 10% median latency of the selected upstream implementation, or a documented reason to keep a specialized path. Host-bound decode regimes report absolute microseconds and dispatch share instead of utilization ratios |
 | Memory locality | Page grouping reduces measured HBM bytes/token on at least one realistic trace family without changing routing results |
 | Write path | One deterministic merge/commit per transaction with collision and version metadata |
 

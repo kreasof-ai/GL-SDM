@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "case": {
+    "name": "non_power_of_two",
+    "queries": 257,
+    "sources": 997,
+    "route_width": 7,
+    "value_dim": 190,
+    "dtype": "float32",
+    "distribution": "uniform",
+    "seed": 4
+  },
+  "environment": {
+    "timestamp_utc": "2026-08-26T03:15:01.504642+00:00",
+    "git_revision": "e9863c95cfd945c4924cb48405a0ccbe5a4b1aa2",
+    "platform": "Linux-6.12.95-124.187.amzn2023.x86_64-x86_64-with-glibc2.39",
+    "python": "3.12.13",
+    "torch": "2.8.0",
+    "triton": "3.4.0",
+    "cuda": "12.9",
+    "gpu": "NVIDIA A10G",
+    "compute_capability": [
+      8,
+      6
+    ],
+    "total_memory_bytes": 23686938624
+  },
+  "correctness": {
+    "output": {
+      "max_abs_error": 1.9073486328125e-06,
+      "mean_abs_error": 1.1630194052258958e-07
+    },
+    "grad_weights": {
+      "max_abs_error": 7.62939453125e-06,
+      "mean_abs_error": 1.0738112905528396e-06
+    },
+    "grad_values": {
+      "max_abs_error": 9.5367431640625e-07,
+      "mean_abs_error": 2.8922033656897383e-09
+    }
+  },
+  "measurements": [
+    {
+      "backend": "torch_routed_reduction",
+      "mode": "backward",
+      "cold_compile_or_first_call_ms": 482.773093997821,
+      "median_ms": 0.38451199531555175,
+      "p95_ms": 0.43089919090270995,
+      "min_ms": 0.3406847953796387,
+      "max_ms": 0.45608959197998045,
+      "samples": 50,
+      "inner_iterations": 10,
+      "useful_tflops": 0.0017778899184640097,
+      "peak_allocated_bytes": 5289472,
+      "kernel_metadata": {
+        "backend": "torch_routed_reduction",
+        "schema_version": 1,
+        "accumulation_dtype": "float32"
+      }
+    },
+    {
+      "backend": "triton_routed_reduction",
+      "mode": "backward",
+      "cold_compile_or_first_call_ms": 546.0373909991176,
+      "median_ms": 0.29306880235671995,
+      "p95_ms": 0.32184319496154784,
+      "min_ms": 0.23582720756530762,
+      "max_ms": 0.34262399673461913,
+      "samples": 50,
+      "inner_iterations": 10,
+      "useful_tflops": 0.0023326263133525405,
+      "peak_allocated_bytes": 2890752,
+      "kernel_metadata": {
+        "backend": "triton_routed_reduction",
+        "schema_version": 1,
+        "accumulation_dtype": "float32",
+        "index_validation_sync": false,
+        "routes_per_program": 7,
+        "block_d": 256,
+        "num_warps": 4
+      }
+    }
+  ]
+}

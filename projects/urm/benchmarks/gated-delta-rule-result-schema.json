@@ -1,0 +1,134 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "title": "URM FLA gated delta-rule comparison",
+ "type": "object",
+ "required": [
+  "schema_version",
+  "gpu",
+  "torch",
+  "triton",
+  "driver",
+  "fla_upstream",
+  "utilization_denominators",
+  "flop_model",
+  "methodology",
+  "semantics",
+  "cases"
+ ],
+ "properties": {
+  "schema_version": {"const": 1},
+  "timestamp_utc": {"type": "string"},
+  "gpu": {"type": "string"},
+  "compute_capability": {"type": "array", "items": {"type": "integer"}},
+  "torch": {"type": "string"},
+  "cuda": {"type": ["string", "null"]},
+  "triton": {"type": "string"},
+  "driver": {"type": "string"},
+  "fla_upstream": {
+   "type": "object",
+   "required": [],
+   "properties": {
+    "package": {"type": "string"},
+    "version": {"type": "string"},
+    "pin": {"type": "string"},
+    "license": {"type": "string"},
+    "usage": {"type": "string"},
+    "prefill_entry_point": {"type": "string"},
+    "decode_entry_point": {"type": "string"},
+    "repository": {"type": "string"},
+    "status": {"const": "not_applicable"},
+    "reason": {"type": "string"}
+   }
+  },
+  "utilization_denominators": {
+   "type": "object",
+   "required": ["source"],
+   "properties": {
+    "measured_hbm_gb_s": {"type": ["number", "null"]},
+    "measured_bf16_tensor_core_tfps": {"type": ["number", "null"]},
+    "source": {"type": "string"}
+   }
+  },
+  "flop_model": {"type": "string"},
+  "methodology": {
+   "type": "object",
+   "required": [
+    "timed_region",
+    "input_handling",
+    "latency_fields",
+    "sampling",
+    "cold_vs_warm",
+    "reference_budget",
+    "steady_state_min_seq",
+    "overhead_gate_fraction"
+   ]
+  },
+  "semantics": {
+   "type": "object",
+   "required": [
+    "contract",
+    "layout",
+    "normalization",
+    "gate",
+    "scale_default"
+   ]
+  },
+  "cases": {
+   "type": "object",
+   "additionalProperties": {
+    "type": "object",
+    "required": ["case", "implementations"],
+    "properties": {
+     "case": {"type": "object"},
+     "input_preparation_ms": {"type": "number"},
+     "correctness": {"type": "object"},
+     "implementations": {"type": "object"},
+     "adapter_overhead": {
+      "type": "object",
+      "additionalProperties": {
+       "type": "object",
+       "properties": {
+        "interleaved": {"const": true},
+        "pairs": {"type": "integer"},
+        "wall_fraction": {"$ref": "#/definitions/fraction_stats"},
+        "device_span_fraction": {"$ref": "#/definitions/distribution"},
+        "absolute_delta_us": {"$ref": "#/definitions/distribution"},
+        "ratio_of_independent_medians_minus_one": {"type": "number"},
+        "gate": {
+         "type": "object",
+         "required": ["limit_fraction", "pass"],
+         "properties": {
+          "limit_fraction": {"type": "number"},
+          "host_bound_decode": {"type": "boolean"},
+          "steady_state_gpu_bound": {"type": "boolean"},
+          "pass": {"type": "boolean"}
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "definitions": {
+  "distribution": {
+   "type": "object",
+   "required": ["n", "median", "p95", "min", "max"]
+  },
+  "fraction_stats": {
+   "allOf": [
+    {"$ref": "#/definitions/distribution"},
+    {
+     "type": "object",
+     "properties": {
+      "bootstrap_ci95_median": {
+       "type": "object",
+       "required": ["level", "resamples", "lower", "upper"]
+      }
+     }
+    }
+   ]
+  }
+ }
+}

@@ -15,6 +15,9 @@ dependencies = [
 [project.optional-dependencies]
 test = [
   "pytest>=8",
+  # Result-schema validation tests require jsonschema; declaring it here keeps
+  # the non-GPU suite runnable in a clean environment without global packages.
+  "jsonschema>=4.18",
 ]
 dev = [
   # Pinned for reproducible formatting/lint results; ruff's output changes
@@ -30,6 +33,12 @@ gpu = [
   # Triton APIs and falls back to the standard launcher when they are absent,
   # but steady-state numbers in docs/results were produced with this version.
   "triton>=3.4,<3.5",
+]
+fla = [
+  # Pinned upstream for the gated delta-rule comparator
+  # (docs/fla-gated-delta-rule.md). Bump deliberately: the frozen contract is
+  # verified against this exact release.
+  "flash-linear-attention==0.5.2",
 ]
 
 [tool.setuptools.packages.find]

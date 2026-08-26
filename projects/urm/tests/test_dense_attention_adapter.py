@@ -54,7 +54,12 @@ def test_flash_attn_identity_recorded_or_not_applicable() -> None:
     identity = flash_attn_version()
     if identity.get("package") == "flash-attn":
         assert identity["version"]
-        assert identity["pin"]
+        assert identity["entry_point"] == "flash_attn.flash_attn_func"
+        # Wheel provenance, when recorded, must come from installer metadata
+        # rather than a hardcoded build string.
+        if "installed_from_wheel" in identity:
+            assert identity.get("provenance_source") == "direct_url.json"
+            assert "cu1" in identity["installed_from_wheel"]
     else:
         assert identity["status"] == "not_applicable"
 
