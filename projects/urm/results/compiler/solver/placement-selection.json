@@ -1,0 +1,288 @@
+{
+  "schema_version": 1,
+  "generated_utc": "2026-08-26T10:12:48.821476+00:00",
+  "provenance": {
+    "git_revision": "2cea8d3cfeb4e7a709314dee404fadc450223571",
+    "dirty_tree": false,
+    "benchmark_command": "python benchmarks/placement_selection.py",
+    "config_hash": "2088303de389ae6561170439b76968ba0920dccbf3602c34647d5dd049472ba2",
+    "solver_version": "4.15.3",
+    "python": "3.12.13",
+    "platform": "Linux-6.12.95-124.187.amzn2023.x86_64-x86_64-with-glibc2.39",
+    "constraint_model_hash": "21c2c632699059b4683e836b2659aa30a54e144c616ccd7440321ce0cb0ce807"
+  },
+  "instances": [
+    {
+      "name": "moe_experts_2x2",
+      "mesh": "2x2",
+      "item_count": 4,
+      "edge_count": 4,
+      "replication_factor": 1,
+      "device_capacity_bytes": 340,
+      "z3": {
+        "status": "sat",
+        "owners": {
+          "e0": 3,
+          "e1": 2,
+          "e2": 1,
+          "e3": 0
+        },
+        "metrics": {
+          "max_load": 180,
+          "total_bytes": 16,
+          "critical_path_proxy": 20,
+          "peer_pairs": 4
+        },
+        "solve_ms": 354.654,
+        "verified": true,
+        "verification_failures": []
+      },
+      "baselines": {
+        "round_robin": {
+          "owners": {
+            "e0": 0,
+            "e1": 1,
+            "e2": 2,
+            "e3": 3
+          },
+          "metrics": {
+            "max_load": 180,
+            "total_bytes": 16,
+            "critical_path_proxy": 20,
+            "peer_pairs": 4
+          },
+          "feasible": true
+        },
+        "greedy": {
+          "owners": {
+            "e3": 0,
+            "e2": 1,
+            "e1": 2,
+            "e0": 3
+          },
+          "metrics": {
+            "max_load": 180,
+            "total_bytes": 16,
+            "critical_path_proxy": 20,
+            "peer_pairs": 4
+          },
+          "feasible": true
+        }
+      },
+      "communication_savings_vs_round_robin_pct": 0.0,
+      "exhaustive_agreement": {
+        "run": false,
+        "agree": false
+      }
+    },
+    {
+      "name": "hot_pair_2x2",
+      "mesh": "2x2",
+      "item_count": 4,
+      "edge_count": 2,
+      "replication_factor": 1,
+      "device_capacity_bytes": 400,
+      "z3": {
+        "status": "sat",
+        "owners": {
+          "e0": 2,
+          "e1": 1,
+          "e2": 0,
+          "e3": 0
+        },
+        "metrics": {
+          "max_load": 150,
+          "total_bytes": 0,
+          "critical_path_proxy": 0,
+          "peer_pairs": 0
+        },
+        "solve_ms": 156.82,
+        "verified": true,
+        "verification_failures": []
+      },
+      "baselines": {
+        "round_robin": {
+          "owners": {
+            "e0": 0,
+            "e1": 1,
+            "e2": 2,
+            "e3": 3
+          },
+          "metrics": {
+            "max_load": 150,
+            "total_bytes": 64,
+            "critical_path_proxy": 64,
+            "peer_pairs": 1
+          },
+          "feasible": true
+        },
+        "greedy": {
+          "owners": {
+            "e0": 0,
+            "e1": 1,
+            "e2": 2,
+            "e3": 3
+          },
+          "metrics": {
+            "max_load": 150,
+            "total_bytes": 64,
+            "critical_path_proxy": 64,
+            "peer_pairs": 1
+          },
+          "feasible": true
+        }
+      },
+      "communication_savings_vs_round_robin_pct": 100.0,
+      "exhaustive_agreement": {
+        "run": false,
+        "agree": false
+      }
+    },
+    {
+      "name": "moe_experts_2x4_skewed",
+      "mesh": "2x4",
+      "item_count": 6,
+      "edge_count": 6,
+      "replication_factor": 1,
+      "device_capacity_bytes": 260,
+      "z3": {
+        "status": "sat",
+        "owners": {
+          "e0": 3,
+          "e1": 5,
+          "e2": 4,
+          "e3": 2,
+          "e4": 1,
+          "e5": 0
+        },
+        "metrics": {
+          "max_load": 150,
+          "total_bytes": 48,
+          "critical_path_proxy": 48,
+          "peer_pairs": 3
+        },
+        "solve_ms": 2328.281,
+        "verified": true,
+        "verification_failures": []
+      },
+      "baselines": {
+        "round_robin": {
+          "owners": {
+            "e0": 0,
+            "e1": 1,
+            "e2": 2,
+            "e3": 3,
+            "e4": 4,
+            "e5": 5
+          },
+          "metrics": {
+            "max_load": 150,
+            "total_bytes": 48,
+            "critical_path_proxy": 112,
+            "peer_pairs": 3
+          },
+          "feasible": true
+        },
+        "greedy": {
+          "owners": {
+            "e5": 0,
+            "e4": 1,
+            "e3": 2,
+            "e2": 3,
+            "e1": 4,
+            "e0": 5
+          },
+          "metrics": {
+            "max_load": 150,
+            "total_bytes": 48,
+            "critical_path_proxy": 112,
+            "peer_pairs": 3
+          },
+          "feasible": true
+        }
+      },
+      "communication_savings_vs_round_robin_pct": 0.0,
+      "exhaustive_agreement": {
+        "run": false,
+        "agree": false
+      }
+    },
+    {
+      "name": "pages_replicated_2x2_tiny",
+      "mesh": "2x2",
+      "item_count": 3,
+      "edge_count": 2,
+      "replication_factor": 1,
+      "device_capacity_bytes": 400,
+      "z3": {
+        "status": "sat",
+        "owners": {
+          "e0": 3,
+          "e1": 1,
+          "e2": 0
+        },
+        "metrics": {
+          "max_load": 80,
+          "total_bytes": 32,
+          "critical_path_proxy": 32,
+          "peer_pairs": 2
+        },
+        "solve_ms": 164.773,
+        "verified": true,
+        "verification_failures": []
+      },
+      "baselines": {
+        "round_robin": {
+          "owners": {
+            "e0": 0,
+            "e1": 1,
+            "e2": 2
+          },
+          "metrics": {
+            "max_load": 80,
+            "total_bytes": 32,
+            "critical_path_proxy": 48,
+            "peer_pairs": 2
+          },
+          "feasible": true
+        },
+        "greedy": {
+          "owners": {
+            "e2": 0,
+            "e1": 1,
+            "e0": 2
+          },
+          "metrics": {
+            "max_load": 80,
+            "total_bytes": 32,
+            "critical_path_proxy": 48,
+            "peer_pairs": 2
+          },
+          "feasible": true
+        }
+      },
+      "communication_savings_vs_round_robin_pct": 0.0,
+      "exhaustive_agreement": {
+        "run": true,
+        "agree": true,
+        "owners": {
+          "e0": 3,
+          "e1": 1,
+          "e2": 0
+        },
+        "metrics": {
+          "max_load": 80,
+          "total_bytes": 32,
+          "critical_path_proxy": 32,
+          "peer_pairs": 2
+        }
+      }
+    }
+  ],
+  "summary": {
+    "instances_run": 4,
+    "all_verified": true,
+    "exhaustive_agreements": 1,
+    "mean_comm_savings_vs_round_robin_pct": 25.0
+  }
+}

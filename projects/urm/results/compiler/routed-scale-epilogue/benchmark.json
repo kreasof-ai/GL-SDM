@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "environment": {
-    "timestamp_utc": "2026-08-26T07:02:20.661974+00:00",
-    "git_revision": "7258a81cdcc26039251e70a25492a863946c7e0d",
+    "timestamp_utc": "2026-08-26T10:12:55.790206+00:00",
+    "git_revision": "2cea8d3cfeb4e7a709314dee404fadc450223571",
     "platform": "Linux-6.12.95-124.187.amzn2023.x86_64-x86_64-with-glibc2.39",
     "python": "3.12.13",
     "torch": "2.8.0",
@@ -13,6 +13,16 @@
       8,
       6
     ]
+  },
+  "provenance": {
+    "git_revision": "2cea8d3cfeb4e7a709314dee404fadc450223571",
+    "dirty_tree": false,
+    "benchmark_command": "python benchmarks/routed_scale_epilogue.py",
+    "config_hash": "b6e490c1c515606da0824b4cb1c067b1077adcf12b7682104db3c831d0487228",
+    "solver_version": "4.15.3",
+    "python": "3.12.13",
+    "platform": "Linux-6.12.95-124.187.amzn2023.x86_64-x86_64-with-glibc2.39",
+    "constraint_model_hash": "not_applicable_kernel_comparison"
   },
   "semantics": "output[q,d] = row_scale[q] * sum_k w[q,k]*V[idx[q,k],d]; plan A materializes base, plan B folds the scale into a typed routed-reduction epilogue",
   "forward_cases": [
@@ -40,18 +50,18 @@
       },
       "measurements": {
         "A_materialized_v1_plus_scale": {
-          "wall_ms_per_call": 0.09613189999072347,
-          "median_device_ms": 0.06963200122117996,
-          "p95_device_ms": 0.08188799768686295,
+          "wall_ms_per_call": 0.10933133991784416,
+          "median_device_ms": 0.08089599758386612,
+          "p95_device_ms": 0.10444799810647964,
           "min_device_ms": 0.06758400052785873,
-          "dispatch_share_wall_minus_device": 0.026499898769543506
+          "dispatch_share_wall_minus_device": 0.028435342333978042
         },
         "B_fused_row_scale_epilogue": {
-          "wall_ms_per_call": 0.09788094001123682,
-          "median_device_ms": 0.07424000278115273,
-          "p95_device_ms": 0.0870399996638298,
-          "min_device_ms": 0.058368001133203506,
-          "dispatch_share_wall_minus_device": 0.02364093723008409
+          "wall_ms_per_call": 0.0843856600113213,
+          "median_device_ms": 0.05782400071620941,
+          "p95_device_ms": 0.07577600330114365,
+          "min_device_ms": 0.05632000043988228,
+          "dispatch_share_wall_minus_device": 0.026561659295111895
         }
       },
       "avoided_materialization_bytes_estimate": 32768
@@ -80,18 +90,18 @@
       },
       "measurements": {
         "A_materialized_v1_plus_scale": {
-          "wall_ms_per_call": 0.09579867997672409,
-          "median_device_ms": 0.07065600156784058,
-          "p95_device_ms": 0.07680000364780426,
-          "min_device_ms": 0.06956800073385239,
-          "dispatch_share_wall_minus_device": 0.025142678408883512
+          "wall_ms_per_call": 0.09995557993534021,
+          "median_device_ms": 0.06912000104784966,
+          "p95_device_ms": 0.09830400347709656,
+          "min_device_ms": 0.06656000018119812,
+          "dispatch_share_wall_minus_device": 0.030835578887490556
         },
         "B_fused_row_scale_epilogue": {
-          "wall_ms_per_call": 0.09533249998639803,
-          "median_device_ms": 0.07014400139451027,
-          "p95_device_ms": 0.08908800035715103,
-          "min_device_ms": 0.05734400078654289,
-          "dispatch_share_wall_minus_device": 0.025188498591887765
+          "wall_ms_per_call": 0.09007578002638184,
+          "median_device_ms": 0.05780800059437752,
+          "p95_device_ms": 0.07884799689054489,
+          "min_device_ms": 0.055296000093221664,
+          "dispatch_share_wall_minus_device": 0.03226777943200432
         }
       },
       "avoided_materialization_bytes_estimate": 4194304
@@ -120,18 +130,18 @@
       },
       "measurements": {
         "A_materialized_v1_plus_scale": {
-          "wall_ms_per_call": 0.19517806002113502,
-          "median_device_ms": 0.1669120043516159,
-          "p95_device_ms": 0.17715199291706085,
-          "min_device_ms": 0.16486400365829468,
-          "dispatch_share_wall_minus_device": 0.02826605566951912
+          "wall_ms_per_call": 0.19783989991992712,
+          "median_device_ms": 0.1658879965543747,
+          "p95_device_ms": 0.18227200210094452,
+          "min_device_ms": 0.16383999586105347,
+          "dispatch_share_wall_minus_device": 0.031951903365552425
         },
         "B_fused_row_scale_epilogue": {
-          "wall_ms_per_call": 0.12822696000512224,
-          "median_device_ms": 0.10239999741315842,
-          "p95_device_ms": 0.11264000087976456,
-          "min_device_ms": 0.10035199671983719,
-          "dispatch_share_wall_minus_device": 0.02582696259196382
+          "wall_ms_per_call": 0.12260760006029159,
+          "median_device_ms": 0.09830400347709656,
+          "p95_device_ms": 0.10745599865913391,
+          "min_device_ms": 0.09728000313043594,
+          "dispatch_share_wall_minus_device": 0.02430359658319503
         }
       },
       "avoided_materialization_bytes_estimate": 33554432
@@ -162,18 +172,18 @@
       },
       "measurements": {
         "A_materialized_v1_plus_scale": {
-          "wall_ms_per_call": 0.5237241600116249,
-          "median_device_ms": 0.462336003780365,
-          "p95_device_ms": 0.6000639796257019,
-          "min_device_ms": 0.40038400888442993,
-          "dispatch_share_wall_minus_device": 0.06138815623125993
+          "wall_ms_per_call": 0.5107740800303873,
+          "median_device_ms": 0.48283201456069946,
+          "p95_device_ms": 0.5601279735565186,
+          "min_device_ms": 0.3962880074977875,
+          "dispatch_share_wall_minus_device": 0.027942065469687805
         },
         "B_fused_row_scale_epilogue": {
-          "wall_ms_per_call": 0.469753099969239,
-          "median_device_ms": 0.4198399931192398,
-          "p95_device_ms": 0.5294079780578613,
-          "min_device_ms": 0.37887999415397644,
-          "dispatch_share_wall_minus_device": 0.04991310684999917
+          "wall_ms_per_call": 0.4526085199904628,
+          "median_device_ms": 0.4249599874019623,
+          "p95_device_ms": 0.48844799399375916,
+          "min_device_ms": 0.3665919899940491,
+          "dispatch_share_wall_minus_device": 0.02764853258850053
         }
       },
       "avoided_materialization_bytes_estimate": 32768
@@ -202,18 +212,18 @@
       },
       "measurements": {
         "A_materialized_v1_plus_scale": {
-          "wall_ms_per_call": 0.5323889399733162,
-          "median_device_ms": 0.49561600387096405,
-          "p95_device_ms": 0.5345280170440674,
-          "min_device_ms": 0.4065279960632324,
-          "dispatch_share_wall_minus_device": 0.036772936102352105
+          "wall_ms_per_call": 0.49109127998235635,
+          "median_device_ms": 0.4546560049057007,
+          "p95_device_ms": 0.5478399991989136,
+          "min_device_ms": 0.40140798687934875,
+          "dispatch_share_wall_minus_device": 0.03643527507665567
         },
         "B_fused_row_scale_epilogue": {
-          "wall_ms_per_call": 0.4590366999764228,
-          "median_device_ms": 0.4121600091457367,
+          "wall_ms_per_call": 0.4518398801155854,
+          "median_device_ms": 0.4055039882659912,
           "p95_device_ms": 0.5253120064735413,
-          "min_device_ms": 0.3758719861507416,
-          "dispatch_share_wall_minus_device": 0.04687669083068613
+          "min_device_ms": 0.376800000667572,
+          "dispatch_share_wall_minus_device": 0.04633589184959419
         }
       },
       "avoided_materialization_bytes_estimate": 4194304
@@ -242,18 +252,18 @@
       },
       "measurements": {
         "A_materialized_v1_plus_scale": {
-          "wall_ms_per_call": 1.699886679998599,
-          "median_device_ms": 1.6368639469146729,
-          "p95_device_ms": 1.7530879974365234,
-          "min_device_ms": 1.6250879764556885,
-          "dispatch_share_wall_minus_device": 0.06302273308392614
+          "wall_ms_per_call": 1.6792414800147526,
+          "median_device_ms": 1.6337920427322388,
+          "p95_device_ms": 1.6762880086898804,
+          "min_device_ms": 1.6179200410842896,
+          "dispatch_share_wall_minus_device": 0.04544943728251383
         },
         "B_fused_row_scale_epilogue": {
-          "wall_ms_per_call": 1.0040606999973534,
-          "median_device_ms": 0.9461759924888611,
-          "p95_device_ms": 1.0209280252456665,
-          "min_device_ms": 0.9093120098114014,
-          "dispatch_share_wall_minus_device": 0.057884707508492284
+          "wall_ms_per_call": 0.984809219953604,
+          "median_device_ms": 0.9522719979286194,
+          "p95_device_ms": 0.9953280091285706,
+          "min_device_ms": 0.9031680226325989,
+          "dispatch_share_wall_minus_device": 0.03253722202498466
         }
       },
       "avoided_materialization_bytes_estimate": 33554432
@@ -261,14 +271,14 @@
   ],
   "schedule_C_fullrow_variant": {
     "median_device_ms": {
-      "heuristic": 0.05222399905323982,
-      "fullrow_16warps": 0.04710400104522705
+      "heuristic": 0.05632000043988228,
+      "fullrow_16warps": 0.04198399931192398
     },
     "accepted_schedule": "fullrow_16warps",
     "rejected_schedules_retained": [
       {
         "schedule": "heuristic",
-        "median_device_ms": 0.05222399905323982,
+        "median_device_ms": 0.05632000043988228,
         "reason": "slower than accepted schedule"
       }
     ]
