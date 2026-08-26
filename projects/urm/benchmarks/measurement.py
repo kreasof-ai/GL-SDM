@@ -9,7 +9,9 @@ rounds so thermal/temporal drift cannot systematically favor one point.
 
 from __future__ import annotations
 
+import math
 import random
+import subprocess
 from collections.abc import Callable, Sequence
 from typing import TypeVar
 
@@ -48,6 +50,180 @@ def summarize_samples(samples: Sequence[float]) -> dict[str, float | int]:
         "p95_ms": quantile(samples, 0.95),
         "min_ms": min(float(s) for s in samples),
     }
+
+
+def compute_ranks(seq: Sequence[float]) -> list[float]:
+    """Compute 1-based ranks with average ties."""
+    if not seq:
+        return []
+    indexed = sorted(enumerate(seq), key=lambda x: x[1])
+    ranks = [0.0] * len(seq)
+    i = 0
+    n = len(seq)
+    while i < n:
+        j = i
+        while j + 1 < n and indexed[j + 1][1] == indexed[i][1]:
+            j += 1
+        avg_rank = 1.0 + (i + j) / 2.0
+        for k in range(i, j + 1):
+            ranks[indexed[k][0]] = avg_rank
+        i = j + 1
+    return ranks
+
+
+def spearman_rank_correlation(x: Sequence[float], y: Sequence[float]) -> float:
+    """Spearman rank correlation between two vectors."""
+    if len(x) != len(y) or len(x) < 2:
+        return float("nan")
+    ranks_x = compute_ranks(x)
+    ranks_y = compute_ranks(y)
+    mean_x = sum(ranks_x) / len(ranks_x)
+    mean_y = sum(ranks_y) / len(ranks_y)
+    num = sum(
+        (a - mean_x) * (b - mean_y) for a, b in zip(ranks_x, ranks_y, strict=True)
+    )
+    den_x = sum((a - mean_x) ** 2 for a in ranks_x)
+    den_y = sum((b - mean_y) ** 2 for b in ranks_y)
+    if den_x <= 0 or den_y <= 0:
+        return 0.0
+    return num / math.sqrt(den_x * den_y)
+
+
+def bootstrap_ci(
+    values: Sequence[float],
+    statistic: Callable[[Sequence[float]], float] | None = None,
+    num_resamples: int = 1000,
+    confidence: float = 0.95,
+    seed: int = 42,
+) -> tuple[float, float]:
+    """Deterministic bootstrap confidence interval."""
+    if not values:
+        raise ValueError("bootstrap_ci requires values")
+    if statistic is None:
+        statistic = lambda s: quantile(s, 0.5)
+    if len(values) == 1:
+        val = float(values[0])
+        return val, val
+    rng = random.Random(seed)
+    n = len(values)
+    boot_stats = []
+    for _ in range(num_resamples):
+        resample = [values[rng.randrange(n)] for _ in range(n)]
+        boot_stats.append(statistic(resample))
+    boot_stats.sort()
+    alpha = (1.0 - confidence) / 2.0
+    lower = quantile(boot_stats, alpha)
+    upper = quantile(boot_stats, 1.0 - alpha)
+    return lower, upper
+
+
+def _is_number(v: str) -> bool:
+    try:
+        float(v)
+        return True
+    except (ValueError, TypeError):
+        return False
+
+
+def capture_gpu_operating_conditions() -> dict[str, object]:
+    """Capture read-only operating conditions of the GPU via nvidia-smi."""
+    query_cmd = [
+        "nvidia-smi",
+        "--query-gpu=name,uuid,driver_version,clocks.current.sm,clocks.current.memory,power.draw,power.limit,temperature.gpu,utilization.gpu,utilization.memory,persistence_mode,compute_mode",
+        "--format=csv,noheader,nounits",
+    ]
+    try:
+        res = subprocess.run(query_cmd, capture_output=True, text=True, check=True)
+        parts = [p.strip() for p in res.stdout.strip().split(",")]
+        if len(parts) >= 12:
+            (
+                name,
+                uuid,
+                driver,
+                sm_clk,
+                mem_clk,
+                pwr,
+                pwr_lim,
+                temp,
+                util_gpu,
+                util_mem,
+                persist,
+                comp_mode,
+            ) = parts[:12]
+
+            proc_res = subprocess.run(
+                [
+                    "nvidia-smi",
+                    "--query-compute-apps=pid,process_name,used_memory",
+                    "--format=csv,noheader",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            compute_apps = [
+                line.strip()
+                for line in proc_res.stdout.strip().splitlines()
+                if line.strip()
+            ]
+
+            return {
+                "gpu_name": name,
+                "gpu_uuid": uuid,
+                "driver_version": driver,
+                "sm_clock_mhz": int(sm_clk) if sm_clk.isdigit() else None,
+                "memory_clock_mhz": int(mem_clk) if mem_clk.isdigit() else None,
+                "power_draw_w": float(pwr) if _is_number(pwr) else None,
+                "power_limit_w": float(pwr_lim) if _is_number(pwr_lim) else None,
+                "temperature_c": int(temp) if temp.isdigit() else None,
+                "gpu_utilization_pct": (int(util_gpu) if util_gpu.isdigit() else None),
+                "memory_utilization_pct": (
+                    int(util_mem) if util_mem.isdigit() else None
+                ),
+                "persistence_mode": persist,
+                "compute_mode": comp_mode,
+                "application_clocks_fixed": False,
+                "exclusive_process_mode": comp_mode.lower() == "exclusive_process",
+                "other_compute_processes": compute_apps,
+                "unavailable_reason": None,
+            }
+        return {
+            "gpu_name": None,
+            "gpu_uuid": None,
+            "driver_version": None,
+            "sm_clock_mhz": None,
+            "memory_clock_mhz": None,
+            "power_draw_w": None,
+            "power_limit_w": None,
+            "temperature_c": None,
+            "gpu_utilization_pct": None,
+            "memory_utilization_pct": None,
+            "persistence_mode": None,
+            "compute_mode": None,
+            "application_clocks_fixed": None,
+            "exclusive_process_mode": None,
+            "other_compute_processes": None,
+            "unavailable_reason": f"unexpected query format: {res.stdout[:100]}",
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "gpu_name": None,
+            "gpu_uuid": None,
+            "driver_version": None,
+            "sm_clock_mhz": None,
+            "memory_clock_mhz": None,
+            "power_draw_w": None,
+            "power_limit_w": None,
+            "temperature_c": None,
+            "gpu_utilization_pct": None,
+            "memory_utilization_pct": None,
+            "persistence_mode": None,
+            "compute_mode": None,
+            "application_clocks_fixed": None,
+            "exclusive_process_mode": None,
+            "other_compute_processes": None,
+            "unavailable_reason": str(exc),
+        }
 
 
 def collect_cuda_samples(
@@ -152,10 +328,14 @@ def dedupe(items: Sequence[T], key: Callable[[T], str]) -> list[T]:
 
 
 __all__ = [
+    "bootstrap_ci",
+    "capture_gpu_operating_conditions",
     "collect_cuda_samples",
+    "compute_ranks",
     "dedupe",
     "interleave_round_order",
     "measure_schedules_interleaved",
     "quantile",
+    "spearman_rank_correlation",
     "summarize_samples",
 ]

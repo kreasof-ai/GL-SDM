@@ -164,6 +164,12 @@ routed-reduction work, orchestrated by `compiler/planner.py` and
 - **Dispatch equivalence evaluation:** Decoded `ExecutablePlan` launch configurations
   are asserted equal to direct configurations and evaluated through repeated batched
   launches with paired randomized sampling to minimize microsecond timer noise.
+- **Cross-run empirical stability and noise-aware regret:** Multiple independent fresh-process
+  runs (`routed_epilogue_stability.py`) capture pre/post GPU operating conditions via read-only
+  `nvidia-smi` queries, preserve raw CUDA-event samples, evaluate pairwise Spearman rank
+  correlations and top-5 Jaccard overlap, construct noise-aware equivalence winning sets, and
+  classify solver/heuristic regret as `pass`, `fail`, or `inconclusive` using bootstrap confidence
+  intervals against the 10% target.
 
 ## Invariants recap
 

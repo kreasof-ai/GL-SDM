@@ -1,0 +1,266 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Cross-run empirical stability for routed-epilogue schedule selection",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "generated_utc",
+    "provenance",
+    "problem",
+    "stability_config",
+    "runs",
+    "cross_run_statistics",
+    "winning_set",
+    "robust_regret",
+    "per_schedule_stability"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "generated_utc": { "type": "string" },
+    "provenance": { "$ref": "#/$defs/provenance" },
+    "problem": {
+      "type": "object",
+      "required": ["queries", "sources", "route_width", "value_dim", "training", "deterministic"],
+      "properties": {
+        "queries": { "type": "integer" },
+        "sources": { "type": "integer" },
+        "route_width": { "type": "integer" },
+        "value_dim": { "type": "integer" },
+        "dtype": { "type": "string" },
+        "training": { "type": "boolean" },
+        "deterministic": { "type": "boolean" }
+      }
+    },
+    "stability_config": {
+      "type": "object",
+      "required": ["runs", "base_seed", "seeds", "rounds_per_run", "samples_per_round", "warmup_runs"],
+      "properties": {
+        "runs": { "type": "integer", "minimum": 1 },
+        "base_seed": { "type": "integer" },
+        "seeds": { "type": "array", "items": { "type": "integer" } },
+        "rounds_per_run": { "type": "integer" },
+        "samples_per_round": { "type": "integer" },
+        "warmup_runs": { "type": "integer" },
+        "practical_equivalence_margin_pct": { "type": "number" },
+        "bootstrap_resamples": { "type": "integer" },
+        "bootstrap_seed": { "type": "integer" }
+      }
+    },
+    "runs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "run_id",
+          "seed",
+          "best_point",
+          "best_median_ms",
+          "solver_selected",
+          "solver_regret_pct",
+          "heuristic_selected",
+          "heuristic_regret_pct",
+          "measured_points"
+        ],
+        "properties": {
+          "run_id": { "type": "integer" },
+          "seed": { "type": "integer" },
+          "best_point": { "$ref": "#/$defs/schedulePoint" },
+          "best_median_ms": { "type": "number" },
+          "solver_selected": { "$ref": "#/$defs/schedulePoint" },
+          "solver_median_ms": { "type": ["number", "null"] },
+          "solver_regret_pct": { "type": "number" },
+          "heuristic_selected": { "$ref": "#/$defs/schedulePoint" },
+          "heuristic_median_ms": { "type": ["number", "null"] },
+          "heuristic_regret_pct": { "type": "number" },
+          "measured_points": { "type": "integer" },
+          "operating_conditions_before": { "type": ["object", "null"] },
+          "operating_conditions_after": { "type": ["object", "null"] }
+        }
+      }
+    },
+    "cross_run_statistics": {
+      "type": "object",
+      "required": [
+        "schedules_measured_in_all_runs",
+        "pairwise_spearman_correlations",
+        "min_spearman_correlation",
+        "median_spearman_correlation",
+        "max_spearman_correlation",
+        "top1_agreement_count",
+        "pairwise_top5_jaccard",
+        "median_top5_jaccard",
+        "mean_top5_jaccard",
+        "median_abs_drift_pct",
+        "max_abs_drift_pct"
+      ],
+      "properties": {
+        "schedules_measured_in_all_runs": { "type": "integer" },
+        "pairwise_spearman_correlations": { "type": "array", "items": { "type": "number" } },
+        "min_spearman_correlation": { "type": "number" },
+        "median_spearman_correlation": { "type": "number" },
+        "max_spearman_correlation": { "type": "number" },
+        "top1_agreement_count": { "type": "integer" },
+        "pairwise_top5_jaccard": { "type": "array", "items": { "type": "number" } },
+        "median_top5_jaccard": { "type": "number" },
+        "mean_top5_jaccard": { "type": "number" },
+        "median_abs_drift_pct": { "type": "number" },
+        "max_abs_drift_pct": { "type": "number" }
+      }
+    },
+    "winning_set": {
+      "type": "object",
+      "required": [
+        "representative_best",
+        "representative_best_median_ms",
+        "is_winner_stable_across_runs",
+        "practical_equivalence_margin_pct",
+        "equivalent_schedules"
+      ],
+      "properties": {
+        "representative_best": { "$ref": "#/$defs/schedulePoint" },
+        "representative_best_median_ms": { "type": "number" },
+        "is_winner_stable_across_runs": { "type": "boolean" },
+        "practical_equivalence_margin_pct": { "type": "number" },
+        "equivalent_schedules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "schedule",
+              "aggregate_rank",
+              "median_of_medians_ms",
+              "ci95_lower_ms",
+              "ci95_upper_ms",
+              "slowdown_vs_best_pct",
+              "is_statistically_equivalent"
+            ],
+            "properties": {
+              "schedule": { "$ref": "#/$defs/schedulePoint" },
+              "aggregate_rank": { "type": "integer" },
+              "median_of_medians_ms": { "type": "number" },
+              "ci95_lower_ms": { "type": "number" },
+              "ci95_upper_ms": { "type": "number" },
+              "slowdown_vs_best_pct": { "type": "number" },
+              "is_statistically_equivalent": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+    "robust_regret": {
+      "type": "object",
+      "required": ["solver", "heuristic"],
+      "properties": {
+        "solver": { "$ref": "#/$defs/regretClassification" },
+        "heuristic": { "$ref": "#/$defs/regretClassification" }
+      }
+    },
+    "per_schedule_stability": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "schedule",
+          "median_of_medians_ms",
+          "min_median_ms",
+          "max_median_ms",
+          "cv_pct",
+          "ci95_lower_ms",
+          "ci95_upper_ms",
+          "rank_per_run",
+          "raw_samples_by_run",
+          "per_run_medians_ms",
+          "aggregate_rank"
+        ],
+        "properties": {
+          "schedule": { "$ref": "#/$defs/schedulePoint" },
+          "median_of_medians_ms": { "type": "number" },
+          "min_median_ms": { "type": "number" },
+          "max_median_ms": { "type": "number" },
+          "cv_pct": { "type": "number" },
+          "ci95_lower_ms": { "type": "number" },
+          "ci95_upper_ms": { "type": "number" },
+          "rank_per_run": { "type": "array", "items": { "type": "integer" } },
+          "raw_samples_by_run": {
+            "type": "array",
+            "items": { "type": "array", "items": { "type": "number" } }
+          },
+          "per_run_medians_ms": { "type": "array", "items": { "type": "number" } },
+          "aggregate_rank": { "type": "integer" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "regretClassification": {
+      "type": "object",
+      "required": [
+        "per_run_regret_pct",
+        "median_regret_pct",
+        "worst_regret_pct",
+        "ci95_lower_pct",
+        "ci95_upper_pct",
+        "target_pct",
+        "classification"
+      ],
+      "properties": {
+        "per_run_regret_pct": { "type": "array", "items": { "type": "number" } },
+        "median_regret_pct": { "type": "number" },
+        "worst_regret_pct": { "type": "number" },
+        "ci95_lower_pct": { "type": "number" },
+        "ci95_upper_pct": { "type": "number" },
+        "target_pct": { "type": "number" },
+        "classification": { "enum": ["pass", "fail", "inconclusive"] }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "git_revision",
+        "dirty_tree",
+        "benchmark_command",
+        "config_hash",
+        "solver_version",
+        "constraint_model_hash"
+      ],
+      "properties": {
+        "git_revision": { "type": ["string", "null"], "minLength": 40 },
+        "dirty_tree": { "type": "boolean" },
+        "benchmark_command": { "type": "string" },
+        "config_hash": { "type": "string" },
+        "solver_version": { "type": ["string", "null"] },
+        "constraint_model_hash": { "type": "string" },
+        "python": { "type": "string" },
+        "platform": { "type": "string" },
+        "pytorch": { "type": ["string", "null"] },
+        "triton": { "type": ["string", "null"] },
+        "cuda": { "type": ["string", "null"] },
+        "driver": { "type": ["string", "null"] },
+        "gpu": { "type": ["string", "null"] }
+      }
+    },
+    "schedulePoint": {
+      "type": "object",
+      "required": [
+        "plan",
+        "block_d",
+        "num_warps",
+        "num_stages",
+        "grad_values_decomposition",
+        "grad_values_schedule",
+        "dtype"
+      ],
+      "properties": {
+        "plan": { "enum": ["base", "fused"] },
+        "block_d": { "enum": [32, 64, 128, 256] },
+        "num_warps": { "enum": [1, 2, 4, 8] },
+        "num_stages": { "enum": [1, 2, 4] },
+        "grad_values_decomposition": { "enum": ["per_query", "per_route"] },
+        "grad_values_schedule": { "enum": ["full_row", "segmented"] },
+        "dtype": { "type": "string" }
+      }
+    }
+  }
+}

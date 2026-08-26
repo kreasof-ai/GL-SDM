@@ -100,6 +100,10 @@ def test_committed_solver_artifacts_validate_against_schemas() -> None:
             "routed-epilogue-selection-schema.json",
             "compiler/solver/routed-epilogue-selection.json",
         ),
+        (
+            "routed-epilogue-stability-schema.json",
+            "compiler/solver/routed-epilogue-stability.json",
+        ),
         ("placement-selection-schema.json", "compiler/solver/placement-selection.json"),
         ("unsat-diagnostics-schema.json", "compiler/solver/unsat-diagnostics.json"),
     ):
@@ -121,6 +125,8 @@ def test_committed_solver_artifacts_validate_against_schemas() -> None:
 
 def test_committed_epilogue_selection_semantic_facts() -> None:
     """Pin committed GPU schedule selection evidence semantically."""
+    from measurement import quantile
+
     artifact = _artifact("compiler/solver/routed-epilogue-selection.json")
     prov = artifact["provenance"]
     assert prov["dirty_tree"] is False
@@ -192,6 +198,15 @@ def test_committed_epilogue_selection_semantic_facts() -> None:
     assert empirical["measured_points"] > 0
     for sample in empirical["samples"]:
         assert sample["sample_count"] > 0
+        raw = sample.get("raw_samples_ms")
+        assert raw is not None and len(raw) == sample["sample_count"]
+        # Raw samples recompute the serialized summary statistics exactly
+        recomputed_median = round(quantile(raw, 0.5), 4)
+        recomputed_p95 = round(quantile(raw, 0.95), 4)
+        recomputed_min = round(min(raw), 4)
+        assert sample["median_ms"] == pytest.approx(recomputed_median, abs=1e-4)
+        assert sample["p95_ms"] == pytest.approx(recomputed_p95, abs=1e-4)
+        assert sample["min_ms"] == pytest.approx(recomputed_min, abs=1e-4)
         assert sample["min_ms"] <= sample["median_ms"] <= sample["p95_ms"]
 
     overhead = artifact["dispatch_overhead"]
@@ -205,6 +220,96 @@ def test_committed_epilogue_selection_semantic_facts() -> None:
     assert isinstance(overhead["delta_std_ms"], (int, float))
     assert overhead["paired_samples_count"] > 0
     assert overhead["batch_launches_per_sample"] > 0
+
+
+def test_committed_stability_artifact_semantic_facts() -> None:
+    """Pin committed GPU multi-run stability facts semantically."""
+    from measurement import quantile
+
+    artifact = _artifact("compiler/solver/routed-epilogue-stability.json")
+    prov = artifact["provenance"]
+    assert prov["dirty_tree"] is False
+    for env_field in (
+        "python",
+        "pytorch",
+        "triton",
+        "cuda",
+        "driver",
+        "gpu",
+        "solver_version",
+    ):
+        assert prov.get(env_field) is not None, (
+            f"provenance {env_field} must be non-null"
+        )
+
+    runs = artifact["runs"]
+    assert len(runs) >= 5, f"expected at least 5 independent runs, got {len(runs)}"
+
+    for run in runs:
+        assert run["measured_points"] >= 45
+        assert run["best_point"] is not None
+        assert run["best_median_ms"] > 0
+        assert run["solver_selected"] is not None
+        assert run["solver_median_ms"] > 0
+        assert isinstance(run["solver_regret_pct"], (int, float))
+        assert run["heuristic_selected"] is not None
+        assert run["heuristic_median_ms"] > 0
+        assert isinstance(run["heuristic_regret_pct"], (int, float))
+        # Environment conditions snapshots
+        for tag in ("operating_conditions_before", "operating_conditions_after"):
+            cond = run.get(tag)
+            assert cond is not None, f"missing {tag} snapshot"
+            assert cond.get("gpu_name") or cond.get("unavailable_reason")
+
+    stats = artifact["cross_run_statistics"]
+    assert stats["schedules_measured_in_all_runs"] >= 45
+    assert len(stats["pairwise_spearman_correlations"]) >= 10
+    assert (
+        stats["min_spearman_correlation"]
+        <= stats["median_spearman_correlation"]
+        <= stats["max_spearman_correlation"]
+    )
+    assert len(stats["pairwise_top5_jaccard"]) >= 10
+    assert stats["median_abs_drift_pct"] >= 0.0
+
+    winning_set = artifact["winning_set"]
+    assert winning_set["representative_best"] is not None
+    assert winning_set["representative_best_median_ms"] > 0
+    assert winning_set["equivalent_schedules"]
+    assert isinstance(winning_set["is_winner_stable_across_runs"], bool)
+
+    robust_regret = artifact["robust_regret"]
+    for agent in ("solver", "heuristic"):
+        agent_regret = robust_regret[agent]
+        assert len(agent_regret["per_run_regret_pct"]) == len(runs)
+        assert agent_regret["ci95_lower_pct"] <= agent_regret["ci95_upper_pct"]
+        classification = agent_regret["classification"]
+        assert classification in {"pass", "fail", "inconclusive"}
+        if agent_regret["ci95_upper_pct"] <= agent_regret["target_pct"]:
+            assert classification == "pass"
+        elif agent_regret["ci95_lower_pct"] > agent_regret["target_pct"]:
+            assert classification == "fail"
+        else:
+            assert classification == "inconclusive"
+
+    per_sched = artifact["per_schedule_stability"]
+    assert len(per_sched) >= 45
+    for sched_entry in per_sched:
+        assert sched_entry["schedule"] is not None
+        assert len(sched_entry["rank_per_run"]) == len(runs)
+        assert len(sched_entry["raw_samples_by_run"]) == len(runs)
+        assert len(sched_entry["per_run_medians_ms"]) == len(runs)
+        for run_idx, raw_run in enumerate(sched_entry["raw_samples_by_run"]):
+            recomputed = round(quantile(raw_run, 0.5), 4)
+            assert sched_entry["per_run_medians_ms"][run_idx] == pytest.approx(
+                recomputed, abs=1e-4
+            )
+        recomputed_med_of_meds = round(
+            quantile(sched_entry["per_run_medians_ms"], 0.5), 4
+        )
+        assert sched_entry["median_of_medians_ms"] == pytest.approx(
+            recomputed_med_of_meds, abs=1e-4
+        )
 
 
 def test_committed_compilation_matrix_semantic_facts() -> None:

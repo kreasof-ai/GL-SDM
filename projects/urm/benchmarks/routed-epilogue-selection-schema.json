@@ -215,6 +215,9 @@
         "seed": {
           "type": "integer"
         },
+        "run_id": {
+          "type": "integer"
+        },
         "deduplicated_before_measurement": {
           "type": "boolean"
         }
@@ -322,6 +325,12 @@
         "gpu": {
           "type": "string"
         },
+        "operating_conditions": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
         "measured_points": {
           "type": "integer"
         },
@@ -388,6 +397,12 @@
               },
               "sample_count": {
                 "type": "integer"
+              },
+              "raw_samples_ms": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
               },
               "registers_per_thread": {
                 "type": [

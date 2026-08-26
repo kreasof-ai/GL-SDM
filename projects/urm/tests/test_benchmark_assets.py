@@ -54,13 +54,52 @@ def test_compilation_matrix_probe_off_does_not_import_torch_or_triton(
     assert res.returncode == 0, res.stderr + "\n" + res.stdout
 
 
+def test_compilation_matrix_probe_required_fails_when_dependencies_missing(
+    tmp_path: Path,
+) -> None:
+    """Probe mode 'required' fails with a concise diagnostic when torch/triton is missing."""
+    out_file = tmp_path / "matrix-fail-dep.json"
+    benchmarks_dir = str(PROJECT_ROOT / "benchmarks")
+    code = (
+        "import sys\n"
+        f"sys.path.insert(0, r'{benchmarks_dir}')\n"
+        "sys.modules['torch'] = None\n"
+        "sys.modules['triton'] = None\n"
+        "sys.argv = ['compilation_matrix.py', '--probe', 'required', '--output', "
+        f"r'{out_file}']\n"
+        "import benchmarks.compilation_matrix as cm\n"
+        "try:\n"
+        "    cm.main()\n"
+        "    sys.exit(0)\n"
+        "except RuntimeError as e:\n"
+        "    sys.stderr.write(str(e))\n"
+        "    sys.exit(1)\n"
+    )
+    res = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        cwd=str(PROJECT_ROOT),
+        check=False,
+    )
+    assert res.returncode != 0
+    assert "Probe mode 'required' failed" in res.stderr
+    assert "dependency missing" in res.stderr
+
+
 def test_compilation_matrix_probe_required_fails_when_cuda_unavailable(
     tmp_path: Path,
 ) -> None:
     """Probe mode 'required' fails with a concise diagnostic when CUDA is unavailable."""
+    try:
+        import torch  # noqa: F401
+        import triton  # noqa: F401
+    except ImportError:
+        pytest.skip("Torch and Triton required to test CUDA unavailability diagnostic")
+
     env = dict(os.environ)
     env["CUDA_VISIBLE_DEVICES"] = ""
-    out_file = tmp_path / "matrix-fail.json"
+    out_file = tmp_path / "matrix-fail-cuda.json"
     res = subprocess.run(
         [
             sys.executable,

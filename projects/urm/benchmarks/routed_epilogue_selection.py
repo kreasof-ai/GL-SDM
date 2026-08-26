@@ -58,13 +58,19 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--skip-empirical", action="store_true")
+    parser.add_argument("--seed", type=int, default=17)
+    parser.add_argument("--run-id", type=int, default=0)
     args = parser.parse_args()
 
     if not torch.cuda.is_available():
         raise SystemExit("CUDA required: this benchmark measures GPU schedules")
 
     import epilogue_schedules as sched
-    from measurement import measure_schedules_interleaved, summarize_samples
+    from measurement import (
+        capture_gpu_operating_conditions,
+        measure_schedules_interleaved,
+        summarize_samples,
+    )
     from provenance import provenance, utc_now, write_artifact
 
     from urm.compiler.anchors.routed_reduction_epilogue import (
@@ -193,7 +199,14 @@ def main() -> None:
         "schema_version": 2,
         "generated_utc": utc_now(),
         "provenance": {
-            **provenance("python benchmarks/routed_epilogue_selection.py", PROBLEM),
+            **provenance(
+                (
+                    f"python benchmarks/routed_epilogue_selection.py --seed {args.seed} --run-id {args.run_id}"
+                    if (args.seed != 17 or args.run_id != 0)
+                    else "python benchmarks/routed_epilogue_selection.py"
+                ),
+                PROBLEM,
+            ),
             "constraint_model_hash": model.summary_hash(),
         },
         "problem": {
@@ -235,6 +248,8 @@ def main() -> None:
         "schedule_decision": decision.to_dict(),
         "measurement": {
             **MEASUREMENT,
+            "seed": args.seed,
+            "run_id": args.run_id,
             "deduplicated_before_measurement": True,
         },
         "heuristic_schedule": heuristic_schedule(reference_problem).as_dict(),
@@ -252,6 +267,8 @@ def main() -> None:
         return
 
     # -- empirical measurement of the deduplicated fused grid -------------------
+    gpu_conditions_before = capture_gpu_operating_conditions()
+
     indices, weights, values, row_scale = sched.make_inputs(
         PROBLEM["queries"],
         PROBLEM["route_width"],
@@ -358,8 +375,9 @@ def main() -> None:
         warmup_runs=MEASUREMENT["warmup_runs"],
         rounds=MEASUREMENT["rounds"],
         samples_per_round=MEASUREMENT["samples_per_round"],
-        seed=MEASUREMENT["seed"],
+        seed=args.seed,
     )
+    gpu_conditions_after = capture_gpu_operating_conditions()
 
     samples: list[dict[str, object]] = []
     key_to_point = {p.stable_key: p for p in unique_points}
@@ -374,6 +392,7 @@ def main() -> None:
                 "p95_ms": round(stats["p95_ms"], 4),
                 "min_ms": round(stats["min_ms"], 4),
                 "sample_count": stats["sample_count"],
+                "raw_samples_ms": [round(float(s), 6) for s in raw],
                 "registers_per_thread": res_info.get("registers_per_thread"),
                 "shared_mem_bytes": res_info.get("shared_mem_bytes"),
             }
@@ -409,6 +428,10 @@ def main() -> None:
     artifact["compile_feedback"] = feedback_records
     artifact["empirical"] = {
         "gpu": properties.name,
+        "operating_conditions": {
+            "before": gpu_conditions_before,
+            "after": gpu_conditions_after,
+        },
         "measured_points": len(samples),
         "compile_failures_observed": compile_failures_observed,
         "failed_points_excluded_from_measurement": (
