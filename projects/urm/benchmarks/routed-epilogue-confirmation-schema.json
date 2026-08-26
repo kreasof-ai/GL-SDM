@@ -72,28 +72,62 @@
         "required": [
           "run_id",
           "seed",
-          "total_blocks_executed",
-          "sentinel_drift",
-          "operating_conditions_before",
-          "operating_conditions_after"
+          "provenance",
+          "run_metadata",
+          "paired_blocks"
         ],
         "properties": {
           "run_id": { "type": "integer" },
           "seed": { "type": "integer" },
-          "total_blocks_executed": { "type": "integer" },
-          "sentinel_drift": {
+          "provenance": { "$ref": "#/$defs/provenance" },
+          "run_metadata": {
             "type": "object",
-            "required": ["start_median_ms", "end_median_ms", "drift_pct", "threshold_pct", "passed"],
+            "required": [
+              "run_id",
+              "seed",
+              "total_blocks_executed",
+              "sentinel_drift",
+              "operating_conditions_before",
+              "operating_conditions_after"
+            ],
             "properties": {
-              "start_median_ms": { "type": "number" },
-              "end_median_ms": { "type": "number" },
-              "drift_pct": { "type": "number" },
-              "threshold_pct": { "type": "number" },
-              "passed": { "type": "boolean" }
+              "run_id": { "type": "integer" },
+              "seed": { "type": "integer" },
+              "total_blocks_executed": { "type": "integer" },
+              "sentinel_drift": {
+                "type": "object",
+                "required": ["start_median_ms", "end_median_ms", "drift_pct", "threshold_pct", "passed"],
+                "properties": {
+                  "start_median_ms": { "type": "number" },
+                  "end_median_ms": { "type": "number" },
+                  "drift_pct": { "type": "number" },
+                  "threshold_pct": { "type": "number" },
+                  "passed": { "type": "boolean" }
+                }
+              },
+              "operating_conditions_before": { "type": ["object", "null"] },
+              "operating_conditions_after": { "type": ["object", "null"] }
             }
           },
-          "operating_conditions_before": { "type": ["object", "null"] },
-          "operating_conditions_after": { "type": ["object", "null"] }
+          "paired_blocks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "block_id",
+                "candidate_index",
+                "candidate",
+                "direction",
+                "candidate_median_ms",
+                "reference_median_ms",
+                "paired_ratio",
+                "paired_log_ratio",
+                "paired_slowdown_pct",
+                "candidate_raw_samples_ms",
+                "reference_raw_samples_ms"
+              ]
+            }
+          }
         }
       }
     },

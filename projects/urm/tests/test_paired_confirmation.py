@@ -92,6 +92,7 @@ def test_provenance_tampering_fails_closed() -> None:
             "dirty_tree": False,
             "shortlist_hash": "abc123hash",
             "gpu": "NVIDIA A10G",
+            "gpu_uuid": "GPU-3a9a2742-3da6-fc42-6c69-3a7de91f1bca",
             "driver": "595.91.07",
             "cuda": "12.9",
             "pytorch": "2.8.0",
@@ -106,6 +107,22 @@ def test_provenance_tampering_fails_closed() -> None:
             "training": True,
             "deterministic": False,
         },
+        "discovery_reference_schedule": {
+            "plan": "fused",
+            "block_d": 256,
+            "num_warps": 4,
+            "num_stages": 2,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "segmented",
+            "dtype": "bfloat16",
+        },
+        "run_metadata": {
+            "samples_per_pair": 5,
+            "warmup_runs": 5,
+            "sentinel_drift": {
+                "threshold_pct": 15.0,
+            },
+        },
     }
 
     # Two identical children pass
@@ -119,6 +136,14 @@ def test_provenance_tampering_fails_closed() -> None:
         RuntimeError, match="Child provenance invariant violation for 'git_revision'"
     ):
         validate_child_provenance_invariants(tampered_git)
+
+    # Tamper GPU UUID in child 1
+    tampered_uuid = [base_child, json.loads(json.dumps(base_child))]
+    tampered_uuid[1]["provenance"]["gpu_uuid"] = "GPU-different-uuid"
+    with pytest.raises(
+        RuntimeError, match="Child provenance invariant violation for 'gpu_uuid'"
+    ):
+        validate_child_provenance_invariants(tampered_uuid)
 
     # Tamper GPU in child 1
     tampered_gpu = [base_child, json.loads(json.dumps(base_child))]
@@ -141,6 +166,20 @@ def test_provenance_tampering_fails_closed() -> None:
     tampered_prob[1]["problem"]["value_dim"] = 512
     with pytest.raises(RuntimeError, match="Child problem configuration mismatch"):
         validate_child_provenance_invariants(tampered_prob)
+
+    # Tamper reference schedule in child 1
+    tampered_ref = [base_child, json.loads(json.dumps(base_child))]
+    tampered_ref[1]["discovery_reference_schedule"]["block_d"] = 128
+    with pytest.raises(RuntimeError, match="Child reference schedule mismatch"):
+        validate_child_provenance_invariants(tampered_ref)
+
+    # Tamper measurement config in child 1
+    tampered_meta = [base_child, json.loads(json.dumps(base_child))]
+    tampered_meta[1]["run_metadata"]["samples_per_pair"] = 10
+    with pytest.raises(
+        RuntimeError, match="Child run metadata mismatch for 'samples_per_pair'"
+    ):
+        validate_child_provenance_invariants(tampered_meta)
 
 
 def test_committed_confirmation_artifact_semantic_facts() -> None:
@@ -177,9 +216,21 @@ def test_committed_confirmation_artifact_semantic_facts() -> None:
     runs = artifact["runs"]
     assert len(runs) >= 5, f"expected at least 5 runs, got {len(runs)}"
     for r in runs:
-        assert r["total_blocks_executed"] >= 8
-        assert r["sentinel_drift"]["passed"] is True
-        assert r["sentinel_drift"]["drift_pct"] <= r["sentinel_drift"]["threshold_pct"]
+        assert r.get("provenance") is not None
+        assert r["provenance"]["dirty_tree"] is False
+        assert r["provenance"].get("gpu_uuid") is not None
+        meta = r["run_metadata"]
+        assert meta["total_blocks_executed"] >= 8
+        assert meta["sentinel_drift"]["passed"] is True
+        assert (
+            meta["sentinel_drift"]["drift_pct"]
+            <= meta["sentinel_drift"]["threshold_pct"]
+        )
+        assert r.get("paired_blocks"), "raw paired blocks must be retained in each run"
+        for block in r["paired_blocks"]:
+            assert block["candidate_raw_samples_ms"]
+            assert block["reference_raw_samples_ms"]
+            assert block["direction"] in {"AB", "BA"}
 
     decision = artifact["deployment_decision"]
     margin = decision["practical_equivalence_margin_pct"]

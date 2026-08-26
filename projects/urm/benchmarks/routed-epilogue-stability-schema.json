@@ -115,14 +115,14 @@
         "representative_best_median_ms",
         "is_winner_stable_across_runs",
         "practical_equivalence_margin_pct",
-        "equivalent_schedules"
+        "exploratory_candidate_set"
       ],
       "properties": {
         "representative_best": { "$ref": "#/$defs/schedulePoint" },
         "representative_best_median_ms": { "type": "number" },
         "is_winner_stable_across_runs": { "type": "boolean" },
         "practical_equivalence_margin_pct": { "type": "number" },
-        "equivalent_schedules": {
+        "exploratory_candidate_set": {
           "type": "array",
           "items": {
             "type": "object",
@@ -133,7 +133,7 @@
               "ci95_lower_ms",
               "ci95_upper_ms",
               "slowdown_vs_best_pct",
-              "is_statistically_equivalent"
+              "in_exploratory_set"
             ],
             "properties": {
               "schedule": { "$ref": "#/$defs/schedulePoint" },
@@ -142,10 +142,11 @@
               "ci95_lower_ms": { "type": "number" },
               "ci95_upper_ms": { "type": "number" },
               "slowdown_vs_best_pct": { "type": "number" },
-              "is_statistically_equivalent": { "type": "boolean" }
+              "in_exploratory_set": { "type": "boolean" }
             }
           }
-        }
+        },
+        "note": { "type": "string" }
       }
     },
     "robust_regret": {

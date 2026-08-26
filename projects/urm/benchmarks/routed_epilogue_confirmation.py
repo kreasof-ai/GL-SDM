@@ -369,6 +369,7 @@ def validate_child_provenance_invariants(
         "dirty_tree",
         "shortlist_hash",
         "gpu",
+        "gpu_uuid",
         "driver",
         "cuda",
         "pytorch",
@@ -393,6 +394,32 @@ def validate_child_provenance_invariants(
                 raise RuntimeError(
                     f"Child problem configuration mismatch between run {i} and run {j}: "
                     f"{prob_i} != {prob_j}"
+                )
+            # Check reference schedule agreement
+            ref_i = child_artifacts[i].get("discovery_reference_schedule")
+            ref_j = child_artifacts[j].get("discovery_reference_schedule")
+            if ref_i != ref_j:
+                raise RuntimeError(
+                    f"Child reference schedule mismatch between run {i} and run {j}: "
+                    f"{ref_i} != {ref_j}"
+                )
+            # Check measurement config invariants
+            meta_i = child_artifacts[i]["run_metadata"]
+            meta_j = child_artifacts[j]["run_metadata"]
+            for mkey in ("samples_per_pair", "warmup_runs"):
+                mval_i = meta_i.get(mkey)
+                mval_j = meta_j.get(mkey)
+                if mval_i != mval_j:
+                    raise RuntimeError(
+                        f"Child run metadata mismatch for '{mkey}': "
+                        f"run {i} has {mval_i!r} but run {j} has {mval_j!r}"
+                    )
+            thresh_i = meta_i.get("sentinel_drift", {}).get("threshold_pct")
+            thresh_j = meta_j.get("sentinel_drift", {}).get("threshold_pct")
+            if thresh_i != thresh_j:
+                raise RuntimeError(
+                    f"Child sentinel drift threshold mismatch: "
+                    f"run {i} has {thresh_i!r} but run {j} has {thresh_j!r}"
                 )
 
 
@@ -591,14 +618,9 @@ def run_confirmation_suite(
             {
                 "run_id": r["run_metadata"]["run_id"],
                 "seed": r["run_metadata"]["seed"],
-                "total_blocks_executed": r["run_metadata"]["total_blocks_executed"],
-                "sentinel_drift": r["run_metadata"]["sentinel_drift"],
-                "operating_conditions_before": r["run_metadata"][
-                    "operating_conditions_before"
-                ],
-                "operating_conditions_after": r["run_metadata"][
-                    "operating_conditions_after"
-                ],
+                "provenance": r["provenance"],
+                "run_metadata": r["run_metadata"],
+                "paired_blocks": r["paired_blocks"],
             }
             for r in child_artifacts
         ],

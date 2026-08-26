@@ -275,7 +275,7 @@ def test_committed_stability_artifact_semantic_facts() -> None:
     winning_set = artifact["winning_set"]
     assert winning_set["representative_best"] is not None
     assert winning_set["representative_best_median_ms"] > 0
-    assert winning_set["equivalent_schedules"]
+    assert winning_set["exploratory_candidate_set"]
     assert isinstance(winning_set["is_winner_stable_across_runs"], bool)
 
     robust_regret = artifact["robust_regret"]

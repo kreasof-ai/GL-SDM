@@ -286,10 +286,10 @@ def main() -> None:
     median_drift = round(quantile(all_drifts, 0.5), 2) if all_drifts else 0.0
     max_drift = round(max(all_drifts), 2) if all_drifts else 0.0
 
-    # Winning set construction
+    # Winning exploratory candidate set construction
     rep_best = schedule_records[0]
     rep_best_med = rep_best["median_of_medians_ms"]
-    winning_set_entries = []
+    exploratory_entries = []
 
     for rec in schedule_records:
         slowdown = round(
@@ -297,9 +297,9 @@ def main() -> None:
             2,
         )
         ci_overlap = rec["ci95_lower_ms"] <= rep_best["ci95_upper_ms"]
-        is_equiv = bool(slowdown <= args.practical_margin or ci_overlap)
-        if is_equiv:
-            winning_set_entries.append(
+        in_exploratory_set = bool(slowdown <= args.practical_margin or ci_overlap)
+        if in_exploratory_set:
+            exploratory_entries.append(
                 {
                     "schedule": rec["schedule"],
                     "aggregate_rank": rec["aggregate_rank"],
@@ -307,7 +307,7 @@ def main() -> None:
                     "ci95_lower_ms": rec["ci95_lower_ms"],
                     "ci95_upper_ms": rec["ci95_upper_ms"],
                     "slowdown_vs_best_pct": slowdown,
-                    "is_statistically_equivalent": is_equiv,
+                    "in_exploratory_set": in_exploratory_set,
                 }
             )
 
@@ -435,7 +435,12 @@ def main() -> None:
             "representative_best_median_ms": rep_best["median_of_medians_ms"],
             "is_winner_stable_across_runs": is_winner_stable,
             "practical_equivalence_margin_pct": args.practical_margin,
-            "equivalent_schedules": winning_set_entries,
+            "exploratory_candidate_set": exploratory_entries,
+            "note": (
+                "exploratory_candidate_set is derived from discovery marginal CI overlap; "
+                "it is not a paired statistical equivalence result. Canonical paired "
+                "equivalence is established by benchmarks/routed_epilogue_confirmation.py"
+            ),
         },
         "robust_regret": {
             "solver": solver_robust,

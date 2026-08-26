@@ -115,6 +115,20 @@ def gpu_name() -> str | None:
         return None
 
 
+def gpu_uuid() -> str | None:
+    try:
+        res = subprocess.run(
+            ["nvidia-smi", "--query-gpu=uuid", "--format=csv,noheader"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        lines = res.stdout.strip().splitlines()
+        return lines[0] if lines else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def provenance(
     command: str, configuration: object, *, include_gpu: bool = True
 ) -> dict[str, object]:
@@ -131,6 +145,7 @@ def provenance(
         "cuda": cuda_version() if include_gpu else None,
         "driver": driver_version() if include_gpu else None,
         "gpu": gpu_name() if include_gpu else None,
+        "gpu_uuid": gpu_uuid() if include_gpu else None,
     }
 
 
