@@ -123,28 +123,37 @@ Z3 proves that **symbolic side conditions are satisfiable**, and nothing else.
     performance questions. The measured-best schedule is reported next to the
     solver-selected one so analytical regret stays visible.
 
-### Integration closure (normative since the schedule-search iteration)
+### Integration closure: anchor-owned schedule truthfulness
 
 Stages 2 through 11 run INSIDE `UrmCompiler.compile()` for every program with
-routed-reduction work, orchestrated by `compiler/search.py`
-(`CompilationSearch` -> serializable `ScheduleDecision`):
+routed-reduction work, orchestrated by `compiler/planner.py` and
+`compiler/search.py` (`CompilationSearch` -> serializable `ScheduleDecision`):
 
-- The schedule model is CANDIDATE-BOUND: `kernel_plan.plan_kinds_for_candidate`
-  pins the execution plans each selected candidate's lowering implements, so
-  candidate selection and schedule selection can never contradict each other.
-- Without Z3, the deterministic heuristic optimum is lifted to a complete
-  assignment (`schedule_point_to_assignment`) and passes the SAME independent
-  verifier; the fallback is recorded in the decision.
-- Every unverified assignment is rejected before lowering or probing.
-- A compile probe (GPU callers inject one, e.g.
-  `make_triton_compile_probe()`) exercises the EXACT selected configuration;
-  failures add an exact nogood for THAT assignment and the search re-solves
-  within `SolverLimits.max_nogoods`. Without a probe the decision records
-  `compile_status=not_probed` and never claims compile success.
-- The decision's launch configuration is serialized into every
-  anchor-dispatch `PlanStep` and into `CompilationResult.schedule_decision`;
-  the production anchor (`RoutedEpilogueLaunchConfig`) honors every field,
-  and benchmarks execute those same production implementations.
+- **Anchor-first lowering identity:** Effective candidate and anchor identity
+  (including valid user overrides) are resolved before schedule search begins.
+  Incompatible overrides fail closed with structured diagnostics rather than
+  producing decorative or contradictory schedules.
+- **Anchor capability registry:** Each registered anchor explicitly declares its
+  supported plan kinds, valid schedule knobs, required visitors, and semantic
+  inputs. Base `routed_reduction_v1` is excluded from configurable schedule
+  search (it uses an internal launch heuristic) and reported honestly as
+  unscheduled (`schedule_decision=None`). Unknown candidate rules fail closed.
+- **Exact specialization compile probe:** Probing receives a `CompileContext`
+  containing the exact target specialization (anchor name, operand dtypes,
+  route width, value dimension, shape, intent, and launch configuration),
+  compiling the specific anchor path (forward and backward under training)
+  instead of unconditionally probing the fused path.
+- **Resource evidence preservation:** Register and shared-memory usage are
+  captured per kernel from compiled handles and carried through `ScheduleAttempt`,
+  `ScheduleDecision`, and serialized JSON artifacts. When unavailable, explicit
+  reasons are reported rather than manufactured values.
+- **Exact schedule domain:** `per_route/full_row` is excluded from legal
+  schedule domains (both the reference model and Z3 formulation) because
+  `per_route` is segmented across program instances by construction. Stage counts
+  are strictly bounded to `{1, 2, 4}`.
+- **End-to-end truthfulness:** Emitted `PlanStep.launch_config`, the solver
+  decision, executed kernel specializations, and benchmark artifacts never
+  disagree or report launch parameters that the underlying kernel ignores.
 
 ## Invariants recap
 

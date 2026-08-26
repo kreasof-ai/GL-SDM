@@ -163,7 +163,10 @@ def main() -> None:
     rows: list[dict[str, object]] = []
     solver_totals = {
         "solver_time_ms": 0.0,
-        "candidates_rejected_by_z3": 0,
+        "infeasible_candidates": 0,
+        "candidates_ranked_out_by_objective": 0,
+        "compile_probe_failures": 0,
+        "nogoods_added": 0,
         "verified_models": 0,
         "schedule_models_verified": 0,
         "unsat_categories": [],
@@ -219,9 +222,11 @@ def main() -> None:
                 compile_failures += 1
                 for diagnostic in error.diagnostics:
                     solver_totals["unsat_codes"].add(diagnostic.code.value)
-                if any(d.code.value == "unsat_constraints" for d in error.diagnostics):
-                    # Z3 proved this candidate's schedule model infeasible.
-                    solver_totals["candidates_rejected_by_z3"] += 1
+                if any(
+                    d.code.value in ("unsat_constraints", "intent_conflict")
+                    for d in error.diagnostics
+                ):
+                    solver_totals["infeasible_candidates"] += 1
                 traces.append({"program": program.name, "error": str(error)})
                 continue
             compiled_programs += 1
@@ -241,15 +246,19 @@ def main() -> None:
                 solver_totals["solver_time_ms"] += float(
                     decision.solver_statistics.get("wall_ms", 0.0)
                 )
+                solver_totals["compile_probe_failures"] += (
+                    decision.compile_failures_observed
+                )
+                solver_totals["nogoods_added"] += decision.nogoods_added
                 all_verified = bool(decision.attempts) and all(
                     a.verified for a in decision.attempts
                 )
                 if all_verified:
                     solver_totals["verified_models"] += 1
                     solver_totals["schedule_models_verified"] += 1
-            # Candidates the Z3 objective ranked out during auto-selection.
+            # Candidates the solver objective ranked out during auto-selection.
             if result.selection_policy.value == "solver_guided":
-                solver_totals["candidates_rejected_by_z3"] += sum(
+                solver_totals["candidates_ranked_out_by_objective"] += sum(
                     1
                     for r in result.rejected_alternatives
                     if r.reason_code == "rejected_by_solver_objective"
@@ -366,7 +375,12 @@ def main() -> None:
             "candidates_rejected_by_imperative_checks": sum(
                 row["rewrite_rejected"] for row in rows
             ),
-            "candidates_rejected_by_z3": solver_totals["candidates_rejected_by_z3"],
+            "infeasible_candidates": solver_totals["infeasible_candidates"],
+            "candidates_ranked_out_by_objective": solver_totals[
+                "candidates_ranked_out_by_objective"
+            ],
+            "compile_probe_failures": solver_totals["compile_probe_failures"],
+            "nogoods_added": solver_totals["nogoods_added"],
             "verified_models": solver_totals["verified_models"],
             "schedule_models_verified": solver_totals["schedule_models_verified"],
             "unsat_categories": sorted(solver_totals["unsat_codes"]),

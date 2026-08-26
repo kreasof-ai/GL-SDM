@@ -402,6 +402,7 @@ class RoutedEpilogueLaunchInfo:
     # Live Triton CompiledKernel handle (register/shared-memory feedback);
     # deliberately excluded from serialization.
     handle: object = None
+    extra_handles: tuple[tuple[str, object], ...] = ()
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -586,7 +587,6 @@ def launch_backward(
         BLOCK_D=config.block_d,
         num_warps=config.num_warps,
     )
-    del gw_handle, gs_handle
     info = RoutedEpilogueLaunchInfo(
         kernel=gv_kernel,
         grid=gv_grid,
@@ -594,6 +594,11 @@ def launch_backward(
         num_warps=config.num_warps,
         num_stages=None,
         handle=gv_handle,
+        extra_handles=(
+            ("_rrs_grad_weights_kernel", gw_handle),
+            (gv_kernel, gv_handle),
+            ("_rrs_grad_row_scale_kernel", gs_handle),
+        ),
     )
     return (grad_weights, grad_values, grad_scale), info
 
@@ -713,6 +718,34 @@ def routed_reduce_row_scale_metadata(
 # -- Compile probing ---------------------------------------------------------------------
 
 
+def _extract_resource_usage(kernel_name: str, handle: object):
+    from urm.compiler.search import KernelResourceUsage
+
+    if handle is None:
+        return KernelResourceUsage(
+            kernel_name=kernel_name,
+            unavailable_reason="compiled_handle_unavailable",
+        )
+    regs = getattr(handle, "n_regs", None)
+    spills = getattr(handle, "n_spills", None)
+    shared = None
+    if hasattr(handle, "metadata") and hasattr(handle.metadata, "shared"):
+        try:
+            shared = int(handle.metadata.shared)
+        except (TypeError, ValueError):
+            shared = None
+    unavailable = None
+    if regs is None and shared is None:
+        unavailable = "triton_handle_exposed_no_resource_metadata"
+    return KernelResourceUsage(
+        kernel_name=kernel_name,
+        registers_per_thread=int(regs) if regs is not None else None,
+        shared_mem_bytes=shared,
+        spill_bytes=int(spills) if spills is not None else None,
+        unavailable_reason=unavailable,
+    )
+
+
 def make_triton_compile_probe(
     *,
     queries: int = 4,
@@ -721,50 +754,117 @@ def make_triton_compile_probe(
     value_dim: int = 64,
     dtype_name: str = "float32",
 ) -> CompileProbe:
-    """Real GPU compile probe over the EXACT selected schedule configuration.
+    """Real GPU compile probe over the EXACT target specialization.
 
-    Probes compile + launch the production kernels with the candidate's
-    (BLOCK_D, num_warps, num_stages, decomposition, traversal) on small
-    representative shapes, exercising forward AND the selected grad-values
-    lowering. Register/shared-memory facts flow back from the compiled
-    handles. Importing/calling this factory requires Torch + Triton + CUDA;
-    callers without a GPU simply omit the probe.
+    Probes compile + launch the production kernels for the requested anchor,
+    shapes, dtypes, and launch configurations (BLOCK_D, num_warps, num_stages,
+    decomposition, traversal), exercising forward and backward when intent is
+    training. Register/shared-memory facts flow back from the compiled handles.
     """
     if not torch.cuda.is_available():  # pragma: no cover - guarded by callers
         raise RuntimeError("make_triton_compile_probe requires CUDA")
     device = torch.device("cuda")
-    dtype = getattr(torch, dtype_name)
-    generator = torch.Generator(device=device).manual_seed(11)
-    indices = torch.randint(
-        0, sources, (queries, route_width), device=device, generator=generator
-    )
-    weights = torch.randn((queries, route_width), device=device, dtype=dtype)
-    values = torch.randn((sources, value_dim), device=device, dtype=dtype)
-    row_scale = torch.randn((queries,), device=device, dtype=dtype)
-    grad_output = torch.randn((queries, value_dim), device=device, dtype=dtype)
 
-    def probe(point: SchedulePoint) -> CompileProbeResult:
+    def probe(context) -> CompileProbeResult:
+        from urm.compiler.schedule_space import SchedulePoint
         from urm.compiler.search import CompileProbeResult
 
         try:
-            config = RoutedEpilogueLaunchConfig.from_point(point)
-            output, fwd_info = launch_forward(
-                config, indices, weights, values, row_scale
+            if isinstance(context, SchedulePoint):
+                point = context
+                effective_anchor = "routed_reduction_row_scale_epilogue_v0"
+                eff_queries = queries
+                eff_sources = sources
+                eff_route_width = route_width
+                eff_value_dim = value_dim
+                eff_dtype_name = dtype_name
+                is_training = True
+            else:
+                point = context.schedule_point
+                effective_anchor = context.anchor_name
+                eff_queries = min(context.queries, 4) if context.queries > 0 else 4
+                eff_sources = max(min(context.sources, 8), context.route_width)
+                eff_route_width = context.route_width
+                eff_value_dim = context.value_dim
+                eff_dtype_name = context.dtype
+                is_training = context.intent == "training"
+
+            dtype = getattr(torch, eff_dtype_name)
+            generator = torch.Generator(device=device).manual_seed(11)
+            indices = torch.randint(
+                0,
+                eff_sources,
+                (eff_queries, eff_route_width),
+                device=device,
+                generator=generator,
             )
-            torch.cuda.synchronize()
-            regs = getattr(fwd_info.handle, "n_regs", None)
-            shared = int(fwd_info.handle.metadata.shared)
-            if point.plan == "fused":
-                (_gw, _gv, _gs), bwd_info = launch_backward(
-                    config, indices, weights, values, row_scale, grad_output
+            weights = torch.randn(
+                (eff_queries, eff_route_width), device=device, dtype=dtype
+            )
+            values = torch.randn(
+                (eff_sources, eff_value_dim), device=device, dtype=dtype
+            )
+
+            if effective_anchor == "routed_reduction_row_scale_epilogue_v0":
+                row_scale = torch.randn((eff_queries,), device=device, dtype=dtype)
+                config = RoutedEpilogueLaunchConfig.from_point(point)
+                output, fwd_info = launch_forward(
+                    config, indices, weights, values, row_scale
                 )
                 torch.cuda.synchronize()
-                shared = max(shared, int(bwd_info.handle.metadata.shared))
-            del output
+                fwd_res = _extract_resource_usage(fwd_info.kernel, fwd_info.handle)
+                resources = {"forward": fwd_res}
+                max_regs = fwd_res.registers_per_thread
+                max_shared = fwd_res.shared_mem_bytes or 0
+
+                if is_training:
+                    grad_output = torch.randn(
+                        (eff_queries, eff_value_dim), device=device, dtype=dtype
+                    )
+                    (_gw, _gv, _gs), bwd_info = launch_backward(
+                        config, indices, weights, values, row_scale, grad_output
+                    )
+                    torch.cuda.synchronize()
+                    for name, handle in bwd_info.extra_handles:
+                        kres = _extract_resource_usage(name, handle)
+                        tag = (
+                            "grad_weights"
+                            if "weights" in name
+                            else (
+                                "grad_scale"
+                                if "scale" in name or "row" in name
+                                else "grad_values"
+                            )
+                        )
+                        resources[tag] = kres
+                        if kres.registers_per_thread is not None:
+                            max_regs = (
+                                max(max_regs, kres.registers_per_thread)
+                                if max_regs is not None
+                                else kres.registers_per_thread
+                            )
+                        if kres.shared_mem_bytes is not None:
+                            max_shared = max(max_shared, kres.shared_mem_bytes)
+
+                del output
+                return CompileProbeResult(
+                    ok=True,
+                    registers_per_thread=max_regs,
+                    shared_mem_bytes=max_shared,
+                    kernel_resources=resources,
+                )
+
+            if effective_anchor == "routed_reduction_v1":
+                from urm.triton_kernels.routed_reduce import routed_reduce
+
+                output = routed_reduce(indices, weights, values)
+                torch.cuda.synchronize()
+                del output
+                return CompileProbeResult(ok=True)
+
             return CompileProbeResult(
-                ok=True,
-                registers_per_thread=int(regs) if regs is not None else None,
-                shared_mem_bytes=shared,
+                ok=False,
+                reason=f"unsupported probe anchor {effective_anchor!r}",
             )
         except Exception as error:  # noqa: BLE001 - probe failures ARE results
             return CompileProbeResult(ok=False, reason=str(error)[:200])

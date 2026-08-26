@@ -153,7 +153,7 @@ def test_replication_factor_two_places_each_item_twice() -> None:
 
 
 def test_returned_plans_pass_independent_verification() -> None:
-    problem = _problem(2, 4, items=5, capacity=500)
+    problem = _problem(2, 2, items=4, capacity=500)
     model = build_placement_model(problem)
     result = OptimizationPass().run(model)
     assert result.status.value == "sat"

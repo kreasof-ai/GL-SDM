@@ -139,6 +139,12 @@ def main() -> None:
         for point in legal_schedules(reference_problem)
         if point.plan in allowed_plans
     ]
+    reference_legal_set = {point.stable_key for point in reference_legal}
+    model_sweep_legal_set = {
+        decode_schedule_point(model, assignment).stable_key
+        for assignment in legal_assignments
+    }
+    exact_set_agreement = reference_legal_set == model_sweep_legal_set
 
     notes = [
         (
@@ -202,16 +208,11 @@ def main() -> None:
             "reference_impl": "schedule_space.legal_schedules",
             "reference_legal_points": len(reference_legal),
             "model_sweep_legal_points": len(legal_assignments),
-            "reference_matches_model_sweep": (
-                len(reference_legal) == len(legal_assignments)
-            ),
+            "reference_matches_model_sweep": exact_set_agreement,
+            "exact_set_agreement": exact_set_agreement,
             "z3_sat_assignments": 1,
-            "agreement": bool(
-                len(reference_legal) == len(legal_assignments) and agree_optima
-            ),
-            "legality_accuracy": (
-                1.0 if len(reference_legal) == len(legal_assignments) else 0.0
-            ),
+            "agreement": bool(exact_set_agreement and agree_optima),
+            "legality_accuracy": 1.0 if exact_set_agreement else 0.0,
         },
         "unsat_core_example": unsat_example,
         "z3_selection": {
@@ -277,6 +278,8 @@ def main() -> None:
     # ... plus decomposition/traversal variants at the selected tile.
     for decomp in ("per_query", "per_route"):
         for traversal in ("full_row", "segmented"):
+            if decomp == "per_route" and traversal == "full_row":
+                continue  # per_route is segmented by construction; full_row is invalid
             grid_points.append(
                 SchedulePoint(
                     plan=z3_point.plan,
@@ -298,11 +301,16 @@ def main() -> None:
         seen_keys.add(point.stable_key)
         unique_points.append(point)
 
+    resource_by_key: dict[str, dict[str, int | None]] = {}
+
     def workload(point: SchedulePoint):
         def run() -> None:
-            output, _info = sched.forward_launch(
+            output, info = sched.forward_launch(
                 point, indices, weights, values, row_scale
             )
+            feedback = sched.compile_feedback_for(info.handle)
+            if point.stable_key not in resource_by_key:
+                resource_by_key[point.stable_key] = feedback
             sched.backward_launch(point, indices, weights, values, row_scale, output)
 
         return run
@@ -338,6 +346,7 @@ def main() -> None:
     for stable_key, raw in measured.items():
         stats = summarize_samples(raw)
         point = key_to_point[stable_key]
+        res_info = resource_by_key.get(stable_key, {})
         samples.append(
             {
                 "schedule": point.as_dict(),
@@ -345,8 +354,8 @@ def main() -> None:
                 "p95_ms": round(stats["p95_ms"], 4),
                 "min_ms": round(stats["min_ms"], 4),
                 "sample_count": stats["sample_count"],
-                "registers_per_thread": None,
-                "shared_mem_bytes": None,
+                "registers_per_thread": res_info.get("registers_per_thread"),
+                "shared_mem_bytes": res_info.get("shared_mem_bytes"),
             }
         )
     samples.sort(key=lambda s: json.dumps(s["schedule"], sort_keys=True))
@@ -420,7 +429,9 @@ def main() -> None:
         direct_config = RoutedEpilogueLaunchConfig.from_point(z3_point)
 
         def direct_forward() -> None:
-            sched.forward_launch(direct_config, indices, weights, values, row_scale)
+            sched.launch_prepared_step(
+                direct_config, indices, weights, values, row_scale
+            )
 
         # Decoding the serialized plan into an executable configuration is
         # COMPILATION: it happens once, outside every timed region. The timed

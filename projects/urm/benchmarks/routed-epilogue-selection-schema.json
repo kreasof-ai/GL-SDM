@@ -102,6 +102,9 @@
         },
         "reference_matches_model_sweep": {
           "type": "boolean"
+        },
+        "exact_set_agreement": {
+          "type": "boolean"
         }
       }
     },

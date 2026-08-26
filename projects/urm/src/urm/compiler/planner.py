@@ -113,7 +113,9 @@ class ArchitectureParams:
 
 
 VALID_NUM_WARPS = (1, 2, 4, 8)
-VALID_NUM_STAGES = (1, 2, 3, 4)
+VALID_NUM_STAGES = (1, 2, 4)
+VALID_BLOCK_HINT_KEYS = frozenset({"BLOCK_D"})
+VALID_BLOCK_VALUES = (32, 64, 128, 256)
 VALID_LAYOUTS = frozenset({"row_major", "col_major"})
 
 
@@ -154,11 +156,20 @@ def validate_schedule_params(
 ) -> tuple[Diagnostic, ...]:
     """Structured validation of schedule hints; empty tuple means valid."""
     collector = DiagnosticsCollector()
+    from urm.compiler.execution import TRUSTED_ANCHORS
+
+    known_anchors = {a.name for a in TRUSTED_ANCHORS}
     for key, anchor_name in params.anchor_overrides.items():
         if not key or not anchor_name:
             collector.error(
                 DiagnosticCode.SCHEDULE_HINT_INVALID,
                 "anchor overrides need non-empty op-key and anchor-name",
+                subject=key or "*",
+            )
+        elif anchor_name not in known_anchors:
+            collector.error(
+                DiagnosticCode.SCHEDULE_HINT_INVALID,
+                f"anchor override specifies unknown anchor {anchor_name!r}",
                 subject=key or "*",
             )
     for key, value in params.block_hints.items():
@@ -167,16 +178,22 @@ def validate_schedule_params(
                 DiagnosticCode.SCHEDULE_HINT_INVALID,
                 "block-hint keys must be non-empty",
             )
+        elif key not in VALID_BLOCK_HINT_KEYS:
+            collector.error(
+                DiagnosticCode.SCHEDULE_HINT_INVALID,
+                f"unsupported block-hint key {key!r}; supported: {sorted(VALID_BLOCK_HINT_KEYS)}",
+                subject=key,
+            )
         elif not isinstance(value, int) or isinstance(value, bool) or value <= 0:
             collector.error(
                 DiagnosticCode.SCHEDULE_HINT_INVALID,
                 f"block hint {key}={value!r} must be a positive integer",
                 subject=key,
             )
-        elif value > 1024:
+        elif value not in VALID_BLOCK_VALUES:
             collector.error(
                 DiagnosticCode.SCHEDULE_HINT_INVALID,
-                f"block hint {key}={value} exceeds the 1024 prototype maximum",
+                f"block hint {key}={value} not in supported tile sizes {list(VALID_BLOCK_VALUES)}",
                 subject=key,
             )
     if params.warp_count is not None and params.warp_count not in VALID_NUM_WARPS:
@@ -191,24 +208,18 @@ def validate_schedule_params(
             f"stage_count={params.stage_count} not in {list(VALID_NUM_STAGES)}",
             subject="stage_count",
         )
-    for key, value in params.dtype_hints.items():
-        try:
-            from urm.compiler.semantic import DType
-
-            DType(value)
-        except ValueError:
-            collector.error(
-                DiagnosticCode.SCHEDULE_HINT_INVALID,
-                f"dtype hint {key}={value!r} is not a supported DType",
-                subject=key,
-            )
-    for key, value in params.layout_hints.items():
-        if value not in VALID_LAYOUTS:
-            collector.error(
-                DiagnosticCode.SCHEDULE_HINT_INVALID,
-                f"layout hint {key}={value!r} not in {sorted(VALID_LAYOUTS)}",
-                subject=key,
-            )
+    if params.dtype_hints:
+        collector.error(
+            DiagnosticCode.SCHEDULE_HINT_INVALID,
+            f"dtype_hints are not supported for this anchor/compilation: {list(params.dtype_hints.keys())}",
+            subject="dtype_hints",
+        )
+    if params.layout_hints:
+        collector.error(
+            DiagnosticCode.SCHEDULE_HINT_INVALID,
+            f"layout_hints are not supported for this anchor/compilation: {list(params.layout_hints.keys())}",
+            subject="layout_hints",
+        )
     return tuple(collector)
 
 
@@ -653,6 +664,19 @@ class UrmCompiler:
         if diagnostics and any(d.severity.value == "error" for d in diagnostics):
             raise CompilerError(diagnostics)
 
+        known_op_names = {op.name for op in program.ops}
+        for op_key in schedule_params.anchor_overrides:
+            if op_key != "*" and op_key not in known_op_names:
+                raise CompilerError(
+                    (
+                        Diagnostic(
+                            code=DiagnosticCode.SCHEDULE_HINT_INVALID,
+                            message=f"anchor override specifies unknown operation {op_key!r}",
+                            subject=op_key,
+                        ),
+                    )
+                )
+
         candidates = self.enumerate_candidates(program, intent)
         selection = self._select_candidate(candidates, candidate_id, schedule_params)
         chosen, policy, rejections, solver_stats = selection
@@ -665,22 +689,30 @@ class UrmCompiler:
             compiled = applied.program
             trace_parts.append(applied.trace)
 
-        # Candidate-bound schedule search: solve (or deterministic fallback),
-        # independently verify, optionally compile-probe the exact selected
-        # configuration, and retry bounded on nogoods. Unverified schedules
-        # never reach lowering.
-        schedule_decision = self._search_schedule(
-            program=program,
-            compiled=compiled,
-            chosen=chosen,
-            intent=intent,
-            schedule_params=schedule_params,
+        # Resolve effective anchor lowering identity before schedule search.
+        effective_decisions = self._resolve_effective_anchors(
+            compiled, intent, schedule_params
         )
+
+        # Candidate-bound schedule search runs only when the effective lowering
+        # targets a schedulable anchor that consumes an external launch configuration.
+        needs_schedule_search = any(
+            d.anchor is not None and d.anchor.schedulable
+            for d in effective_decisions.values()
+        )
+        schedule_decision = None
+        if needs_schedule_search:
+            schedule_decision = self._search_schedule(
+                program=program,
+                compiled=compiled,
+                chosen=chosen,
+                intent=intent,
+                schedule_params=schedule_params,
+            )
 
         steps, anchors_chosen, cost_parts = self._lower_to_anchors(
             compiled,
-            intent,
-            schedule_params,
+            effective_decisions,
             launch_config=(
                 dict(schedule_decision.launch_config)
                 if schedule_decision is not None
@@ -976,17 +1008,13 @@ class UrmCompiler:
             )
         )
 
-    def _lower_to_anchors(
+    def _resolve_effective_anchors(
         self,
         compiled: SemanticProgram,
         intent: CompilationIntent,
         schedule_params: ScheduleParams,
-        launch_config: dict[str, str | int] | None = None,
-    ):
-        steps: list[PlanStep] = []
-        anchors_chosen: list[str] = []
-        cost_parts: list[CostEstimate] = []
-        step_id = 0
+    ) -> dict[str, AnchorDecision]:
+        effective_decisions: dict[str, AnchorDecision] = {}
         for op in compiled.ops:
             if self._is_interior_gather(compiled, op):
                 continue  # fused into the routed-reduction dispatch
@@ -1000,9 +1028,6 @@ class UrmCompiler:
                 AnchorRequest(
                     kind=request_kind,
                     visitors=visitors,
-                    schedule_params=(
-                        dict(launch_config) if launch_config is not None else None
-                    ),
                 )
             )
             if override is not None:
@@ -1021,20 +1046,43 @@ class UrmCompiler:
             self._check_anchor_intent(
                 compiled, op, decision.anchor, intent, schedule_params
             )
-            anchors_chosen.append(decision.anchor.name)
+            effective_decisions[op.name] = decision
+        return effective_decisions
+
+    def _lower_to_anchors(
+        self,
+        compiled: SemanticProgram,
+        effective_decisions: dict[str, AnchorDecision],
+        launch_config: dict[str, str | int] | None = None,
+    ):
+        steps: list[PlanStep] = []
+        anchors_chosen: list[str] = []
+        cost_parts: list[CostEstimate] = []
+        step_id = 0
+        for op in compiled.ops:
+            if self._is_interior_gather(compiled, op):
+                continue  # fused into the routed-reduction dispatch
+            decision = effective_decisions.get(op.name)
+            if decision is None or decision.anchor is None:
+                continue
+            anchor = decision.anchor
+            anchors_chosen.append(anchor.name)
+            step_launch_config = (
+                dict(launch_config)
+                if launch_config is not None and anchor.consumes_launch_config
+                else None
+            )
             steps.append(
                 PlanStep(
                     step_id=step_id,
                     kind="anchor_dispatch",
-                    anchor=decision.anchor.name,
+                    anchor=anchor.name,
                     note=op.name,
-                    launch_config=(
-                        dict(launch_config) if launch_config is not None else None
-                    ),
+                    launch_config=step_launch_config,
                 )
             )
             step_id += 1
-            cost_parts.append(self._cost_for(op, decision.anchor.name, placement=None))
+            cost_parts.append(self._cost_for(op, anchor.name, placement=None))
         return steps, anchors_chosen, cost_parts
 
     @staticmethod
@@ -1067,7 +1115,39 @@ class UrmCompiler:
                     ),
                 ),
             )
-        del op
+        request_visitor_kinds = {v.kind for v in visitors}
+        missing_required = [
+            v.value for v in anchor.required_visitors if v not in request_visitor_kinds
+        ]
+        if missing_required:
+            return AnchorDecision(
+                anchor=None,
+                decline=Decline(
+                    reason_code=DiagnosticCode.ANCHOR_DECLINED,
+                    message=(
+                        f"overridden anchor {override_name} requires missing visitors: "
+                        f"{missing_required}"
+                    ),
+                ),
+            )
+        if anchor.required_semantic_inputs:
+            from urm.compiler.semantic import WeightedReduce
+
+            if isinstance(op, WeightedReduce):
+                for req_input in anchor.required_semantic_inputs:
+                    if req_input == "row_scale" and (
+                        op.epilogue is None or op.epilogue.scale_tensor is None
+                    ):
+                        return AnchorDecision(
+                            anchor=None,
+                            decline=Decline(
+                                reason_code=DiagnosticCode.ANCHOR_DECLINED,
+                                message=(
+                                    f"overridden anchor {override_name} requires "
+                                    f"semantic input {req_input!r} on {op.name}"
+                                ),
+                            ),
+                        )
         return AnchorDecision(anchor=anchor, decline=None)
 
     def _check_anchor_intent(

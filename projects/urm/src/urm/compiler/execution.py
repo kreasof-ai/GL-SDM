@@ -92,6 +92,16 @@ class ExecutionAnchor:
     """Rewrite obligations this anchor resolves (e.g. ``recompute_backward``)."""
     deterministic_accumulation: bool = True
     commit_capable: bool = False
+    consumes_launch_config: bool = False
+    schedulable: bool = False
+    supported_plan_kinds: frozenset[str] = frozenset()
+    required_visitors: frozenset[VisitorKind] = frozenset()
+    required_semantic_inputs: tuple[str, ...] = ()
+    supported_blocks: tuple[int, ...] = ()
+    supported_warps: tuple[int, ...] = ()
+    supported_stages: tuple[int, ...] = ()
+    supported_decompositions: tuple[str, ...] = ()
+    supported_schedules: tuple[str, ...] = ()
 
     def accepts(self, visitor: VisitorDescriptor) -> bool:
         return visitor.kind in self.supported_visitors and self.result_locality.accepts(
@@ -158,6 +168,22 @@ def make_selector(
                     first_refusal = Decline(
                         reason_code=DiagnosticCode.ANCHOR_DECLINED,
                         message=f"anchor {anchor.name} declined visitors: {unmet}",
+                    )
+                continue
+            request_visitor_kinds = {v.kind for v in request.visitors}
+            missing_required = [
+                v.value
+                for v in anchor.required_visitors
+                if v not in request_visitor_kinds
+            ]
+            if missing_required:
+                if first_refusal is None:
+                    first_refusal = Decline(
+                        reason_code=DiagnosticCode.ANCHOR_DECLINED,
+                        message=(
+                            f"anchor {anchor.name} requires missing visitors: "
+                            f"{missing_required}"
+                        ),
                     )
                 continue
             return AnchorDecision(anchor=anchor, decline=None)
@@ -233,6 +259,8 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
         # epilogue must route to the experimental anchor instead.
         backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
         supported_visitors=frozenset({VisitorKind.SIDE_OUTPUT}),
+        consumes_launch_config=False,
+        schedulable=False,
     ),
     ExecutionAnchor(
         kind=AnchorKind.ROUTED_REDUCTION,
@@ -254,6 +282,16 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
                 VisitorKind.PARTIAL_REDUCTION,
             }
         ),
+        consumes_launch_config=True,
+        schedulable=True,
+        supported_plan_kinds=frozenset({"fused"}),
+        required_visitors=frozenset({VisitorKind.FINAL_SCALE_CONVERT}),
+        required_semantic_inputs=("row_scale",),
+        supported_blocks=(32, 64, 128, 256),
+        supported_warps=(1, 2, 4, 8),
+        supported_stages=(1, 2, 4),
+        supported_decompositions=("per_query", "per_route"),
+        supported_schedules=("segmented", "full_row"),
     ),
     ExecutionAnchor(
         kind=AnchorKind.PAGE_GATHER_UPDATE,

@@ -139,28 +139,37 @@ def decode_selected_candidate(
 # candidate is selected, its schedule model may only choose plans that this
 # candidate's lowering actually implements.
 
-_FUSED_PLAN_RULES = frozenset({"fold_row_scale_into_routed_reduction_epilogue"})
+_RULE_TO_ANCHOR_PLAN: dict[str, tuple[str, PlanKind]] = {
+    "fold_row_scale_into_routed_reduction_epilogue": (
+        "routed_reduction_row_scale_epilogue_v0",
+        PlanKind.FUSED,
+    ),
+}
 
 
 def plan_kinds_for_candidate(candidate) -> tuple[PlanKind, ...]:
     """Plans the candidate's own lowering can legally execute.
 
-    ``base`` lowers through routed-reduction v1 + materialized transform and
-    therefore permits only the base plan; the row-scale epilogue fusion rule
-    permits only its fused anchor. Unknown rewrite rules leave both plans
-    reachable but record the loose binding in model metadata.
+    ``base`` lowers through unscheduled routed-reduction v1; the row-scale
+    epilogue fusion rule permits only its fused anchor. Unknown rewrite rules
+    fail closed.
     """
     if getattr(candidate, "kind", "") == "base":
-        return (PlanKind.BASE,)
+        return ()
     rule = getattr(candidate, "rule", None)
-    if rule in _FUSED_PLAN_RULES:
-        return (PlanKind.FUSED,)
-    return (PlanKind.BASE, PlanKind.FUSED)
+    if rule in _RULE_TO_ANCHOR_PLAN:
+        return (_RULE_TO_ANCHOR_PLAN[rule][1],)
+    raise ValueError(
+        f"unregistered rewrite rule {rule!r}; candidate/anchor bindings fail closed"
+    )
 
 
 def plan_binding_is_total(candidate) -> bool:
     """True when the candidate pins exactly one executable plan."""
-    return len(plan_kinds_for_candidate(candidate)) == 1
+    try:
+        return len(plan_kinds_for_candidate(candidate)) == 1
+    except ValueError:
+        return False
 
 
 # -- Routed-epilogue schedule model -------------------------------------------------
@@ -208,12 +217,35 @@ def build_schedule_model(
     plans this candidate's lowering can run, so schedule selection can never
     contradict the already-selected rewrite candidate.
     """
+    from urm.compiler.diagnostics import CompilerError, Diagnostic, DiagnosticCode
     from urm.compiler.planner import CompilationIntent
     from urm.compiler.semantic import WeightedReduce
 
     if allowed_plans is None:
-        allowed_plans = plan_kinds_for_candidate(candidate)
-    allowed_plans = tuple(allowed_plans) or (PlanKind.BASE, PlanKind.FUSED)
+        try:
+            allowed_plans = plan_kinds_for_candidate(candidate)
+        except ValueError as err:
+            raise CompilerError(
+                (
+                    Diagnostic(
+                        code=DiagnosticCode.CANDIDATE_ILLEGAL,
+                        message=str(err),
+                    ),
+                )
+            ) from err
+    allowed_plans = tuple(allowed_plans)
+    if not allowed_plans:
+        raise CompilerError(
+            (
+                Diagnostic(
+                    code=DiagnosticCode.SCHEDULE_HINT_INVALID,
+                    message=(
+                        f"candidate {candidate.candidate_id!r} has no "
+                        "configurable schedule space"
+                    ),
+                ),
+            )
+        )
     unknown = [p for p in allowed_plans if p not in set(PlanKind)]
     if unknown:
         raise ValueError(f"unknown plan kinds: {unknown}")
@@ -245,10 +277,16 @@ def build_schedule_model(
         )
 
     model = ConstraintModel(name=f"routed_epilogue_schedule:{candidate.candidate_id}")
+    anchor_name = (
+        "routed_reduction_row_scale_epilogue_v0"
+        if PlanKind.FUSED in allowed_plans
+        else "routed_reduction_v1"
+    )
     model.metadata.update(
         {
             "program": program.name,
             "candidate_id": candidate.candidate_id,
+            "anchor_name": anchor_name,
             "intent": intent.value,
             "training": "1" if problem.training else "0",
             "deterministic": "1" if problem.deterministic else "0",
@@ -462,6 +500,29 @@ def build_schedule_model(
             origin=origin,
             variable="block_d",
             divisor=32,
+        )
+    )
+    model.add_constraint(
+        Implication(
+            name="per_route_requires_segmented_schedule",
+            category=CATEGORY_SCHEDULE,
+            explanation=(
+                "per_route decomposition does not support full_row traversal; "
+                "per_route is segmented across program instances by construction"
+            ),
+            origin=origin,
+            guard_variable="decomp_per_route",
+            guard_expected=True,
+            consequents=(
+                Equality(
+                    name="per_route_requires_segmented_schedule::eq",
+                    category=CATEGORY_SCHEDULE,
+                    explanation="gradsched_full_row must be false under per_route",
+                    origin=origin,
+                    lhs=LinearExpr.var("gradsched_full_row"),
+                    rhs=LinearExpr.const(0),
+                ),
+            ),
         )
     )
     model.add_constraint(

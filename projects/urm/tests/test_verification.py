@@ -19,7 +19,6 @@ from urm.compiler.constraints import (
 from urm.compiler.execution import TRUSTED_ANCHORS
 from urm.compiler.kernel_plan import verify_schedule_assignment
 from urm.compiler.planner import (
-    BASE_CANDIDATE_ID,
     CompilationIntent,
     ScheduleParams,
     UrmCompiler,
@@ -32,6 +31,8 @@ from urm.compiler.verification import (
     ResourceFacts,
 )
 
+FUSED_ID = "rewrite:fold_row_scale_into_routed_reduction_epilogue@apply_row_scale"
+
 
 def _schedule_assignment():
     """Build a model and derive an assignment WITHOUT any solver."""
@@ -41,7 +42,7 @@ def _schedule_assignment():
     program = row_scaled_routed_reduction_program(
         queries=8, route_width=2, sources=8, value_dim=16
     )
-    model = compiler.build_constraints(program, BASE_CANDIDATE_ID)
+    model = compiler.build_constraints(program, FUSED_ID)
     legal, ranked, _total = exhaustive_schedule_sweep(model)
     assert legal, "expected at least one legal schedule"
     return model, ranked[0][0]
@@ -265,7 +266,7 @@ def test_build_schedule_model_metadata_roundtrip() -> None:
     )
     model = compiler.build_constraints(
         program,
-        BASE_CANDIDATE_ID,
+        FUSED_ID,
         CompilationIntent.TRAINING,
         schedule_params=ScheduleParams(deterministic=True),
     )

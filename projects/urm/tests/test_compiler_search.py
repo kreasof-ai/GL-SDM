@@ -93,9 +93,12 @@ def test_schedule_serialization_is_deterministic_and_solver_free() -> None:
 
 def test_schedule_point_assignment_round_trip() -> None:
     program = _program()
+    fused_candidate = next(
+        c for c in UrmCompiler().enumerate_candidates(program) if c.kind == "rewrite"
+    )
     model = build_schedule_model(
         program=program,
-        candidate=UrmCompiler().enumerate_candidates(program)[0],
+        candidate=fused_candidate,
         intent=CompilationIntent.INFERENCE,
         schedule_params=ScheduleParams(),
         device_limits=UrmCompiler().device_limits,
@@ -115,8 +118,8 @@ def test_candidate_and_plan_kind_cannot_disagree() -> None:
     program = _program()
 
     base_result = compiler.compile_candidate(program, BASE_CANDIDATE_ID)
-    assert base_result.schedule_decision is not None
-    assert base_result.schedule_decision.schedule_point.plan == PlanKind.BASE.value
+    assert base_result.schedule_decision is None
+    assert base_result.plan.steps[0].launch_config is None
     assert base_result.selected_candidate_id == BASE_CANDIDATE_ID
 
     fused_result = compiler.compile_candidate(
@@ -124,12 +127,7 @@ def test_candidate_and_plan_kind_cannot_disagree() -> None:
     )
     assert fused_result.schedule_decision is not None
     assert fused_result.schedule_decision.schedule_point.plan == PlanKind.FUSED.value
-
-    # Structurally: every legal assignment of the base-bound model pins plan_base.
-    base_model = compiler.build_constraints(program, BASE_CANDIDATE_ID)
-    legal, _ranked, _total = exhaustive_schedule_sweep(base_model)
-    assert legal
-    assert all(a["plan_base"] is True for a in legal)
+    assert fused_result.plan.steps[0].launch_config is not None
 
     fused_model = compiler.build_constraints(program, FUSED_ID)
     legal_fused, _ranked, _total = exhaustive_schedule_sweep(fused_model)
@@ -140,7 +138,7 @@ def test_candidate_and_plan_kind_cannot_disagree() -> None:
 def test_plan_binding_is_declared_per_candidate() -> None:
     candidates = UrmCompiler().enumerate_candidates(_program())
     by_id = {c.candidate_id: c for c in candidates}
-    assert plan_kinds_for_candidate(by_id[BASE_CANDIDATE_ID]) == (PlanKind.BASE,)
+    assert plan_kinds_for_candidate(by_id[BASE_CANDIDATE_ID]) == ()
     fused = by_id[FUSED_ID]
     assert plan_kinds_for_candidate(fused) == (PlanKind.FUSED,)
     assert (
@@ -250,14 +248,16 @@ def _first_failure_probe(calls: list[SchedulePoint]):
 
 
 def test_compile_probe_failure_adds_exact_nogood_then_recovers() -> None:
-    calls: list[SchedulePoint] = []
+    calls: list[object] = []
     program = _program()
     compiler = UrmCompiler(compile_probe=_first_failure_probe(calls), max_nogoods=4)
     result = compiler.compile(program, intent=CompilationIntent.TRAINING)
     decision = result.schedule_decision
     assert decision is not None
     assert len(decision.attempts) == 2
-    assert calls[0].as_dict() != calls[1].as_dict()
+    point0 = getattr(calls[0], "schedule_point", calls[0])
+    point1 = getattr(calls[1], "schedule_point", calls[1])
+    assert point0.as_dict() != point1.as_dict()
     assert decision.compile_status is CompileStatus.SUCCEEDED
     # Counters mean exactly what they say.
     assert decision.compile_failures_observed == 1
@@ -269,7 +269,7 @@ def test_compile_probe_failure_adds_exact_nogood_then_recovers() -> None:
     reference_model = compiler.build_constraints(
         program, FUSED_ID, intent=CompilationIntent.TRAINING
     )
-    expected_failed = schedule_point_to_assignment(reference_model, calls[0])
+    expected_failed = schedule_point_to_assignment(reference_model, point0)
     forbidden = decision.attempts[0].nogood_forbidden
     assert forbidden is not None
     assert forbidden == {
@@ -287,7 +287,7 @@ def test_compile_probe_failure_adds_exact_nogood_then_recovers() -> None:
 
 
 def test_retry_exhaustion_returns_structured_diagnostic() -> None:
-    def always_fails(_point: SchedulePoint) -> CompileProbeResult:
+    def always_fails(_point: object) -> CompileProbeResult:
         return CompileProbeResult(ok=False, reason="hard resource limit")
 
     compiler = UrmCompiler(compile_probe=always_fails, max_nogoods=2)
@@ -310,9 +310,11 @@ def test_deterministic_training_compilation_is_structurally_unsat() -> None:
             intent=CompilationIntent.TRAINING,
             schedule_params=ScheduleParams(deterministic=True),
         )
-    assert DiagnosticCode.UNSAT_CONSTRAINTS in {
-        d.code for d in excinfo.value.diagnostics
-    }
+    codes = {d.code for d in excinfo.value.diagnostics}
+    assert (
+        DiagnosticCode.UNSAT_CONSTRAINTS in codes
+        or DiagnosticCode.INTENT_CONFLICT in codes
+    )
     # Deterministic INFERENCE keeps compiling.
     result = compiler.compile(
         _program(), schedule_params=ScheduleParams(deterministic=True)
@@ -345,11 +347,138 @@ def test_launch_config_covers_every_solver_selectable_dimension() -> None:
         num_warps=2,
         num_stages=2,
         grad_values_decomposition="per_route",
-        grad_values_schedule="full_row",
+        grad_values_schedule="segmented",
         dtype="float16",
     )
     config = launch_config_of(point)
     assert set(config) == set(point.as_dict())
+
+
+def test_compile_probe_receives_actual_specialization_context() -> None:
+    received_contexts = []
+
+    def probe(ctx) -> CompileProbeResult:
+        received_contexts.append(ctx)
+        return CompileProbeResult(
+            ok=True, registers_per_thread=32, shared_mem_bytes=2048
+        )
+
+    program = _program(value_dim=48)
+    compiler = UrmCompiler(compile_probe=probe)
+    result = compiler.compile(program, intent=CompilationIntent.TRAINING)
+    assert received_contexts
+    ctx = received_contexts[0]
+    assert ctx.anchor_name == "routed_reduction_row_scale_epilogue_v0"
+    assert ctx.plan == "fused"
+    assert ctx.intent == "training"
+    assert ctx.queries == 8
+    assert ctx.route_width == 2
+    assert ctx.sources == 8
+    assert ctx.value_dim == 48
+    assert ctx.dtype in ("float32", "float16", "bfloat16")
+    assert ctx.schedule_point == result.schedule_decision.schedule_point
+
+
+def test_injected_resource_results_survive_decision_and_serialization() -> None:
+    from urm.compiler.search import KernelResourceUsage
+
+    def probe(_ctx) -> CompileProbeResult:
+        return CompileProbeResult(
+            ok=True,
+            registers_per_thread=28,
+            shared_mem_bytes=1024,
+            kernel_resources={
+                "forward": KernelResourceUsage("fwd_kernel", 24, 512),
+                "grad_values": KernelResourceUsage("gv_kernel", 28, 1024),
+            },
+        )
+
+    compiler = UrmCompiler(compile_probe=probe)
+    result = compiler.compile(_program(), intent=CompilationIntent.TRAINING)
+    decision = result.schedule_decision
+    assert decision is not None
+    assert decision.registers_per_thread == 28
+    assert decision.shared_mem_bytes == 1024
+    assert decision.kernel_resources is not None
+    assert decision.kernel_resources["forward"]["registers_per_thread"] == 24
+    assert decision.kernel_resources["grad_values"]["shared_mem_bytes"] == 1024
+
+    serialized = result.to_dict()
+    assert serialized["schedule_decision"]["registers_per_thread"] == 28
+    assert serialized["schedule_decision"]["shared_mem_bytes"] == 1024
+    assert (
+        serialized["schedule_decision"]["kernel_resources"]["grad_values"][
+            "registers_per_thread"
+        ]
+        == 28
+    )
+
+    # JSON roundtrip
+    roundtripped = json.loads(json.dumps(serialized))
+    assert roundtripped["schedule_decision"]["registers_per_thread"] == 28
+    assert roundtripped["schedule_decision"]["shared_mem_bytes"] == 1024
+
+
+def test_per_route_full_row_is_absent_from_model_and_reference_legal_sets() -> None:
+    from urm.compiler.schedule_space import (
+        ScheduleProblem,
+        is_legal,
+        legal_schedules,
+    )
+
+    problem = ScheduleProblem()
+    bad_point = SchedulePoint(
+        plan="fused",
+        block_d=32,
+        num_warps=2,
+        num_stages=1,
+        grad_values_decomposition="per_route",
+        grad_values_schedule="full_row",
+        dtype="float32",
+    )
+    assert not is_legal(bad_point, problem)
+    assert bad_point not in legal_schedules(problem)
+
+    # In model
+    compiler = UrmCompiler()
+    model = compiler.build_constraints(_program(), FUSED_ID)
+    legal, _ranked, _total = exhaustive_schedule_sweep(model)
+    decoded = [decode_schedule_point(model, a) for a in legal]
+    assert all(
+        not (
+            p.grad_values_decomposition == "per_route"
+            and p.grad_values_schedule == "full_row"
+        )
+        for p in decoded
+    )
+
+
+def test_model_and_reference_legality_compares_exact_point_sets() -> None:
+    from urm.compiler.schedule_space import (
+        ScheduleProblem,
+        legal_schedules,
+    )
+
+    compiler = UrmCompiler()
+    program = _program()
+    model = compiler.build_constraints(program, FUSED_ID)
+    legal_assignments, _ranked, _total = exhaustive_schedule_sweep(model)
+
+    meta = model.metadata
+    problem = ScheduleProblem(
+        queries=int(meta["queries"]),
+        sources=int(meta["sources"]),
+        route_width=int(meta["route_width"]),
+        value_dim=int(meta["value_dim"]),
+        dtypes=tuple(meta["dtypes"].split(",")),
+        training=meta["training"] == "1",
+        deterministic=meta["deterministic"] == "1",
+        fused_anchor_available=True,
+    )
+    ref_legal = [p for p in legal_schedules(problem) if p.plan == "fused"]
+    ref_keys = {p.stable_key for p in ref_legal}
+    model_keys = {decode_schedule_point(model, a).stable_key for a in legal_assignments}
+    assert ref_keys == model_keys
 
 
 def test_search_module_stays_cpu_safe() -> None:

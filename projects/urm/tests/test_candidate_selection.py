@@ -273,10 +273,10 @@ def test_schedule_params_change_selected_plans() -> None:
     from urm.compiler.kernel_plan import exhaustive_schedule_sweep
 
     compiler = UrmCompiler()
-    baseline = compiler.build_constraints(_program(), BASE_CANDIDATE_ID)
+    baseline = compiler.build_constraints(_program(), FUSED_ID)
     pinned = compiler.build_constraints(
         _program(),
-        BASE_CANDIDATE_ID,
+        FUSED_ID,
         schedule_params=ScheduleParams(block_hints={"BLOCK_D": 256}, warp_count=8),
     )
     base_legal, _base_ranked, _ = exhaustive_schedule_sweep(baseline)
@@ -296,10 +296,90 @@ def test_build_constraints_rejects_unknown_candidate() -> None:
     assert excinfo.value.diagnostics[0].code is DiagnosticCode.CANDIDATE_NOT_FOUND
 
 
+def test_fused_anchor_override_cannot_produce_base_schedule_or_omit_fused_semantic_inputs() -> (
+    None
+):
+    """A fused anchor override cannot lower a base candidate lacking fused inputs."""
+    compiler = UrmCompiler()
+    params = ScheduleParams(
+        anchor_overrides={"*": "routed_reduction_row_scale_epilogue_v0"}
+    )
+    with pytest.raises(CompilerError) as excinfo:
+        compiler.compile_candidate(
+            _program(), BASE_CANDIDATE_ID, schedule_params=params
+        )
+    codes = {d.code for d in excinfo.value.diagnostics}
+    assert (
+        DiagnosticCode.ANCHOR_DECLINED in codes
+        or DiagnosticCode.NO_ANCHOR_AVAILABLE in codes
+    )
+
+
+def test_incompatible_or_unknown_override_fails_explicitly() -> None:
+    compiler = UrmCompiler()
+    # Unknown anchor name in override
+    bad_anchor = ScheduleParams(anchor_overrides={"*": "totally_unknown_anchor"})
+    with pytest.raises(CompilerError) as excinfo1:
+        compiler.compile(_program(), schedule_params=bad_anchor)
+    assert excinfo1.value.diagnostics[0].code is DiagnosticCode.SCHEDULE_HINT_INVALID
+
+    # Unknown operation name in override
+    bad_op = ScheduleParams(anchor_overrides={"nonexistent_op": "routed_reduction_v1"})
+    with pytest.raises(CompilerError) as excinfo2:
+        compiler.compile(_program(), schedule_params=bad_op)
+    assert excinfo2.value.diagnostics[0].code is DiagnosticCode.SCHEDULE_HINT_INVALID
+
+
+def test_unknown_or_unused_hints_are_rejected() -> None:
+    # Unknown block hint key
+    diag1 = validate_schedule_params(ScheduleParams(block_hints={"BLOCK_M": 64}))
+    assert any(d.code is DiagnosticCode.SCHEDULE_HINT_INVALID for d in diag1)
+
+    # Invalid block size
+    diag2 = validate_schedule_params(ScheduleParams(block_hints={"BLOCK_D": 50}))
+    assert any(d.code is DiagnosticCode.SCHEDULE_HINT_INVALID for d in diag2)
+
+    # Unsupported dtype hints
+    diag3 = validate_schedule_params(ScheduleParams(dtype_hints={"x": "float32"}))
+    assert any(d.code is DiagnosticCode.SCHEDULE_HINT_INVALID for d in diag3)
+
+    # Unsupported layout hints
+    diag4 = validate_schedule_params(ScheduleParams(layout_hints={"x": "row_major"}))
+    assert any(d.code is DiagnosticCode.SCHEDULE_HINT_INVALID for d in diag4)
+
+
+def test_stage_count_3_is_rejected_as_invalid_hint() -> None:
+    diag = validate_schedule_params(ScheduleParams(stage_count=3))
+    assert any(d.code is DiagnosticCode.SCHEDULE_HINT_INVALID for d in diag)
+    assert any("stage_count=3" in d.message for d in diag)
+
+
+def test_base_v1_does_not_report_launch_parameters_that_it_ignores() -> None:
+    compiler = UrmCompiler()
+    result = compiler.compile_candidate(_program(), BASE_CANDIDATE_ID)
+    assert result.schedule_decision is None
+    for step in result.plan.steps:
+        if step.anchor == "routed_reduction_v1":
+            assert step.launch_config is None
+
+
+def test_capability_registry_fails_closed_for_unknown_rewrite_bindings() -> None:
+    from urm.compiler.kernel_plan import plan_kinds_for_candidate
+    from urm.compiler.planner import CompilationCandidate
+
+    dummy = CompilationCandidate(
+        candidate_id="rewrite:dummy_unknown@op",
+        kind="rewrite",
+        rule="dummy_unknown_rule",
+    )
+    with pytest.raises(ValueError, match="unregistered rewrite rule"):
+        plan_kinds_for_candidate(dummy)
+
+
 def test_constraint_models_are_backend_independent() -> None:
     """No raw solver expressions may appear in the model summary."""
     compiler = UrmCompiler()
-    model = compiler.build_constraints(_program(), BASE_CANDIDATE_ID)
+    model = compiler.build_constraints(_program(), FUSED_ID)
     import json
 
     text = json.dumps(model.to_summary())

@@ -153,3 +153,79 @@ def test_all_backward_gradients_match_eager_reference() -> None:
     for got, ref in ((w.grad, w_ref.grad), (v.grad, v_ref.grad), (r.grad, r_ref.grad)):
         assert got is not None and torch.isfinite(got).all()
         torch.testing.assert_close(got.float(), ref.float(), **BACKWARD_TOL)
+
+
+@pytest.mark.parametrize(
+    "decomp,sched",
+    [
+        ("per_query", "segmented"),
+        ("per_query", "full_row"),
+        ("per_route", "segmented"),
+    ],
+)
+def test_all_backward_decompositions_match_eager_reference(
+    decomp: str, sched: str
+) -> None:
+    config = RoutedEpilogueLaunchConfig(
+        block_d=32,
+        num_warps=2,
+        num_stages=1,
+        grad_values_decomposition=decomp,
+        grad_values_schedule=sched,
+    )
+    indices, weights, values, scale = _sample(seed=17)
+    w = weights.clone().requires_grad_(True)
+    v = values.clone().requires_grad_(True)
+    r = scale.clone().requires_grad_(True)
+
+    output = routed_reduce_row_scale(indices, w, v, r, config=config)
+    generator = torch.Generator(device="cuda").manual_seed(77)
+    grad = torch.randn(
+        output.shape, device="cuda", dtype=torch.float32, generator=generator
+    )
+    output.backward(grad)
+
+    w_ref = weights.clone().requires_grad_(True)
+    v_ref = values.clone().requires_grad_(True)
+    r_ref = scale.clone().requires_grad_(True)
+    _reference(indices, w_ref, v_ref, r_ref).backward(grad)
+
+    for got, ref in ((w.grad, w_ref.grad), (v.grad, v_ref.grad), (r.grad, r_ref.grad)):
+        assert got is not None and torch.isfinite(got).all()
+        torch.testing.assert_close(got.float(), ref.float(), **BACKWARD_TOL)
+
+
+def test_base_schedules_probe_base_anchor() -> None:
+    from urm.compiler.schedule_space import SchedulePoint
+    from urm.compiler.search import CompileContext
+
+    probe = make_triton_compile_probe(
+        queries=4, route_width=2, sources=8, value_dim=32, dtype_name="bfloat16"
+    )
+    dummy_point = SchedulePoint(
+        plan="base",
+        block_d=32,
+        num_warps=2,
+        num_stages=1,
+        grad_values_decomposition="per_query",
+        grad_values_schedule="segmented",
+        dtype="bfloat16",
+    )
+    context = CompileContext(
+        anchor_name="routed_reduction_v1",
+        plan="base",
+        intent="inference",
+        queries=4,
+        sources=8,
+        route_width=2,
+        value_dim=32,
+        dtype="bfloat16",
+        block_d=32,
+        num_warps=2,
+        num_stages=1,
+        grad_values_decomposition="per_query",
+        grad_values_schedule="segmented",
+        schedule_point=dummy_point,
+    )
+    res = probe(context)
+    assert res.ok

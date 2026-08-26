@@ -205,11 +205,21 @@ def shared_memory_estimate(point: SchedulePoint, value_dim: int, dtype: str) -> 
 
 def is_legal(point: SchedulePoint, problem: ScheduleProblem) -> bool:
     """Imperative legality filter - the reference implementation."""
-    if point.plan not in {p.value for p in PlanKind}:
+    # Base v1 is unscheduled (uses its internal launch heuristic). Only the
+    # fused epilogue anchor participates in configurable schedule search.
+    if point.plan != PlanKind.FUSED.value:
         return False
     if point.block_d not in SUPPORTED_BLOCKS or point.num_warps not in SUPPORTED_WARPS:
         return False
     if point.num_stages not in SUPPORTED_STAGES:
+        return False
+    # Grad values decomposition/schedule compatibility:
+    # per_route is segmented across programs by construction and does not
+    # support full_row traversal.
+    if (
+        point.grad_values_decomposition == GradValuesDecomposition.PER_ROUTE.value
+        and point.grad_values_schedule == GradValuesSchedule.FULL_ROW.value
+    ):
         return False
     # Tile/vector compatibility: BLOCK_D covers whole 32-lane warp tiles.
     if point.block_d % min(32, point.num_warps * 32) != 0:
@@ -230,12 +240,9 @@ def is_legal(point: SchedulePoint, problem: ScheduleProblem) -> bool:
         return False
     # Backward completeness per plan under training
     if problem.training:
-        if point.plan == PlanKind.FUSED.value:
-            if not problem.fused_anchor_available:
-                return False
-            if point.dtype not in problem.fused_backward_dtypes:
-                return False
-        elif point.dtype not in problem.base_backward_dtypes:
+        if not problem.fused_anchor_available:
+            return False
+        if point.dtype not in problem.fused_backward_dtypes:
             return False
     # Deterministic mode: forward kernels are sequential per program and
     # deterministic, but EVERY implemented grad-value lowering (per-query,
@@ -287,9 +294,7 @@ def heuristic_schedule(problem: ScheduleProblem) -> SchedulePoint:
     query-count rule, and grads use per-query decomposition with segmented D.
     """
     block = min(256, max(32, 2 ** math.ceil(math.log2(max(1, problem.value_dim)))))
-    plan = (
-        PlanKind.FUSED.value if problem.fused_anchor_available else PlanKind.BASE.value
-    )
+    plan = PlanKind.FUSED.value
     dtype = next(
         (d for d in ("bfloat16", "float16", "float32") if d in problem.dtypes),
         problem.dtypes[0],

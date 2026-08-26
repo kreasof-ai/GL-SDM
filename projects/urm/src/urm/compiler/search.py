@@ -39,6 +39,26 @@ class CompileStatus(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class KernelResourceUsage:
+    """Register and shared-memory resource facts for one compiled Triton kernel."""
+
+    kernel_name: str
+    registers_per_thread: int | None = None
+    shared_mem_bytes: int | None = None
+    spill_bytes: int | None = None
+    unavailable_reason: str | None = None
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "kernel_name": self.kernel_name,
+            "registers_per_thread": self.registers_per_thread,
+            "shared_mem_bytes": self.shared_mem_bytes,
+            "spill_bytes": self.spill_bytes,
+            "unavailable_reason": self.unavailable_reason,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class CompileProbeResult:
     """Outcome of probing one exact launch configuration."""
 
@@ -46,17 +66,59 @@ class CompileProbeResult:
     reason: str | None = None
     registers_per_thread: int | None = None
     shared_mem_bytes: int | None = None
+    kernel_resources: dict[str, KernelResourceUsage] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CompileContext:
+    """Exact target specialization and launch facts passed to a compile probe."""
+
+    anchor_name: str
+    plan: str
+    intent: str
+    queries: int
+    sources: int
+    route_width: int
+    value_dim: int
+    dtype: str
+    block_d: int
+    num_warps: int
+    num_stages: int
+    grad_values_decomposition: str
+    grad_values_schedule: str
+    schedule_point: SchedulePoint
+    accumulation_dtype: str = "float32"
+    fused_inputs: tuple[str, ...] = ("row_scale",)
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "anchor_name": self.anchor_name,
+            "plan": self.plan,
+            "intent": self.intent,
+            "queries": self.queries,
+            "sources": self.sources,
+            "route_width": self.route_width,
+            "value_dim": self.value_dim,
+            "dtype": self.dtype,
+            "block_d": self.block_d,
+            "num_warps": self.num_warps,
+            "num_stages": self.num_stages,
+            "grad_values_decomposition": self.grad_values_decomposition,
+            "grad_values_schedule": self.grad_values_schedule,
+            "accumulation_dtype": self.accumulation_dtype,
+            "fused_inputs": list(self.fused_inputs),
+        }
 
 
 class CompileProbe(Protocol):
     """A backend-specific compile/launch probe over concrete configurations.
 
-    Implementations (e.g. a warm Triton launch on tiny inputs) are injected
-    by GPU-capable callers; CPU-only compilation omits the probe and records
-    :attr:`CompileStatus.NOT_PROBED` - never a claimed success.
+    Implementations (e.g. a warm Triton launch on representative inputs) are
+    injected by GPU-capable callers; CPU-only compilation omits the probe and
+    records :attr:`CompileStatus.NOT_PROBED` - never a claimed success.
     """
 
-    def __call__(self, point: SchedulePoint) -> CompileProbeResult: ...
+    def __call__(self, context: CompileContext) -> CompileProbeResult: ...
 
 
 # -- Attempts and decisions ------------------------------------------------------
@@ -77,6 +139,9 @@ class ScheduleAttempt:
     nogood_forbidden: dict[str, bool | int | str] | None = None
     compile_status: CompileStatus = CompileStatus.NOT_PROBED
     compile_detail: str | None = None
+    registers_per_thread: int | None = None
+    shared_mem_bytes: int | None = None
+    kernel_resources: dict[str, dict[str, object]] | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -92,6 +157,11 @@ class ScheduleAttempt:
             ),
             "compile_status": self.compile_status.value,
             "compile_detail": self.compile_detail,
+            "registers_per_thread": self.registers_per_thread,
+            "shared_mem_bytes": self.shared_mem_bytes,
+            "kernel_resources": (
+                dict(self.kernel_resources) if self.kernel_resources else None
+            ),
         }
 
 
@@ -114,6 +184,9 @@ class ScheduleDecision:
     nogoods_added: int = 0
     recoveries: int = 0
     retry_budget_exhausted: bool = False
+    registers_per_thread: int | None = None
+    shared_mem_bytes: int | None = None
+    kernel_resources: dict[str, dict[str, object]] | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -132,6 +205,11 @@ class ScheduleDecision:
             "nogoods_added": self.nogoods_added,
             "recoveries": self.recoveries,
             "retry_budget_exhausted": self.retry_budget_exhausted,
+            "registers_per_thread": self.registers_per_thread,
+            "shared_mem_bytes": self.shared_mem_bytes,
+            "kernel_resources": (
+                dict(self.kernel_resources) if self.kernel_resources else None
+            ),
         }
 
 
@@ -311,9 +389,44 @@ class CompilationSearch:
 
             status = CompileStatus.NOT_PROBED
             detail = None
+            regs = None
+            smem = None
+            kres = None
             if self.probe is not None:
-                result = self.probe(point)
+                context = CompileContext(
+                    anchor_name=self.model.metadata.get(
+                        "anchor_name", "routed_reduction_row_scale_epilogue_v0"
+                    ),
+                    plan=point.plan,
+                    intent=self.model.metadata.get("intent", "inference"),
+                    queries=int(self.model.metadata.get("queries", "1024")),
+                    sources=int(self.model.metadata.get("sources", "512")),
+                    route_width=int(self.model.metadata.get("route_width", "8")),
+                    value_dim=int(self.model.metadata.get("value_dim", "1024")),
+                    dtype=point.dtype,
+                    block_d=point.block_d,
+                    num_warps=point.num_warps,
+                    num_stages=point.num_stages,
+                    grad_values_decomposition=point.grad_values_decomposition,
+                    grad_values_schedule=point.grad_values_schedule,
+                    schedule_point=point,
+                    fused_inputs=("row_scale",) if point.plan == "fused" else (),
+                )
+                try:
+                    result = self.probe(context)
+                except TypeError:
+                    result = self.probe(point)
                 detail = result.reason
+                regs = result.registers_per_thread
+                smem = result.shared_mem_bytes
+                kres = (
+                    {
+                        k: v.to_dict() if hasattr(v, "to_dict") else dict(v)
+                        for k, v in result.kernel_resources.items()
+                    }
+                    if result.kernel_resources
+                    else None
+                )
                 if result.ok:
                     status = CompileStatus.SUCCEEDED
                 else:
@@ -337,6 +450,9 @@ class CompilationSearch:
                             nogood_forbidden=forbidden,
                             compile_status=CompileStatus.FAILED,
                             compile_detail=detail,
+                            registers_per_thread=regs,
+                            shared_mem_bytes=smem,
+                            kernel_resources=kres,
                         )
                     )
                     if added is None:
@@ -355,6 +471,9 @@ class CompilationSearch:
                     verified=True,
                     compile_status=status,
                     compile_detail=detail,
+                    registers_per_thread=regs,
+                    shared_mem_bytes=smem,
+                    kernel_resources=kres,
                 )
             )
             return ScheduleDecision(
@@ -373,6 +492,9 @@ class CompilationSearch:
                 nogoods_added=nogood_count(self.model),
                 recoveries=recoveries,
                 retry_budget_exhausted=budget_exhausted,
+                registers_per_thread=regs,
+                shared_mem_bytes=smem,
+                kernel_resources=kres,
             )
 
         # Reached only when the retry budget was exhausted.
@@ -405,9 +527,11 @@ def _no_schedule_error(diagnostics) -> CompilerError:
 
 __all__ = [
     "CompilationSearch",
+    "CompileContext",
     "CompileProbe",
     "CompileProbeResult",
     "CompileStatus",
+    "KernelResourceUsage",
     "ScheduleAttempt",
     "ScheduleDecision",
     "launch_config_of",

@@ -139,25 +139,20 @@ def test_zero_row_scale_yields_exact_zeros() -> None:
 
 
 def test_carried_state_semantics_via_chained_calls() -> None:
-    """Chaining two fused calls equals fusing the concatenated route."""
+    """Chaining two fused calls with shared state equals fusing the concatenated route."""
     q, k, s, d = 12, 3, 32, 40
-    i1, w1, v1, r1 = _sample(q=q, k=k, s=s, d=d, seed=31)
-    i2, w2, v2, r2 = _sample(q=q, k=k, s=s, d=d, seed=33)
-    chained = routed_reduce_row_scale(i1, w1, v1, r1) + routed_reduce_row_scale(
-        i2, w2, v2, r2
+    i1, w1, v, r = _sample(q=q, k=k, s=s, d=d, seed=31)
+    i2, w2, _, _ = _sample(q=q, k=k, s=s, d=d, seed=33)
+    chained = routed_reduce_row_scale(i1, w1, v, r) + routed_reduce_row_scale(
+        i2, w2, v, r
     )
-    combined = routed_reduce_row_scale(
-        i1,
-        torch.cat([w1, w2], dim=1),
-        v1,
-        torch.ones_like(r1),
-    ) + routed_reduce_row_scale(i2, torch.zeros_like(w2), v2, torch.zeros_like(r2))
-    del combined
+    i_concat = torch.cat([i1, i2], dim=1)
+    w_concat = torch.cat([w1, w2], dim=1)
+    concatenated = routed_reduce_row_scale(i_concat, w_concat, v, r)
+    expected = _reference(i_concat, w_concat, v, r)
+    torch.testing.assert_close(concatenated.float(), expected, atol=3e-2, rtol=2e-2)
     torch.testing.assert_close(
-        chained.float(),
-        (_reference(i1, w1, v1, r1) + _reference(i2, w2, v2, r2)),
-        atol=3e-2,
-        rtol=2e-2,
+        chained.float(), concatenated.float(), atol=3e-2, rtol=2e-2
     )
 
 
