@@ -9,8 +9,9 @@ lowering to competitive specialized kernels.
 
 ## Current milestone
 
-Milestone zero establishes semantics and benchmark discipline before GPU kernel
-work:
+Milestone zero (semantics, oracle, benchmark discipline) is complete and
+validated on an NVIDIA A10G CUDA host. The routed-reduction Triton backend is
+optimized, profiled, and compared against a pinned production kernel:
 
 - a typed `MixerSpec` contract;
 - a dependency-light NumPy correctness oracle;
@@ -18,13 +19,16 @@ work:
 - canonical specs for attention, MoE, parameter-token, recurrence, and GL-SDM;
 - compositional detail specs for advanced MoE, recurrent, and learned
   sparse-attention flavors;
-- an explicit baseline matrix and benchmark shape grid.
+- an explicit baseline matrix and benchmark shape grid;
+- a validated Triton routed-reduction backend (forward 2.6-3.0x and backward
+  1.2-1.6x faster than the transparent PyTorch baseline across committed
+  cases), with roofline profiling, measured device-limit denominators, and a
+  four-level dense-causal-attention comparator whose URM dispatch overhead is
+  within 0.5% median of direct upstream calls on steady-state shapes.
 
-The first Triton vertical slice is now scaffolded: a frozen routed-reduction
-tensor contract, transparent PyTorch baseline, lazy Triton forward/backward
-backend, capability checks, GPU tests, environment preflight, and reproducible
-benchmark output. GPU execution still requires validation on a supported Linux
-CUDA host; see [Triton backend preparation](docs/triton-backend.md).
+See [Triton backend preparation](docs/triton-backend.md),
+[the optimization and profiling report](docs/triton-optimization-report.md),
+and `benchmarks/validated-environment.json` for exact versions.
 
 Linear recurrence is represented but deliberately not executed by the generic
 oracle: ordered scan semantics require a dedicated lowering.
@@ -48,23 +52,39 @@ appropriate optional dependencies.
 ```text
 projects/urm/
 |-- benchmarks/
-|   |-- cases.toml             # canonical shape and trace grid
-|   |-- routed_reduce.py       # CUDA-event PyTorch/Triton comparison
-|   |-- triton_preflight.py    # environment and GPU readiness report
-|   `-- reference_smoke.py     # dependency-light harness smoke test
+|   |-- cases.toml               # canonical shape and trace grid
+|   |-- routed_reduce.py         # CUDA-event PyTorch/Triton comparison
+|   |-- compare_results.py       # constraint checker (median/p95/memory gates)
+|   |-- measure_device_limits.py # measured HBM bandwidth and compute peaks
+|   |-- profile_roofline.py      # MFU/MBU and per-kernel roofline profiling
+|   |-- dense_attention.py       # four-level dense causal attention comparator
+|   |-- result-schema.json       # benchmark result schema (+ optional profiling)
+|   |-- profiling-schema.json    # roofline artifact schema
+|   |-- attention-result-schema.json  # attention comparator schema
+|   |-- validated-environment.json    # exact validated dependency versions
+|   |-- triton_preflight.py      # environment and GPU readiness report
+|   `-- reference_smoke.py       # dependency-light harness smoke test
 |-- docs/
-|   |-- architecture.md        # target contract and non-goals
-|   |-- baselines.md           # comparator catalog and scope rules
-|   `-- benchmarking.md        # correctness, measurement, and acceptance gates
+|   |-- architecture.md          # target contract and non-goals
+|   |-- baselines.md             # comparator catalog and scope rules
+|   |-- benchmarking.md          # correctness, measurement, and acceptance gates
+|   |-- triton-backend.md        # routed-reduction v1 contract and workflows
+|   `-- triton-optimization-report.md # optimization, profiling, comparator report
+|-- results/
+|   |-- baseline/ ... final/     # before/after benchmark matrices per change
+|   |-- profiling/               # committed roofline summaries
+|   |-- device-limits.json       # measured bandwidth / FP32 / BF16 peaks
+|   `-- attention/               # dense causal attention comparison artifacts
 |-- src/urm/
-|   |-- backend.py             # explicit backend protocol and registry
-|   |-- backends/              # reference and future optimized adapters
-|   |-- ir.py                  # restricted typed operator contract
-|   |-- presets.py             # canonical semantic-family specifications
-|   |-- routed_reduction.py    # frozen v1 tensor/capability contract
-|   |-- triton_kernels/        # lazy GPU kernels and autograd wrappers
-|   `-- reference.py           # slow NumPy oracle and transactional merge
-`-- tests/                     # contract and oracle tests
+|   |-- backend.py               # explicit backend protocol and registry
+|   |-- adapters/                # pinned upstream adapters (dense attention)
+|   |-- backends/                # reference and optimized routed-reduction backends
+|   |-- ir.py                    # restricted typed operator contract
+|   |-- presets.py               # canonical semantic-family specifications
+|   |-- routed_reduction.py      # frozen v1 tensor/capability contract
+|   |-- triton_kernels/          # lazy GPU kernels and autograd wrappers
+|   `-- reference.py             # slow NumPy oracle and transactional merge
+`-- tests/                       # contract, oracle, adapter, and schema tests
 ```
 
 ## Baseline strategy
@@ -87,16 +107,20 @@ model.
 
 ## Phased execution
 
-### Phase 0 - contract and oracle (current)
+### Phase 0 - contract and oracle (complete)
 
 - Freeze v0 routing, normalization, mutation, residency, and collision enums.
 - Validate dense/masked reduction, stable top-k routing, and transactional merge.
 - Make result metadata and benchmark cases reproducible.
 - Validate the routed-reduction Triton backend on the target Linux CUDA host.
+- Optimize it under the frozen contract and profile the result
+  ([report](docs/triton-optimization-report.md)).
 
-### Phase 1 - framework baselines
+### Phase 1 - framework baselines (in progress)
 
-- Add PyTorch SDPA math and flash-dispatch adapters.
+- Add PyTorch SDPA math and flash-dispatch adapters (dense causal attention is
+  done via `src/urm/adapters` and `benchmarks/dense_attention.py`; the URM
+  dispatch overhead gate of 5% median is met with <=0.5% measured).
 - Add a transparent top-k MoE and sparse-memory gather/scatter baseline.
 - Capture correctness, route, and memory-traffic metadata in one result schema.
 

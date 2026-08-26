@@ -62,6 +62,13 @@ The preflight command reports exact Python, PyTorch, Triton, CUDA, GPU, compute
 capability, and memory information. It exits non-zero with `--require-ready` if
 the backend cannot run.
 
+The validated stack is recorded in `benchmarks/validated-environment.json`
+(A10G, PyTorch 2.8.0+cu129, Triton 3.4.0). The `gpu` extra deliberately pins
+`triton>=3.4,<3.5`: the steady-state launch fast path uses Triton 3.4 internals
+and capability-gates them at runtime, falling back to the standard launcher
+(verified bitwise-identical) on any other version. Ruff is pinned in the `dev`
+extra so lint/format results are reproducible.
+
 CPU-only development remains supported. Triton modules are imported lazily, so
 IR, contract, and NumPy tests do not require GPU dependencies.
 
@@ -120,6 +127,34 @@ Index validation reads min/max back to the host and therefore synchronizes.
 Normal API calls enable it for safety; the benchmark disables it after inputs
 are generated from a trusted in-range source.
 
+## Profiling and comparison workflow
+
+After optimization work (see
+[the optimization report](triton-optimization-report.md) for findings):
+
+```bash
+# Measured denominators: sustainable HBM bandwidth, FP32 CUDA-core peak,
+# BF16 tensor-core peak. Never use vendor marketing numbers as MFU/MBU bases.
+PYTHONPATH=src python benchmarks/measure_device_limits.py \
+  --output results/device-limits.json
+
+# Roofline profile of the complete committed case matrix (forward and backward):
+# wall vs GPU kernel time vs host dispatch, MFU against the measured FP32
+# CUDA-core peak, static traffic bounds with MBU labeled static_estimate,
+# route statistics, atomic contention indicator, per-kernel breakdown.
+# Counter-derived fields are explicit not_available when Nsight Compute
+# lacks permissions on the host; nothing is fabricated.
+PYTHONPATH=src python benchmarks/profile_roofline.py --case all --mode both
+
+# Compare two result directories under correctness/p95/memory constraints:
+python benchmarks/compare_results.py results/baseline results/final
+```
+
+The first production comparator is dense causal attention at four levels
+(oracle, SDPA math, pinned FlashAttention upstream direct, and the same call
+behind a URM adapter); see `benchmarks/dense_attention.py` and
+`results/attention/dense-causal.json`.
+
 ## Acceptance gate before optimization
 
 1. GPU forward tests pass for every supported dtype and committed shape class.
@@ -130,8 +165,14 @@ are generated from a trusted in-range source.
 6. Performance comparisons use identical input layouts, dtypes, accumulation,
    and index distributions.
 
-Only after these gates should launch autotuning, persistent scheduling, route
-grouping, value-cache reuse, or fused score/Top-k work begin.
+These gates were passed and the first optimization campaign completed on
+A10G; the full history of accepted and rejected candidates, roofline findings,
+and remaining bottlenecks is in
+[the optimization report](triton-optimization-report.md). Any future kernel
+change must re-run the same gates plus the roofline matrix, and retain
+before/after JSON under `results/`. A deterministic (sorted/segmented) backward
+remains a separate future capability: it must not silently replace the atomic
+path.
 
 ## Planned follow-on lowerings
 

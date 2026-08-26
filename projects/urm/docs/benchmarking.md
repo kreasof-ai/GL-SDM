@@ -68,6 +68,34 @@ PyTorch and Triton implementations from identical precomputed routes, captures
 cold compilation separately, and emits JSON conforming to
 `benchmarks/result-schema.json`.
 
+## Profiling entrypoints
+
+- `benchmarks/measure_device_limits.py`: measures the denominators used by all
+  utilization numbers on the same device and software stack - sustainable HBM
+  bandwidth (best of copy/fill/read kernels), FP32 CUDA-core peak (TF32-off
+  SGEMM), and BF16 tensor-core peak. Vendor datasheet figures are stored as
+  reference only and never serve as MFU/MBU denominators.
+- `benchmarks/profile_roofline.py`: per committed case and mode it reports
+  wall time, aggregate GPU kernel time with a per-kernel breakdown, host
+  dispatch share, useful algorithmic TFLOP/s (documented FLOP model, not
+  instruction counts), FP32 CUDA-core MFU for routed reduction (tensor-core
+  peaks are prohibited there because those kernels do not use MMA), static
+  analytic traffic bounds clearly separated from measured counters, MBU of the
+  static bound against measured bandwidth, route statistics, an atomic
+  contention indicator, registers per thread, theoretical occupancy, and
+  eligibility flags that mark host-bound small cases as ineligible for
+  normalized utilization. Nsight Compute fields are emitted as explicit
+  `not_available` records when counter permissions are missing.
+- `benchmarks/compare_results.py`: constraint checker comparing two result
+  directories - correctness within committed tolerances, triton p95 within a
+  calibrated allowance (3% base, torch-drift + 2%, or a 15% floor for
+  host-bound sub-millisecond cases), and peak memory within +2% or 1 MiB.
+- `benchmarks/dense_attention.py`: four-level dense causal attention
+  comparison (semantic oracle, SDPA math, pinned FlashAttention upstream
+  direct, and the same call behind the URM adapter) over the committed
+  attention shape grid. Unsupported configurations are recorded as
+  `not_applicable` with a reason, never as zero performance.
+
 ## Working milestone targets
 
 These are engineering gates, not paper claims:
