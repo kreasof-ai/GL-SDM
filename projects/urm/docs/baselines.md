@@ -6,19 +6,19 @@ result rather than treated as permanent defaults.
 
 ## Coverage matrix
 
-| Family | Semantic oracle | Framework baseline | Optimized baseline | URM target | Phase |
+| Family | Semantic oracle | Framework baseline | Optimized baseline | URM target | Current status |
 | --- | --- | --- | --- | --- | --- |
-| Dense causal attention | NumPy dense softmax-reduce | PyTorch SDPA math backend | PyTorch SDPA flash backend and FlashAttention | Dense sequence lowering | 1 |
-| Block/local/sparse attention | NumPy masked softmax-reduce | PyTorch FlexAttention | FlexAttention compiled block-sparse backend | Block-sparse sequence lowering | 2 |
-| Linear attention | Explicit recurrent/chunk reference | PyTorch eager recurrence | Flash Linear Attention (pinned 0.5.2 gated delta-rule comparator landed; see docs/fla-gated-delta-rule.md) | Recurrent lowering | 2 |
-| Selective SSM | Explicit scan reference | PyTorch eager scan | Mamba selective scan | Recurrent lowering | 2 |
-| Top-k MoE | NumPy stable top-k gate | PyTorch per-expert eager | MegaBlocks; SonicMoE on supported hardware | Expert grouped-GEMM lowering | 1-2 |
-| Advanced MoE routing | Per-family routing/dispatch oracle | PyTorch explicit dispatch | Original model implementation plus grouped-GEMM backend | Typed score/select/balance lowering | 2 |
-| Parameter-token mixer | NumPy dense/top-k reduce | PyTorch SDPA formulation | Attention-compatible fused path | Parameter-block lowering | 2 |
-| Sparse Delta Memory | NumPy top-k gather-reduce | PyTorch `topk` + gather | Original SDM Triton/CUDA kernels | HBM memory-page lowering | 1-2 |
-| Transactional GL-SDM write | NumPy sort/merge/commit | PyTorch sort + segment reduction | Original SDM sparse update plus URM transaction wrapper | Buffered transactional lowering | 1-3 |
-| Learned token sparse attention | Dense attention plus selected-index trace | PyTorch gather + SDPA | DeepSeek FlashMLA / DeepGEMM | Token-index lowering | 2 |
-| Learned block sparse attention | Dense attention plus selected-block trace | PyTorch block gather + SDPA | MiniMax MSA kernels | GQA-group block lowering | 2 |
+| Dense causal attention | NumPy dense softmax-reduce | PyTorch SDPA math backend | PyTorch SDPA flash backend and FlashAttention | Dense sequence lowering | Validated four-level comparator |
+| Block/local/sparse attention | NumPy masked softmax-reduce | PyTorch FlexAttention | FlexAttention compiled block-sparse backend | Block-sparse sequence lowering | Deferred expansion slice |
+| Linear attention | Explicit recurrent/chunk reference | PyTorch eager recurrence | Flash Linear Attention (pinned 0.5.2 gated delta-rule comparator landed; see docs/fla-gated-delta-rule.md) | Recurrent lowering | Validated gated-delta-rule comparator; native lowering deferred |
+| Selective SSM | Explicit scan reference | PyTorch eager scan | Mamba selective scan | Recurrent lowering | Deferred expansion slice |
+| Top-k MoE | NumPy stable top-k gate | PyTorch per-expert eager | MegaBlocks; SonicMoE on supported hardware | Expert grouped-GEMM lowering | Semantics represented; family adapter deferred |
+| Advanced MoE routing | Per-family routing/dispatch oracle | PyTorch explicit dispatch | Original model implementation plus grouped-GEMM backend | Typed score/select/balance lowering | Detail specs represented; family adapters deferred |
+| Parameter-token mixer | NumPy dense/top-k reduce | PyTorch SDPA formulation | Attention-compatible fused path | Parameter-block lowering | Semantics represented; comparator deferred |
+| Sparse Delta Memory | NumPy top-k gather-reduce | PyTorch `topk` + gather | Original SDM Triton/CUDA kernels | HBM memory-page lowering | Semantics represented; external adapter deferred |
+| Transactional GL-SDM write | NumPy sort/merge/commit | PyTorch sort + segment reduction | Original SDM sparse update plus URM transaction wrapper | Buffered transactional lowering | Oracle/contract present; optimized path deferred |
+| Learned token sparse attention | Dense attention plus selected-index trace | PyTorch gather + SDPA | DeepSeek FlashMLA / DeepGEMM | Token-index lowering | Detail spec represented; comparator deferred |
+| Learned block sparse attention | Dense attention plus selected-block trace | PyTorch block gather + SDPA | MiniMax MSA kernels | GQA-group block lowering | Detail spec represented; comparator deferred |
 
 ## Upstream references
 

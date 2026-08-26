@@ -136,7 +136,7 @@ scale `1/sqrt(head_dim)`, dropout disabled, bf16):
 
 Plus SDPA-flash and its adapter variant as a second optimized pair.
 
-### Methodology correction (this iteration)
+### Methodology correction retained in the final artifact
 
 The first committed comparator cloned Q/K/V inside every timed iteration and
 derived adapter overhead from two independent median timings. Both choices
@@ -298,10 +298,10 @@ the previously shipped `results/final` directory with `compare_results.py`:
    forward-only), so recurrent training cost is measured on the chunk path
    only.
 
-## Next recommendation
+## Deferred family-expansion recommendation
 
 With dense attention and gated delta-rule recurrence both covered at four
-levels with measured adapter overhead, the next family per docs/baselines.md
+levels with measured adapter overhead, the next family when expansion resumes
 is sparse memory: an external adapter to the original Sparse Delta Memory
 Triton/CUDA implementation (pinned revision, outputs and address traces as
 the baseline), followed by GL-SDM page-local gather/merge. A native URM
@@ -311,15 +311,22 @@ dispatch cost matters before then, batching decode steps behind one adapter
 call removes most of the measured ~12-13 us/token integration cost without
 any new kernel.
 
-## Addendum - compiler architecture iteration
+## Addendum - compiler architecture and schedule-confirmation closure
 
-A follow-on iteration (see git history after this file's last result update)
-established the compiler layer those next steps plug into:
+The now-closed compiler-validation tranche established the compiler layer that
+future family slices plug into:
 docs/compiler-charter.md, docs/coda-retrospective.md, the verified rewrite
 system under `src/urm/compiler/`, the routed-reduction row-scale epilogue
 prototype (`results/compiler/routed-scale-epilogue/`), the simulated
 communication planner, and the preset compilation matrix
-(`results/compiler/compilation-matrix.json`). Headline attention numbers were
+(`results/compiler/compilation-matrix.json`). Schedule integration is closed by
+the solver-guided selection artifact, explicitly exploratory fresh-process
+stability artifact, and canonical paired confirmation artifact under
+`results/compiler/solver/`. The confirmation run retains raw paired blocks and
+child provenance, confirms three of eight shortlisted schedules under the 2.5%
+upper-bound rule, selects the `block_d=128/num_warps=4/num_stages=1` segmented
+per-query schedule, and excludes the solver-selected schedule whose confidence
+upper bound is 6.42%. Headline attention numbers were
 re-derived from the committed artifact during the same pass: worst
 steady-state FA-direct paired median is **+2.32%** and the worst bootstrap-CI
 upper bound is **+4.53%** (`tests/test_artifact_schemas.py` pins docs to

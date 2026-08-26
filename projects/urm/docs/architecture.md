@@ -7,9 +7,9 @@ routing skeleton of several mixer families while preserving specialized
 lowerings. It is a compiler and kernel research boundary, not a claim that all
 mixers have identical mathematics.
 
-As of this iteration URM is explicitly a **semantic-to-execution compiler for
-routed sequence models** (see the [compiler charter](compiler-charter.md) and
-the [CODA retrospective](coda-retrospective.md)); optimized kernels are its
+URM is explicitly a **semantic-to-execution compiler for routed sequence
+models** (see the [compiler charter](compiler-charter.md) and the
+[CODA retrospective](coda-retrospective.md)); optimized kernels are its
 lowering targets, not its definition.
 
 The fixed skeleton is:
@@ -138,7 +138,7 @@ URM reports five coverage axes separately; conflating them hides real gaps.
 | --- | --- |
 | Semantic coverage | Dense/block-sparse/top-k/threshold/product-key routes over sequence/expert/parameter-block/recurrent-state/memory-page domains; ordered recurrence represented as a typed barrier op; transactional commits with version boundaries; collective intent (`all_reduce`, `all_to_all`, ...) as first-class effects |
 | Compiler/reparameterization coverage | Two verified rules: routed-reduction row-scale epilogue folding (backward certified for fp32/fp16/bf16 via tile recomputation) and delayed row scaling through linear maps (floating-point equivalence with dtype envelopes); explicit compilation intents; immutable candidate enumeration with stable IDs; deterministic traces; structured rejections (non-row-wise scales, nonlinear intervening transforms, effect barriers, multi-consumer intermediates, training-vs-forward-only conflicts) |
-| Solver-guided decision coverage | Backend-independent constraint IR; optional pinned Z3 (`4.15.3.0`) feasibility + bounded lexicographic optimization passes; UNSAT-core diagnostics for nine representative impossible problems; independent non-Z3 model verification; exhaustive-sweep agreement on bounded spaces; solver-guided epilogue schedule selection and simulated expert/page placement with baselines |
+| Solver-guided decision coverage | Backend-independent constraint IR; optional pinned Z3 (`4.15.3.0`) feasibility + bounded lexicographic optimization passes; UNSAT-core diagnostics for nine representative impossible problems; independent non-Z3 model verification; exhaustive-sweep agreement on bounded spaces; solver-guided epilogue schedule selection, exploratory cross-run stability, paired confirmatory schedule selection, and simulated expert/page placement with baselines |
 | Upstream adapter coverage | FlashAttention 2.8.3 dense causal; FLA 0.5.2 gated delta-rule (prefill + decode) |
 | Native backend coverage | One Triton lowering family: routed-reduction v1 forward/backward; plus the compiler-generated row-scale epilogue anchor with certified backward and solver-selected launch schedules |
 | Distributed planning coverage | Simulated mesh only: typed route protocols (pull gather vs push dispatch+return) with conservation/return/collision/capacity contracts; deterministic executable plans with grouped exchanges, byte estimates, send/receive counts, commit steps; solver-guided placement prototype; no multi-device host validation yet |
@@ -167,7 +167,7 @@ indices. Its tensor contract, PyTorch baseline, Triton forward/backward kernels,
 capability checks, and benchmark harness are described in
 [Triton backend preparation](triton-backend.md).
 
-Subsequent slices are:
+Deferred family-expansion slices are:
 
 1. Dense and masked sequence reduction against the NumPy oracle.
 2. Stable Top-k and threshold route generation.

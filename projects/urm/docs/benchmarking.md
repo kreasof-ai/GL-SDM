@@ -165,6 +165,19 @@ cold compilation separately, and emits JSON conforming to
   and reports legality accuracy, solve time, pruned candidates, and empirical
   regret of the Z3-selected versus heuristic schedules. Emits
   `results/compiler/solver/routed-epilogue-selection.json`.
+- `benchmarks/routed_epilogue_stability.py`: fresh-process discovery diagnostic
+  over the full schedule set. It retains raw samples and operating conditions,
+  reports rank correlation/top-k overlap and bootstrap regret, and emits
+  `results/compiler/solver/routed-epilogue-stability.json`. Its candidate set
+  is exploratory; marginal confidence-interval overlap is never reported as
+  confirmatory equivalence.
+- `benchmarks/routed_epilogue_confirmation.py`: canonical deployment
+  confirmation over a frozen shortlist/reference. It uses randomized paired
+  AB/BA blocks, drift sentinels with fail-closed retry exhaustion,
+  full-precision child evidence, cross-run provenance/configuration checks,
+  and a hierarchical-bootstrap upper slowdown bound. Only schedules whose 95%
+  upper bound is at most the declared 2.5% margin enter the equivalent set.
+  Emits `results/compiler/solver/routed-epilogue-confirmation.json`.
 - `benchmarks/placement_selection.py`: solver-guided expert/page placement on
   simulated 2x2 / 2x4 meshes against capacity, ownership/replication,
   colocation and anti-affinity constraints; lexicographic objectives
@@ -189,9 +202,11 @@ cold compilation separately, and emits JSON conforming to
   or rejected. Numerical differences are recorded by dtype against eager
   references with assert_close semantics.
 
-## Working milestone targets
+## Program-level targets
 
-These are engineering gates, not paper claims:
+These are engineering gates for each family as it enters active scope, not
+claims that every deferred family was completed by the closed
+routed-reduction/compiler-validation tranche:
 
 | Gate | Target |
 | --- | --- |

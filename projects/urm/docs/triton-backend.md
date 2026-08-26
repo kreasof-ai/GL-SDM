@@ -174,7 +174,10 @@ before/after JSON under `results/`. A deterministic (sorted/segmented) backward
 remains a separate future capability: it must not silently replace the atomic
 path.
 
-## Planned follow-on lowerings
+## Deferred follow-on lowerings
+
+These are outside the closed routed-reduction/compiler-validation tranche and
+become active only when the corresponding family slice resumes.
 
 1. Route compaction and stable Top-k/threshold selection.
 2. Route grouping and expert dispatch metadata.

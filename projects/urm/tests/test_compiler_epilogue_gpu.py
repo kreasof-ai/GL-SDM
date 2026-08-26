@@ -1,8 +1,9 @@
 """GPU tests for the experimental fused row-scale routed-reduction anchor.
 
-Proves the CODA-inspired Phase 4 capability: forward equivalence, complete
-backward (weights, values AND row scale), property coverage on degenerate and
-non-power-of-two shapes, repeated routes, zero scales, and dtype envelopes.
+Proves the CODA-inspired compiler-generated capability: forward equivalence,
+complete backward (weights, values AND row scale), property coverage on
+degenerate and non-power-of-two shapes, repeated routes, zero scales, and dtype
+envelopes.
 Routed-reduction v1 remains untouched; these tests exercise only the
 experimental anchor under urm/compiler/anchors/.
 """

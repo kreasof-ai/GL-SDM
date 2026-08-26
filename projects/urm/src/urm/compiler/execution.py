@@ -340,7 +340,7 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
     ExecutionAnchor(
         kind=AnchorKind.ROUTED_REDUCTION,
         name="routed_reduction_row_scale_epilogue_v0",
-        # Compiler-generated fused-epilogue capability (Phase 4 prototype).
+        # Compiler-generated fused-epilogue capability from the validated tranche.
         # Backward covers weights, values AND row scale via tile recomputation;
         # certification evidence lives in the rewrite contract and in
         # tests/test_compiler_epilogue_gpu.py. It becomes fully trusted only

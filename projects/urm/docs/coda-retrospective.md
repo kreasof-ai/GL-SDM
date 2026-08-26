@@ -40,8 +40,8 @@ small vocabulary of verified program fragments anchored at GEMMs.
   Transformer blocks. URM compiles architecture *descriptions* (NAS-facing),
   so its rewrites are registered rules over semantic IR nodes rather than
   hand-matched module patterns.
-- **CuTeDSL/CUDA-specific code generation.** Not required for this iteration's
-  proofs on A10G; generated-kernel capability is demonstrated with Triton
+- **CuTeDSL/CUDA-specific code generation.** Not required for the closed A10G
+  validation tranche; generated-kernel capability is demonstrated with Triton
   (routed-reduction epilogue prototype) instead.
 
 ## Why CODA-inspired rewriting sits below URM's semantic layer
@@ -63,7 +63,7 @@ the scale into the reduction's typed epilogue, the experimental Triton anchor
 executes it, and the artifact records avoided materialization bytes and
 wall/GPU time against the materialized plan.
 
-## Prototype summary (this iteration)
+## Validated compiler slice
 
 - Rule set: `fold_row_scale_into_routed_reduction_epilogue` (floating-point
   equivalence; backward CERTIFIED for fp32/fp16/bf16 via tile recomputation -
@@ -81,3 +81,7 @@ wall/GPU time against the materialized plan.
 - Solver-guided selection of launch schedules for this epilogue:
   `docs/kernel-generation.md` and
   `results/compiler/solver/routed-epilogue-selection.json`.
+- Measurement closure: exploratory stability remains labeled as discovery
+  evidence, while `results/compiler/solver/routed-epilogue-confirmation.json`
+  retains paired raw blocks/provenance and makes the canonical 2.5%-margin
+  deployment decision.

@@ -1,6 +1,6 @@
 # Frozen contract: FLA gated delta-rule (v1)
 
-Pin used by every committed result in this iteration:
+Pin used by every committed v1 comparator result:
 
 | Item | Value |
 | --- | --- |
@@ -95,5 +95,5 @@ Boundary layout is **[B, T, H, K]** for q/k, **[B, T, HV, V]** for v, output
 The adapter performs spec validation, capability selection (prefill vs decode),
 and dispatch to the pinned upstream function. It receives the same
 preallocated tensors as a direct upstream call and executes the same kernel,
-so measured differences are URM integration overhead only. This iteration does
-**not** include a native URM gated-delta Triton kernel.
+so measured differences are URM integration overhead only. The closed v1
+comparator tranche does **not** include a native URM gated-delta Triton kernel.

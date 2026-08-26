@@ -9,9 +9,11 @@ lowering to competitive specialized kernels.
 
 ## Current milestone
 
-Milestone zero (semantics, oracle, benchmark discipline) is complete and
-validated on an NVIDIA A10G CUDA host. The routed-reduction Triton backend is
-optimized, profiled, and compared against a pinned production kernel:
+The first URM implementation and validation campaign is complete and paused at
+a documented phase boundary. Milestone zero (semantics, oracle, benchmark
+discipline), the routed-reduction Triton vertical slice, the first two upstream
+adapter comparisons, and compiler-to-kernel schedule integration have all been
+validated on an NVIDIA A10G CUDA host:
 
 - a typed `MixerSpec` contract;
 - a dependency-light NumPy correctness oracle;
@@ -45,7 +47,22 @@ optimized, profiled, and compared against a pinned production kernel:
   `RoutedEpilogueLaunchConfig` is serialized into the executable plan and
   drives the PRODUCTION Triton anchor launchers (benchmarks call the same
   implementations); the committed selection artifact reports genuine raw-sample
-  medians and p95s with seeded interleaved rounds.
+  medians and p95s with seeded interleaved rounds; and
+- schedule-measurement closure: discovery stability is explicitly exploratory,
+  while `routed_epilogue_confirmation.py` freezes the shortlist and reference,
+  performs randomized paired AB/BA measurements in fresh processes, fails
+  closed on persistent sentinel drift, retains full-precision raw blocks and
+  per-run provenance, and applies a hierarchical-bootstrap upper-bound rule.
+  The committed confirmation artifact classifies 3 of 8 schedules inside the
+  2.5% practical margin, selects the deterministic
+  `block_d=128/num_warps=4/num_stages=1/per_query/segmented` representative,
+  and correctly excludes the solver-selected schedule (6.42% confidence upper
+  bound).
+
+This closes the routed-reduction/compiler-validation tranche. It does **not**
+claim that the deferred MoE, SDM, Mamba, FlexAttention, or distributed-runtime
+adapters and lowerings already exist; those are explicit future expansion
+work, not unfinished work inside the closed tranche.
 
 See [the compiler charter](docs/compiler-charter.md), the
 [CODA retrospective](docs/coda-retrospective.md),
@@ -81,6 +98,8 @@ projects/urm/
 |   |-- epilogue_schedules.py    # SchedulePoint adapter over PRODUCTION kernels
 |   |-- measurement.py           # raw samples, tested percentiles, interleaving
 |   |-- routed_epilogue_selection.py # solver-guided schedule selection (GPU)
+|   |-- routed_epilogue_stability.py # exploratory fresh-process rank stability
+|   |-- routed_epilogue_confirmation.py # paired confirmatory schedule decision
 |   |-- placement_selection.py   # solver-guided simulated mesh placement
 |   |-- unsat_diagnostics.py     # representative impossible problems + cores
 |   |-- compilation_matrix.py    # NAS-facing preset compilation matrix
@@ -95,6 +114,8 @@ projects/urm/
 |   |-- compiler-epilogue-schema.json # fused-epilogue comparison schema
 |   |-- compilation-matrix-schema.json # NAS compilation matrix schema
 |   |-- routed-epilogue-selection-schema.json # schedule selection schema
+|   |-- routed-epilogue-stability-schema.json # exploratory stability schema
+|   |-- routed-epilogue-confirmation-schema.json # paired confirmation schema
 |   |-- placement-selection-schema.json       # placement selection schema
 |   |-- unsat-diagnostics-schema.json         # unsat diagnostics schema
 |   |-- validated-environment.json    # exact validated dependency versions
@@ -117,7 +138,7 @@ projects/urm/
 |   |-- attention/               # dense causal attention comparison artifacts
 |   |-- fla-gated-delta-rule/    # gated delta-rule comparison artifacts
 |   `-- compiler/                # epilogue prototype, compilation matrix,
-|                                #   solver/ selection artifacts
+|                                #   solver selection/stability/confirmation
 |-- src/urm/
 |   |-- backend.py               # explicit backend protocol and registry
 |   |-- adapters/                # pinned upstream adapters (dense attention,
@@ -163,29 +184,32 @@ model.
 - Optimize it under the frozen contract and profile the result
   ([report](docs/triton-optimization-report.md)).
 
-### Phase 1 - framework baselines (in progress)
+### Phase 1 - framework baselines (closed for the validated tranche)
 
-- Add PyTorch SDPA math and flash-dispatch adapters (dense causal attention is
-  done via `src/urm/adapters` and `benchmarks/dense_attention.py`; the URM
+- PyTorch SDPA math and flash-dispatch adapters are complete for dense causal
+  attention via `src/urm/adapters` and `benchmarks/dense_attention.py`; the URM
   dispatch overhead gate of 5% median is met with a +2.32% worst steady-state
   median measured on every
-  steady-state shape under paired interleaved sampling).
-- Add the FLA gated-delta-rule comparator (typed adapter, four levels,
-  prefill + decode; see docs/fla-gated-delta-rule.md) - first recurrence
-  family comparator landed.
-- Add a transparent top-k MoE and sparse-memory gather/scatter baseline.
-- Capture correctness, route, and memory-traffic metadata in one result schema.
+  steady-state shape under paired interleaved sampling.
+- The FLA gated-delta-rule comparator is complete as a typed four-level,
+  prefill-plus-decode comparison; see `docs/fla-gated-delta-rule.md`.
+- Correctness, route, timing, memory, and provenance metadata are captured in
+  validated result schemas for the covered families.
+- Transparent top-k MoE and sparse-memory family adapters remain in the
+  expansion backlog; they are not prerequisites for this tranche's closure.
 
-### Phase 2 - specialized kernels (in progress)
+### Phase 2 - specialized kernels (closed for the routed-reduction tranche)
 
-- Add FlexAttention/block-sparse, FLA/Mamba recurrence, and optimized MoE
-  adapters.
-- Add an external adapter to the original SDM Triton/CUDA implementation.
-- Prototype URM page-local gather-reduce and write-merge kernels only after
-  matching the original SDM semantics and traces.
-- Compare URM dispatch overhead with direct upstream calls.
+- The routed-reduction v1 forward/backward Triton family is implemented,
+  optimized, roofline-profiled, and preserved behind a frozen tensor contract.
+- Direct-vs-URM dispatch comparisons are complete for dense causal attention
+  and FLA gated delta rule; routed reduction is not misrepresented as a
+  replacement for those kernels.
+- FlexAttention/block-sparse, Mamba-family, optimized MoE, original SDM, and
+  page-local memory lowerings are deferred family-expansion slices. Each must
+  enter through its own frozen contract and upstream comparator.
 
-### Phase 2.5 - compiler architecture (complete through integration closure)
+### Phase 2.5 - compiler architecture and schedule validation (complete)
 
 - Layered semantic/execution IR with locality and effect models
   (docs/compiler-charter.md).
@@ -199,14 +223,18 @@ model.
   selected inside `compile()`, probed on GPU when available, serialized in
   the executable plan, and executed by the production Triton anchor
   (results/compiler/solver/routed-epilogue-selection.json).
-- Next bounded follow-up (known defect, deliberately NOT mixed into this
-  iteration): `decode_placement()` keeps only the first owner for replicated
+- Cross-run measurement closure: the stability artifact is explicitly an
+  exploratory discovery diagnostic, while the confirmation artifact is the
+  canonical paired equivalence decision with raw blocks, drift gates,
+  cross-child provenance validation, and a conservative fallback.
+- Known limitation carried forward outside this closed tranche:
+  `decode_placement()` keeps only the first owner for replicated
   items and `placement_metrics()` divides item bytes by the replication
   factor; every committed placement case uses replication factor 1, so no
-  committed artifact is affected. Multi-owner replication decoding and
-  byte accounting is queued as its own change.
+  committed artifact is affected. Multi-owner replication decoding and byte
+  accounting require a separate systems-path change.
 
-### Phase 3 - systems path
+### Phase 3 - systems and family-expansion path (deferred; not started)
 
 - Fuse overlay composition and reduction.
 - Add page grouping, prefetch, recurrent address reuse, and distributed sharding.
@@ -218,4 +246,6 @@ model.
 URM succeeds when the restricted contract covers the target families without
 arbitrary tensor escape hatches and each family can select or generate a
 competitive specialized backend. The working targets and stop conditions are in
-the [benchmark protocol](docs/benchmarking.md).
+the [benchmark protocol](docs/benchmarking.md). Closure of the current tranche
+establishes that standard for routed reduction and the covered adapters; it is
+not evidence that every deferred family already meets it.

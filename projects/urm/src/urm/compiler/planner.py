@@ -576,7 +576,7 @@ class UrmCompiler:
             )
         return tuple(candidates)
 
-    # -- constraint building / solving (Phase 9 NAS-facing flow) -------------
+    # -- constraint building / solving (NAS-facing flow) ---------------------
 
     def build_constraints(
         self,

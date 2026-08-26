@@ -1,8 +1,9 @@
 # Kernel-generation guide
 
-**Status:** normative for `src/urm/compiler/`. Every compiler change must
-keep this pipeline honest; deviations are contract violations, not
-optimizations.
+**Status:** normative for `src/urm/compiler/`; the routed-epilogue schedule
+integration and measurement-validation tranche is complete. Every subsequent
+compiler change must keep this pipeline honest; deviations are contract
+violations, not optimizations.
 
 The pipeline is:
 
@@ -164,12 +165,23 @@ routed-reduction work, orchestrated by `compiler/planner.py` and
 - **Dispatch equivalence evaluation:** Decoded `ExecutablePlan` launch configurations
   are asserted equal to direct configurations and evaluated through repeated batched
   launches with paired randomized sampling to minimize microsecond timer noise.
-- **Cross-run empirical stability and noise-aware regret:** Multiple independent fresh-process
-  runs (`routed_epilogue_stability.py`) capture pre/post GPU operating conditions via read-only
-  `nvidia-smi` queries, preserve raw CUDA-event samples, evaluate pairwise Spearman rank
-  correlations and top-5 Jaccard overlap, construct noise-aware equivalence winning sets, and
-  classify solver/heuristic regret as `pass`, `fail`, or `inconclusive` using bootstrap confidence
-  intervals against the 10% target.
+- **Cross-run exploratory stability and noise-aware regret:** Multiple independent
+  fresh-process runs (`routed_epilogue_stability.py`) capture pre/post GPU
+  operating conditions via read-only `nvidia-smi` queries, preserve raw
+  CUDA-event samples, evaluate pairwise Spearman rank correlations and top-5
+  Jaccard overlap, and classify solver/heuristic regret as `pass`, `fail`, or
+  `inconclusive` using bootstrap confidence intervals against the 10% target.
+  Its marginal-CI candidate set is explicitly exploratory and is not a
+  statistical-equivalence decision.
+- **Paired confirmation:** `routed_epilogue_confirmation.py` freezes the
+  discovery shortlist/reference before fresh measurement, randomizes paired
+  AB/BA blocks, records full-precision raw samples and per-child provenance,
+  rejects persistent sentinel drift, validates GPU/configuration invariants,
+  and applies a deterministic hierarchical bootstrap. A schedule is confirmed
+  only when its 95% upper slowdown bound is within the declared 2.5% practical
+  margin. `results/compiler/solver/routed-epilogue-confirmation.json` is the
+  canonical deployment decision; the committed result confirms three
+  schedules and excludes the analytical solver choice.
 
 ## Invariants recap
 
