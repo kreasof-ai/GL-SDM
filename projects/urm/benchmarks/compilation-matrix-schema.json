@@ -8,11 +8,19 @@
     "generated_utc": { "type": "string" },
     "provenance": {
       "type": "object",
-      "required": ["git_revision", "dirty_tree", "benchmark_command"],
+      "required": [
+        "git_revision",
+        "dirty_tree",
+        "benchmark_command",
+        "probe_mode",
+        "probing_active"
+      ],
       "properties": {
         "git_revision": { "type": ["string", "null"], "minLength": 40 },
         "dirty_tree": { "type": "boolean" },
         "benchmark_command": { "type": "string" },
+        "probe_mode": { "type": "string", "enum": ["auto", "off", "required"] },
+        "probing_active": { "type": "boolean" },
         "config_hash": { "type": "string" },
         "solver_version": { "type": ["string", "null"] },
         "constraint_model_hash": { "type": "string" },

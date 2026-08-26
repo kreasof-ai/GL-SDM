@@ -119,6 +119,181 @@ def test_committed_solver_artifacts_validate_against_schemas() -> None:
             assert field in provenance, (artifact_name, field)
 
 
+def test_committed_epilogue_selection_semantic_facts() -> None:
+    """Pin committed GPU schedule selection evidence semantically."""
+    artifact = _artifact("compiler/solver/routed-epilogue-selection.json")
+    prov = artifact["provenance"]
+    assert prov["dirty_tree"] is False
+    for env_field in (
+        "python",
+        "pytorch",
+        "triton",
+        "cuda",
+        "driver",
+        "gpu",
+        "solver_version",
+    ):
+        assert prov.get(env_field) is not None, (
+            f"provenance {env_field} must be non-null"
+        )
+
+    decision = artifact["schedule_decision"]
+    assert decision["compile_status"] == "succeeded"
+    assert decision["schedule"] == decision["launch_config"]
+
+    attempts = decision["attempts"]
+    assert attempts, "must have at least one attempt"
+    selected_attempt = attempts[-1]
+    assert selected_attempt["compile_status"] == "succeeded"
+
+    expected_kernels = {"forward", "grad_weights", "grad_values", "grad_row_scale"}
+    for kres_container in (
+        decision.get("kernel_resources"),
+        selected_attempt.get("kernel_resources"),
+    ):
+        assert kres_container is not None
+        assert set(kres_container.keys()) == expected_kernels
+        for tag, record in kres_container.items():
+            assert record.get("kernel_name"), (
+                f"resource entry for {tag} missing kernel_name"
+            )
+            regs = record.get("registers_per_thread")
+            smem = record.get("shared_mem_bytes")
+            unavail = record.get("unavailable_reason")
+            assert (regs is not None and smem is not None) or (unavail is not None), (
+                f"resource {tag} must have values or an unavailable reason"
+            )
+
+    kres = decision["kernel_resources"]
+    known_regs = [
+        k["registers_per_thread"]
+        for k in kres.values()
+        if k.get("registers_per_thread") is not None
+    ]
+    if known_regs:
+        assert decision["registers_per_thread"] == max(known_regs)
+    known_smem = [
+        k["shared_mem_bytes"]
+        for k in kres.values()
+        if k.get("shared_mem_bytes") is not None
+    ]
+    if known_smem:
+        assert decision["shared_mem_bytes"] == max(known_smem)
+
+    legality = artifact["legality"]
+    assert legality["exact_set_agreement"] is True
+    assert legality["reference_matches_model_sweep"] is True
+    assert legality["agreement"] is True
+    assert legality["legality_accuracy"] == pytest.approx(1.0)
+    assert legality["solver_assignments_checked"] >= 1
+
+    empirical = artifact["empirical"]
+    assert empirical is not None
+    assert empirical["measured_points"] > 0
+    for sample in empirical["samples"]:
+        assert sample["sample_count"] > 0
+        assert sample["min_ms"] <= sample["median_ms"] <= sample["p95_ms"]
+
+    overhead = artifact["dispatch_overhead"]
+    assert overhead is not None
+    assert overhead["direct_median_ms"] > 0
+    assert overhead["compiler_driven_median_ms"] > 0
+    assert isinstance(overhead["overhead_pct"], (int, float))
+    assert isinstance(overhead["gate_pass"], bool)
+    assert isinstance(overhead["delta_mean_ms"], (int, float))
+    assert isinstance(overhead["delta_median_ms"], (int, float))
+    assert isinstance(overhead["delta_std_ms"], (int, float))
+    assert overhead["paired_samples_count"] > 0
+    assert overhead["batch_launches_per_sample"] > 0
+
+
+def test_committed_compilation_matrix_semantic_facts() -> None:
+    """Pin committed GPU compilation matrix evidence semantically."""
+    artifact = _artifact("compiler/compilation-matrix.json")
+    prov = artifact["provenance"]
+    assert prov["probe_mode"] == "required"
+    assert prov["probing_active"] is True
+    assert prov["dirty_tree"] is False
+    for env_field in (
+        "python",
+        "pytorch",
+        "triton",
+        "cuda",
+        "driver",
+        "gpu",
+        "solver_version",
+    ):
+        assert prov.get(env_field) is not None, (
+            f"provenance {env_field} must be non-null"
+        )
+
+    summary = artifact["summary"]
+    assert isinstance(summary["compile_probe_failures"], int)
+    assert isinstance(summary["nogoods_added"], int)
+
+    expected_kernels = {"forward", "grad_weights", "grad_values", "grad_row_scale"}
+    for row in artifact["rows"]:
+        decisions = row.get("schedule_decisions", [])
+        for decision in decisions:
+            if decision is None:
+                continue
+            assert decision["compile_status"] == "succeeded"
+            for attempt in decision.get("attempts", []):
+                assert attempt["compile_status"] == "succeeded"
+            kres = decision.get("kernel_resources")
+            assert kres is not None
+            assert set(kres.keys()) == expected_kernels
+            for record in kres.values():
+                assert record.get("kernel_name")
+
+
+def test_cpu_compilation_matrix_with_probe_off(tmp_path: Path) -> None:
+    """Validate that --probe off generates a valid CPU-safe matrix without claiming GPU facts."""
+    import subprocess
+    import sys
+
+    output_file = tmp_path / "matrix-off.json"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(PROJECT_ROOT / "benchmarks" / "compilation_matrix.py"),
+            "--probe",
+            "off",
+            "--output",
+            str(output_file),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert result.returncode == 0
+
+    matrix = json.loads(output_file.read_text(encoding="utf-8"))
+    schema = _load(PROJECT_ROOT / "benchmarks" / "compilation-matrix-schema.json")
+    validate(matrix, schema)
+
+    prov = matrix["provenance"]
+    assert prov["probe_mode"] == "off"
+    assert prov["probing_active"] is False
+    assert prov["pytorch"] is None
+    assert prov["triton"] is None
+    assert prov["cuda"] is None
+    assert prov["driver"] is None
+    assert prov["gpu"] is None
+
+    summary = matrix["summary"]
+    assert summary["compile_probe_failures"] is None
+    assert summary["nogoods_added"] is None
+
+    for row in matrix["rows"]:
+        for decision in row.get("schedule_decisions", []):
+            if decision is not None:
+                assert decision["compile_status"] == "not_probed"
+                assert decision["registers_per_thread"] is None
+                assert decision["shared_mem_bytes"] is None
+                assert decision["kernel_resources"] is None
+
+
 def test_committed_unsat_diagnostics_all_map() -> None:
     artifact = _artifact("compiler/solver/unsat-diagnostics.json")
     assert artifact["summary"]["all_unsat"]

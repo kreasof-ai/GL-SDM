@@ -212,7 +212,7 @@ def main() -> None:
             "model_sweep_legal_points": len(legal_assignments),
             "reference_matches_model_sweep": exact_set_agreement,
             "exact_set_agreement": exact_set_agreement,
-            "z3_sat_assignments": 1,
+            "solver_assignments_checked": 1,
             "agreement": bool(exact_set_agreement and agree_optima),
             "legality_accuracy": 1.0 if exact_set_agreement else 0.0,
         },
@@ -403,7 +403,7 @@ def main() -> None:
 
     properties = torch.cuda.get_device_properties(torch.cuda.current_device())
     compile_failures_observed = len(failed_keys)
-    compile_failures_avoided = (
+    failed_points_excluded_from_measurement = (
         compile_failures_observed if len(samples) > 0 and failed_keys else 0
     )
     artifact["compile_feedback"] = feedback_records
@@ -411,10 +411,12 @@ def main() -> None:
         "gpu": properties.name,
         "measured_points": len(samples),
         "compile_failures_observed": compile_failures_observed,
+        "failed_points_excluded_from_measurement": (
+            failed_points_excluded_from_measurement
+        ),
         "nogoods_added": sum(
             1 for record in feedback_records if record.get("nogood_added")
         ),
-        "compile_failures_avoided": compile_failures_avoided,
         "best_point": best["schedule"],
         "best_median_ms": best["median_ms"],
         "solver_selected": z3_point.as_dict(),

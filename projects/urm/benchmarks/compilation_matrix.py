@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -149,20 +150,62 @@ def build_program(spec):
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument(
+        "--probe",
+        choices=["auto", "off", "required"],
+        default="auto",
+        help="Probe mode: 'auto' (probe if CUDA available), 'off' (CPU-safe, no probe), 'required' (fail if no CUDA)",
+    )
     args = parser.parse_args()
 
-    import torch
-    from provenance import (
-        provenance,
-    )
+    from provenance import provenance
 
-    from urm.compiler.anchors.routed_reduction_epilogue import make_triton_compile_probe
     from urm.compiler.diagnostics import CompilerError
     from urm.compiler.planner import CompilationIntent, UrmCompiler
     from urm.presets import CATALOG as ALL_PRESETS
 
+    probe_mode = args.probe
+    probe = None
+    probing_active = False
+
+    if probe_mode == "off":
+        probing_active = False
+        probe = None
+    elif probe_mode == "required":
+        try:
+            import torch
+            import triton
+        except ImportError as exc:
+            raise RuntimeError(
+                f"Probe mode 'required' failed: torch/triton dependency missing: {exc}"
+            ) from exc
+        if not torch.cuda.is_available():
+            raise RuntimeError(
+                "Probe mode 'required' failed: CUDA is unavailable on this host"
+            )
+        from urm.compiler.anchors.routed_reduction_epilogue import (
+            make_triton_compile_probe,
+        )
+
+        probe = make_triton_compile_probe()
+        probing_active = True
+    elif probe_mode == "auto":
+        try:
+            import torch
+            import triton  # noqa: F401
+
+            if torch.cuda.is_available():
+                from urm.compiler.anchors.routed_reduction_epilogue import (
+                    make_triton_compile_probe,
+                )
+
+                probe = make_triton_compile_probe()
+                probing_active = True
+        except ImportError:
+            probe = None
+            probing_active = False
+
     intent = CompilationIntent.TRAINING
-    probe = make_triton_compile_probe() if torch.cuda.is_available() else None
     compiler = UrmCompiler(compile_probe=probe)
     rows: list[dict[str, object]] = []
     solver_totals = {
@@ -351,13 +394,26 @@ def main() -> None:
         for row in rows
         if any(a in UPSTREAM_ANCHORS for a in row.get("anchors_selected", []))
     )
+    cmd_str = (
+        f"python benchmarks/compilation_matrix.py --probe {args.probe}"
+        if args.probe != "auto" or "--probe" in sys.argv
+        else "python benchmarks/compilation_matrix.py"
+    )
+    if args.output != DEFAULT_OUTPUT:
+        cmd_str += f" --output {args.output}"
+
     matrix_provenance = provenance(
-        "python benchmarks/compilation_matrix.py",
+        cmd_str,
         {
             "presets": [r["architecture_params"]["preset"] for r in rows],
             "intent": intent.value,
+            "probe_mode": probe_mode,
+            "probing_active": probing_active,
         },
+        include_gpu=(probe_mode != "off"),
     )
+    matrix_provenance["probe_mode"] = probe_mode
+    matrix_provenance["probing_active"] = probing_active
     matrix_provenance["constraint_model_hash"] = (
         model_hashes[0] if model_hashes else "not_applicable_static_analysis"
     )
@@ -381,10 +437,10 @@ def main() -> None:
                 "candidates_ranked_out_by_objective"
             ],
             "compile_probe_failures": (
-                solver_totals["compile_probe_failures"] if probe is not None else None
+                solver_totals["compile_probe_failures"] if probing_active else None
             ),
             "nogoods_added": (
-                solver_totals["nogoods_added"] if probe is not None else None
+                solver_totals["nogoods_added"] if probing_active else None
             ),
             "verified_models": solver_totals["verified_models"],
             "schedule_models_verified": solver_totals["schedule_models_verified"],

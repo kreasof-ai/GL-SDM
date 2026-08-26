@@ -204,7 +204,6 @@ def build_schedule_model(
     schedule_params,
     device_limits,
     problem: ScheduleProblem | None = None,
-    allowed_plans: Sequence[PlanKind] | None = None,
     anchor=None,
 ) -> ConstraintModel:
     """Constraint model for one candidate's routed-epilogue schedule space.
@@ -220,6 +219,11 @@ def build_schedule_model(
     from urm.compiler.diagnostics import CompilerError, Diagnostic, DiagnosticCode
     from urm.compiler.execution import TRUSTED_ANCHORS
     from urm.compiler.planner import CompilationIntent
+    from urm.compiler.schedule_space import (
+        GradValuesDecomposition,
+        GradValuesSchedule,
+        PlanKind,
+    )
     from urm.compiler.semantic import WeightedReduce
 
     if anchor is None:
@@ -244,23 +248,7 @@ def build_schedule_model(
                 )
             )
 
-    if allowed_plans is None:
-        if anchor is not None and anchor.supported_plan_kinds:
-            allowed_plans = tuple(PlanKind(p) for p in anchor.supported_plan_kinds)
-        else:
-            try:
-                allowed_plans = plan_kinds_for_candidate(candidate)
-            except ValueError as err:
-                raise CompilerError(
-                    (
-                        Diagnostic(
-                            code=DiagnosticCode.CANDIDATE_ILLEGAL,
-                            message=str(err),
-                        ),
-                    )
-                ) from err
-    allowed_plans = tuple(allowed_plans)
-    if not allowed_plans or (anchor is not None and not anchor.schedulable):
+    if anchor is None or not anchor.schedulable:
         raise CompilerError(
             (
                 Diagnostic(
@@ -273,35 +261,166 @@ def build_schedule_model(
                 ),
             )
         )
-    unknown = [p for p in allowed_plans if p not in set(PlanKind)]
-    if unknown:
-        raise ValueError(f"unknown plan kinds: {unknown}")
 
-    supported_blocks = (
-        anchor.supported_blocks
-        if (anchor and anchor.supported_blocks)
-        else SUPPORTED_BLOCKS
-    )
-    supported_warps = (
-        anchor.supported_warps
-        if (anchor and anchor.supported_warps)
-        else SUPPORTED_WARPS
-    )
-    supported_stages = (
-        anchor.supported_stages
-        if (anchor and anchor.supported_stages)
-        else SUPPORTED_STAGES
-    )
-    supported_decompositions = (
-        anchor.supported_decompositions
-        if (anchor and anchor.supported_decompositions)
-        else tuple(d.value for d in GradValuesDecomposition)
-    )
-    supported_schedules = (
-        anchor.supported_schedules
-        if (anchor and anchor.supported_schedules)
-        else tuple(s.value for s in GradValuesSchedule)
-    )
+    if not anchor.consumes_launch_config:
+        raise CompilerError(
+            (
+                Diagnostic(
+                    code=DiagnosticCode.SCHEDULE_HINT_INVALID,
+                    message=f"schedulable anchor {anchor.name!r} does not consume launch configurations",
+                ),
+            )
+        )
+    if not anchor.supported_plan_kinds:
+        raise CompilerError(
+            (
+                Diagnostic(
+                    code=DiagnosticCode.SCHEDULE_HINT_INVALID,
+                    message=f"schedulable anchor {anchor.name!r} declares empty supported_plan_kinds",
+                ),
+            )
+        )
+    valid_plans = {p.value for p in PlanKind}
+    for p in anchor.supported_plan_kinds:
+        if p not in valid_plans:
+            raise CompilerError(
+                (
+                    Diagnostic(
+                        code=DiagnosticCode.SCHEDULE_HINT_INVALID,
+                        message=f"schedulable anchor {anchor.name!r} has unrecognized plan kind {p!r}",
+                    ),
+                )
+            )
+
+    for attr, val_name in (
+        ("supported_blocks", "blocks"),
+        ("supported_warps", "warps"),
+        ("supported_stages", "stages"),
+    ):
+        vals = getattr(anchor, attr, ())
+        if not vals:
+            raise CompilerError(
+                (
+                    Diagnostic(
+                        code=DiagnosticCode.SCHEDULE_HINT_INVALID,
+                        message=f"schedulable anchor {anchor.name!r} must declare nonempty {attr}",
+                    ),
+                )
+            )
+        if len(vals) != len(set(vals)):
+            raise CompilerError(
+                (
+                    Diagnostic(
+                        code=DiagnosticCode.SCHEDULE_HINT_INVALID,
+                        message=f"schedulable anchor {anchor.name!r} contains duplicate {val_name}: {vals}",
+                    ),
+                )
+            )
+        for v in vals:
+            if not isinstance(v, int) or isinstance(v, bool) or v <= 0:
+                raise CompilerError(
+                    (
+                        Diagnostic(
+                            code=DiagnosticCode.SCHEDULE_HINT_INVALID,
+                            message=f"schedulable anchor {anchor.name!r} contains invalid {val_name} value {v!r}; must be positive integer",
+                        ),
+                    )
+                )
+
+    valid_decomps = {d.value for d in GradValuesDecomposition}
+    if not anchor.supported_decompositions:
+        raise CompilerError(
+            (
+                Diagnostic(
+                    code=DiagnosticCode.SCHEDULE_HINT_INVALID,
+                    message=f"schedulable anchor {anchor.name!r} must declare nonempty supported_decompositions",
+                ),
+            )
+        )
+    if len(anchor.supported_decompositions) != len(
+        set(anchor.supported_decompositions)
+    ):
+        raise CompilerError(
+            (
+                Diagnostic(
+                    code=DiagnosticCode.SCHEDULE_HINT_INVALID,
+                    message=f"schedulable anchor {anchor.name!r} contains duplicate decompositions: {anchor.supported_decompositions}",
+                ),
+            )
+        )
+    for d in anchor.supported_decompositions:
+        if d not in valid_decomps:
+            raise CompilerError(
+                (
+                    Diagnostic(
+                        code=DiagnosticCode.SCHEDULE_HINT_INVALID,
+                        message=f"schedulable anchor {anchor.name!r} contains unrecognized decomposition {d!r}",
+                    ),
+                )
+            )
+
+    valid_scheds = {s.value for s in GradValuesSchedule}
+    if not anchor.supported_schedules:
+        raise CompilerError(
+            (
+                Diagnostic(
+                    code=DiagnosticCode.SCHEDULE_HINT_INVALID,
+                    message=f"schedulable anchor {anchor.name!r} must declare nonempty supported_schedules",
+                ),
+            )
+        )
+    if len(anchor.supported_schedules) != len(set(anchor.supported_schedules)):
+        raise CompilerError(
+            (
+                Diagnostic(
+                    code=DiagnosticCode.SCHEDULE_HINT_INVALID,
+                    message=f"schedulable anchor {anchor.name!r} contains duplicate schedules: {anchor.supported_schedules}",
+                ),
+            )
+        )
+    for s in anchor.supported_schedules:
+        if s not in valid_scheds:
+            raise CompilerError(
+                (
+                    Diagnostic(
+                        code=DiagnosticCode.SCHEDULE_HINT_INVALID,
+                        message=f"schedulable anchor {anchor.name!r} contains unrecognized schedule {s!r}",
+                    ),
+                )
+            )
+
+    anchor_plans = tuple(PlanKind(p) for p in anchor.supported_plan_kinds)
+    try:
+        candidate_plans = plan_kinds_for_candidate(candidate)
+    except ValueError as err:
+        raise CompilerError(
+            (
+                Diagnostic(
+                    code=DiagnosticCode.CANDIDATE_ILLEGAL,
+                    message=str(err),
+                ),
+            )
+        ) from err
+
+    if set(candidate_plans) != set(anchor_plans):
+        raise CompilerError(
+            (
+                Diagnostic(
+                    code=DiagnosticCode.CANDIDATE_ILLEGAL,
+                    message=(
+                        f"candidate {candidate.candidate_id!r} plan binding {candidate_plans} "
+                        f"disagrees with anchor {anchor.name!r} supported plan kinds {anchor_plans}"
+                    ),
+                ),
+            )
+        )
+    allowed_plans = anchor_plans
+
+    supported_blocks = tuple(anchor.supported_blocks)
+    supported_warps = tuple(anchor.supported_warps)
+    supported_stages = tuple(anchor.supported_stages)
+    supported_decompositions = tuple(anchor.supported_decompositions)
+    supported_schedules = tuple(anchor.supported_schedules)
 
     config_choices = tuple(
         (block, stage, warps)
@@ -554,31 +673,31 @@ def build_schedule_model(
             category=CATEGORY_SCHEDULE,
             explanation=(
                 f"BLOCK_D must be one of the implemented tile sizes "
-                f"{list(SUPPORTED_BLOCKS)}"
+                f"{list(supported_blocks)}"
             ),
             origin=origin,
             variable="block_d",
-            allowed=SUPPORTED_BLOCKS,
+            allowed=supported_blocks,
         )
     )
     model.add_constraint(
         AllowedSet(
             name="supported_warp_counts",
             category=CATEGORY_SCHEDULE,
-            explanation=f"num_warps must be one of {list(SUPPORTED_WARPS)}",
+            explanation=f"num_warps must be one of {list(supported_warps)}",
             origin=origin,
             variable="num_warps",
-            allowed=SUPPORTED_WARPS,
+            allowed=supported_warps,
         )
     )
     model.add_constraint(
         AllowedSet(
             name="supported_stage_counts",
             category=CATEGORY_SCHEDULE,
-            explanation=f"num_stages must be one of {list(SUPPORTED_STAGES)}",
+            explanation=f"num_stages must be one of {list(supported_stages)}",
             origin=origin,
             variable="num_stages",
-            allowed=SUPPORTED_STAGES,
+            allowed=supported_stages,
         )
     )
     model.add_constraint(

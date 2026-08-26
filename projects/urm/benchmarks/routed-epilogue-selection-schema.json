@@ -78,7 +78,7 @@
       "required": [
         "reference_impl",
         "reference_matches_model_sweep",
-        "z3_sat_assignments",
+        "solver_assignments_checked",
         "agreement"
       ],
       "properties": {
@@ -89,7 +89,7 @@
         "exhaustive_legal": {
           "type": "integer"
         },
-        "z3_sat_assignments": {
+        "solver_assignments_checked": {
           "type": "integer"
         },
         "agreement": {
@@ -328,7 +328,7 @@
         "compile_failures_observed": {
           "type": "integer"
         },
-        "compile_failures_avoided": {
+        "failed_points_excluded_from_measurement": {
           "type": "integer"
         },
         "nogoods_added": {

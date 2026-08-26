@@ -565,3 +565,262 @@ def test_anchor_capability_is_schedule_domain_source_of_truth() -> None:
     assert all(a["num_warps"] == 4 for a in legal)
     assert all(a.get("decomp_per_query") is True for a in legal)
     assert all(a.get("gradsched_segmented") is True for a in legal)
+
+
+def test_incomplete_schedulable_anchor_fails_construction() -> None:
+    """Schedulable anchors fail closed if any capability dimension is missing or empty."""
+    from urm.compiler.execution import AnchorKind, ExecutionAnchor
+
+    # consumes_launch_config is False
+    with pytest.raises(ValueError, match="consumes_launch_config=True"):
+        ExecutionAnchor(
+            kind=AnchorKind.ROUTED_REDUCTION,
+            name="bad_anchor_1",
+            schedulable=True,
+            consumes_launch_config=False,
+            supported_plan_kinds=frozenset({"fused"}),
+            supported_blocks=(64,),
+            supported_warps=(2,),
+            supported_stages=(1,),
+            supported_decompositions=("per_query",),
+            supported_schedules=("segmented",),
+        )
+
+    # Empty supported_plan_kinds
+    with pytest.raises(ValueError, match="supported_plan_kinds"):
+        ExecutionAnchor(
+            kind=AnchorKind.ROUTED_REDUCTION,
+            name="bad_anchor_2",
+            schedulable=True,
+            consumes_launch_config=True,
+            supported_plan_kinds=frozenset(),
+            supported_blocks=(64,),
+            supported_warps=(2,),
+            supported_stages=(1,),
+            supported_decompositions=("per_query",),
+            supported_schedules=("segmented",),
+        )
+
+    # Empty supported_blocks
+    with pytest.raises(ValueError, match="supported_blocks"):
+        ExecutionAnchor(
+            kind=AnchorKind.ROUTED_REDUCTION,
+            name="bad_anchor_3",
+            schedulable=True,
+            consumes_launch_config=True,
+            supported_plan_kinds=frozenset({"fused"}),
+            supported_blocks=(),
+            supported_warps=(2,),
+            supported_stages=(1,),
+            supported_decompositions=("per_query",),
+            supported_schedules=("segmented",),
+        )
+
+    # Empty supported_warps
+    with pytest.raises(ValueError, match="supported_warps"):
+        ExecutionAnchor(
+            kind=AnchorKind.ROUTED_REDUCTION,
+            name="bad_anchor_4",
+            schedulable=True,
+            consumes_launch_config=True,
+            supported_plan_kinds=frozenset({"fused"}),
+            supported_blocks=(64,),
+            supported_warps=(),
+            supported_stages=(1,),
+            supported_decompositions=("per_query",),
+            supported_schedules=("segmented",),
+        )
+
+    # Empty supported_stages
+    with pytest.raises(ValueError, match="supported_stages"):
+        ExecutionAnchor(
+            kind=AnchorKind.ROUTED_REDUCTION,
+            name="bad_anchor_5",
+            schedulable=True,
+            consumes_launch_config=True,
+            supported_plan_kinds=frozenset({"fused"}),
+            supported_blocks=(64,),
+            supported_warps=(2,),
+            supported_stages=(),
+            supported_decompositions=("per_query",),
+            supported_schedules=("segmented",),
+        )
+
+    # Empty supported_decompositions
+    with pytest.raises(ValueError, match="supported_decompositions"):
+        ExecutionAnchor(
+            kind=AnchorKind.ROUTED_REDUCTION,
+            name="bad_anchor_6",
+            schedulable=True,
+            consumes_launch_config=True,
+            supported_plan_kinds=frozenset({"fused"}),
+            supported_blocks=(64,),
+            supported_warps=(2,),
+            supported_stages=(1,),
+            supported_decompositions=(),
+            supported_schedules=("segmented",),
+        )
+
+    # Empty supported_schedules
+    with pytest.raises(ValueError, match="supported_schedules"):
+        ExecutionAnchor(
+            kind=AnchorKind.ROUTED_REDUCTION,
+            name="bad_anchor_7",
+            schedulable=True,
+            consumes_launch_config=True,
+            supported_plan_kinds=frozenset({"fused"}),
+            supported_blocks=(64,),
+            supported_warps=(2,),
+            supported_stages=(1,),
+            supported_decompositions=("per_query",),
+            supported_schedules=(),
+        )
+
+
+def test_schedulable_anchor_with_duplicate_or_invalid_values_fails() -> None:
+    """Schedulable anchors reject invalid domain values and duplicate capability entries."""
+    from urm.compiler.execution import AnchorKind, ExecutionAnchor
+
+    # Duplicate blocks
+    with pytest.raises(ValueError, match="duplicate blocks"):
+        ExecutionAnchor(
+            kind=AnchorKind.ROUTED_REDUCTION,
+            name="dup_blocks",
+            schedulable=True,
+            consumes_launch_config=True,
+            supported_plan_kinds=frozenset({"fused"}),
+            supported_blocks=(64, 64),
+            supported_warps=(2,),
+            supported_stages=(1,),
+            supported_decompositions=("per_query",),
+            supported_schedules=("segmented",),
+        )
+
+    # Negative block size
+    with pytest.raises(ValueError, match="invalid blocks value -32"):
+        ExecutionAnchor(
+            kind=AnchorKind.ROUTED_REDUCTION,
+            name="neg_blocks",
+            schedulable=True,
+            consumes_launch_config=True,
+            supported_plan_kinds=frozenset({"fused"}),
+            supported_blocks=(-32,),
+            supported_warps=(2,),
+            supported_stages=(1,),
+            supported_decompositions=("per_query",),
+            supported_schedules=("segmented",),
+        )
+
+    # Unrecognized plan kind
+    with pytest.raises(ValueError, match="unrecognized plan kind"):
+        ExecutionAnchor(
+            kind=AnchorKind.ROUTED_REDUCTION,
+            name="bad_plan",
+            schedulable=True,
+            consumes_launch_config=True,
+            supported_plan_kinds=frozenset({"unknown_plan_kind"}),
+            supported_blocks=(64,),
+            supported_warps=(2,),
+            supported_stages=(1,),
+            supported_decompositions=("per_query",),
+            supported_schedules=("segmented",),
+        )
+
+    # Unrecognized decomposition
+    with pytest.raises(ValueError, match="unrecognized decomposition"):
+        ExecutionAnchor(
+            kind=AnchorKind.ROUTED_REDUCTION,
+            name="bad_decomp",
+            schedulable=True,
+            consumes_launch_config=True,
+            supported_plan_kinds=frozenset({"fused"}),
+            supported_blocks=(64,),
+            supported_warps=(2,),
+            supported_stages=(1,),
+            supported_decompositions=("unknown_decomp",),
+            supported_schedules=("segmented",),
+        )
+
+    # Unrecognized schedule
+    with pytest.raises(ValueError, match="unrecognized schedule"):
+        ExecutionAnchor(
+            kind=AnchorKind.ROUTED_REDUCTION,
+            name="bad_sched",
+            schedulable=True,
+            consumes_launch_config=True,
+            supported_plan_kinds=frozenset({"fused"}),
+            supported_blocks=(64,),
+            supported_warps=(2,),
+            supported_stages=(1,),
+            supported_decompositions=("per_query",),
+            supported_schedules=("unknown_sched",),
+        )
+
+
+def test_candidate_and_anchor_plan_mismatch_fails_with_candidate_illegal() -> None:
+    """Pairing a candidate with an anchor of conflicting plan kind fails closed."""
+    from urm.compiler.execution import TRUSTED_ANCHORS
+    from urm.compiler.kernel_plan import build_schedule_model
+
+    program = _program()
+    compiler = UrmCompiler()
+    candidates = {c.candidate_id: c for c in compiler.enumerate_candidates(program)}
+    base_candidate = candidates[BASE_CANDIDATE_ID]
+    fused_candidate = candidates[FUSED_ID]
+
+    fused_anchor = next(
+        a for a in TRUSTED_ANCHORS if a.name == "routed_reduction_row_scale_epilogue_v0"
+    )
+    v1_anchor = next(a for a in TRUSTED_ANCHORS if a.name == "routed_reduction_v1")
+
+    # Base candidate with fused anchor
+    with pytest.raises(CompilerError) as exc1:
+        build_schedule_model(
+            program=program,
+            candidate=base_candidate,
+            intent=CompilationIntent.TRAINING,
+            schedule_params=ScheduleParams(),
+            device_limits=compiler.device_limits,
+            anchor=fused_anchor,
+        )
+    assert exc1.value.diagnostics[0].code is DiagnosticCode.CANDIDATE_ILLEGAL
+    assert "disagrees with anchor" in exc1.value.diagnostics[0].message
+
+    # Fused candidate with unscheduled v1 anchor
+    with pytest.raises(CompilerError) as exc2:
+        build_schedule_model(
+            program=program,
+            candidate=fused_candidate,
+            intent=CompilationIntent.TRAINING,
+            schedule_params=ScheduleParams(),
+            device_limits=compiler.device_limits,
+            anchor=v1_anchor,
+        )
+    assert exc2.value.diagnostics[0].code is DiagnosticCode.SCHEDULE_HINT_INVALID
+
+
+def test_unscheduled_anchor_remains_valid_without_schedule_capabilities() -> None:
+    """Unscheduled anchors are valid with empty schedule capabilities."""
+    from urm.compiler.execution import AnchorKind, ExecutionAnchor
+
+    unscheduled = ExecutionAnchor(
+        kind=AnchorKind.ROUTED_REDUCTION,
+        name="custom_unscheduled",
+        schedulable=False,
+        consumes_launch_config=False,
+    )
+    assert unscheduled.schedulable is False
+    assert unscheduled.supported_blocks == ()
+    assert unscheduled.supported_warps == ()
+
+
+def test_current_fused_anchor_yields_expected_144_legal_points() -> None:
+    """Current fused anchor yields exactly the certified 144 legal points."""
+    from urm.compiler.kernel_plan import exhaustive_schedule_sweep
+
+    compiler = UrmCompiler()
+    program = _program()
+    model = compiler.build_constraints(program, FUSED_ID)
+    legal, _, total = exhaustive_schedule_sweep(model)
+    assert len(legal) == 144
+    assert total == 384

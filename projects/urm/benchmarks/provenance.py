@@ -115,7 +115,9 @@ def gpu_name() -> str | None:
         return None
 
 
-def provenance(command: str, configuration: object) -> dict[str, object]:
+def provenance(
+    command: str, configuration: object, *, include_gpu: bool = True
+) -> dict[str, object]:
     return {
         "git_revision": git_revision(),
         "dirty_tree": tree_is_dirty(),
@@ -124,11 +126,11 @@ def provenance(command: str, configuration: object) -> dict[str, object]:
         "solver_version": solver_version(),
         "python": sys.version.split()[0],
         "platform": platform.platform(),
-        "pytorch": pytorch_version(),
-        "triton": triton_version(),
-        "cuda": cuda_version(),
-        "driver": driver_version(),
-        "gpu": gpu_name(),
+        "pytorch": pytorch_version() if include_gpu else None,
+        "triton": triton_version() if include_gpu else None,
+        "cuda": cuda_version() if include_gpu else None,
+        "driver": driver_version() if include_gpu else None,
+        "gpu": gpu_name() if include_gpu else None,
     }
 
 

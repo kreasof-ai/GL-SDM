@@ -138,10 +138,15 @@ routed-reduction work, orchestrated by `compiler/planner.py` and
 - **Anchor capability single source of truth:** Schedulable `ExecutionAnchor`
   contracts define the single source of truth for schedule domains (`supported_blocks`,
   `supported_warps`, `supported_stages`, `supported_decompositions`, `supported_schedules`,
-  `supported_plan_kinds`). Schedule models derive configurable choices directly from
-  the resolved anchor. Unscheduled lowerings (such as base `routed_reduction_v1`)
-  reject tuning knob hints with `SCHEDULE_HINT_INVALID` and return `schedule_decision=None`
-  and `launch_config=None`.
+  `supported_plan_kinds`). Schedulable anchors must be complete and fail closed upon
+  construction or model building. Allowed plans derive exclusively from the anchor's
+  supported plan kinds without caller-provided escape hatches. Unscheduled lowerings
+  (such as base `routed_reduction_v1`) reject tuning knob hints with `SCHEDULE_HINT_INVALID`
+  and return `schedule_decision=None` and `launch_config=None`.
+- **Explicit compilation-matrix probe modes:** The compilation matrix supports explicit
+  modes (`--probe auto`, `--probe off`, `--probe required`). The `--probe off` mode never
+  imports Torch/Triton and produces backend-independent CPU results, while `--probe required`
+  fails immediately without CUDA and verifies all schedulable decisions with GPU resources.
 - **Exact specialization compile probe:** `CompileProbe` accepts `CompileContext`
   exclusively without exception-driven legacy fallbacks. Probing compiles and launches
   the exact compile-time specialization constants (operand dtypes, route width, value

@@ -103,6 +103,81 @@ class ExecutionAnchor:
     supported_decompositions: tuple[str, ...] = ()
     supported_schedules: tuple[str, ...] = ()
 
+    def __post_init__(self) -> None:
+        if self.schedulable:
+            if not self.consumes_launch_config:
+                raise ValueError(
+                    f"schedulable anchor {self.name!r} must set consumes_launch_config=True"
+                )
+            if not self.supported_plan_kinds:
+                raise ValueError(
+                    f"schedulable anchor {self.name!r} must declare nonempty supported_plan_kinds"
+                )
+            from urm.compiler.schedule_space import (
+                GradValuesDecomposition,
+                GradValuesSchedule,
+                PlanKind,
+            )
+
+            valid_plans = {p.value for p in PlanKind}
+            for p in self.supported_plan_kinds:
+                if p not in valid_plans:
+                    raise ValueError(
+                        f"anchor {self.name!r} contains unrecognized plan kind {p!r}; valid: {sorted(valid_plans)}"
+                    )
+
+            for attr, val_name in (
+                ("supported_blocks", "blocks"),
+                ("supported_warps", "warps"),
+                ("supported_stages", "stages"),
+            ):
+                vals = getattr(self, attr)
+                if not vals:
+                    raise ValueError(
+                        f"schedulable anchor {self.name!r} must declare nonempty {attr}"
+                    )
+                if len(vals) != len(set(vals)):
+                    raise ValueError(
+                        f"anchor {self.name!r} contains duplicate {val_name}: {vals}"
+                    )
+                for v in vals:
+                    if not isinstance(v, int) or isinstance(v, bool) or v <= 0:
+                        raise ValueError(
+                            f"anchor {self.name!r} contains invalid {val_name} value {v!r}; must be positive integer"
+                        )
+
+            valid_decomps = {d.value for d in GradValuesDecomposition}
+            if not self.supported_decompositions:
+                raise ValueError(
+                    f"schedulable anchor {self.name!r} must declare nonempty supported_decompositions"
+                )
+            if len(self.supported_decompositions) != len(
+                set(self.supported_decompositions)
+            ):
+                raise ValueError(
+                    f"anchor {self.name!r} contains duplicate decompositions: {self.supported_decompositions}"
+                )
+            for d in self.supported_decompositions:
+                if d not in valid_decomps:
+                    raise ValueError(
+                        f"anchor {self.name!r} contains unrecognized decomposition {d!r}; valid: {sorted(valid_decomps)}"
+                    )
+
+            valid_scheds = {s.value for s in GradValuesSchedule}
+            if not self.supported_schedules:
+                raise ValueError(
+                    f"schedulable anchor {self.name!r} must declare nonempty supported_schedules"
+                )
+            if len(self.supported_schedules) != len(set(self.supported_schedules)):
+                raise ValueError(
+                    f"anchor {self.name!r} contains duplicate schedules: {self.supported_schedules}"
+                )
+            for s in self.supported_schedules:
+                if s not in valid_scheds:
+                    raise ValueError(
+                        f"anchor {self.name!r} contains unrecognized schedule {s!r}; valid: {sorted(valid_scheds)}"
+                    )
+
     def accepts(self, visitor: VisitorDescriptor) -> bool:
         return visitor.kind in self.supported_visitors and self.result_locality.accepts(
             visitor.locality
