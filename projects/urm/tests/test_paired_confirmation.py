@@ -264,20 +264,26 @@ def test_persistent_sentinel_drift_raises_runtime_error(
 ) -> None:
     """Sentinel drift exceeding threshold on final retry must fail closed and raise RuntimeError."""
     import sys
+    import types
 
     if str(PROJECT_ROOT / "benchmarks") not in sys.path:
         sys.path.insert(0, str(PROJECT_ROOT / "benchmarks"))
     import routed_epilogue_confirmation as rec
 
-    monkeypatch.setattr("torch.cuda.is_available", lambda: True)
-    monkeypatch.setattr("torch.cuda.synchronize", lambda: None)
-    monkeypatch.setattr(
-        "epilogue_schedules.make_inputs", lambda *args: (None, None, None, None)
-    )
-    monkeypatch.setattr("epilogue_schedules.forward_launch", lambda *args: (None, None))
-    monkeypatch.setattr(
-        "epilogue_schedules.backward_launch", lambda *args: (None, None)
-    )
+    # Create fake torch and epilogue_schedules modules so test runs in CPU-only / torch-less envs
+    fake_torch = types.ModuleType("torch")
+    fake_torch_cuda = types.ModuleType("torch.cuda")
+    fake_torch_cuda.is_available = lambda: True
+    fake_torch_cuda.synchronize = lambda: None
+    fake_torch.cuda = fake_torch_cuda
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+    monkeypatch.setitem(sys.modules, "torch.cuda", fake_torch_cuda)
+
+    fake_epilogue = types.ModuleType("epilogue_schedules")
+    fake_epilogue.make_inputs = lambda *args: (None, None, None, None)
+    fake_epilogue.forward_launch = lambda *args: (None, None)
+    fake_epilogue.backward_launch = lambda *args: (None, None)
+    monkeypatch.setitem(sys.modules, "epilogue_schedules", fake_epilogue)
 
     call_count = 0
 
