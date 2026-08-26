@@ -1,0 +1,686 @@
+{
+  "schema_version": 1,
+  "generated_utc": "2026-08-26T16:20:48.703606+00:00",
+  "provenance": {
+    "git_revision": "59b7b20d492e96fcf4dc32368c3fe6f49b6ef31c",
+    "dirty_tree": false,
+    "benchmark_command": "python benchmarks/routed_epilogue_confirmation.py --runs 5",
+    "config_hash": "c4d701cbd9707f995651d8173bf19015abf88b5a70a6483b8ddb6c6aa6b0b16c",
+    "solver_version": "4.15.3",
+    "python": "3.12.13",
+    "platform": "Linux-6.12.95-124.187.amzn2023.x86_64-x86_64-with-glibc2.39",
+    "pytorch": "2.8.0",
+    "triton": "3.4.0",
+    "cuda": "12.9",
+    "driver": "595.91.07",
+    "gpu": "NVIDIA A10G",
+    "shortlist_hash": "951be5130fb03f172c3b44b0b5769fbeb6aa15f3c36f0e9ee720a44c9d38414d"
+  },
+  "problem": {
+    "queries": 1024,
+    "sources": 512,
+    "route_width": 8,
+    "value_dim": 1024,
+    "dtype": "bfloat16",
+    "training": true,
+    "deterministic": false
+  },
+  "confirmation_config": {
+    "runs": 5,
+    "base_seed": 101,
+    "seeds": [
+      101,
+      201,
+      301,
+      401,
+      501
+    ],
+    "shortlist_size": 8,
+    "shortlist_hash": "951be5130fb03f172c3b44b0b5769fbeb6aa15f3c36f0e9ee720a44c9d38414d",
+    "discovery_reference_schedule": {
+      "plan": "fused",
+      "block_d": 256,
+      "num_warps": 4,
+      "num_stages": 2,
+      "grad_values_decomposition": "per_query",
+      "grad_values_schedule": "segmented",
+      "dtype": "bfloat16"
+    },
+    "min_blocks_per_run": 8,
+    "max_blocks_per_run": 16,
+    "samples_per_pair": 5,
+    "warmup_runs": 5,
+    "practical_equivalence_margin_pct": 2.5,
+    "sentinel_drift_threshold_pct": 15.0,
+    "bootstrap_resamples": 1000,
+    "bootstrap_seed": 42
+  },
+  "runs": [
+    {
+      "run_id": 0,
+      "seed": 20099,
+      "total_blocks_executed": 8,
+      "sentinel_drift": {
+        "start_median_ms": 0.22016,
+        "end_median_ms": 0.201728,
+        "drift_pct": 8.3721,
+        "threshold_pct": 15.0,
+        "passed": true
+      },
+      "operating_conditions_before": {
+        "gpu_name": "NVIDIA A10G",
+        "gpu_uuid": "GPU-3a9a2742-3da6-fc42-6c69-3a7de91f1bca",
+        "driver_version": "595.91.07",
+        "sm_clock_mhz": 1710,
+        "memory_clock_mhz": 6251,
+        "power_draw_w": 118.22,
+        "power_limit_w": 300.0,
+        "temperature_c": 40,
+        "gpu_utilization_pct": 56,
+        "memory_utilization_pct": 4,
+        "persistence_mode": "Enabled",
+        "compute_mode": "Default",
+        "application_clocks_fixed": null,
+        "application_clocks_status": "deprecated_or_unsupported",
+        "clock_locking": {
+          "requested": false,
+          "applied": false,
+          "verified": false,
+          "restored": false
+        },
+        "exclusive_process_mode": false,
+        "all_compute_processes": [
+          {
+            "pid": 86370,
+            "process_name": "/opt/conda/bin/python",
+            "used_memory": "314 MiB"
+          }
+        ],
+        "external_compute_processes": [],
+        "unavailable_reason": null
+      },
+      "operating_conditions_after": {
+        "gpu_name": "NVIDIA A10G",
+        "gpu_uuid": "GPU-3a9a2742-3da6-fc42-6c69-3a7de91f1bca",
+        "driver_version": "595.91.07",
+        "sm_clock_mhz": 1710,
+        "memory_clock_mhz": 6251,
+        "power_draw_w": 124.73,
+        "power_limit_w": 300.0,
+        "temperature_c": 40,
+        "gpu_utilization_pct": 56,
+        "memory_utilization_pct": 4,
+        "persistence_mode": "Enabled",
+        "compute_mode": "Default",
+        "application_clocks_fixed": null,
+        "application_clocks_status": "deprecated_or_unsupported",
+        "clock_locking": {
+          "requested": false,
+          "applied": false,
+          "verified": false,
+          "restored": false
+        },
+        "exclusive_process_mode": false,
+        "all_compute_processes": [
+          {
+            "pid": 86370,
+            "process_name": "/opt/conda/bin/python",
+            "used_memory": "314 MiB"
+          }
+        ],
+        "external_compute_processes": [],
+        "unavailable_reason": null
+      }
+    },
+    {
+      "run_id": 1,
+      "seed": 201,
+      "total_blocks_executed": 8,
+      "sentinel_drift": {
+        "start_median_ms": 0.208896,
+        "end_median_ms": 0.203776,
+        "drift_pct": 2.451,
+        "threshold_pct": 15.0,
+        "passed": true
+      },
+      "operating_conditions_before": {
+        "gpu_name": "NVIDIA A10G",
+        "gpu_uuid": "GPU-3a9a2742-3da6-fc42-6c69-3a7de91f1bca",
+        "driver_version": "595.91.07",
+        "sm_clock_mhz": 1710,
+        "memory_clock_mhz": 6251,
+        "power_draw_w": 64.76,
+        "power_limit_w": 300.0,
+        "temperature_c": 37,
+        "gpu_utilization_pct": 0,
+        "memory_utilization_pct": 0,
+        "persistence_mode": "Enabled",
+        "compute_mode": "Default",
+        "application_clocks_fixed": null,
+        "application_clocks_status": "deprecated_or_unsupported",
+        "clock_locking": {
+          "requested": false,
+          "applied": false,
+          "verified": false,
+          "restored": false
+        },
+        "exclusive_process_mode": false,
+        "all_compute_processes": [
+          {
+            "pid": 86419,
+            "process_name": "/opt/conda/bin/python",
+            "used_memory": "254 MiB"
+          }
+        ],
+        "external_compute_processes": [],
+        "unavailable_reason": null
+      },
+      "operating_conditions_after": {
+        "gpu_name": "NVIDIA A10G",
+        "gpu_uuid": "GPU-3a9a2742-3da6-fc42-6c69-3a7de91f1bca",
+        "driver_version": "595.91.07",
+        "sm_clock_mhz": 1710,
+        "memory_clock_mhz": 6251,
+        "power_draw_w": 83.39,
+        "power_limit_w": 300.0,
+        "temperature_c": 39,
+        "gpu_utilization_pct": 53,
+        "memory_utilization_pct": 4,
+        "persistence_mode": "Enabled",
+        "compute_mode": "Default",
+        "application_clocks_fixed": null,
+        "application_clocks_status": "deprecated_or_unsupported",
+        "clock_locking": {
+          "requested": false,
+          "applied": false,
+          "verified": false,
+          "restored": false
+        },
+        "exclusive_process_mode": false,
+        "all_compute_processes": [
+          {
+            "pid": 86419,
+            "process_name": "/opt/conda/bin/python",
+            "used_memory": "314 MiB"
+          }
+        ],
+        "external_compute_processes": [],
+        "unavailable_reason": null
+      }
+    },
+    {
+      "run_id": 2,
+      "seed": 10300,
+      "total_blocks_executed": 8,
+      "sentinel_drift": {
+        "start_median_ms": 0.217088,
+        "end_median_ms": 0.202752,
+        "drift_pct": 6.6038,
+        "threshold_pct": 15.0,
+        "passed": true
+      },
+      "operating_conditions_before": {
+        "gpu_name": "NVIDIA A10G",
+        "gpu_uuid": "GPU-3a9a2742-3da6-fc42-6c69-3a7de91f1bca",
+        "driver_version": "595.91.07",
+        "sm_clock_mhz": 1710,
+        "memory_clock_mhz": 6251,
+        "power_draw_w": 99.62,
+        "power_limit_w": 300.0,
+        "temperature_c": 40,
+        "gpu_utilization_pct": 51,
+        "memory_utilization_pct": 4,
+        "persistence_mode": "Enabled",
+        "compute_mode": "Default",
+        "application_clocks_fixed": null,
+        "application_clocks_status": "deprecated_or_unsupported",
+        "clock_locking": {
+          "requested": false,
+          "applied": false,
+          "verified": false,
+          "restored": false
+        },
+        "exclusive_process_mode": false,
+        "all_compute_processes": [
+          {
+            "pid": 86444,
+            "process_name": "/opt/conda/bin/python",
+            "used_memory": "314 MiB"
+          }
+        ],
+        "external_compute_processes": [],
+        "unavailable_reason": null
+      },
+      "operating_conditions_after": {
+        "gpu_name": "NVIDIA A10G",
+        "gpu_uuid": "GPU-3a9a2742-3da6-fc42-6c69-3a7de91f1bca",
+        "driver_version": "595.91.07",
+        "sm_clock_mhz": 1710,
+        "memory_clock_mhz": 6251,
+        "power_draw_w": 114.34,
+        "power_limit_w": 300.0,
+        "temperature_c": 40,
+        "gpu_utilization_pct": 36,
+        "memory_utilization_pct": 2,
+        "persistence_mode": "Enabled",
+        "compute_mode": "Default",
+        "application_clocks_fixed": null,
+        "application_clocks_status": "deprecated_or_unsupported",
+        "clock_locking": {
+          "requested": false,
+          "applied": false,
+          "verified": false,
+          "restored": false
+        },
+        "exclusive_process_mode": false,
+        "all_compute_processes": [
+          {
+            "pid": 86444,
+            "process_name": "/opt/conda/bin/python",
+            "used_memory": "314 MiB"
+          }
+        ],
+        "external_compute_processes": [],
+        "unavailable_reason": null
+      }
+    },
+    {
+      "run_id": 3,
+      "seed": 401,
+      "total_blocks_executed": 12,
+      "sentinel_drift": {
+        "start_median_ms": 0.212992,
+        "end_median_ms": 0.202752,
+        "drift_pct": 4.8077,
+        "threshold_pct": 15.0,
+        "passed": true
+      },
+      "operating_conditions_before": {
+        "gpu_name": "NVIDIA A10G",
+        "gpu_uuid": "GPU-3a9a2742-3da6-fc42-6c69-3a7de91f1bca",
+        "driver_version": "595.91.07",
+        "sm_clock_mhz": 1710,
+        "memory_clock_mhz": 6251,
+        "power_draw_w": 65.87,
+        "power_limit_w": 300.0,
+        "temperature_c": 37,
+        "gpu_utilization_pct": 0,
+        "memory_utilization_pct": 0,
+        "persistence_mode": "Enabled",
+        "compute_mode": "Default",
+        "application_clocks_fixed": null,
+        "application_clocks_status": "deprecated_or_unsupported",
+        "clock_locking": {
+          "requested": false,
+          "applied": false,
+          "verified": false,
+          "restored": false
+        },
+        "exclusive_process_mode": false,
+        "all_compute_processes": [
+          {
+            "pid": 86481,
+            "process_name": "/opt/conda/bin/python",
+            "used_memory": "254 MiB"
+          }
+        ],
+        "external_compute_processes": [],
+        "unavailable_reason": null
+      },
+      "operating_conditions_after": {
+        "gpu_name": "NVIDIA A10G",
+        "gpu_uuid": "GPU-3a9a2742-3da6-fc42-6c69-3a7de91f1bca",
+        "driver_version": "595.91.07",
+        "sm_clock_mhz": 1710,
+        "memory_clock_mhz": 6251,
+        "power_draw_w": 96.73,
+        "power_limit_w": 300.0,
+        "temperature_c": 40,
+        "gpu_utilization_pct": 56,
+        "memory_utilization_pct": 4,
+        "persistence_mode": "Enabled",
+        "compute_mode": "Default",
+        "application_clocks_fixed": null,
+        "application_clocks_status": "deprecated_or_unsupported",
+        "clock_locking": {
+          "requested": false,
+          "applied": false,
+          "verified": false,
+          "restored": false
+        },
+        "exclusive_process_mode": false,
+        "all_compute_processes": [
+          {
+            "pid": 86481,
+            "process_name": "/opt/conda/bin/python",
+            "used_memory": "314 MiB"
+          }
+        ],
+        "external_compute_processes": [],
+        "unavailable_reason": null
+      }
+    },
+    {
+      "run_id": 4,
+      "seed": 20499,
+      "total_blocks_executed": 8,
+      "sentinel_drift": {
+        "start_median_ms": 0.198656,
+        "end_median_ms": 0.19968,
+        "drift_pct": 0.5155,
+        "threshold_pct": 15.0,
+        "passed": true
+      },
+      "operating_conditions_before": {
+        "gpu_name": "NVIDIA A10G",
+        "gpu_uuid": "GPU-3a9a2742-3da6-fc42-6c69-3a7de91f1bca",
+        "driver_version": "595.91.07",
+        "sm_clock_mhz": 1710,
+        "memory_clock_mhz": 6251,
+        "power_draw_w": 133.34,
+        "power_limit_w": 300.0,
+        "temperature_c": 40,
+        "gpu_utilization_pct": 47,
+        "memory_utilization_pct": 3,
+        "persistence_mode": "Enabled",
+        "compute_mode": "Default",
+        "application_clocks_fixed": null,
+        "application_clocks_status": "deprecated_or_unsupported",
+        "clock_locking": {
+          "requested": false,
+          "applied": false,
+          "verified": false,
+          "restored": false
+        },
+        "exclusive_process_mode": false,
+        "all_compute_processes": [
+          {
+            "pid": 86506,
+            "process_name": "/opt/conda/bin/python",
+            "used_memory": "314 MiB"
+          }
+        ],
+        "external_compute_processes": [],
+        "unavailable_reason": null
+      },
+      "operating_conditions_after": {
+        "gpu_name": "NVIDIA A10G",
+        "gpu_uuid": "GPU-3a9a2742-3da6-fc42-6c69-3a7de91f1bca",
+        "driver_version": "595.91.07",
+        "sm_clock_mhz": 1710,
+        "memory_clock_mhz": 6251,
+        "power_draw_w": 128.9,
+        "power_limit_w": 300.0,
+        "temperature_c": 41,
+        "gpu_utilization_pct": 37,
+        "memory_utilization_pct": 3,
+        "persistence_mode": "Enabled",
+        "compute_mode": "Default",
+        "application_clocks_fixed": null,
+        "application_clocks_status": "deprecated_or_unsupported",
+        "clock_locking": {
+          "requested": false,
+          "applied": false,
+          "verified": false,
+          "restored": false
+        },
+        "exclusive_process_mode": false,
+        "all_compute_processes": [
+          {
+            "pid": 86506,
+            "process_name": "/opt/conda/bin/python",
+            "used_memory": "314 MiB"
+          }
+        ],
+        "external_compute_processes": [],
+        "unavailable_reason": null
+      }
+    }
+  ],
+  "deployment_decision": {
+    "status": "confirmed_equivalent",
+    "practical_equivalence_margin_pct": 2.5,
+    "representative_schedule": {
+      "plan": "fused",
+      "block_d": 256,
+      "num_warps": 4,
+      "num_stages": 2,
+      "grad_values_decomposition": "per_query",
+      "grad_values_schedule": "segmented",
+      "dtype": "bfloat16"
+    },
+    "conservative_fallback_schedule": {
+      "plan": "fused",
+      "block_d": 256,
+      "num_warps": 4,
+      "num_stages": 2,
+      "grad_values_decomposition": "per_query",
+      "grad_values_schedule": "segmented",
+      "dtype": "bfloat16"
+    },
+    "equivalent_set_count": 2,
+    "shortlist_count": 8,
+    "solver_selected_schedule": {
+      "plan": "fused",
+      "block_d": 256,
+      "num_warps": 8,
+      "num_stages": 1,
+      "grad_values_decomposition": "per_query",
+      "grad_values_schedule": "full_row",
+      "dtype": "bfloat16"
+    },
+    "solver_is_in_equivalent_set": false,
+    "solver_paired_slowdown_pct": 2.4568,
+    "solver_ci95_upper_slowdown_pct": 5.3289
+  },
+  "evaluated_shortlist": [
+    {
+      "candidate_index": 0,
+      "schedule": {
+        "plan": "fused",
+        "block_d": 256,
+        "num_warps": 4,
+        "num_stages": 2,
+        "grad_values_decomposition": "per_query",
+        "grad_values_schedule": "segmented",
+        "dtype": "bfloat16"
+      },
+      "is_discovery_reference": true,
+      "median_paired_slowdown_pct": -0.9907,
+      "ci95_lower_slowdown_pct": -4.2684,
+      "ci95_upper_slowdown_pct": 1.9126,
+      "is_practically_equivalent": true,
+      "per_run_medians_ms": [
+        0.202752,
+        0.202752,
+        0.202752,
+        0.202752,
+        0.201728
+      ],
+      "paired_blocks_measured_total": 44,
+      "confirmation_rank": 1
+    },
+    {
+      "candidate_index": 4,
+      "schedule": {
+        "plan": "fused",
+        "block_d": 128,
+        "num_warps": 4,
+        "num_stages": 1,
+        "grad_values_decomposition": "per_query",
+        "grad_values_schedule": "segmented",
+        "dtype": "bfloat16"
+      },
+      "is_discovery_reference": false,
+      "median_paired_slowdown_pct": -0.0066,
+      "ci95_lower_slowdown_pct": -2.509,
+      "ci95_upper_slowdown_pct": 1.9377,
+      "is_practically_equivalent": true,
+      "per_run_medians_ms": [
+        0.204272,
+        0.205824,
+        0.2048,
+        0.206848,
+        0.207344
+      ],
+      "paired_blocks_measured_total": 44,
+      "confirmation_rank": 2
+    },
+    {
+      "candidate_index": 2,
+      "schedule": {
+        "plan": "fused",
+        "block_d": 256,
+        "num_warps": 8,
+        "num_stages": 1,
+        "grad_values_decomposition": "per_query",
+        "grad_values_schedule": "segmented",
+        "dtype": "bfloat16"
+      },
+      "is_discovery_reference": false,
+      "median_paired_slowdown_pct": 0.128,
+      "ci95_lower_slowdown_pct": -4.4205,
+      "ci95_upper_slowdown_pct": 4.1184,
+      "is_practically_equivalent": false,
+      "per_run_medians_ms": [
+        0.208896,
+        0.20992,
+        0.210944,
+        0.211456,
+        0.210944
+      ],
+      "paired_blocks_measured_total": 44,
+      "confirmation_rank": 3
+    },
+    {
+      "candidate_index": 3,
+      "schedule": {
+        "plan": "fused",
+        "block_d": 256,
+        "num_warps": 4,
+        "num_stages": 1,
+        "grad_values_decomposition": "per_query",
+        "grad_values_schedule": "segmented",
+        "dtype": "bfloat16"
+      },
+      "is_discovery_reference": false,
+      "median_paired_slowdown_pct": 0.9276,
+      "ci95_lower_slowdown_pct": -3.5147,
+      "ci95_upper_slowdown_pct": 6.4993,
+      "is_practically_equivalent": false,
+      "per_run_medians_ms": [
+        0.202752,
+        0.211936,
+        0.203264,
+        0.203776,
+        0.201728
+      ],
+      "paired_blocks_measured_total": 44,
+      "confirmation_rank": 4
+    },
+    {
+      "candidate_index": 1,
+      "schedule": {
+        "plan": "fused",
+        "block_d": 128,
+        "num_warps": 4,
+        "num_stages": 2,
+        "grad_values_decomposition": "per_query",
+        "grad_values_schedule": "segmented",
+        "dtype": "bfloat16"
+      },
+      "is_discovery_reference": false,
+      "median_paired_slowdown_pct": 0.938,
+      "ci95_lower_slowdown_pct": -2.5417,
+      "ci95_upper_slowdown_pct": 5.3009,
+      "is_practically_equivalent": false,
+      "per_run_medians_ms": [
+        0.23656,
+        0.208352,
+        0.2048,
+        0.20632,
+        0.2048
+      ],
+      "paired_blocks_measured_total": 44,
+      "confirmation_rank": 5
+    },
+    {
+      "candidate_index": 5,
+      "schedule": {
+        "plan": "fused",
+        "block_d": 256,
+        "num_warps": 8,
+        "num_stages": 1,
+        "grad_values_decomposition": "per_query",
+        "grad_values_schedule": "full_row",
+        "dtype": "bfloat16"
+      },
+      "is_discovery_reference": false,
+      "median_paired_slowdown_pct": 2.4568,
+      "ci95_lower_slowdown_pct": -1.0064,
+      "ci95_upper_slowdown_pct": 5.3289,
+      "is_practically_equivalent": false,
+      "per_run_medians_ms": [
+        0.218112,
+        0.21248,
+        0.208896,
+        0.209408,
+        0.207872
+      ],
+      "paired_blocks_measured_total": 44,
+      "confirmation_rank": 6
+    },
+    {
+      "candidate_index": 7,
+      "schedule": {
+        "plan": "fused",
+        "block_d": 256,
+        "num_warps": 2,
+        "num_stages": 1,
+        "grad_values_decomposition": "per_query",
+        "grad_values_schedule": "segmented",
+        "dtype": "bfloat16"
+      },
+      "is_discovery_reference": false,
+      "median_paired_slowdown_pct": 17.9182,
+      "ci95_lower_slowdown_pct": 13.3853,
+      "ci95_upper_slowdown_pct": 22.3723,
+      "is_practically_equivalent": false,
+      "per_run_medians_ms": [
+        0.246784,
+        0.249344,
+        0.247808,
+        0.250368,
+        0.257504
+      ],
+      "paired_blocks_measured_total": 44,
+      "confirmation_rank": 7
+    },
+    {
+      "candidate_index": 6,
+      "schedule": {
+        "plan": "fused",
+        "block_d": 64,
+        "num_warps": 4,
+        "num_stages": 1,
+        "grad_values_decomposition": "per_query",
+        "grad_values_schedule": "segmented",
+        "dtype": "bfloat16"
+      },
+      "is_discovery_reference": false,
+      "median_paired_slowdown_pct": 30.9776,
+      "ci95_lower_slowdown_pct": 25.7749,
+      "ci95_upper_slowdown_pct": 35.1228,
+      "is_practically_equivalent": false,
+      "per_run_medians_ms": [
+        0.275456,
+        0.274944,
+        0.278016,
+        0.27648,
+        0.275456
+      ],
+      "paired_blocks_measured_total": 44,
+      "confirmation_rank": 8
+    }
+  ]
+}
