@@ -17,14 +17,19 @@ test = [
   "pytest>=8",
 ]
 dev = [
-  "ruff>=0.12",
+  # Pinned for reproducible formatting/lint results; ruff's output changes
+  # across minor versions. Bump deliberately and re-run the format check.
+  "ruff==0.16.4",
 ]
 torch = [
   "torch>=2.7",
 ]
 gpu = [
   "torch>=2.8",
-  "triton>=3.4",
+  # Validated line: the routed-reduction backend capability-gates private
+  # Triton APIs and falls back to the standard launcher when they are absent,
+  # but steady-state numbers in docs/results were produced with this version.
+  "triton>=3.4,<3.5",
 ]
 
 [tool.setuptools.packages.find]

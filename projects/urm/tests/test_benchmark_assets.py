@@ -23,9 +23,7 @@ def test_routed_reduction_cases_are_named_and_within_v1_contract() -> None:
 
 def test_result_schema_is_valid_json_and_versioned() -> None:
     schema = json.loads(
-        (PROJECT_ROOT / "benchmarks" / "result-schema.json").read_text(
-            encoding="utf-8"
-        )
+        (PROJECT_ROOT / "benchmarks" / "result-schema.json").read_text(encoding="utf-8")
     )
     assert schema["properties"]["schema_version"]["const"] == 1
     assert "measurements" in schema["required"]

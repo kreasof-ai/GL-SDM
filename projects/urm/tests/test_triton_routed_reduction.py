@@ -41,21 +41,23 @@ def test_triton_forward_matches_torch(
         sources, value_dim, device="cuda", dtype=dtype, generator=generator
     )
 
-    expected = TorchRoutedReductionBackend().execute(
-        indices, weights, values, validate_indices=False
-    ).output
-    actual = TritonRoutedReductionBackend().execute(
-        indices, weights, values, validate_indices=False
-    ).output
+    expected = (
+        TorchRoutedReductionBackend()
+        .execute(indices, weights, values, validate_indices=False)
+        .output
+    )
+    actual = (
+        TritonRoutedReductionBackend()
+        .execute(indices, weights, values, validate_indices=False)
+        .output
+    )
 
     tolerance = 1e-4 if dtype is torch.float32 else 3e-2
     torch.testing.assert_close(actual, expected, atol=tolerance, rtol=tolerance)
 
 
 def test_triton_backward_matches_torch_with_route_collisions() -> None:
-    indices = torch.tensor(
-        [[1, 1, 4], [1, 3, 4]], device="cuda", dtype=torch.int64
-    )
+    indices = torch.tensor([[1, 1, 4], [1, 3, 4]], device="cuda", dtype=torch.int64)
     weights = torch.randn(2, 3, device="cuda", dtype=torch.float32)
     values = torch.randn(5, 37, device="cuda", dtype=torch.float32)
     triton_weights = weights.detach().clone().requires_grad_(True)
@@ -64,14 +66,20 @@ def test_triton_backward_matches_torch_with_route_collisions() -> None:
     torch_values = values.detach().clone().requires_grad_(True)
     gradient = torch.randn(2, 37, device="cuda")
 
-    triton_output = TritonRoutedReductionBackend().execute(
-        indices, triton_weights, triton_values, validate_indices=False
-    ).output
-    torch_output = TorchRoutedReductionBackend().execute(
-        indices, torch_weights, torch_values, validate_indices=False
-    ).output
+    triton_output = (
+        TritonRoutedReductionBackend()
+        .execute(indices, triton_weights, triton_values, validate_indices=False)
+        .output
+    )
+    torch_output = (
+        TorchRoutedReductionBackend()
+        .execute(indices, torch_weights, torch_values, validate_indices=False)
+        .output
+    )
     triton_output.backward(gradient)
     torch_output.backward(gradient)
 
     torch.testing.assert_close(triton_weights.grad, torch_weights.grad)
-    torch.testing.assert_close(triton_values.grad, torch_values.grad, atol=1e-5, rtol=1e-5)
+    torch.testing.assert_close(
+        triton_values.grad, torch_values.grad, atol=1e-5, rtol=1e-5
+    )

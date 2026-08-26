@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "case": {
+    "name": "memory_top32",
+    "queries": 4096,
+    "sources": 65536,
+    "route_width": 32,
+    "value_dim": 256,
+    "dtype": "float16",
+    "distribution": "recurrent_reuse"
+  },
+  "mode": "backward",
+  "timestamp_utc": "2026-08-26T00:49:44.660156+00:00",
+  "timing": {
+    "median_wall_ms": 0.71612,
+    "p95_wall_ms": 0.728723,
+    "samples": 30,
+    "inner_iterations": 10,
+    "aggregate_gpu_ms": 0.701429,
+    "host_dispatch_ms_estimate": 0.014691,
+    "dispatch_fraction_of_wall": 0.021,
+    "launches_per_iteration": 6,
+    "per_kernel_ms": {
+      "void at::native::vectorized_elementwise_kernel<4, at::native::float16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::float16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 0.209073,
+      "_routed_reduce_grad_values_per_query_kernel": 0.185533,
+      "_routed_reduce_grad_weights_kernel": 0.155386,
+      "void at::native::vectorized_elementwise_kernel<4, at::native::FillFunctor<float>, std::array<char*, 1ul> >(int, at::native::FillFunctor<float>, std::array<char*, 1ul>)": 0.135866,
+      "_routed_reduce_forward_kernel": 0.015571
+    },
+    "per_kernel_launches": {
+      "_routed_reduce_forward_kernel": 1,
+      "void at::native::vectorized_elementwise_kernel<4, at::native::FillFunctor<float>, std::array<char*, 1ul> >(int, at::native::FillFunctor<float>, std::array<char*, 1ul>)": 1,
+      "_routed_reduce_grad_weights_kernel": 1,
+      "_routed_reduce_grad_values_per_query_kernel": 1,
+      "void at::native::vectorized_elementwise_kernel<4, at::native::float16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::float16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 2
+    }
+  },
+  "flops_model": {
+    "formula": "4.0 * Q * K * D",
+    "note": "Useful algorithmic FLOPs of the reduction, not executed instruction counts. Backward counts grad-weights (2), grad-values including conceptual accumulation (2), and ~zero for casts/init.",
+    "useful_flops": 134217728.0,
+    "useful_tfps_over_gpu_time": 0.1913,
+    "useful_tfps_over_wall": 0.1874
+  },
+  "mfu": {
+    "denominator": "fp32_cuda_core_tfps_measured",
+    "denominator_source": "results/device-limits.json (TF32-off cuBLAS SGEMM, measured)",
+    "fp32_cuda_core_peak_tfps": 23.069889367583606,
+    "vendor_spec_fp32_tfps_reference_only": 31.2,
+    "eligible": true,
+    "mfu_fraction": 0.0083,
+    "mfu_pct": 0.83
+  },
+  "memory_traffic": {
+    "measured": {
+      "dram_bytes_sum": "not_available",
+      "l2_hit_rate": "not_available",
+      "mbu_measured": "not_available",
+      "reason": "GPU performance counters restricted on this host (ERR_NVGPUCTRPERM); container lacks CAP_SYS_ADMIN or driver RmProfilingAdminOnly=1"
+    },
+    "static_estimate": {
+      "backward": {
+        "grad_weights_kernel": {
+          "indices_read": 524288,
+          "values_gathered_read": 67108864,
+          "grad_output_read_gw": 67108864,
+          "grad_weights_write": 524288
+        },
+        "grad_values_kernel": {
+          "indices_weights_read": 786432,
+          "grad_output_read_gv": 2097152,
+          "atomic_rmw_bytes": 134217728
+        },
+        "zero_init_and_casts_rw": 138936320
+      },
+      "total_min_bytes": 344195072,
+      "total_max_bytes": 411303936,
+      "gbps_at_gpu_time_midpoint": 538.5,
+      "mbu_vs_measured_sustainable": 1.049,
+      "sustainable_bandwidth_gbps_denominator": 513.240482721711,
+      "bandwidth_denominator_source": "results/device-limits.json (best of copy/fill/read kernels)",
+      "note": "MBU here uses static analytic byte bounds over GPU time, not hardware counters; real DRAM traffic lies between the min/max bounds due to duplicate-row caching."
+    },
+    "vendor_bandwidth_reference_gbps": 600,
+    "vendor_relative_utilization": 0.898
+  },
+  "atomic_contention_indicator": {
+    "grad_values_gpu_ms": 0.185533,
+    "ideal_bw_bound_ms": 0.523021,
+    "serialization_factor": 0.35,
+    "method": "grad-values kernel time vs its atomic RMW bytes (read+write fp32) moved at measured sustainable bandwidth"
+  },
+  "route_statistics": {
+    "routes": 131072,
+    "unique_sources_touched": 64,
+    "source_utilization_pct": 0.1,
+    "hottest_source_traffic_share_pct": 1.651
+  },
+  "triton_kernel_metadata": {
+    "status": "available",
+    "kernels": {
+      "_routed_reduce_forward_kernel": {
+        "num_warps": 2,
+        "shared_bytes": 0,
+        "registers_per_thread": 64,
+        "spills": 0,
+        "theoretical_blocks_per_sm": 16,
+        "theoretical_occupancy_pct": 66.7
+      }
+    }
+  },
+  "normalized_utilization_eligible": true,
+  "eligibility_note": null
+}

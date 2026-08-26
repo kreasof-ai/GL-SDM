@@ -1,0 +1,2721 @@
+{
+  "schema_version": 1,
+  "timestamp_utc": "2026-08-26T01:44:07.315649+00:00",
+  "gpu": "NVIDIA A10G",
+  "compute_capability": [
+    8,
+    6
+  ],
+  "torch": "2.8.0",
+  "cuda": "12.9",
+  "triton": "3.4.0",
+  "flash_attention_upstream": {
+    "package": "flash-attn",
+    "version": "2.8.3",
+    "wheel_tag": "cu12torch2.8cxx11abiTRUE-cp312",
+    "repository": "https://github.com/Dao-AILab/flash-attention",
+    "pin": "v2.8.3 release wheel"
+  },
+  "mfu_denominator": {
+    "bf16_tensor_core_tfps_measured": 66.16599973571093,
+    "source": "results/device-limits.json (measured BF16 GEMM)",
+    "note": "Tensor-core peak is appropriate here because dense attention kernels execute MMA instructions, unlike the FP32 CUDA-core routed-reduction kernels."
+  },
+  "semantics": {
+    "causal": true,
+    "layout": "BHSD",
+    "scale": "1/sqrt(head_dim)",
+    "dropout": 0.0,
+    "gqa": "heads % kv_heads == 0"
+  },
+  "cases": {
+    "b1_h16_d64_s128": {
+      "case": {
+        "name": "b1_h16_d64_s128",
+        "batch": 1,
+        "heads": 16,
+        "kv_heads": 16,
+        "sequence": 128,
+        "head_dim": 64,
+        "seed": 7,
+        "dtype": "bfloat16"
+      },
+      "correctness": {
+        "sdpa_math": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00029904
+        },
+        "flash_attn": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00036994
+        },
+        "urm_flash_attn": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00036994
+        },
+        "sdpa_flash": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00036993
+        },
+        "urm_sdpa_flash": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00036993
+        }
+      },
+      "implementations": {
+        "sdpa_math": {
+          "forward": {
+            "cold_first_call_ms": 0.573,
+            "median_ms": 0.31877119541168214,
+            "p95_ms": 0.44605441093444825,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 16189952,
+            "useful_tflops": 0.105,
+            "tokens_per_second": 401541.9,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0016
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 1.107,
+            "median_ms": 0.8218624114990234,
+            "p95_ms": 0.8957951545715332,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 27262976,
+            "useful_tflops": 0.102,
+            "tokens_per_second": 155743.8,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0015
+          }
+        },
+        "flash_attn": {
+          "forward": {
+            "cold_first_call_ms": 0.273,
+            "median_ms": 0.15288320183753967,
+            "p95_ms": 0.184934401512146,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 20455936,
+            "useful_tflops": 0.219,
+            "tokens_per_second": 837240.4,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0033
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 0.513,
+            "median_ms": 0.5073920011520385,
+            "p95_ms": 0.5783552169799805,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 22823424,
+            "useful_tflops": 0.165,
+            "tokens_per_second": 252270.4,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0025
+          }
+        },
+        "urm_flash_attn": {
+          "forward": {
+            "cold_first_call_ms": 0.193,
+            "median_ms": 0.15594879984855653,
+            "p95_ms": 0.1734655976295471,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 20455936,
+            "useful_tflops": 0.215,
+            "tokens_per_second": 820782.2,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0032
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 0.536,
+            "median_ms": 0.5108735799789429,
+            "p95_ms": 0.5890048027038575,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 22823424,
+            "useful_tflops": 0.164,
+            "tokens_per_second": 250551.2,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0025
+          }
+        },
+        "sdpa_flash": {
+          "forward": {
+            "cold_first_call_ms": 0.177,
+            "median_ms": 0.1060863971710205,
+            "p95_ms": 0.13066240549087524,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 20456448,
+            "useful_tflops": 0.316,
+            "tokens_per_second": 1206563.7,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0048
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 0.394,
+            "median_ms": 0.3196928024291992,
+            "p95_ms": 0.364134407043457,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 23348224,
+            "useful_tflops": 0.262,
+            "tokens_per_second": 400384.4,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.004
+          }
+        },
+        "urm_sdpa_flash": {
+          "forward": {
+            "cold_first_call_ms": 0.123,
+            "median_ms": 0.09717759788036347,
+            "p95_ms": 0.13352960348129272,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 20456448,
+            "useful_tflops": 0.345,
+            "tokens_per_second": 1317176.0,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0052
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 0.312,
+            "median_ms": 0.31344640254974365,
+            "p95_ms": 0.36966400146484374,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 23348224,
+            "useful_tflops": 0.268,
+            "tokens_per_second": 408363.3,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0041
+          }
+        }
+      },
+      "adapter_overhead": {
+        "flash_attn": {
+          "median_overhead_fraction": {
+            "forward": 0.0201,
+            "backward": 0.0069
+          }
+        },
+        "sdpa_flash": {
+          "median_overhead_fraction": {
+            "forward": -0.084,
+            "backward": -0.0195
+          }
+        }
+      },
+      "oracle_evaluated": true
+    },
+    "b1_h16_d64_s2048": {
+      "case": {
+        "name": "b1_h16_d64_s2048",
+        "batch": 1,
+        "heads": 16,
+        "kv_heads": 16,
+        "sequence": 2048,
+        "head_dim": 64,
+        "seed": 7,
+        "dtype": "bfloat16"
+      },
+      "correctness": {
+        "sdpa_math": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 8.985e-05
+        },
+        "flash_attn": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00011863
+        },
+        "urm_flash_attn": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00011863
+        },
+        "sdpa_flash": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00011863
+        },
+        "urm_sdpa_flash": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00011863
+        }
+      },
+      "implementations": {
+        "sdpa_math": {
+          "forward": {
+            "cold_first_call_ms": 7.633,
+            "median_ms": 7.602687835693359,
+            "p95_ms": 7.617740631103516,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 721715712,
+            "useful_tflops": 1.13,
+            "tokens_per_second": 269378.4,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0171
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 14.812,
+            "median_ms": 14.674432373046876,
+            "p95_ms": 14.69153289794922,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 1187250176,
+            "useful_tflops": 1.463,
+            "tokens_per_second": 139562.5,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0221
+          }
+        },
+        "flash_attn": {
+          "forward": {
+            "cold_first_call_ms": 0.351,
+            "median_ms": 0.3110912084579468,
+            "p95_ms": 0.3184639930725098,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 71696896,
+            "useful_tflops": 27.612,
+            "tokens_per_second": 6583278.3,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.4173
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 0.969,
+            "median_ms": 0.8774623870849609,
+            "p95_ms": 0.8988672256469726,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 109576704,
+            "useful_tflops": 24.474,
+            "tokens_per_second": 2334003.2,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.3699
+          }
+        },
+        "urm_flash_attn": {
+          "forward": {
+            "cold_first_call_ms": 0.389,
+            "median_ms": 0.3153855919837951,
+            "p95_ms": 0.3239936113357544,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 71696896,
+            "useful_tflops": 27.236,
+            "tokens_per_second": 6493638.4,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.4116
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 0.933,
+            "median_ms": 0.8776703834533691,
+            "p95_ms": 0.8972288131713867,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 109576704,
+            "useful_tflops": 24.468,
+            "tokens_per_second": 2333450.0,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.3698
+          }
+        },
+        "sdpa_flash": {
+          "forward": {
+            "cold_first_call_ms": 0.331,
+            "median_ms": 0.2973695993423462,
+            "p95_ms": 0.30617599487304686,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 71697408,
+            "useful_tflops": 28.886,
+            "tokens_per_second": 6887052.4,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.4366
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 0.951,
+            "median_ms": 0.903062391281128,
+            "p95_ms": 0.9209856033325196,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 117965824,
+            "useful_tflops": 23.78,
+            "tokens_per_second": 2267838.9,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.3594
+          }
+        },
+        "urm_sdpa_flash": {
+          "forward": {
+            "cold_first_call_ms": 0.322,
+            "median_ms": 0.2944000005722046,
+            "p95_ms": 0.30494720935821534,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 71697408,
+            "useful_tflops": 29.178,
+            "tokens_per_second": 6956521.7,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.441
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 0.98,
+            "median_ms": 0.9067520141601563,
+            "p95_ms": 0.9226240158081055,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 117965824,
+            "useful_tflops": 23.683,
+            "tokens_per_second": 2258610.9,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.3579
+          }
+        }
+      },
+      "adapter_overhead": {
+        "flash_attn": {
+          "median_overhead_fraction": {
+            "forward": 0.0138,
+            "backward": 0.0002
+          }
+        },
+        "sdpa_flash": {
+          "median_overhead_fraction": {
+            "forward": -0.01,
+            "backward": 0.0041
+          }
+        }
+      },
+      "oracle_evaluated": true
+    },
+    "b1_h16_d64_s8192": {
+      "case": {
+        "name": "b1_h16_d64_s8192",
+        "batch": 1,
+        "heads": 16,
+        "kv_heads": 16,
+        "sequence": 8192,
+        "head_dim": 64,
+        "seed": 7,
+        "dtype": "bfloat16"
+      },
+      "correctness": {
+        "sdpa_math": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 4.659e-05
+        },
+        "flash_attn": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 6.284e-05
+        },
+        "urm_flash_attn": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 6.284e-05
+        },
+        "sdpa_flash": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 6.284e-05
+        },
+        "urm_sdpa_flash": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 6.284e-05
+        }
+      },
+      "implementations": {
+        "sdpa_math": {
+          "forward": {
+            "cold_first_call_ms": 114.565,
+            "median_ms": 114.57157592773439,
+            "p95_ms": 114.64315185546874,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 10284827136,
+            "useful_tflops": 1.2,
+            "tokens_per_second": 71501.2,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0181
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 217.842,
+            "median_ms": 217.95758056640625,
+            "p95_ms": 218.250439453125,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 17582784512,
+            "useful_tflops": 1.576,
+            "tokens_per_second": 37585.3,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0238
+          }
+        },
+        "flash_attn": {
+          "forward": {
+            "cold_first_call_ms": 3.02,
+            "median_ms": 2.7795456886291503,
+            "p95_ms": 2.8581823348999023,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 235667968,
+            "useful_tflops": 49.447,
+            "tokens_per_second": 2947244.2,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.7473
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 8.838,
+            "median_ms": 8.767078399658203,
+            "p95_ms": 8.796774291992188,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 387187200,
+            "useful_tflops": 39.192,
+            "tokens_per_second": 934404.8,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.5923
+          }
+        },
+        "urm_flash_attn": {
+          "forward": {
+            "cold_first_call_ms": 2.804,
+            "median_ms": 2.7553791999816895,
+            "p95_ms": 2.793267250061035,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 235667968,
+            "useful_tflops": 49.88,
+            "tokens_per_second": 2973093.5,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.7539
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 8.799,
+            "median_ms": 8.771785736083984,
+            "p95_ms": 8.807628631591797,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 387187200,
+            "useful_tflops": 39.171,
+            "tokens_per_second": 933903.3,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.592
+          }
+        },
+        "sdpa_flash": {
+          "forward": {
+            "cold_first_call_ms": 2.779,
+            "median_ms": 2.736128044128418,
+            "p95_ms": 2.7617279052734376,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 235668480,
+            "useful_tflops": 50.231,
+            "tokens_per_second": 2994011.9,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.7592
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 9.132,
+            "median_ms": 8.9997314453125,
+            "p95_ms": 9.029631805419921,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 420742144,
+            "useful_tflops": 38.179,
+            "tokens_per_second": 910249.4,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.577
+          }
+        },
+        "urm_sdpa_flash": {
+          "forward": {
+            "cold_first_call_ms": 2.787,
+            "median_ms": 2.738892841339111,
+            "p95_ms": 2.7654144287109377,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 235668480,
+            "useful_tflops": 50.18,
+            "tokens_per_second": 2990989.6,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.7584
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 9.01,
+            "median_ms": 8.992457580566406,
+            "p95_ms": 9.014476776123047,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 420742144,
+            "useful_tflops": 38.21,
+            "tokens_per_second": 910985.7,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.5775
+          }
+        }
+      },
+      "adapter_overhead": {
+        "flash_attn": {
+          "median_overhead_fraction": {
+            "forward": -0.0087,
+            "backward": 0.0005
+          }
+        },
+        "sdpa_flash": {
+          "median_overhead_fraction": {
+            "forward": 0.001,
+            "backward": -0.0008
+          }
+        }
+      },
+      "oracle_evaluated": true
+    },
+    "b1_h16_d64_s32768": {
+      "case": {
+        "name": "b1_h16_d64_s32768",
+        "batch": 1,
+        "heads": 16,
+        "kv_heads": 16,
+        "sequence": 32768,
+        "head_dim": 64,
+        "seed": 7,
+        "dtype": "bfloat16"
+      },
+      "correctness": {},
+      "implementations": {
+        "flash_attn": {
+          "forward": {
+            "cold_first_call_ms": 36.646,
+            "median_ms": 36.745932006835936,
+            "p95_ms": 36.8078857421875,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 690225664,
+            "useful_tflops": 59.844,
+            "tokens_per_second": 891745.0,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.9045
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 123.663,
+            "median_ms": 123.60017700195313,
+            "p95_ms": 124.27325439453125,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 1296302592,
+            "useful_tflops": 44.479,
+            "tokens_per_second": 265112.9,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.6722
+          }
+        },
+        "urm_flash_attn": {
+          "forward": {
+            "cold_first_call_ms": 36.89,
+            "median_ms": 36.7494140625,
+            "p95_ms": 36.837991333007814,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 690225664,
+            "useful_tflops": 59.838,
+            "tokens_per_second": 891660.5,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.9044
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 124.472,
+            "median_ms": 124.23198852539062,
+            "p95_ms": 124.63349609375,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 1296302592,
+            "useful_tflops": 44.252,
+            "tokens_per_second": 263764.6,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.6688
+          }
+        },
+        "sdpa_flash": {
+          "forward": {
+            "cold_first_call_ms": 36.24,
+            "median_ms": 36.33213500976562,
+            "p95_ms": 36.38517761230469,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 690226176,
+            "useful_tflops": 60.526,
+            "tokens_per_second": 901901.3,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.9148
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 125.341,
+            "median_ms": 125.16013793945312,
+            "p95_ms": 125.24666748046874,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 1430520832,
+            "useful_tflops": 43.924,
+            "tokens_per_second": 261808.6,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.6638
+          }
+        },
+        "urm_sdpa_flash": {
+          "forward": {
+            "cold_first_call_ms": 36.327,
+            "median_ms": 36.33121185302734,
+            "p95_ms": 36.41446533203125,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 690226176,
+            "useful_tflops": 60.527,
+            "tokens_per_second": 901924.2,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.9148
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 125.386,
+            "median_ms": 125.1589111328125,
+            "p95_ms": 125.2388916015625,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 1430520832,
+            "useful_tflops": 43.925,
+            "tokens_per_second": 261811.2,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.6639
+          }
+        }
+      },
+      "adapter_overhead": {
+        "flash_attn": {
+          "median_overhead_fraction": {
+            "forward": 0.0001,
+            "backward": 0.0051
+          }
+        },
+        "sdpa_flash": {
+          "median_overhead_fraction": {
+            "forward": -0.0,
+            "backward": -0.0
+          }
+        }
+      },
+      "oracle_evaluated": false
+    },
+    "b1_h16_d128_s128": {
+      "case": {
+        "name": "b1_h16_d128_s128",
+        "batch": 1,
+        "heads": 16,
+        "kv_heads": 16,
+        "sequence": 128,
+        "head_dim": 128,
+        "seed": 7,
+        "dtype": "bfloat16"
+      },
+      "correctness": {
+        "sdpa_math": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00029686
+        },
+        "flash_attn": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00037137
+        },
+        "urm_flash_attn": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00037137
+        },
+        "sdpa_flash": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00037137
+        },
+        "urm_sdpa_flash": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00037137
+        }
+      },
+      "implementations": {
+        "sdpa_math": {
+          "forward": {
+            "cold_first_call_ms": 0.725,
+            "median_ms": 0.34631680250167846,
+            "p95_ms": 0.3885056018829346,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 30736384,
+            "useful_tflops": 0.194,
+            "tokens_per_second": 369603.8,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0029
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 0.897,
+            "median_ms": 0.8300544261932373,
+            "p95_ms": 1.1175935745239258,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 33882112,
+            "useful_tflops": 0.202,
+            "tokens_per_second": 154206.8,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0031
+          }
+        },
+        "flash_attn": {
+          "forward": {
+            "cold_first_call_ms": 0.215,
+            "median_ms": 0.1833984017372131,
+            "p95_ms": 0.22036480903625488,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 23863808,
+            "useful_tflops": 0.366,
+            "tokens_per_second": 697934.1,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0055
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 0.686,
+            "median_ms": 0.4954111814498901,
+            "p95_ms": 0.8882176399230957,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 28590592,
+            "useful_tflops": 0.339,
+            "tokens_per_second": 258371.2,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0051
+          }
+        },
+        "urm_flash_attn": {
+          "forward": {
+            "cold_first_call_ms": 0.226,
+            "median_ms": 0.156876802444458,
+            "p95_ms": 0.19290239810943605,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 23863808,
+            "useful_tflops": 0.428,
+            "tokens_per_second": 815926.9,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0065
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 0.485,
+            "median_ms": 0.49131519794464107,
+            "p95_ms": 0.7059455871582031,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 28590592,
+            "useful_tflops": 0.341,
+            "tokens_per_second": 260525.2,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0052
+          }
+        },
+        "sdpa_flash": {
+          "forward": {
+            "cold_first_call_ms": 0.145,
+            "median_ms": 0.09902400076389312,
+            "p95_ms": 0.14008320569992067,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 23864320,
+            "useful_tflops": 0.678,
+            "tokens_per_second": 1292615.9,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0102
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 0.484,
+            "median_ms": 0.3473407983779907,
+            "p95_ms": 0.4454400062561035,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 29639680,
+            "useful_tflops": 0.483,
+            "tokens_per_second": 368514.2,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0073
+          }
+        },
+        "urm_sdpa_flash": {
+          "forward": {
+            "cold_first_call_ms": 0.117,
+            "median_ms": 0.09400319755077362,
+            "p95_ms": 0.12595200538635254,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 23864320,
+            "useful_tflops": 0.714,
+            "tokens_per_second": 1361655.8,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0108
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 0.387,
+            "median_ms": 0.3316735982894897,
+            "p95_ms": 0.40590081214904783,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 29639680,
+            "useful_tflops": 0.506,
+            "tokens_per_second": 385921.6,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0076
+          }
+        }
+      },
+      "adapter_overhead": {
+        "flash_attn": {
+          "median_overhead_fraction": {
+            "forward": -0.1446,
+            "backward": -0.0083
+          }
+        },
+        "sdpa_flash": {
+          "median_overhead_fraction": {
+            "forward": -0.0507,
+            "backward": -0.0451
+          }
+        }
+      },
+      "oracle_evaluated": true
+    },
+    "b1_h16_d128_s2048": {
+      "case": {
+        "name": "b1_h16_d128_s2048",
+        "batch": 1,
+        "heads": 16,
+        "kv_heads": 16,
+        "sequence": 2048,
+        "head_dim": 128,
+        "seed": 7,
+        "dtype": "bfloat16"
+      },
+      "correctness": {
+        "sdpa_math": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 8.954e-05
+        },
+        "flash_attn": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00011795
+        },
+        "urm_flash_attn": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00011795
+        },
+        "sdpa_flash": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00011795
+        },
+        "urm_sdpa_flash": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00011795
+        }
+      },
+      "implementations": {
+        "sdpa_math": {
+          "forward": {
+            "cold_first_call_ms": 8.19,
+            "median_ms": 8.149299240112306,
+            "p95_ms": 8.161484527587891,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 805601792,
+            "useful_tflops": 2.108,
+            "tokens_per_second": 251310.0,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0319
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 15.936,
+            "median_ms": 15.755878448486328,
+            "p95_ms": 15.768780517578126,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 1283719168,
+            "useful_tflops": 2.726,
+            "tokens_per_second": 129983.2,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0412
+          }
+        },
+        "flash_attn": {
+          "forward": {
+            "cold_first_call_ms": 0.538,
+            "median_ms": 0.4870143890380859,
+            "p95_ms": 0.5009407997131348,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 126222848,
+            "useful_tflops": 35.276,
+            "tokens_per_second": 4205214.6,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.5331
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 1.512,
+            "median_ms": 1.444761610031128,
+            "p95_ms": 1.6289791107177733,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 201851392,
+            "useful_tflops": 29.728,
+            "tokens_per_second": 1417534.9,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.4493
+          }
+        },
+        "urm_flash_attn": {
+          "forward": {
+            "cold_first_call_ms": 0.547,
+            "median_ms": 0.4859903812408447,
+            "p95_ms": 0.49459199905395507,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 126222848,
+            "useful_tflops": 35.35,
+            "tokens_per_second": 4214075.2,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.5343
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 1.502,
+            "median_ms": 1.4454783916473388,
+            "p95_ms": 1.638604736328125,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 201851392,
+            "useful_tflops": 29.713,
+            "tokens_per_second": 1416832.0,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.4491
+          }
+        },
+        "sdpa_flash": {
+          "forward": {
+            "cold_first_call_ms": 0.483,
+            "median_ms": 0.49172480106353755,
+            "p95_ms": 0.5033984184265137,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 126223360,
+            "useful_tflops": 34.938,
+            "tokens_per_second": 4164931.3,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.528
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 1.557,
+            "median_ms": 1.5598591804504394,
+            "p95_ms": 1.625702476501465,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 218629120,
+            "useful_tflops": 27.534,
+            "tokens_per_second": 1312939.0,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.4161
+          }
+        },
+        "urm_sdpa_flash": {
+          "forward": {
+            "cold_first_call_ms": 0.493,
+            "median_ms": 0.4898816108703613,
+            "p95_ms": 0.50032639503479,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 126223360,
+            "useful_tflops": 35.069,
+            "tokens_per_second": 4180601.9,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.53
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 1.574,
+            "median_ms": 1.5549439907073976,
+            "p95_ms": 1.6144384384155273,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 218629120,
+            "useful_tflops": 27.621,
+            "tokens_per_second": 1317089.2,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.4175
+          }
+        }
+      },
+      "adapter_overhead": {
+        "flash_attn": {
+          "median_overhead_fraction": {
+            "forward": -0.0021,
+            "backward": 0.0005
+          }
+        },
+        "sdpa_flash": {
+          "median_overhead_fraction": {
+            "forward": -0.0037,
+            "backward": -0.0032
+          }
+        }
+      },
+      "oracle_evaluated": true
+    },
+    "b1_h16_d128_s8192": {
+      "case": {
+        "name": "b1_h16_d128_s8192",
+        "batch": 1,
+        "heads": 16,
+        "kv_heads": 16,
+        "sequence": 8192,
+        "head_dim": 128,
+        "seed": 7,
+        "dtype": "bfloat16"
+      },
+      "correctness": {
+        "sdpa_math": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 4.647e-05
+        },
+        "flash_attn": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 6.248e-05
+        },
+        "urm_flash_attn": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 6.248e-05
+        },
+        "sdpa_flash": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 6.248e-05
+        },
+        "urm_sdpa_flash": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 6.248e-05
+        }
+      },
+      "implementations": {
+        "sdpa_math": {
+          "forward": {
+            "cold_first_call_ms": 121.973,
+            "median_ms": 121.82374267578126,
+            "p95_ms": 121.85496826171875,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 10620371456,
+            "useful_tflops": 2.256,
+            "tokens_per_second": 67244.7,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0341
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 233.051,
+            "median_ms": 233.08328857421876,
+            "p95_ms": 233.20390625,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 17968660480,
+            "useful_tflops": 2.948,
+            "tokens_per_second": 35146.2,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0446
+          }
+        },
+        "flash_attn": {
+          "forward": {
+            "cold_first_call_ms": 5.138,
+            "median_ms": 4.94520320892334,
+            "p95_ms": 4.994047927856445,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 453771776,
+            "useful_tflops": 55.585,
+            "tokens_per_second": 1656554.8,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.8401
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 16.327,
+            "median_ms": 16.201318359375,
+            "p95_ms": 16.221388244628905,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 756285952,
+            "useful_tflops": 42.416,
+            "tokens_per_second": 505637.9,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.6411
+          }
+        },
+        "urm_flash_attn": {
+          "forward": {
+            "cold_first_call_ms": 4.98,
+            "median_ms": 4.939161491394043,
+            "p95_ms": 4.962508773803711,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 453771776,
+            "useful_tflops": 55.653,
+            "tokens_per_second": 1658581.1,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.8411
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 16.328,
+            "median_ms": 16.20009002685547,
+            "p95_ms": 16.21772155761719,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 756285952,
+            "useful_tflops": 42.419,
+            "tokens_per_second": 505676.2,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.6411
+          }
+        },
+        "sdpa_flash": {
+          "forward": {
+            "cold_first_call_ms": 5.057,
+            "median_ms": 5.011558532714844,
+            "p95_ms": 5.0319358825683596,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 453772288,
+            "useful_tflops": 54.849,
+            "tokens_per_second": 1634621.2,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.829
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 17.155,
+            "median_ms": 17.08226547241211,
+            "p95_ms": 17.097523498535157,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 823395328,
+            "useful_tflops": 40.229,
+            "tokens_per_second": 479561.7,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.608
+          }
+        },
+        "urm_sdpa_flash": {
+          "forward": {
+            "cold_first_call_ms": 5.045,
+            "median_ms": 5.017292785644531,
+            "p95_ms": 5.029683303833008,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 453772288,
+            "useful_tflops": 54.786,
+            "tokens_per_second": 1632753.0,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.828
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 17.247,
+            "median_ms": 17.079090881347653,
+            "p95_ms": 17.09424591064453,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 823395328,
+            "useful_tflops": 40.236,
+            "tokens_per_second": 479650.8,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.6081
+          }
+        }
+      },
+      "adapter_overhead": {
+        "flash_attn": {
+          "median_overhead_fraction": {
+            "forward": -0.0012,
+            "backward": -0.0001
+          }
+        },
+        "sdpa_flash": {
+          "median_overhead_fraction": {
+            "forward": 0.0011,
+            "backward": -0.0002
+          }
+        }
+      },
+      "oracle_evaluated": true
+    },
+    "b1_h16_d128_s32768": {
+      "case": {
+        "name": "b1_h16_d128_s32768",
+        "batch": 1,
+        "heads": 16,
+        "kv_heads": 16,
+        "sequence": 32768,
+        "head_dim": 128,
+        "seed": 7,
+        "dtype": "bfloat16"
+      },
+      "correctness": {},
+      "implementations": {
+        "flash_attn": {
+          "forward": {
+            "cold_first_call_ms": 71.276,
+            "median_ms": 71.39399719238281,
+            "p95_ms": 71.52639770507812,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 1361314304,
+            "useful_tflops": 61.602,
+            "tokens_per_second": 458974.2,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.931
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 243.081,
+            "median_ms": 243.09053955078124,
+            "p95_ms": 243.3005615234375,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 2571371008,
+            "useful_tflops": 45.231,
+            "tokens_per_second": 134797.5,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.6836
+          }
+        },
+        "urm_flash_attn": {
+          "forward": {
+            "cold_first_call_ms": 71.398,
+            "median_ms": 71.44898071289063,
+            "p95_ms": 71.54462890625,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 1361314304,
+            "useful_tflops": 61.555,
+            "tokens_per_second": 458621.0,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.9303
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 243.816,
+            "median_ms": 243.18505859375,
+            "p95_ms": 243.308740234375,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 2571371008,
+            "useful_tflops": 45.213,
+            "tokens_per_second": 134745.1,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.6833
+          }
+        },
+        "sdpa_flash": {
+          "forward": {
+            "cold_first_call_ms": 72.7,
+            "median_ms": 72.64594116210938,
+            "p95_ms": 72.73635864257812,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 1361314816,
+            "useful_tflops": 60.541,
+            "tokens_per_second": 451064.4,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.915
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 254.396,
+            "median_ms": 253.93480224609374,
+            "p95_ms": 254.1029296875,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 2839806976,
+            "useful_tflops": 43.299,
+            "tokens_per_second": 129041.0,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.6544
+          }
+        },
+        "urm_sdpa_flash": {
+          "forward": {
+            "cold_first_call_ms": 72.711,
+            "median_ms": 72.59330444335937,
+            "p95_ms": 72.66386108398437,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 1361314816,
+            "useful_tflops": 60.585,
+            "tokens_per_second": 451391.5,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.9157
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 253.765,
+            "median_ms": 253.95875244140626,
+            "p95_ms": 254.0775390625,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 2839806976,
+            "useful_tflops": 43.295,
+            "tokens_per_second": 129028.8,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.6543
+          }
+        }
+      },
+      "adapter_overhead": {
+        "flash_attn": {
+          "median_overhead_fraction": {
+            "forward": 0.0008,
+            "backward": 0.0004
+          }
+        },
+        "sdpa_flash": {
+          "median_overhead_fraction": {
+            "forward": -0.0007,
+            "backward": 0.0001
+          }
+        }
+      },
+      "oracle_evaluated": false
+    },
+    "b8_h16_d64_s128": {
+      "case": {
+        "name": "b8_h16_d64_s128",
+        "batch": 8,
+        "heads": 16,
+        "kv_heads": 16,
+        "sequence": 128,
+        "head_dim": 64,
+        "seed": 7,
+        "dtype": "bfloat16"
+      },
+      "correctness": {
+        "sdpa_math": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00029767
+        },
+        "flash_attn": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00037265
+        },
+        "urm_flash_attn": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00037265
+        },
+        "sdpa_flash": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00037265
+        },
+        "urm_sdpa_flash": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00037265
+        }
+      },
+      "implementations": {
+        "sdpa_math": {
+          "forward": {
+            "cold_first_call_ms": 0.473,
+            "median_ms": 0.40529918670654297,
+            "p95_ms": 0.4175871849060059,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 77939200,
+            "useful_tflops": 0.662,
+            "tokens_per_second": 2526528.6,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.01
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 1.128,
+            "median_ms": 0.8574975967407227,
+            "p95_ms": 1.0391551971435546,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 98828288,
+            "useful_tflops": 0.783,
+            "tokens_per_second": 1194172.4,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0118
+          }
+        },
+        "flash_attn": {
+          "forward": {
+            "cold_first_call_ms": 0.23,
+            "median_ms": 0.1802240014076233,
+            "p95_ms": 0.2279423952102661,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 44368384,
+            "useful_tflops": 1.489,
+            "tokens_per_second": 5681818.1,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0225
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 0.545,
+            "median_ms": 0.4847615957260132,
+            "p95_ms": 1.0751999855041503,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 63308288,
+            "useful_tflops": 1.384,
+            "tokens_per_second": 2112378.6,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0209
+          }
+        },
+        "urm_flash_attn": {
+          "forward": {
+            "cold_first_call_ms": 0.23,
+            "median_ms": 0.18462719917297363,
+            "p95_ms": 0.20684800148010254,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 44368384,
+            "useful_tflops": 1.454,
+            "tokens_per_second": 5546311.7,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.022
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 0.481,
+            "median_ms": 0.5123071908950806,
+            "p95_ms": 0.8298496246337891,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 63308288,
+            "useful_tflops": 1.31,
+            "tokens_per_second": 1998800.8,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0198
+          }
+        },
+        "sdpa_flash": {
+          "forward": {
+            "cold_first_call_ms": 0.127,
+            "median_ms": 0.09984000027179718,
+            "p95_ms": 0.13352960348129272,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 44368896,
+            "useful_tflops": 2.689,
+            "tokens_per_second": 10256410.2,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0406
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 0.37,
+            "median_ms": 0.3140608072280884,
+            "p95_ms": 0.36085760593414307,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 67503104,
+            "useful_tflops": 2.137,
+            "tokens_per_second": 3260515.1,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0323
+          }
+        },
+        "urm_sdpa_flash": {
+          "forward": {
+            "cold_first_call_ms": 0.128,
+            "median_ms": 0.09912320077419282,
+            "p95_ms": 0.12328319549560547,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 44368896,
+            "useful_tflops": 2.708,
+            "tokens_per_second": 10330578.4,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0409
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 0.302,
+            "median_ms": 0.3410943984985352,
+            "p95_ms": 0.7133183956146241,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 67503104,
+            "useful_tflops": 1.967,
+            "tokens_per_second": 3002101.5,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0297
+          }
+        }
+      },
+      "adapter_overhead": {
+        "flash_attn": {
+          "median_overhead_fraction": {
+            "forward": 0.0244,
+            "backward": 0.0568
+          }
+        },
+        "sdpa_flash": {
+          "median_overhead_fraction": {
+            "forward": -0.0072,
+            "backward": 0.0861
+          }
+        }
+      },
+      "oracle_evaluated": true
+    },
+    "b8_h16_d64_s2048": {
+      "case": {
+        "name": "b8_h16_d64_s2048",
+        "batch": 8,
+        "heads": 16,
+        "kv_heads": 16,
+        "sequence": 2048,
+        "head_dim": 64,
+        "seed": 7,
+        "dtype": "bfloat16"
+      },
+      "correctness": {
+        "sdpa_math": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 8.967e-05
+        },
+        "flash_attn": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00011841
+        },
+        "urm_flash_attn": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00011841
+        },
+        "sdpa_flash": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00011841
+        },
+        "urm_sdpa_flash": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00011841
+        }
+      },
+      "implementations": {
+        "sdpa_math": {
+          "forward": {
+            "cold_first_call_ms": 58.198,
+            "median_ms": 58.150299072265625,
+            "p95_ms": 58.18040161132812,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 5537006080,
+            "useful_tflops": 1.182,
+            "tokens_per_second": 281752.6,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0179
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 110.315,
+            "median_ms": 110.29288330078126,
+            "p95_ms": 110.339892578125,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 9378725888,
+            "useful_tflops": 1.558,
+            "tokens_per_second": 148549.9,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0235
+          }
+        },
+        "flash_attn": {
+          "forward": {
+            "cold_first_call_ms": 1.759,
+            "median_ms": 1.7449983596801757,
+            "p95_ms": 1.7596416473388672,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 454296064,
+            "useful_tflops": 39.381,
+            "tokens_per_second": 9389120.6,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.5952
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 5.372,
+            "median_ms": 5.295820808410644,
+            "p95_ms": 5.303500747680664,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 757334528,
+            "useful_tflops": 32.44,
+            "tokens_per_second": 3093760.3,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.4903
+          }
+        },
+        "urm_flash_attn": {
+          "forward": {
+            "cold_first_call_ms": 1.741,
+            "median_ms": 1.7387519836425782,
+            "p95_ms": 1.7459199905395508,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 454296064,
+            "useful_tflops": 39.522,
+            "tokens_per_second": 9422850.5,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.5973
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 5.332,
+            "median_ms": 5.293356895446777,
+            "p95_ms": 5.304729461669922,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 757334528,
+            "useful_tflops": 32.456,
+            "tokens_per_second": 3095200.3,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.4905
+          }
+        },
+        "sdpa_flash": {
+          "forward": {
+            "cold_first_call_ms": 1.723,
+            "median_ms": 1.6796607971191406,
+            "p95_ms": 1.6906240463256836,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 454296576,
+            "useful_tflops": 40.913,
+            "tokens_per_second": 9754350.4,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.6183
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 5.62,
+            "median_ms": 5.590220832824707,
+            "p95_ms": 5.595955276489258,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 824443904,
+            "useful_tflops": 30.732,
+            "tokens_per_second": 2930832.3,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.4645
+          }
+        },
+        "urm_sdpa_flash": {
+          "forward": {
+            "cold_first_call_ms": 1.71,
+            "median_ms": 1.679052734375,
+            "p95_ms": 1.6930816650390625,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 454296576,
+            "useful_tflops": 40.928,
+            "tokens_per_second": 9757882.9,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.6186
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 5.659,
+            "median_ms": 5.589913749694825,
+            "p95_ms": 5.595123291015625,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 824443904,
+            "useful_tflops": 30.734,
+            "tokens_per_second": 2930993.3,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.4645
+          }
+        }
+      },
+      "adapter_overhead": {
+        "flash_attn": {
+          "median_overhead_fraction": {
+            "forward": -0.0036,
+            "backward": -0.0005
+          }
+        },
+        "sdpa_flash": {
+          "median_overhead_fraction": {
+            "forward": -0.0004,
+            "backward": -0.0001
+          }
+        }
+      },
+      "oracle_evaluated": true
+    },
+    "b8_h16_d64_s8192": {
+      "case": {
+        "name": "b8_h16_d64_s8192",
+        "batch": 8,
+        "heads": 16,
+        "kv_heads": 16,
+        "sequence": 8192,
+        "head_dim": 64,
+        "seed": 7,
+        "dtype": "bfloat16"
+      },
+      "correctness": {},
+      "implementations": {
+        "flash_attn": {
+          "forward": {
+            "cold_first_call_ms": 19.569,
+            "median_ms": 19.490201568603517,
+            "p95_ms": 19.510272216796874,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 1363411456,
+            "useful_tflops": 56.414,
+            "tokens_per_second": 3362510.1,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.8526
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 65.432,
+            "median_ms": 65.36990661621093,
+            "p95_ms": 65.38096923828125,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 2575565312,
+            "useful_tflops": 42.05,
+            "tokens_per_second": 1002540.8,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.6355
+          }
+        },
+        "urm_flash_attn": {
+          "forward": {
+            "cold_first_call_ms": 19.628,
+            "median_ms": 19.49286346435547,
+            "p95_ms": 19.510476684570314,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 1363411456,
+            "useful_tflops": 56.406,
+            "tokens_per_second": 3362050.9,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.8525
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 65.489,
+            "median_ms": 65.36478881835937,
+            "p95_ms": 65.39367065429687,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 2575565312,
+            "useful_tflops": 42.053,
+            "tokens_per_second": 1002619.3,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.6356
+          }
+        },
+        "sdpa_flash": {
+          "forward": {
+            "cold_first_call_ms": 19.489,
+            "median_ms": 19.371724700927736,
+            "p95_ms": 19.39271697998047,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 1363411968,
+            "useful_tflops": 56.759,
+            "tokens_per_second": 3383075.1,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.8578
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 67.201,
+            "median_ms": 67.14695739746094,
+            "p95_ms": 67.17440185546874,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 2844001280,
+            "useful_tflops": 40.937,
+            "tokens_per_second": 976008.5,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.6187
+          }
+        },
+        "urm_sdpa_flash": {
+          "forward": {
+            "cold_first_call_ms": 19.578,
+            "median_ms": 19.37786865234375,
+            "p95_ms": 19.406028747558594,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 1363411968,
+            "useful_tflops": 56.741,
+            "tokens_per_second": 3382002.5,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.8576
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 67.243,
+            "median_ms": 67.14204101562501,
+            "p95_ms": 67.1688720703125,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 2844001280,
+            "useful_tflops": 40.94,
+            "tokens_per_second": 976079.9,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.6187
+          }
+        }
+      },
+      "adapter_overhead": {
+        "flash_attn": {
+          "median_overhead_fraction": {
+            "forward": 0.0001,
+            "backward": -0.0001
+          }
+        },
+        "sdpa_flash": {
+          "median_overhead_fraction": {
+            "forward": 0.0003,
+            "backward": -0.0001
+          }
+        }
+      },
+      "oracle_evaluated": false
+    },
+    "b8_h16_d64_s32768": {
+      "case": {
+        "name": "b8_h16_d64_s32768",
+        "batch": 8,
+        "heads": 16,
+        "kv_heads": 16,
+        "sequence": 32768,
+        "head_dim": 64,
+        "seed": 7,
+        "dtype": "bfloat16"
+      },
+      "correctness": {},
+      "implementations": {
+        "flash_attn": {
+          "forward": {
+            "cold_first_call_ms": 285.229,
+            "median_ms": 287.12017822265625,
+            "p95_ms": 287.37412109375,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 5402526208,
+            "useful_tflops": 61.271,
+            "tokens_per_second": 913011.4,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.926
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 982.119,
+            "median_ms": 981.74501953125,
+            "p95_ms": 982.0130859375,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 10251141632,
+            "useful_tflops": 44.798,
+            "tokens_per_second": 267018.4,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.6771
+          }
+        },
+        "urm_flash_attn": {
+          "forward": {
+            "cold_first_call_ms": 287.525,
+            "median_ms": 287.3337768554687,
+            "p95_ms": 287.4072998046875,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 5402526208,
+            "useful_tflops": 61.226,
+            "tokens_per_second": 912332.7,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.9253
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 982.577,
+            "median_ms": 981.373046875,
+            "p95_ms": 982.1564453125,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 10251141632,
+            "useful_tflops": 44.815,
+            "tokens_per_second": 267119.6,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.6773
+          }
+        },
+        "sdpa_flash": {
+          "forward": {
+            "cold_first_call_ms": 281.847,
+            "median_ms": 281.48265380859374,
+            "p95_ms": 281.5508544921875,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 5402526720,
+            "useful_tflops": 62.498,
+            "tokens_per_second": 931297.2,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.9446
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 990.276,
+            "median_ms": 990.054296875,
+            "p95_ms": 990.10458984375,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 11324883968,
+            "useful_tflops": 44.422,
+            "tokens_per_second": 264777.4,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.6714
+          }
+        },
+        "urm_sdpa_flash": {
+          "forward": {
+            "cold_first_call_ms": 281.597,
+            "median_ms": 281.48828125,
+            "p95_ms": 281.5662109375,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 5402526720,
+            "useful_tflops": 62.497,
+            "tokens_per_second": 931278.6,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.9445
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 990.124,
+            "median_ms": 990.083984375,
+            "p95_ms": 990.1486328125,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 11324883968,
+            "useful_tflops": 44.421,
+            "tokens_per_second": 264769.5,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.6714
+          }
+        }
+      },
+      "adapter_overhead": {
+        "flash_attn": {
+          "median_overhead_fraction": {
+            "forward": 0.0007,
+            "backward": -0.0004
+          }
+        },
+        "sdpa_flash": {
+          "median_overhead_fraction": {
+            "forward": 0.0,
+            "backward": 0.0
+          }
+        }
+      },
+      "oracle_evaluated": false
+    },
+    "b8_h16_d128_s128": {
+      "case": {
+        "name": "b8_h16_d128_s128",
+        "batch": 8,
+        "heads": 16,
+        "kv_heads": 16,
+        "sequence": 128,
+        "head_dim": 128,
+        "seed": 7,
+        "dtype": "bfloat16"
+      },
+      "correctness": {
+        "sdpa_math": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00029696
+        },
+        "flash_attn": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00036936
+        },
+        "urm_flash_attn": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00036936
+        },
+        "sdpa_flash": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00036938
+        },
+        "urm_sdpa_flash": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00036938
+        }
+      },
+      "implementations": {
+        "sdpa_math": {
+          "forward": {
+            "cold_first_call_ms": 0.575,
+            "median_ms": 0.5513216018676758,
+            "p95_ms": 0.5574656009674073,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 126156800,
+            "useful_tflops": 0.974,
+            "tokens_per_second": 1857355.1,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0147
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 1.151,
+            "median_ms": 1.1012096405029297,
+            "p95_ms": 1.1333632469177246,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 151322624,
+            "useful_tflops": 1.219,
+            "tokens_per_second": 929886.5,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0184
+          }
+        },
+        "flash_attn": {
+          "forward": {
+            "cold_first_call_ms": 0.201,
+            "median_ms": 0.15186560153961182,
+            "p95_ms": 0.19230719804763793,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 71631360,
+            "useful_tflops": 3.535,
+            "tokens_per_second": 6742804.1,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0534
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 0.548,
+            "median_ms": 0.4852735996246338,
+            "p95_ms": 0.6295551776885986,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 109445632,
+            "useful_tflops": 2.766,
+            "tokens_per_second": 2110149.8,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0418
+          }
+        },
+        "urm_flash_attn": {
+          "forward": {
+            "cold_first_call_ms": 0.233,
+            "median_ms": 0.1724384009838104,
+            "p95_ms": 0.19763200283050536,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 71631360,
+            "useful_tflops": 3.113,
+            "tokens_per_second": 5938352.4,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.047
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 0.481,
+            "median_ms": 0.5183487892150879,
+            "p95_ms": 0.7122943878173829,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 109445632,
+            "useful_tflops": 2.589,
+            "tokens_per_second": 1975503.8,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0391
+          }
+        },
+        "sdpa_flash": {
+          "forward": {
+            "cold_first_call_ms": 0.164,
+            "median_ms": 0.11263999938964844,
+            "p95_ms": 0.1363968014717102,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 71631872,
+            "useful_tflops": 4.766,
+            "tokens_per_second": 9090909.1,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.072
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 0.415,
+            "median_ms": 0.359935998916626,
+            "p95_ms": 0.3895296096801758,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 117834752,
+            "useful_tflops": 3.729,
+            "tokens_per_second": 2844950.2,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0564
+          }
+        },
+        "urm_sdpa_flash": {
+          "forward": {
+            "cold_first_call_ms": 0.142,
+            "median_ms": 0.107315194606781,
+            "p95_ms": 0.12513279914855957,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 71631872,
+            "useful_tflops": 5.003,
+            "tokens_per_second": 9541985.2,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0756
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 0.43,
+            "median_ms": 0.33197760581970215,
+            "p95_ms": 0.4200448036193848,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 117834752,
+            "useful_tflops": 4.043,
+            "tokens_per_second": 3084545.4,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0611
+          }
+        }
+      },
+      "adapter_overhead": {
+        "flash_attn": {
+          "median_overhead_fraction": {
+            "forward": 0.1355,
+            "backward": 0.0682
+          }
+        },
+        "sdpa_flash": {
+          "median_overhead_fraction": {
+            "forward": -0.0473,
+            "backward": -0.0777
+          }
+        }
+      },
+      "oracle_evaluated": true
+    },
+    "b8_h16_d128_s2048": {
+      "case": {
+        "name": "b8_h16_d128_s2048",
+        "batch": 8,
+        "heads": 16,
+        "kv_heads": 16,
+        "sequence": 2048,
+        "head_dim": 128,
+        "seed": 7,
+        "dtype": "bfloat16"
+      },
+      "correctness": {
+        "sdpa_math": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 8.98e-05
+        },
+        "flash_attn": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00011804
+        },
+        "urm_flash_attn": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00011804
+        },
+        "sdpa_flash": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00011804
+        },
+        "urm_sdpa_flash": {
+          "max_abs_error_vs_oracle": 0.015625,
+          "mean_abs_error_vs_oracle": 0.00011804
+        }
+      },
+      "implementations": {
+        "sdpa_math": {
+          "forward": {
+            "cold_first_call_ms": 62.475,
+            "median_ms": 62.46697082519532,
+            "p95_ms": 62.495538330078126,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 6208094720,
+            "useful_tflops": 2.2,
+            "tokens_per_second": 262282.6,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0332
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 119.036,
+            "median_ms": 118.88578491210939,
+            "p95_ms": 119.062939453125,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 10150477824,
+            "useful_tflops": 2.89,
+            "tokens_per_second": 137812.9,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.0437
+          }
+        },
+        "flash_attn": {
+          "forward": {
+            "cold_first_call_ms": 3.144,
+            "median_ms": 3.1112192153930662,
+            "p95_ms": 3.1281152725219727,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 890503680,
+            "useful_tflops": 44.175,
+            "tokens_per_second": 5266102.7,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.6676
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 9.919,
+            "median_ms": 9.811359786987303,
+            "p95_ms": 9.817702484130859,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 1495532032,
+            "useful_tflops": 35.02,
+            "tokens_per_second": 1669901.0,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.5293
+          }
+        },
+        "urm_flash_attn": {
+          "forward": {
+            "cold_first_call_ms": 3.133,
+            "median_ms": 3.101593589782715,
+            "p95_ms": 3.1078399658203124,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 890503680,
+            "useful_tflops": 44.312,
+            "tokens_per_second": 5282445.8,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.6697
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 9.839,
+            "median_ms": 9.811455917358398,
+            "p95_ms": 9.823027038574219,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 1495532032,
+            "useful_tflops": 35.02,
+            "tokens_per_second": 1669884.7,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.5293
+          }
+        },
+        "sdpa_flash": {
+          "forward": {
+            "cold_first_call_ms": 3.168,
+            "median_ms": 3.141939163208008,
+            "p95_ms": 3.148800086975098,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 890504192,
+            "useful_tflops": 43.743,
+            "tokens_per_second": 5214614.0,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.6611
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 10.805,
+            "median_ms": 10.67438087463379,
+            "p95_ms": 10.68380126953125,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 1629750272,
+            "useful_tflops": 32.189,
+            "tokens_per_second": 1534890.0,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.4865
+          }
+        },
+        "urm_sdpa_flash": {
+          "forward": {
+            "cold_first_call_ms": 3.158,
+            "median_ms": 3.1411135673522947,
+            "p95_ms": 3.1483903884887696,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 890504192,
+            "useful_tflops": 43.755,
+            "tokens_per_second": 5215984.6,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.6613
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 10.778,
+            "median_ms": 10.67775993347168,
+            "p95_ms": 10.684210968017577,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 1629750272,
+            "useful_tflops": 32.179,
+            "tokens_per_second": 1534404.2,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.4863
+          }
+        }
+      },
+      "adapter_overhead": {
+        "flash_attn": {
+          "median_overhead_fraction": {
+            "forward": -0.0031,
+            "backward": 0.0
+          }
+        },
+        "sdpa_flash": {
+          "median_overhead_fraction": {
+            "forward": -0.0003,
+            "backward": 0.0003
+          }
+        }
+      },
+      "oracle_evaluated": true
+    },
+    "b8_h16_d128_s8192": {
+      "case": {
+        "name": "b8_h16_d128_s8192",
+        "batch": 8,
+        "heads": 16,
+        "kv_heads": 16,
+        "sequence": 8192,
+        "head_dim": 128,
+        "seed": 7,
+        "dtype": "bfloat16"
+      },
+      "correctness": {},
+      "implementations": {
+        "flash_attn": {
+          "forward": {
+            "cold_first_call_ms": 37.566,
+            "median_ms": 37.375491333007815,
+            "p95_ms": 37.4513671875,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 2705588736,
+            "useful_tflops": 58.836,
+            "tokens_per_second": 1753448.5,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.8892
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 127.688,
+            "median_ms": 127.56336669921875,
+            "p95_ms": 127.64774169921876,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 5125702144,
+            "useful_tflops": 43.097,
+            "tokens_per_second": 513752.5,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.6513
+          }
+        },
+        "urm_flash_attn": {
+          "forward": {
+            "cold_first_call_ms": 37.565,
+            "median_ms": 37.41460418701172,
+            "p95_ms": 37.456484985351565,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 2705588736,
+            "useful_tflops": 58.774,
+            "tokens_per_second": 1751615.5,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.8883
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 127.527,
+            "median_ms": 127.5447265625,
+            "p95_ms": 127.61824951171874,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 5125702144,
+            "useful_tflops": 43.103,
+            "tokens_per_second": 513827.6,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.6514
+          }
+        },
+        "sdpa_flash": {
+          "forward": {
+            "cold_first_call_ms": 38.208,
+            "median_ms": 38.032179260253905,
+            "p95_ms": 38.08808898925781,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 2705589248,
+            "useful_tflops": 57.82,
+            "tokens_per_second": 1723172.4,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.8739
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 134.693,
+            "median_ms": 134.54254150390625,
+            "p95_ms": 134.58206787109376,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 5662573568,
+            "useful_tflops": 40.861,
+            "tokens_per_second": 487102.4,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.6176
+          }
+        },
+        "urm_sdpa_flash": {
+          "forward": {
+            "cold_first_call_ms": 38.091,
+            "median_ms": 38.03709411621094,
+            "p95_ms": 38.07600708007813,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 2705589248,
+            "useful_tflops": 57.813,
+            "tokens_per_second": 1722949.7,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.8738
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 134.449,
+            "median_ms": 134.56813964843752,
+            "p95_ms": 134.62568359375,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 5662573568,
+            "useful_tflops": 40.853,
+            "tokens_per_second": 487009.8,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.6174
+          }
+        }
+      },
+      "adapter_overhead": {
+        "flash_attn": {
+          "median_overhead_fraction": {
+            "forward": 0.001,
+            "backward": -0.0001
+          }
+        },
+        "sdpa_flash": {
+          "median_overhead_fraction": {
+            "forward": 0.0001,
+            "backward": 0.0002
+          }
+        }
+      },
+      "oracle_evaluated": false
+    },
+    "b8_h16_d128_s32768": {
+      "case": {
+        "name": "b8_h16_d128_s32768",
+        "batch": 8,
+        "heads": 16,
+        "kv_heads": 16,
+        "sequence": 32768,
+        "head_dim": 128,
+        "seed": 7,
+        "dtype": "bfloat16"
+      },
+      "correctness": {},
+      "implementations": {
+        "flash_attn": {
+          "forward": {
+            "cold_first_call_ms": 565.695,
+            "median_ms": 566.3078369140625,
+            "p95_ms": 568.629052734375,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 10771235328,
+            "useful_tflops": 62.129,
+            "tokens_per_second": 462900.2,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.939
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 1931.233,
+            "median_ms": 1930.88271484375,
+            "p95_ms": 1931.074609375,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 20451688960,
+            "useful_tflops": 45.555,
+            "tokens_per_second": 135763.8,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.6885
+          }
+        },
+        "urm_flash_attn": {
+          "forward": {
+            "cold_first_call_ms": 567.915,
+            "median_ms": 567.9797119140626,
+            "p95_ms": 568.58583984375,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 10771235328,
+            "useful_tflops": 61.947,
+            "tokens_per_second": 461537.6,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.9362
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 1931.667,
+            "median_ms": 1931.23818359375,
+            "p95_ms": 1931.80078125,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 20451688960,
+            "useful_tflops": 45.546,
+            "tokens_per_second": 135738.8,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.6884
+          }
+        },
+        "sdpa_flash": {
+          "forward": {
+            "cold_first_call_ms": 577.795,
+            "median_ms": 579.4471923828125,
+            "p95_ms": 580.379443359375,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 10771235840,
+            "useful_tflops": 60.721,
+            "tokens_per_second": 452403.6,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.9177
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 2071.112,
+            "median_ms": 2016.613671875,
+            "p95_ms": 2018.036328125,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 22599173120,
+            "useful_tflops": 43.618,
+            "tokens_per_second": 129992.2,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.6592
+          }
+        },
+        "urm_sdpa_flash": {
+          "forward": {
+            "cold_first_call_ms": 580.763,
+            "median_ms": 578.8908447265625,
+            "p95_ms": 580.090478515625,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 10771235840,
+            "useful_tflops": 60.779,
+            "tokens_per_second": 452838.4,
+            "mode": "forward",
+            "mfu_fraction_of_measured_bf16_peak": 0.9186
+          },
+          "backward_gradients_present": true,
+          "backward": {
+            "cold_first_call_ms": 2016.912,
+            "median_ms": 2016.8479492187498,
+            "p95_ms": 2017.7478515625,
+            "samples": 30,
+            "inner_iterations": 5,
+            "peak_allocated_bytes": 22599173120,
+            "useful_tflops": 43.613,
+            "tokens_per_second": 129977.1,
+            "mode": "backward",
+            "mfu_fraction_of_measured_bf16_peak": 0.6591
+          }
+        }
+      },
+      "adapter_overhead": {
+        "flash_attn": {
+          "median_overhead_fraction": {
+            "forward": 0.003,
+            "backward": 0.0002
+          }
+        },
+        "sdpa_flash": {
+          "median_overhead_fraction": {
+            "forward": -0.001,
+            "backward": 0.0001
+          }
+        }
+      },
+      "oracle_evaluated": false
+    }
+  }
+}

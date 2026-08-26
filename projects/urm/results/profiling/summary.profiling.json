@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "timestamp_utc": "2026-08-26T00:49:41.044192+00:00",
+  "gpu": "NVIDIA A10G",
+  "compute_capability": [
+    8,
+    6
+  ],
+  "torch": "2.8.0",
+  "ncu": {
+    "status": "not_available",
+    "reason": "GPU performance counters restricted on this host (ERR_NVGPUCTRPERM); container lacks CAP_SYS_ADMIN or driver RmProfilingAdminOnly=1",
+    "version": "Version 2025.2.1.0 (build 35987062) (public-release)"
+  },
+  "cases": {
+    "smoke-forward": {
+      "wall_median_ms": 0.040602,
+      "gpu_ms": 0.001581,
+      "dispatch_fraction": 0.961,
+      "mfu_pct": "not_available",
+      "mbu_static": "not_available",
+      "eligible": false
+    },
+    "smoke-backward": {
+      "wall_median_ms": 0.37388,
+      "gpu_ms": 0.008611,
+      "dispatch_fraction": 0.977,
+      "mfu_pct": "not_available",
+      "mbu_static": "not_available",
+      "eligible": false
+    },
+    "decode_top2-forward": {
+      "wall_median_ms": 0.046144,
+      "gpu_ms": 0.001405,
+      "dispatch_fraction": 0.97,
+      "mfu_pct": "not_available",
+      "mbu_static": "not_available",
+      "eligible": false
+    },
+    "decode_top2-backward": {
+      "wall_median_ms": 0.37863,
+      "gpu_ms": 0.011962,
+      "dispatch_fraction": 0.968,
+      "mfu_pct": "not_available",
+      "mbu_static": "not_available",
+      "eligible": false
+    },
+    "prefill_top8-forward": {
+      "wall_median_ms": 0.157411,
+      "gpu_ms": 0.151042,
+      "dispatch_fraction": 0.04,
+      "mfu_pct": 15.41,
+      "mbu_static": 4.361,
+      "eligible": true
+    },
+    "prefill_top8-backward": {
+      "wall_median_ms": 4.350067,
+      "gpu_ms": 4.315584,
+      "dispatch_fraction": 0.008,
+      "mfu_pct": 1.08,
+      "mbu_static": 0.944,
+      "eligible": true
+    },
+    "memory_top32-forward": {
+      "wall_median_ms": 0.051654,
+      "gpu_ms": 0.014618,
+      "dispatch_fraction": 0.717,
+      "mfu_pct": "not_available",
+      "mbu_static": "not_available",
+      "eligible": false
+    },
+    "memory_top32-backward": {
+      "wall_median_ms": 0.71612,
+      "gpu_ms": 0.701429,
+      "dispatch_fraction": 0.021,
+      "mfu_pct": 0.83,
+      "mbu_static": 1.049,
+      "eligible": true
+    },
+    "non_power_of_two-forward": {
+      "wall_median_ms": 0.046496,
+      "gpu_ms": 0.002269,
+      "dispatch_fraction": 0.951,
+      "mfu_pct": "not_available",
+      "mbu_static": "not_available",
+      "eligible": false
+    },
+    "non_power_of_two-backward": {
+      "wall_median_ms": 0.339685,
+      "gpu_ms": 0.010822,
+      "dispatch_fraction": 0.968,
+      "mfu_pct": "not_available",
+      "mbu_static": "not_available",
+      "eligible": false
+    }
+  }
+}

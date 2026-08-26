@@ -1,0 +1,85 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "title": "URM dense causal attention comparison",
+ "type": "object",
+ "required": [
+  "schema_version",
+  "gpu",
+  "torch",
+  "flash_attention_upstream",
+  "semantics",
+  "cases"
+ ],
+ "properties": {
+  "schema_version": {"const": 1},
+  "gpu": {"type": "string"},
+  "compute_capability": {
+   "type": "array",
+   "items": {"type": "integer"}
+  },
+  "torch": {"type": "string"},
+  "cuda": {"type": ["string", "null"]},
+  "triton": {"type": "string"},
+  "flash_attention_upstream": {
+   "type": "object",
+   "required": [],
+   "properties": {
+    "package": {"type": "string"},
+    "version": {"type": "string"},
+    "pin": {"type": "string"},
+    "status": {"const": "not_applicable"},
+    "reason": {"type": "string"}
+   }
+  },
+  "mfu_denominator": {
+   "type": "object",
+   "required": ["bf16_tensor_core_tfps_measured", "source"],
+   "properties": {
+    "bf16_tensor_core_tfps_measured": {"type": "number"},
+    "note": {
+     "description": "Tensor-core peak is the correct denominator for MMA-based attention kernels."
+    }
+   }
+  },
+  "semantics": {
+   "type": "object",
+   "required": ["causal", "layout", "scale", "dropout"]
+  },
+  "cases": {
+   "type": "object",
+   "additionalProperties": {
+    "type": "object",
+    "required": ["case", "implementations"],
+    "properties": {
+     "correctness": {"type": "object"},
+     "implementations": {
+      "type": "object",
+      "additionalProperties": {
+       "type": "object",
+       "properties": {
+        "forward": {
+         "$ref": "#/definitions/level_metrics"
+        },
+        "backward": {
+         "$ref": "#/definitions/level_metrics"
+        }
+       }
+      }
+     },
+     "adapter_overhead": {"type": "object"}
+    }
+   }
+  }
+ },
+ "definitions": {
+  "level_metrics": {
+   "type": "object",
+   "required": [
+    "cold_first_call_ms",
+    "median_ms",
+    "p95_ms",
+    "useful_tflops"
+   ]
+  }
+ }
+}

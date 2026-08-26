@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "timestamp_utc": "2026-08-26T00:35:07.578270+00:00",
+  "gpu": "NVIDIA A10G",
+  "compute_capability": [
+    8,
+    6
+  ],
+  "python": "3.12.13",
+  "torch": "2.8.0",
+  "bandwidth": {
+    "copy_gbps": 479.7712245913834,
+    "fill_gbps": 493.5752605638874,
+    "read_gbps": 513.240482721711,
+    "sustainable_gbps": 513.240482721711
+  },
+  "fp32_cuda_core": {
+    "fp32_cuda_core_tfps_measured": 23.069889367583606,
+    "sgemm_matrix": 8192,
+    "tf32_disabled": true
+  },
+  "bf16_tensor_core": {
+    "bf16_tensor_core_tfps_measured": 66.16599973571093,
+    "sgemm_matrix": 8192
+  },
+  "vendor_reference": {
+    "a10g_spec_fp32_tfps": 31.2,
+    "a10g_spec_mem_gbps": 600,
+    "source": "NVIDIA A10G datasheet; reference only, not used as denominator"
+  },
+  "notes": "Bandwidth denominators are the best of measured copy/fill/read kernels on 1 GiB buffers in this exact software environment. The MFU denominator is measured TF32-disabled SGEMM (cuBLAS FP32 FMA path on CUDA cores); tensor-core peaks are never used because the routed-reduction kernels accumulate through FP32 CUDA-core ops."
+}

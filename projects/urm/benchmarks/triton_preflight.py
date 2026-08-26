@@ -45,7 +45,9 @@ def inspect_environment() -> dict[str, object]:
             report.update(
                 {
                     "gpu": properties.name,
-                    "compute_capability": list(torch.cuda.get_device_capability(device)),
+                    "compute_capability": list(
+                        torch.cuda.get_device_capability(device)
+                    ),
                     "total_memory_bytes": properties.total_memory,
                 }
             )

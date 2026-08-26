@@ -81,10 +81,10 @@ def test_v1_signature_rejects_invalid_dimensions_and_dtypes() -> None:
 def test_triton_static_capability_checks_are_explicit() -> None:
     assert triton_signature_status(make_signature()).supported
     assert not triton_signature_status(make_signature(device=DeviceType.CPU)).supported
-    assert not triton_signature_status(make_signature(route_width=65, sources=128)).supported
-    status = triton_signature_status(
-        make_signature(value_layout=TensorLayout.STRIDED)
-    )
+    assert not triton_signature_status(
+        make_signature(route_width=65, sources=128)
+    ).supported
+    status = triton_signature_status(make_signature(value_layout=TensorLayout.STRIDED))
     assert status == SupportStatus.no("v1 requires row-major contiguous inputs")
 
 

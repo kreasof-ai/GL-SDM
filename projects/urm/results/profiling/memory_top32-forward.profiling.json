@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "case": {
+    "name": "memory_top32",
+    "queries": 4096,
+    "sources": 65536,
+    "route_width": 32,
+    "value_dim": 256,
+    "dtype": "float16",
+    "distribution": "recurrent_reuse"
+  },
+  "mode": "forward",
+  "timestamp_utc": "2026-08-26T00:49:44.418662+00:00",
+  "timing": {
+    "median_wall_ms": 0.051654,
+    "p95_wall_ms": 0.066525,
+    "samples": 30,
+    "inner_iterations": 10,
+    "aggregate_gpu_ms": 0.014618,
+    "host_dispatch_ms_estimate": 0.037036,
+    "dispatch_fraction_of_wall": 0.717,
+    "launches_per_iteration": 1,
+    "per_kernel_ms": {
+      "_routed_reduce_forward_kernel": 0.014618
+    },
+    "per_kernel_launches": {
+      "_routed_reduce_forward_kernel": 1
+    }
+  },
+  "flops_model": {
+    "formula": "2 * Q * K * D",
+    "note": "Useful algorithmic FLOPs of the reduction, not executed instruction counts. Backward counts grad-weights (2), grad-values including conceptual accumulation (2), and ~zero for casts/init.",
+    "useful_flops": 67108864.0,
+    "useful_tfps_over_gpu_time": 4.5909,
+    "useful_tfps_over_wall": 1.2992
+  },
+  "mfu": {
+    "denominator": "fp32_cuda_core_tfps_measured",
+    "denominator_source": "results/device-limits.json (TF32-off cuBLAS SGEMM, measured)",
+    "fp32_cuda_core_peak_tfps": 23.069889367583606,
+    "vendor_spec_fp32_tfps_reference_only": 31.2,
+    "eligible": false,
+    "mfu_fraction": "not_available",
+    "mfu_pct": "not_available"
+  },
+  "memory_traffic": {
+    "measured": {
+      "dram_bytes_sum": "not_available",
+      "l2_hit_rate": "not_available",
+      "mbu_measured": "not_available",
+      "reason": "GPU performance counters restricted on this host (ERR_NVGPUCTRPERM); container lacks CAP_SYS_ADMIN or driver RmProfilingAdminOnly=1"
+    },
+    "static_estimate": {
+      "forward": {
+        "indices_weights_read": 786432,
+        "values_gathered_read": 67108864,
+        "values_unique_rows_read": 33554432,
+        "output_write": 2097152
+      },
+      "total_min_bytes": 36438016,
+      "total_max_bytes": 103546880,
+      "gbps_at_gpu_time_midpoint": "not_available",
+      "mbu_vs_measured_sustainable": "not_available",
+      "sustainable_bandwidth_gbps_denominator": 513.240482721711,
+      "bandwidth_denominator_source": "results/device-limits.json (best of copy/fill/read kernels)",
+      "note": "MBU here uses static analytic byte bounds over GPU time, not hardware counters; real DRAM traffic lies between the min/max bounds due to duplicate-row caching."
+    },
+    "vendor_bandwidth_reference_gbps": 600,
+    "vendor_relative_utilization": "not_available"
+  },
+  "atomic_contention_indicator": "not_applicable",
+  "route_statistics": {
+    "routes": 131072,
+    "unique_sources_touched": 64,
+    "source_utilization_pct": 0.1,
+    "hottest_source_traffic_share_pct": 1.651
+  },
+  "triton_kernel_metadata": {
+    "status": "available",
+    "kernels": {
+      "_routed_reduce_forward_kernel": {
+        "num_warps": 2,
+        "shared_bytes": 0,
+        "registers_per_thread": 64,
+        "spills": 0,
+        "theoretical_blocks_per_sm": 16,
+        "theoretical_occupancy_pct": 66.7
+      }
+    }
+  },
+  "normalized_utilization_eligible": false,
+  "eligibility_note": "Host dispatch dominates this small case; MFU/MBU are marked ineligible rather than reported as misleadingly tiny numbers."
+}

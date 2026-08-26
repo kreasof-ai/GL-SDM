@@ -70,9 +70,7 @@ def make_inputs(case: dict[str, object], device: str) -> tuple[object, object, o
             generator=generator,
         )
     elif distribution == "skewed":
-        samples = torch.rand(
-            (queries, route_width), device=device, generator=generator
-        )
+        samples = torch.rand((queries, route_width), device=device, generator=generator)
         indices = torch.floor(samples.pow(4) * sources).to(torch.int32)
     elif distribution == "recurrent_reuse":
         hot_sources = max(1, min(sources, route_width * 2))
@@ -206,7 +204,9 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--cases", type=Path, default=DEFAULT_CASES)
     parser.add_argument("--case", default="smoke")
-    parser.add_argument("--backend", choices=("torch", "triton", "both"), default="both")
+    parser.add_argument(
+        "--backend", choices=("torch", "triton", "both"), default="both"
+    )
     parser.add_argument("--mode", choices=("forward", "backward"), default="forward")
     parser.add_argument("--warmup", type=int, default=25)
     parser.add_argument("--samples", type=int, default=50)

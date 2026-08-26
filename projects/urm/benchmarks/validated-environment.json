@@ -1,0 +1,25 @@
+{
+  "validated_on": "2026-08-26",
+  "gpu": {
+    "name": "NVIDIA A10G",
+    "compute_capability": [
+      8,
+      6
+    ],
+    "total_memory_bytes": 23686938624
+  },
+  "driver": "595.91.07",
+  "python": "3.12.13",
+  "packages": {
+    "torch": "2.8.0",
+    "triton": "3.4.0",
+    "numpy": "1.26.4",
+    "pytest": "9.1.1",
+    "ruff": "0.16.4",
+    "jsonschema": "4.23.0",
+    "flash-attn": "2.8.3",
+    "flash-attn-pin": "v2.8.3 release wheel cu12torch2.8cxx11abiTRUE-cp312 from Dao-AILab/flash-attention GitHub releases"
+  },
+  "cuda_runtime": "12.9",
+  "notes": "gpu extra pins triton>=3.4,<3.5; dev pins ruff==0.16.4 for reproducible formatting"
+}

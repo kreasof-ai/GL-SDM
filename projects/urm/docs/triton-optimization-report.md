@@ -1,169 +1,194 @@
-# Routed-reduction Triton backend optimization report
+# URM GPU profiling, refinement, and production-comparison report
 
-Scope: routed-reduction v1 semantic contract (`docs/triton-backend.md`) preserved
-throughout. No changes to layouts, dtypes, fp32 accumulation, output dtype,
-index-bounds policy, or gradient semantics. Route generation was not fused.
+Follow-on to `triton-optimization-report.md`, from commit `2bd1f8a`. The
+routed-reduction v1 semantic contract remains untouched: no changes to
+normalization, collision behavior, fp32 accumulation, validation behavior,
+layouts, or gradient semantics.
 
-## 1. Hardware / software identity
+## 0. Hardware / software identity
 
 | Item | Value |
 | --- | --- |
-| GPU | NVIDIA A10G, compute capability 8.6, 23028 MiB |
-| Driver | 595.91.07 (CUDA 13.2 driver API) |
-| Platform | Linux-6.12.95-124.187.amzn2023.x86_64 (x86_64) |
-| Python | 3.12.13 (/opt/conda) |
-| PyTorch | 2.8.0 (CUDA 12.9 build) |
-| Triton | 3.4.0 |
-| CUDA toolkit headers | cuda-cudart-dev-12-9 12.9.79 (installed for Triton host glue) |
-| Compute sanitizer | 2025.2.1.0 (memcheck) |
+| GPU | NVIDIA A10G (SM 8.6), 23028 MiB, driver 595.91.07 |
+| Python / PyTorch / Triton | 3.12.13 / 2.8.0 (cu129) / 3.4.0 |
+| FlashAttention upstream | flash-attn 2.8.3, pinned release wheel cu12torch2.8cxx11abiTRUE-cp312 |
+| Nsight Compute | 2025.2.1 installed; **counters not permitted** on this host |
+| Lint/format | ruff 0.16.4 (now pinned) |
 
-Environment fix before any benchmarking: the host had no CUDA toolkit headers
-(`cuda.h`), so Triton's `cuda_utils.c` glue failed to compile. Installed
-`cuda-cudart-dev-12-9` via apt and linked its include directory into
-`/usr/local/include`. This is a host provisioning fix; no repo behavior change.
+Exact validated versions: `benchmarks/validated-environment.json`.
 
-## 2. Pre-optimization acceptance gates
+## Phase 1 - stabilization
 
-1. Preflight: `PYTHONPATH=src python benchmarks/triton_preflight.py --require-ready` → ready.
-2. Full suite: 45 passed (13 Triton GPU tests: fp16/bf16/fp32 × int32/int64 ×
-   K ∈ {1,3,8,32} × D < = > tile × non-power-of-two shapes).
-3. compute-sanitizer memcheck over the whole GPU test file: **0 errors**.
-4. Result JSONs validate against `benchmarks/result-schema.json` (100 files).
+- Reproduced final routed-reduction state: 45→57 tests pass, sanitizer
+  memcheck 0 errors, baseline-vs-final constraint checker clean.
+- **Tooling reproducibility fixes**
+  - `gpu` extra now pins `triton>=3.4,<3.5` (the validated line).
+  - The direct-launch fast path is capability-gated (`_fast_launch_capable`):
+    static probe for `warmup`, `CompiledKernel.__getitem__`, and launch-hook
+    knobs; first real use is guarded so any API drift permanently falls back
+    to the standard `JITFunction.__getitem__` launcher. Fallback verified to
+    produce bitwise-identical outputs.
+  - `dev` extra pins `ruff==0.16.4`; project reformatted so
+    `ruff format --check` is reproducible.
+  - `compare_results.py` summary no longer claims "p95 within +3%"; it now
+    describes the calibrated allowance actually applied.
+- Dependency versions recorded; hardware support intentionally unchanged.
 
-### Compilation failure fixed first
+## Phase 2 - MFU/MBU and roofline profiling
 
-Triton 3.4 rejects storing a shape-`(1,)` block through a scalar pointer
-(`ValueError: Value argument cannot be block type if pointer argument is not a
-block`) in `_routed_reduce_grad_weights_kernel`. Fixed by accumulating the dot
-product into a scalar (`tl.zeros((), tl.float32)`); math and dtype identical.
-This was required before the committed backward test could run at all.
+New tooling:
 
-## 3. Baseline (unmodified code, median/p95 µs, steady state)
+- `benchmarks/measure_device_limits.py` -> `results/device-limits.json`
+  - Measured sustainable HBM bandwidth: **513.3 GB/s** (best of copy/fill/read
+    kernels on 1 GiB buffers; vendor spec 600 GB/s is recorded as reference
+    only and never used as a denominator).
+  - Measured FP32 CUDA-core peak (TF32-off SGEMM): **23.1 TFLOP/s** - the only
+    legal MFU denominator for routed reduction, whose kernels accumulate via
+    FP32 CUDA-core ops rather than MMA instructions.
+  - Measured BF16 tensor-core peak: **66.2 TFLOP/s** - used only for
+    MMA-based dense attention comparators.
+- `benchmarks/profile_roofline.py` + schema `benchmarks/profiling-schema.json`
+  reports per case x mode: wall vs aggregate-GPU-kernel time vs host dispatch,
+  launch counts, per-kernel breakdown, useful algorithmic TFLOP/s (documented
+  model formulas: fwd `2QKD`, grad-weights `2QKD`, grad-values `2QKD`,
+  backward ~`4QKD`; explicitly not instruction counts), FP32 CUDA-core MFU,
+  static analytic byte bounds kept separate from measured traffic, MBU of that
+  static estimate against measured sustainable bandwidth, route statistics,
+  atomic contention indicator, registers/thread and theoretical occupancy from
+  Triton metadata, and eligibility gating.
+- Nsight Compute counters (measured DRAM bytes, L2 hit rate, achieved
+  occupancy, scheduler stalls) are reported as explicit `not_available` with
+  the blocking reason (`ERR_NVGPUCTRPERM`: container lacks CAP_SYS_ADMIN;
+  driver `RmProfilingAdminOnly=1`). No fabricated zeros anywhere.
+- Small host-bound cases are marked ineligible for normalized utilization;
+  their wall/GPU/dispatch split is still reported.
 
-Cold compile/first-call time is recorded separately in every JSON
-(`cold_compile_or_first_call_ms`); all numbers below are CUDA-event steady
-state with index validation disabled after trusted input generation.
+Committed artifacts: `results/profiling/*.profiling.json` (10 case-modes +
+summary), validated by tests in `tests/test_profiling_schema.py`.
 
-| Case | Mode | torch med | triton med | triton p95 |
-| --- | --- | ---: | ---: | ---: |
-| smoke (Q32,K8,D128,f16) | fwd | 120.8 | 108.9 | 136.2 |
-| smoke | bwd | 472.9 | 423.6 | 468.1 |
-| decode_top2 (Q1,K2,D4096,bf16) | fwd | 122.3 | 108.8 | 127.9 |
-| decode_top2 | bwd | 492.4 | 440.1 | 468.5 |
-| prefill_top8 (Q8192,S256,D4096,bf16,skew) | fwd | 11739.0 | 425.1 | 429.7 |
-| prefill_top8 | bwd | 36521.6 | 6109.4 | 6114.7 |
-| memory_top32 (Q4096,S65536,K32,D256,f16,recurrent) | fwd | 1429.8 | 116.9 | 147.7 |
-| memory_top32 | bwd | 4725.2 | 1102.6 | 1122.3 |
-| non_power_of_two (Q257,S997,K7,D190,fp32) | fwd | 94.9 | 109.8 | 141.2 |
-| non_power_of_two | bwd | 419.3 | 424.8 | 542.0 |
+### Roofline snapshot (final code)
 
-Baseline profiling split: small-Q cases were ~98% host dispatch (kernel ≈1–2 µs
-vs ≈110–320 µs wall); prefill/memory were GPU-bound.
+| Case-mode | wall ms | GPU ms | dispatch | MFU% (FP32 core) | static-MBU |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| smoke fwd/bwd | 0.041 / 0.374 | 0.002 / 0.009 | 96-98% | ineligible | ineligible |
+| decode_top2 fwd/bwd | 0.046 / 0.379 | 0.001 / 0.012 | 97-98% | ineligible | ineligible |
+| prefill_top8 fwd | 0.157 | 0.151 | 4% | 15.4% | 4.36* |
+| prefill_top8 bwd | 4.350 | 4.316 | 1% | 1.1% | 0.94 |
+| memory_top32 fwd | 0.052 | 0.015 | 72% | ineligible | ineligible |
+| memory_top32 bwd | 0.716 | 0.701 | 2% | 0.8% | 1.05 |
+| non_power_of_two fwd/bwd | 0.047 / 0.340 | 0.002 / 0.011 | 95-97% | ineligible | ineligible |
 
-## 4. Accepted changes (each re-ran the full 5×2 case matrix + gates)
+*prefill-forward static-MBU > 1 means the gather upper bound exceeds what DRAM
+could serve in the kernel time: most duplicate-row reads are absorbed by L2
+(S=256 rows = 2 MiB working set). This quantifies why measured counters would
+be needed for exact traffic and why the analytic bound is labeled static.
 
-### C1 — Host/dispatch fast path (results/c1-host-fastpath)
-- Memoized capability checks keyed by exact tensor metadata (shapes, strides,
-  dtypes, devices, contiguity). Cache misses run the original validation path
-  and raise identically; hits skip object construction only.
-- Removed runtime stride arguments from all kernels: v1 requires row-major
-  contiguous inputs (`require_row_major` runs upstream), so offsets are derived
-  from constexpr shapes. Fewer args → cheaper binding and address math.
-- No-grad fast path: `routed_reduce` skips autograd plumbing when no input
-  requires grad (observable behavior identical).
-- Direct cached-kernel launch through Triton's `CompiledKernel.__getitem__`
-  runner, keyed by (jit fn, device, grid, warps, constexprs, dtypes,
-  16-byte pointer-alignment bits), falling back to standard JIT dispatch when
-  launch hooks are active or on key miss (compilation stays excluded from
-  steady-state timing by the harness design).
-- Effect: decode-shape forward host cost 111→38 µs.
+## Phase 3 - evidence-driven refinement
 
-### C2 — Forward GPU regime tuning (results/c2b/c2c-forward-gpu)
-- `EVEN_D` constexpr elides dimension masks when `VALUE_DIM % BLOCK_D == 0`.
-- Launch table: large-Q regimes (queries ≥ 1024) use `num_warps=2`; others 4.
-  Offline sweep showed warps=2 + mask elision gives 2.7× kernel-time win on
-  prefill gather workloads (more resident programs per SM).
-- Backward keeps its own heuristic (`_backward_launch_parameters`); an
-  intermediate variant that let forward's table leak into backward regressed
-  prefill backward 27% and was rejected (results/c2-forward-gpu retained).
+**Hypothesis test.** The naive claim "skewed prefill-backward is dominated by
+hot-row grad-values atomic serialization" was verified with controlled
+dose-response experiments (identical shapes/bytes/instructions, only route
+distribution varied):
 
-### C3 — Backward restructure + config table (results/c3b-backward)
-- New per-query grad-values kernel: one program per (query, d-tile) loads
-  `grad_output` once and loops routes, instead of reloading it per route.
-  Atomic adds remain per-route fp32, so duplicate-route correctness and the
-  documented nondeterminism are unchanged. Selected for queries ≥ 1024;
-  small-Q keeps the original per-route kernel (per-query regressed np2/smoke).
-- Backward config table: BLOCK_D=512/warps=8 for value_dim ≥ 1024,
-  BLOCK_D=256/warps=4 otherwise (from offline sweep).
+| Route distribution (S=256) | hottest row share | gv kernel time | atomic-add rate |
+| --- | ---: | ---: | ---: |
+| uniform | 0.45% | 1485 us | 180.7 G/s |
+| skew^2 | 6.1% | 1914 us | 140.3 G/s |
+| skew^3 | 15.6% | 2913 us | 92.1 G/s |
+| skew^4 (committed case) | 24.8% | 4025 us | 66.7 G/s |
 
-### C4 — Relaxed atomic ordering (results/c4b-relaxed-atomics)
-- `tl.atomic_add(..., sem="relaxed")` on both grad-values kernels. Atomicity
-  and accumulation are unchanged (fp32 adds, order already nondeterministic);
-  cross-kernel visibility still guaranteed by stream ordering.
-- grad-values: −14% (memory regime), −4% (prefill regime).
+Collision concentration alone costs ~2.7x at identical traffic; the committed
+case matches the in-situ profile exactly (4016 us). The grad-values buffer is
+4 MiB (L2-resident), so the limiter is on-chip RMW throughput at contended
+addresses, not DRAM (static-MBU 0.94 confirms under-utilized DRAM).
 
-## 5. Rejected experiments (measured, then discarded)
+**Accepted change**: full-row tiles for the per-query grad-values kernel when
+`value_dim >= 1024` (BLOCK_D = min(4096, next_pow2(D)), 16 warps): removes
+masks and repeated grad_output fragment loads, keeps one wide atomic stream
+per program. Prefill backward 5186 -> **4347 us median (-19%)**; every other
+committed case unchanged within noise; correctness/memory/p95/sanitizer gates
+re-run clean. Config confined to the per-query path after a first attempt
+regressed small-Q per-route launches (rejected intermediate retained in
+`results/p3-gv-fullrow/`).
 
-| Candidate | Measurement | Verdict |
+**Rejected candidates** (all measured end-to-end):
+- K-wide 2-D block atomics (wide-issue): 14.2 ms vs 4.0 ms - register pressure
+  without issue-rate gain.
+- Within-query duplicate folding (16% duplicate routes found): 7.1 ms -
+  compiler serializes the O(K^2) fold plus masked atomics.
+- K-split grid decomposition: no improvement beyond BLOCK_D effect alone.
+- Cross-query aggregation/sorting: out of scope by contract (deterministic
+  backward must be introduced as its own documented capability).
+
+## Phase 4 - dense causal attention production comparator
+
+First four-level slice per docs/baselines.md, semantics matched exactly
+(causal alignment, BHSD boundary layout, GQA `heads % kv_heads == 0`,
+scale `1/sqrt(head_dim)`, dropout disabled, bf16, warm steady state, cold
+first call recorded separately):
+
+1. oracle: explicit fp32 softmax-reduce (evaluated where the S^2 fp32 matrix
+   fits an 8 GiB budget; larger sequences are `not_applicable` by memory
+   estimate, never zero);
+2. SDPA math backend (same budget rule);
+3. pinned FlashAttention upstream called directly (flash-attn 2.8.3);
+4. `UrmDenseCausalAttentionAdapter` invoking the same upstream call.
+
+Plus SDPA-flash and its adapter variant as a second optimized pair. Backend
+evidence: FA identity recorded from the package; SDPA forced to FLASH-only via
+backend flags around each call (save/force/restore); oracle error <= 0.0156
+max-abs in bf16 across all evaluated cases; GQA forward/backward covered by
+tests against an explicit oracle.
+
+Grid: batch {1,8} x heads 16 x head_dim {64,128} x seq {128, 2048, 8192,
+32768}, causal, bf16 - all 16 combinations ran on A10G (no OOM exclusions).
+
+### Adapter overhead (median, steady-state shapes)
+
+| Shape class | FA direct -> URM | SDPA-flash -> URM |
 | --- | --- | --- |
-| Block-K broadcast gather (2-D K×D tile) forward | slower/neutral vs mask-elision loop on every regime (e.g. memory 29.3 vs 23.3 µs) | rejected |
-| Software pipelining (`num_stages=2..4`) on route loops | zero effect on gather loops; no effect on atomic-bound loops (3962.9/3962.7/3962.5 µs) | rejected |
-| Split-K grad-weights (partials [routes, tiles] + reduce kernel) | prefill 2021 vs 1861 µs; memory 343 vs 269 µs; also adds workspace memory | rejected |
-| Per-query grad-values for small-Q | np2/smoke backward −6…−13% (fewer programs, serial K-loop) | rejected via regime split |
-| Forward table applied to backward launches | prefill backward 6100→8361 µs | rejected (c2 intermediate) |
-| CUDA-graph launch capture | rejected without implementation: static-address assumptions conflict with general tensor-identity contract; noted as possible future capability | rejected |
+| seq >= 2048 (all 12 cases) | -0.9% .. +1.4% | -1.0% .. +0.4% |
+| seq 128 (dispatch-bound) | +2..14% (~10 us absolute) | +/- noise (~100 us calls) |
 
-## 6. Final results (results/final, median/p95 µs, speedup vs baseline)
+**Working gate met**: URM dispatch is within 5% median latency of the same
+dense-attention implementation on every covered steady-state shape; tiny
+seq=128 shapes are explicitly marked dispatch-bound rather than treated as
+gate failures.
 
-| Case | Mode | torch | triton final | baseline triton | speedup |
-| --- | --- | ---: | ---: | ---: | ---: |
-| smoke | fwd | 125.8 | 38.3 | 108.9 | **2.84×** |
-| smoke | bwd | 492.1 | 308.6 | 423.6 | **1.37×** |
-| decode_top2 | fwd | 130.3 | 41.7 | 108.8 | **2.61×** |
-| decode_top2 | bwd | 513.4 | 306.1 | 440.1 | **1.44×** |
-| prefill_top8 | fwd | 11739.1 | 156.4 | 425.1 | **2.72×** |
-| prefill_top8 | bwd | 36532.4 | 5186.3 | 6109.4 | **1.18×** |
-| memory_top32 | fwd | 1431.6 | 39.5 | 116.9 | **2.96×** |
-| memory_top32 | bwd | 4725.0 | 715.8 | 1102.6 | **1.54×** |
-| non_power_of_two | fwd | 95.4 | 39.0 | 109.8 | **2.82×** |
-| non_power_of_two | bwd | 386.5 | 269.8 | 424.8 | **1.57×** |
+### Efficiency findings
 
-Constraints at final state:
-- Correctness: 45/45 tests pass; sanitizer memcheck 0 errors; triton-vs-torch
-  max-abs errors unchanged within documented atomic-order wiggle.
-- p95: no violation against the calibrated noise model (host-bound cases show
-  ±10–15% same-code spread on this shared host; GPU-bound cases <1%).
-- Peak allocated memory: byte-identical to baseline on every case/mode
-  (no workspace was introduced).
+- FlashAttention reaches 85-94% of the *measured* BF16 tensor-core peak at
+  s >= 8192 (62 TFLOP/s useful at b8/h16/d128/s32768 fwd) and ~42-67% at
+  s=2048 - consistent with known wave-quantization behavior at shorter
+  sequences.
+- SDPA-flash tracks FA within ~2-4% (its backward is ~7% slower than FA's at
+  large S).
 
-Final gates re-run on shipped code: pytest 45 passed, ruff clean, sanitizer 0
-errors, schema validation of all result JSONs.
+Artifacts: `results/attention/dense-causal.json`, schema
+`benchmarks/attention-result-schema.json`, tests in
+`tests/test_dense_attention_adapter.py`.
 
-## 7. Remaining bottlenecks
+## Limitations
 
-1. **Prefill backward grad-values atomics (~3.9 ms of 5.2 ms)**: skewed routes
-   hammer hot rows; RMW serialization at L2 dominates. A conflict-free
-   schedule (sorting/segmentation) is explicitly reserved as a separate
-   deterministic capability in the v1 doc and was out of scope.
-2. **Small-Q wall time floor (~30–45 µs)**: now dominated by Python/Triton
-   dispatch (~18 µs/launch floor measured with a no-op kernel), allocator, and
-   autograd engine. CUDA-graph capture would cut most of the remainder but
-   needs a scoped contract decision (static addresses per capture).
-3. **Host-bound measurement noise**: ±10–15% run-to-run on sub-millisecond
-   cases (co-hosted machine); GPU-bound cases reproduce within ~0.5%.
-4. **High-K grad-weights bandwidth**: per-route programs re-read `grad_output`
-   K times; the split-K alternative that amortizes it measured slower due to
-   partial-buffer traffic. A fused tile-resident multi-route design may help
-   but requires register-pressure management beyond this campaign.
+1. No Nsight Compute counters on this host: DRAM bytes, L2 hit rate, achieved
+   occupancy, and stall breakdowns remain `not_available`. Re-run
+   `profile_roofline.py` on a CAP_SYS_ADMIN-enabled host to fill them in; the
+   harness already queries metric availability dynamically.
+2. Atomic-order nondeterminism (documented v1 property) means grad-value
+   comparisons carry ordering wiggle; tolerances live in the adapters/tests.
+3. The attention comparator measures URM *dispatch* overhead only; routed
+   reduction does not compete with attention kernels and no such claim is
+   made.
+4. Host-bound timing noise on this co-hosted machine is +-10-15% below 1 ms;
+   constraint checks use a torch-drift-calibrated allowance.
 
-## 8. Artifacts
+## Next recommendation
 
-- `results/baseline/` — unmodified forward/backward JSON per committed case.
-- `results/c1-host-fastpath/`, `results/c2-forward-gpu/` (rejected
-  intermediate), `results/c2b-forward-gpu/`, `results/c2c-forward-gpu/`,
-  `results/c3-backward/` (rejected intermediate), `results/c3b-backward/`,
-  `results/c4-relaxed-atomics/`, `results/c4b-relaxed-atomics/`,
-  `results/final/` — complete matrices retained before/after each step.
-- `benchmarks/compare_results.py` — constraint checker (median hill-climb
-  target; correctness/p95/peak-memory gates; torch-backend drift used as the
-  session noise reference).
+Single next kernel family: **Flash Linear Attention (FLA) gated delta-rule /
+chunked linear-attention scan**, reached through the same four-level harness
+(oracle = explicit recurrent reference; framework = eager PyTorch scan;
+upstream = pinned FLA; URM = adapter overhead measurement). Rationale: the
+recurrence family is the largest uncovered semantic group in the baseline
+catalog, FLA publishes pip wheels, and its chunk-parallel form shares the
+gather-reduce structure this repo already profiles well. Sparse-memory
+(SDM-style page-local gather/merge) should follow once recurrence lands.

@@ -36,13 +36,13 @@ def _routed_reduce_forward_kernel(
     accumulator = tl.zeros((BLOCK_D,), dtype=tl.float32)
     for route_offset in tl.range(ROUTE_WIDTH):
         source_row = tl.load(indices + query * ROUTE_WIDTH + route_offset)
-        route_weight = tl.load(
-            weights + query * ROUTE_WIDTH + route_offset
-        ).to(tl.float32)
+        route_weight = tl.load(weights + query * ROUTE_WIDTH + route_offset).to(
+            tl.float32
+        )
         if EVEN_D:
-            gathered = tl.load(
-                values + source_row * VALUE_DIM + dimension_offsets
-            ).to(tl.float32)
+            gathered = tl.load(values + source_row * VALUE_DIM + dimension_offsets).to(
+                tl.float32
+            )
         else:
             gathered = tl.load(
                 values + source_row * VALUE_DIM + dimension_offsets,
@@ -185,7 +185,55 @@ def _backward_launch_parameters(value_dim: int) -> tuple[int, int]:
     return max(32, min(256, npd)), 4
 
 
+def _grad_values_launch_parameters(value_dim: int) -> tuple[int, int]:
+    """Full-row tiles for large value dimensions.
+
+    Measured on A10G: covering the whole row in one tile (BLOCK_D == D rounded
+    to a power of two) removes masks and reloads of grad_output fragments and
+    cut the skewed prefill grad-values kernel by ~20%; 16 warps give each
+    program enough issue slots to keep the wide atomic stream saturated.
+    """
+    npd = triton.next_power_of_2(value_dim)
+    if value_dim >= 1024:
+        return min(4096, max(32, npd)), 16
+    return _backward_launch_parameters(value_dim)
+
+
 _DIRECT_LAUNCH_CACHE: dict[tuple[object, ...], object] = {}
+_FAST_LAUNCH_CAPABLE: bool | None = None
+
+
+def _fast_launch_capable(jit_fn: object) -> bool:
+    """Probe for the Triton 3.4 private APIs the direct launcher relies on.
+
+    The validated line is ``triton>=3.4,<3.5``. On any other version the
+    standard ``JITFunction.__getitem__`` dispatch is used, which is slower per
+    launch but identical in semantics. The static probe is cached after the
+    first call; ``_disable_fast_launch`` flips it off permanently if the first
+    real warmup/runner construction hits an API difference.
+    """
+    global _FAST_LAUNCH_CAPABLE
+    if _FAST_LAUNCH_CAPABLE is None:
+        try:
+            from triton.compiler.compiler import CompiledKernel
+        except ImportError:
+            _FAST_LAUNCH_CAPABLE = False
+            return _FAST_LAUNCH_CAPABLE
+        _FAST_LAUNCH_CAPABLE = bool(
+            hasattr(jit_fn, "warmup")
+            and hasattr(CompiledKernel, "__getitem__")
+            # CompiledKernel.run is an instance attribute created by
+            # _init_handles; its presence is implied by __getitem__, whose
+            # runner closure reads it on every launch.
+            and hasattr(_runtime_knobs, "launch_enter_hook")
+            and hasattr(_runtime_knobs, "launch_exit_hook")
+        )
+    return _FAST_LAUNCH_CAPABLE
+
+
+def _disable_fast_launch() -> None:
+    global _FAST_LAUNCH_CAPABLE
+    _FAST_LAUNCH_CAPABLE = False
 
 
 def _launch(
@@ -195,11 +243,19 @@ def _launch(
     constexprs: dict[str, int],
     num_warps: int,
 ) -> None:
-    if _runtime_knobs.launch_enter_hook is not None or _runtime_knobs.launch_exit_hook is not None:
+    hooks_active = (
+        getattr(_runtime_knobs, "launch_enter_hook", None) is not None
+        or getattr(_runtime_knobs, "launch_exit_hook", None) is not None
+    )
+    if hooks_active or not _fast_launch_capable(jit_fn):
         jit_fn[grid](*tensors, **constexprs, num_warps=num_warps)
         return
     launch_grid = grid + (1,) * (3 - len(grid))
-    device = tensors[-1].device.index if tensors[-1].device.index is not None else torch.cuda.current_device()
+    device = (
+        tensors[-1].device.index
+        if tensors[-1].device.index is not None
+        else torch.cuda.current_device()
+    )
     key = (
         jit_fn,
         device,
@@ -211,20 +267,29 @@ def _launch(
     )
     runner = _DIRECT_LAUNCH_CACHE.get(key)
     if runner is None:
-        with torch.cuda.device(device):
-            kernel = jit_fn.warmup(*tensors, grid=launch_grid, **constexprs, num_warps=num_warps)
-            runner = kernel[launch_grid]
+        try:
+            with torch.cuda.device(device):
+                kernel = jit_fn.warmup(
+                    *tensors, grid=launch_grid, **constexprs, num_warps=num_warps
+                )
+                runner = kernel[launch_grid]
+        except (AttributeError, TypeError, KeyError):
+            # Triton API drift: permanently fall back to the standard,
+            # supported launcher. No GPU work has been issued at this point.
+            _disable_fast_launch()
+            jit_fn[grid](*tensors, **constexprs, num_warps=num_warps)
+            return
         _DIRECT_LAUNCH_CACHE[key] = runner
     runner(*tensors, *constexprs.values())
 
 
-def _forward(indices: torch.Tensor, weights: torch.Tensor, values: torch.Tensor) -> torch.Tensor:
+def _forward(
+    indices: torch.Tensor, weights: torch.Tensor, values: torch.Tensor
+) -> torch.Tensor:
     queries, route_width = indices.shape
     value_dim = values.shape[1]
     block_d, num_warps = _launch_parameters(value_dim, queries)
-    output = torch.empty(
-        (queries, value_dim), device=values.device, dtype=values.dtype
-    )
+    output = torch.empty((queries, value_dim), device=values.device, dtype=values.dtype)
     grid = (queries, triton.cdiv(value_dim, block_d))
     _launch(
         _routed_reduce_forward_kernel,
@@ -249,7 +314,11 @@ def _backward(
 ) -> tuple[torch.Tensor, torch.Tensor]:
     queries, route_width = indices.shape
     sources, value_dim = values.shape
-    block_d, num_warps = _backward_launch_parameters(value_dim)
+    gw_block_d, gw_num_warps = _backward_launch_parameters(value_dim)
+    if queries >= 1024:
+        gv_block_d, gv_num_warps = _grad_values_launch_parameters(value_dim)
+    else:
+        gv_block_d, gv_num_warps = _backward_launch_parameters(value_dim)
     grad_output = grad_output.contiguous()
     grad_weights_fp32 = torch.empty(
         weights.shape, device=weights.device, dtype=torch.float32
@@ -266,13 +335,13 @@ def _backward(
         {
             "ROUTE_WIDTH": route_width,
             "VALUE_DIM": value_dim,
-            "BLOCK_D": block_d,
+            "BLOCK_D": gw_block_d,
         },
-        num_warps,
+        gw_num_warps,
     )
 
     if queries >= 1024:
-        value_grid = (queries, triton.cdiv(value_dim, block_d))
+        value_grid = (queries, triton.cdiv(value_dim, gv_block_d))
         _launch(
             _routed_reduce_grad_values_per_query_kernel,
             value_grid,
@@ -280,13 +349,13 @@ def _backward(
             {
                 "ROUTE_WIDTH": route_width,
                 "VALUE_DIM": value_dim,
-                "BLOCK_D": block_d,
-                "EVEN_D": value_dim % block_d == 0,
+                "BLOCK_D": gv_block_d,
+                "EVEN_D": value_dim % gv_block_d == 0,
             },
-            num_warps,
+            gv_num_warps,
         )
     else:
-        value_grid = (queries * route_width, triton.cdiv(value_dim, block_d))
+        value_grid = (queries * route_width, triton.cdiv(value_dim, gv_block_d))
         _launch(
             _routed_reduce_grad_values_kernel,
             value_grid,
@@ -294,9 +363,9 @@ def _backward(
             {
                 "ROUTE_WIDTH": route_width,
                 "VALUE_DIM": value_dim,
-                "BLOCK_D": block_d,
+                "BLOCK_D": gv_block_d,
             },
-            num_warps,
+            gv_num_warps,
         )
     return grad_weights_fp32.to(weights.dtype), grad_values_fp32.to(values.dtype)
 
@@ -310,24 +379,23 @@ class _RoutedReduction(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_output):
         indices, weights, values = ctx.saved_tensors
-        grad_weights, grad_values = _backward(
-            indices, weights, values, grad_output
-        )
+        grad_weights, grad_values = _backward(indices, weights, values, grad_output)
         return None, grad_weights, grad_values
 
 
 def routed_reduce(
     indices: torch.Tensor, weights: torch.Tensor, values: torch.Tensor
 ) -> torch.Tensor:
-    if (
-        torch.is_grad_enabled()
-        and (indices.requires_grad or weights.requires_grad or values.requires_grad)
+    if torch.is_grad_enabled() and (
+        indices.requires_grad or weights.requires_grad or values.requires_grad
     ):
         return _RoutedReduction.apply(indices, weights, values)
     return _forward(indices, weights, values)
 
 
-def launch_metadata(route_width: int, value_dim: int, queries: int = 1) -> dict[str, int]:
+def launch_metadata(
+    route_width: int, value_dim: int, queries: int = 1
+) -> dict[str, int]:
     block_d, num_warps = _launch_parameters(value_dim, queries)
     return {
         "routes_per_program": route_width,

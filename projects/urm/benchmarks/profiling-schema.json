@@ -1,0 +1,79 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "title": "URM routed-reduction roofline profiling summary",
+ "type": "object",
+ "required": [
+  "schema_version",
+  "case",
+  "mode",
+  "timing",
+  "flops_model",
+  "mfu",
+  "memory_traffic"
+ ],
+ "properties": {
+  "schema_version": {"const": 1},
+  "case": {
+   "type": "object",
+   "required": ["name", "queries", "sources", "route_width", "value_dim", "dtype"]
+  },
+  "mode": {"enum": ["forward", "backward"]},
+  "timing": {
+   "type": "object",
+   "required": [
+    "median_wall_ms",
+    "aggregate_gpu_ms",
+    "host_dispatch_ms_estimate",
+    "launches_per_iteration",
+    "per_kernel_ms"
+   ]
+  },
+  "flops_model": {
+   "type": "object",
+   "required": ["formula", "useful_flops", "useful_tfps_over_gpu_time"],
+   "properties": {
+    "note": {
+     "description": "Must state that useful FLOPs are algorithmic model counts, not executed instruction counts."
+    }
+   }
+  },
+  "mfu": {
+   "type": "object",
+   "required": ["denominator_source"],
+   "properties": {
+    "eligible": {"type": "boolean"},
+    "mfu_fraction": {"type": ["number", "string"]},
+    "denominator": {
+     "description": "FP32 CUDA-core peak for routed reduction; tensor-core peaks are prohibited here."
+    }
+   }
+  },
+  "memory_traffic": {
+   "type": "object",
+   "required": ["measured", "static_estimate"],
+   "properties": {
+    "measured": {
+     "type": "object",
+     "required": ["dram_bytes_sum", "l2_hit_rate", "mbu_measured"],
+     "properties": {
+      "dram_bytes_sum": {"const": "not_available"},
+      "l2_hit_rate": {"const": "not_available"},
+      "mbu_measured": {"const": "not_available"}
+     }
+    },
+    "static_estimate": {
+     "type": "object",
+     "required": [
+      "total_min_bytes",
+      "total_max_bytes",
+      "sustainable_bandwidth_gbps_denominator",
+      "bandwidth_denominator_source"
+     ]
+    }
+   }
+  },
+  "normalized_utilization_eligible": {"type": "boolean"},
+  "atomic_contention_indicator": {},
+  "route_statistics": {"type": "object"}
+ }
+}

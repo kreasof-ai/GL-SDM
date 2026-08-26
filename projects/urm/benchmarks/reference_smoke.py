@@ -14,7 +14,9 @@ from urm.reference import execute
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--family", choices=("attention", "moe", "memory"), default="attention")
+    parser.add_argument(
+        "--family", choices=("attention", "moe", "memory"), default="attention"
+    )
     parser.add_argument("--queries", type=int, default=128)
     parser.add_argument("--sources", type=int, default=128)
     parser.add_argument("--value-dim", type=int, default=64)

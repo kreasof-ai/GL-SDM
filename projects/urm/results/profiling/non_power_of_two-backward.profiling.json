@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "case": {
+    "name": "non_power_of_two",
+    "queries": 257,
+    "sources": 997,
+    "route_width": 7,
+    "value_dim": 190,
+    "dtype": "float32",
+    "distribution": "uniform"
+  },
+  "mode": "backward",
+  "timestamp_utc": "2026-08-26T00:49:44.797518+00:00",
+  "timing": {
+    "median_wall_ms": 0.339685,
+    "p95_wall_ms": 0.363091,
+    "samples": 30,
+    "inner_iterations": 10,
+    "aggregate_gpu_ms": 0.010822,
+    "host_dispatch_ms_estimate": 0.328863,
+    "dispatch_fraction_of_wall": 0.968,
+    "launches_per_iteration": 4,
+    "per_kernel_ms": {
+      "_routed_reduce_grad_weights_kernel": 0.003593,
+      "_routed_reduce_grad_values_kernel": 0.003565,
+      "_routed_reduce_forward_kernel": 0.002218,
+      "void at::native::vectorized_elementwise_kernel<4, at::native::FillFunctor<float>, std::array<char*, 1ul> >(int, at::native::FillFunctor<float>, std::array<char*, 1ul>)": 0.001446
+    },
+    "per_kernel_launches": {
+      "_routed_reduce_forward_kernel": 1,
+      "void at::native::vectorized_elementwise_kernel<4, at::native::FillFunctor<float>, std::array<char*, 1ul> >(int, at::native::FillFunctor<float>, std::array<char*, 1ul>)": 1,
+      "_routed_reduce_grad_weights_kernel": 1,
+      "_routed_reduce_grad_values_kernel": 1
+    }
+  },
+  "flops_model": {
+    "formula": "4.0 * Q * K * D",
+    "note": "Useful algorithmic FLOPs of the reduction, not executed instruction counts. Backward counts grad-weights (2), grad-values including conceptual accumulation (2), and ~zero for casts/init.",
+    "useful_flops": 1367240.0,
+    "useful_tfps_over_gpu_time": 0.1263,
+    "useful_tfps_over_wall": 0.004
+  },
+  "mfu": {
+    "denominator": "fp32_cuda_core_tfps_measured",
+    "denominator_source": "results/device-limits.json (TF32-off cuBLAS SGEMM, measured)",
+    "fp32_cuda_core_peak_tfps": 23.069889367583606,
+    "vendor_spec_fp32_tfps_reference_only": 31.2,
+    "eligible": false,
+    "mfu_fraction": "not_available",
+    "mfu_pct": "not_available"
+  },
+  "memory_traffic": {
+    "measured": {
+      "dram_bytes_sum": "not_available",
+      "l2_hit_rate": "not_available",
+      "mbu_measured": "not_available",
+      "reason": "GPU performance counters restricted on this host (ERR_NVGPUCTRPERM); container lacks CAP_SYS_ADMIN or driver RmProfilingAdminOnly=1"
+    },
+    "static_estimate": {
+      "backward": {
+        "grad_weights_kernel": {
+          "indices_read": 7196,
+          "values_gathered_read": 1367240,
+          "grad_output_read_gw": 1367240,
+          "grad_weights_write": 7196
+        },
+        "grad_values_kernel": {
+          "indices_weights_read": 14392,
+          "grad_output_read_gv": 195320,
+          "atomic_rmw_bytes": 1367240
+        },
+        "zero_init_and_casts_rw": 1920472
+      },
+      "total_min_bytes": 4879056,
+      "total_max_bytes": 6246296,
+      "gbps_at_gpu_time_midpoint": "not_available",
+      "mbu_vs_measured_sustainable": "not_available",
+      "sustainable_bandwidth_gbps_denominator": 513.240482721711,
+      "bandwidth_denominator_source": "results/device-limits.json (best of copy/fill/read kernels)",
+      "note": "MBU here uses static analytic byte bounds over GPU time, not hardware counters; real DRAM traffic lies between the min/max bounds due to duplicate-row caching."
+    },
+    "vendor_bandwidth_reference_gbps": 600,
+    "vendor_relative_utilization": "not_available"
+  },
+  "atomic_contention_indicator": {
+    "grad_values_gpu_ms": 0.003565,
+    "ideal_bw_bound_ms": 0.005328,
+    "serialization_factor": 0.67,
+    "method": "grad-values kernel time vs its atomic RMW bytes (read+write fp32) moved at measured sustainable bandwidth"
+  },
+  "route_statistics": {
+    "routes": 1799,
+    "unique_sources_touched": 844,
+    "source_utilization_pct": 84.65,
+    "hottest_source_traffic_share_pct": 0.389
+  },
+  "triton_kernel_metadata": {
+    "status": "available",
+    "kernels": {
+      "_routed_reduce_forward_kernel": {
+        "num_warps": 4,
+        "shared_bytes": 0,
+        "registers_per_thread": 36,
+        "spills": 0,
+        "theoretical_blocks_per_sm": 12,
+        "theoretical_occupancy_pct": 100.0
+      }
+    }
+  },
+  "normalized_utilization_eligible": false,
+  "eligibility_note": "Host dispatch dominates this small case; MFU/MBU are marked ineligible rather than reported as misleadingly tiny numbers."
+}
