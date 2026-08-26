@@ -33,6 +33,16 @@ class DiagnosticCode(StrEnum):
     NO_ANCHOR_AVAILABLE = "no_anchor_available"
     PLACEMENT_INCOMPLETE = "placement_incomplete"
     CAPACITY_DROP_REQUIRED = "capacity_drop_required"
+    SCHEDULE_HINT_INVALID = "schedule_hint_invalid"
+    INTENT_CONFLICT = "intent_conflict"
+    CANDIDATE_NOT_FOUND = "candidate_not_found"
+    CANDIDATE_ILLEGAL = "candidate_illegal"
+    SOLVER_UNAVAILABLE = "solver_unavailable"
+    SOLVER_UNKNOWN = "solver_unknown"
+    UNSAT_CONSTRAINTS = "unsat_constraints"
+    MODEL_VERIFICATION_FAILED = "model_verification_failed"
+    NOGOOD_RETRY_LIMIT = "nogood_retry_limit"
+    PROTOCOL_VIOLATION = "protocol_violation"
 
 
 class Severity(StrEnum):
@@ -43,8 +53,8 @@ class Severity(StrEnum):
 @dataclass(frozen=True, slots=True)
 class Diagnostic:
     code: DiagnosticCode
-    severity: Severity
     message: str
+    severity: Severity = Severity.ERROR
     subject: str | None = None
 
     def to_dict(self) -> dict[str, str]:
@@ -58,7 +68,11 @@ class Diagnostic:
         return payload
 
 
-@dataclass(frozen=True, slots=True)
+# NOTE: exceptions must be neither slotted nor frozen - the interpreter
+# assigns ``__traceback__`` on every raise, which requires a writable
+# instance dict and breaks under both ``slots=True`` (layout mismatch) and
+# ``frozen=True`` (blocked assignment).
+@dataclass
 class CompilerError(Exception):
     """Raised when validation fails; carries every accumulated diagnostic."""
 
@@ -90,12 +104,20 @@ class DiagnosticsCollector:
     def error(
         self, code: DiagnosticCode, message: str, subject: str | None = None
     ) -> None:
-        self.add(Diagnostic(code, Severity.ERROR, message, subject))
+        self.add(
+            Diagnostic(
+                code=code, message=message, severity=Severity.ERROR, subject=subject
+            )
+        )
 
     def warning(
         self, code: DiagnosticCode, message: str, subject: str | None = None
     ) -> None:
-        self.add(Diagnostic(code, Severity.WARNING, message, subject))
+        self.add(
+            Diagnostic(
+                code=code, message=message, severity=Severity.WARNING, subject=subject
+            )
+        )
 
     @property
     def errors(self) -> tuple[Diagnostic, ...]:

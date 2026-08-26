@@ -1,10 +1,23 @@
 """Compilation matrix over existing URM presets (NAS-facing API exercise).
 
 Builds typed semantic programs from every canonical `MixerSpec` preset,
-validates them, enumerates rewrite/lowering candidates, compiles what is
-supported, and records structured diagnostics for what is not. Produces one
-compact JSON artifact distinguishing architecture parameters from schedule
-parameters. Escape-hatch count must remain zero by construction.
+validates them under an explicit intent, enumerates rewrite/lowering
+candidates, builds constraint models, runs the solver passes when the
+optional extra is installed, compiles what is supported, and records
+structured diagnostics for what is not.
+
+Metrics are named for what they actually measure:
+
+- ``routing_skeleton_compile_rate`` - fraction of presets whose COARSE
+  routing skeleton maps onto compiled routed-reduction semantics. This says
+  nothing about dense attention, MoE expert GEMMs, or sparse attention being
+  fully compiled.
+- ``full_architecture_compile_rate`` - fraction of presets whose complete
+  family detail (expert GEMMs, scan equations, page updates) has trusted
+  lowerings in this repository. Expected to be far smaller than the skeleton
+  rate until family adapters land.
+- ``native_lowering_rate`` / ``upstream_adapter_rate`` - where executed work
+  goes: compiler-generated anchors versus upstream kernels (FA/FLA).
 """
 
 from __future__ import annotations
@@ -15,10 +28,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 DEFAULT_OUTPUT = Path("results/compiler/compilation-matrix.json")
-
-# Presets that carry no compiler-facing detail record beyond routing/state
-# semantics map directly; family-specific detail specs (expert widths, scan
-# equations) stay backend-owned and are recorded as architecture metadata.
 
 
 def selection_for(spec) -> str:
@@ -47,12 +56,18 @@ def domain_for(spec):
     }[spec.source_domain]
 
 
+# Presets whose FULL architecture detail is lowered by trusted code in this
+# repository today. The coarse routing skeleton compiling does NOT imply this.
+FULLY_LOWERED_FAMILIES = {"routed_top_k"}  # routed reduction v1 end-to-end
+
+
 def build_program(spec):
     """Translate one MixerSpec into a semantic compiler program.
 
     Returns (program | None, architecture_params dict, decline_reason | None).
     """
     from urm.compiler.semantic import (
+        DType,
         ScoreNormalization,
         SelectionKind,
         routed_reduction_program,
@@ -69,6 +84,8 @@ def build_program(spec):
         "mutation": spec.mutation.value,
         "residency": spec.residency.value,
         "collision_policy": spec.collision_policy.value,
+        # Honest coverage labels per preset:
+        "family_detail_lowered": spec.name in FULLY_LOWERED_FAMILIES,
     }
 
     if selection_for(spec) == "kernelized_recurrence":
@@ -113,7 +130,7 @@ def build_program(spec):
         "route_width": max(1, min(top_k or 8, 64)),
         "sources": 256,
         "value_dim": 512,
-        "value_dtype": "float32",
+        "value_dtype": DType.FLOAT32,
         "source_domain": domain_for(spec),
         "selection": selection,
         "normalization": normalization,
@@ -134,12 +151,24 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     args = parser.parse_args()
 
+    from provenance import config_hash, git_revision, tree_is_dirty
+
     from urm.compiler.diagnostics import CompilerError
-    from urm.compiler.planner import ScheduleParams, UrmCompiler
+    from urm.compiler.planner import CompilationIntent, UrmCompiler
+    from urm.compiler.solver import z3_available, z3_version
     from urm.presets import CATALOG as ALL_PRESETS
 
+    intent = CompilationIntent.TRAINING
     compiler = UrmCompiler()
     rows: list[dict[str, object]] = []
+    solver_totals = {
+        "solver_time_ms": 0.0,
+        "candidates_rejected_by_z3": 0,
+        "verified_models": 0,
+        "unsat_categories": [],
+    }
+    compile_failures = 0
+
     for preset in ALL_PRESETS:
         built, architecture, decline = build_program(preset)
         if built is None:
@@ -159,19 +188,32 @@ def main() -> None:
             continue
         candidates_total = 0
         accepted = 0
-        rejected = 0
+        rejected_by_preconditions = 0
+        rejected_by_intent = 0
         compiled_programs = 0
         anchors: list[str] = []
         costs: list[dict[str, object]] = []
         traces: list[dict[str, object]] = []
+        selected_ids: list[str] = []
+        policies: list[str] = []
         for program in built:
-            summaries = compiler.enumerate_candidates(program)
+            summaries = compiler.enumerate_candidates(program, intent)
             candidates_total += len(summaries)
-            rejected += sum(1 for s in summaries if not s.legal)
+            rejected_by_preconditions += sum(
+                1
+                for s in summaries
+                if not s.legal and s.reason_code != "intent_conflict"
+            )
+            rejected_by_intent += sum(
+                1
+                for s in summaries
+                if not s.legal and s.reason_code == "intent_conflict"
+            )
             try:
-                result = compiler.compile(program, schedule_params=ScheduleParams())
+                result = compiler.compile(program, intent=intent)
             except CompilerError as error:
-                rejected += 1
+                rejected_by_intent += 1
+                compile_failures += 1
                 traces.append({"program": program.name, "error": str(error)})
                 continue
             compiled_programs += 1
@@ -179,24 +221,38 @@ def main() -> None:
             anchors.extend(result.trace.anchors)
             costs.append(result.cost.to_dict())
             traces.append(result.trace.to_dict())
+            selected_ids.append(result.selected_candidate_id)
+            policies.append(result.selection_policy.value)
+            if result.solver_statistics:
+                solver_totals["solver_time_ms"] += float(
+                    result.solver_statistics.get("wall_ms", 0.0)
+                )
         rows.append(
             {
                 "architecture_params": architecture,
-                # Schedule params stay a separate namespace even when empty.
-                "schedule_params": {"anchor_overrides": {}, "block_hints": {}},
+                "schedule_params": {
+                    "anchor_overrides": {},
+                    "block_hints": {},
+                    "deterministic": False,
+                },
                 "valid_semantic_programs": len(built),
                 "compiled_programs": compiled_programs,
                 "candidates": [
                     {
-                        "rule": summary.rule,
-                        "subject_op": summary.subject_op,
+                        "candidate_id": summary.candidate_id,
+                        "kind": summary.kind,
                         "legal": summary.legal,
                         "reason_code": summary.reason_code,
+                        "backward_verified": summary.backward_verified,
+                        "equivalence_class": summary.equivalence_class,
                     }
-                    for summary in compiler.enumerate_candidates(built[-1])
+                    for summary in compiler.enumerate_candidates(built[-1], intent)
                 ],
+                "selected_candidate_ids": selected_ids,
+                "selection_policies": policies,
                 "rewrite_accepted": accepted,
-                "rewrite_rejected": rejected,
+                "rewrite_rejected": rejected_by_preconditions,
+                "rejected_by_training_intent": rejected_by_intent,
                 "compiled": compiled_programs > 0,
                 "anchors_selected": sorted(set(anchors)),
                 "estimated_costs": costs,
@@ -212,22 +268,90 @@ def main() -> None:
             }
         )
 
+    presets = len(rows)
     valid_programs = sum(row["valid_semantic_programs"] for row in rows)
     total_candidates = sum(
-        row["rewrite_accepted"] + row["rewrite_rejected"] for row in rows
+        row["rewrite_accepted"]
+        + row["rewrite_rejected"]
+        + row.get("rejected_by_training_intent", 0)
+        for row in rows
     )
     compiled_rows = sum(1 for row in rows if row["compiled"])
+    fully_lowered = sum(
+        1 for row in rows if row["architecture_params"].get("family_detail_lowered")
+    )
+    # Where executed work goes for the compiled programs.
+    NATIVE_PREFIXES = ("routed_reduction",)
+    UPSTREAM_ANCHORS = {"flash_attention_adapter", "fla_gated_delta_rule_adapter"}
+    compiled_programs_total = sum(row.get("compiled_programs", 0) for row in rows)
+    native_programs = sum(
+        row.get("compiled_programs", 0)
+        for row in rows
+        if any(
+            str(a).startswith(NATIVE_PREFIXES) for a in row.get("anchors_selected", [])
+        )
+    )
+    upstream_programs = sum(
+        row.get("compiled_programs", 0)
+        for row in rows
+        if any(a in UPSTREAM_ANCHORS for a in row.get("anchors_selected", []))
+    )
     artifact = {
-        "schema_version": 1,
+        "schema_version": 2,
         "generated_utc": datetime.now(UTC).isoformat(),
+        "provenance": {
+            "git_revision": git_revision(),
+            "dirty_tree": tree_is_dirty(),
+            "benchmark_command": "python benchmarks/compilation_matrix.py",
+            "config_hash": config_hash(
+                {
+                    "presets": [r["architecture_params"]["preset"] for r in rows],
+                    "intent": intent.value,
+                }
+            ),
+            "constraint_model_hash": "not_applicable_static_analysis",
+            "solver_version": z3_version() if z3_available() else None,
+        },
         "summary": {
-            "presets_evaluated": len(rows),
+            "presets_evaluated": presets,
             "valid_semantic_programs": valid_programs,
             "generated_candidates": total_candidates,
             "rewrite_accepted": sum(row["rewrite_accepted"] for row in rows),
             "rewrite_rejected": sum(row["rewrite_rejected"] for row in rows),
-            "compile_success_rate": round(compiled_rows / len(rows), 4),
+            "candidates_rejected_by_imperative_checks": sum(
+                row["rewrite_rejected"] for row in rows
+            ),
+            "candidates_rejected_by_z3": solver_totals["candidates_rejected_by_z3"],
+            "verified_models": solver_totals["verified_models"],
+            "unsat_categories": sorted(solver_totals["unsat_categories"]),
+            "solver_time_ms": round(solver_totals["solver_time_ms"], 3),
+            "compile_failures": compile_failures,
+            # Renamed, honestly-scoped metrics:
+            "routing_skeleton_compile_rate": round(compiled_rows / presets, 4),
+            "full_architecture_compile_rate": round(fully_lowered / presets, 4),
+            "native_lowering_rate": (
+                round(native_programs / compiled_programs_total, 4)
+                if compiled_programs_total
+                else 0.0
+            ),
+            "upstream_adapter_rate": (
+                round(upstream_programs / compiled_programs_total, 4)
+                if compiled_programs_total
+                else 0.0
+            ),
             "escape_hatch_count": sum(row["escape_hatch_count"] for row in rows),
+            "metric_notes": {
+                "routing_skeleton_compile_rate": (
+                    "fraction of presets whose coarse ROUTING SKELETON maps to "
+                    "compiled routed reduction; dense attention, MoE expert "
+                    "GEMMs and sparse attention are NOT fully compiled merely "
+                    "because their skeleton routes map"
+                ),
+                "full_architecture_compile_rate": (
+                    "fraction of presets whose COMPLETE family detail has "
+                    "trusted lowerings in this repository today"
+                ),
+            },
         },
         "rows": rows,
     }

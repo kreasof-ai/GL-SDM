@@ -2,10 +2,22 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "URM NAS-facing compilation matrix artifact",
   "type": "object",
-  "required": ["schema_version", "generated_utc", "summary", "rows"],
+  "required": ["schema_version", "generated_utc", "provenance", "summary", "rows"],
   "properties": {
-    "schema_version": { "const": 1 },
+    "schema_version": { "const": 2 },
     "generated_utc": { "type": "string" },
+    "provenance": {
+      "type": "object",
+      "required": ["git_revision", "dirty_tree", "benchmark_command"],
+      "properties": {
+        "git_revision": { "type": ["string", "null"], "minLength": 40 },
+        "dirty_tree": { "type": "boolean" },
+        "benchmark_command": { "type": "string" },
+        "config_hash": { "type": "string" },
+        "solver_version": { "type": ["string", "null"] },
+        "constraint_model_hash": { "type": "string" }
+      }
+    },
     "summary": {
       "type": "object",
       "required": [
@@ -14,7 +26,10 @@
         "generated_candidates",
         "rewrite_accepted",
         "rewrite_rejected",
-        "compile_success_rate",
+        "routing_skeleton_compile_rate",
+        "full_architecture_compile_rate",
+        "native_lowering_rate",
+        "upstream_adapter_rate",
         "escape_hatch_count"
       ],
       "properties": {
@@ -23,7 +38,24 @@
         "generated_candidates": { "type": "integer" },
         "rewrite_accepted": { "type": "integer" },
         "rewrite_rejected": { "type": "integer" },
-        "compile_success_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "candidates_rejected_by_imperative_checks": { "type": "integer" },
+        "candidates_rejected_by_z3": { "type": "integer" },
+        "verified_models": { "type": "integer" },
+        "unsat_categories": { "type": "array", "items": { "type": "string" } },
+        "solver_time_ms": { "type": "number" },
+        "compile_failures": { "type": "integer" },
+        "routing_skeleton_compile_rate": {
+          "type": "number", "minimum": 0, "maximum": 1
+        },
+        "full_architecture_compile_rate": {
+          "type": "number", "minimum": 0, "maximum": 1
+        },
+        "native_lowering_rate": {
+          "type": "number", "minimum": 0, "maximum": 1
+        },
+        "upstream_adapter_rate": {
+          "type": "number", "minimum": 0, "maximum": 1
+        },
         "escape_hatch_count": { "const": 0 }
       }
     },
@@ -45,14 +77,18 @@
             "properties": {
               "preset": { "type": "string" },
               "routing": { "type": "string" },
-              "source_domain": { "type": "string" }
+              "source_domain": { "type": "string" },
+              "family_detail_lowered": { "type": "boolean" }
             }
           },
           "schedule_params": { "type": "object" },
           "valid_semantic_programs": { "type": "integer" },
           "candidates": { "type": "array" },
+          "selected_candidate_ids": { "type": "array", "items": {"type": "string"} },
+          "selection_policies": { "type": "array", "items": {"type": "string"} },
           "rewrite_accepted": { "type": "integer" },
           "rewrite_rejected": { "type": "integer" },
+          "rejected_by_training_intent": { "type": "integer" },
           "compiled": { "type": "boolean" },
           "decline_reason": { "type": ["string", "null"] },
           "anchors_selected": { "type": "array", "items": { "type": "string" } },

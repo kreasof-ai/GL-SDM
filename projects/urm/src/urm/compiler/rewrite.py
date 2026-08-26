@@ -23,6 +23,7 @@ from enum import StrEnum
 from urm.compiler.diagnostics import DiagnosticCode
 from urm.compiler.effects import BARRIERS, EffectClass
 from urm.compiler.semantic import (
+    DType,
     EpilogueSpec,
     Matmul,
     SemanticNode,
@@ -34,6 +35,15 @@ from urm.compiler.semantic import (
 
 
 class EquivalenceClass(StrEnum):
+    """What kind of equivalence a verified rewrite promises.
+
+    ``EXACT`` is reserved for rewrites whose supported execution model
+    promises exact or bitwise-equivalent results on every supported dtype.
+    Reassociations that change floating-point operation order are
+    ``FLOATING_POINT`` and must carry a dtype-specific numerical envelope;
+    they are algebraically justified over real arithmetic only.
+    """
+
     EXACT = "exact"
     FLOATING_POINT = "floating_point"
 
@@ -49,6 +59,32 @@ class ForwardOnlyRestriction(StrEnum):
 
     NOT_FORWARD_ONLY = "not_forward_only"
     BACKWARD_UNVERIFIED = "backward_unverified_this_prototype"
+
+
+class BackwardStrategy(StrEnum):
+    """How the verified backward is obtained."""
+
+    LINEARITY = "linearity"  # adjoint follows from declared linearity
+    TILE_RECOMPUTE = "tile_recompute"  # un-scaled tiles are recomputed
+    MATERIALIZED_AUTOGRAD = "materialized_autograd"  # framework autograd
+
+
+@dataclass(frozen=True, slots=True)
+class BackwardContract:
+    """A certified backward for a rewrite, per supported dtype.
+
+    A rule with ``backward_contract=None`` is forward-only and is rejected by
+    training compilations. Certification is evidence-linked: the dtypes listed
+    here are exactly those exercised by committed differential tests.
+    """
+
+    strategy: BackwardStrategy
+    verified_dtypes: tuple[DType, ...]
+    tolerance_envelope: dict[str, float]  # per-dtype atol/rtol keys
+    evidence: str  # pointer to the differential tests / benchmark artifact
+
+    def covers(self, dtype: DType) -> bool:
+        return dtype in self.verified_dtypes
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,9 +193,11 @@ class RewriteRule:
     equivalence: EquivalenceClass
     tolerance_envelope: dict[str, float] | None
     forward_mapping: Callable[[SemanticProgram, RewriteMatch], tuple[SemanticNode, ...]]
+    # ``None`` means forward-only; a certified contract enables training use.
+    backward_contract: BackwardContract | None
     backward_mapping: (
         Callable[[SemanticProgram, RewriteMatch], tuple[SemanticNode, ...]] | None
-    )
+    ) = None
     forward_only_restriction: ForwardOnlyRestriction = (
         ForwardOnlyRestriction.NOT_FORWARD_ONLY
     )
@@ -172,7 +210,12 @@ class RewriteRule:
 
     @property
     def forward_only(self) -> bool:
-        return self.backward_mapping is None
+        return self.backward_mapping is None and self.backward_contract is None
+
+    def backward_covers(self, dtype: DType) -> bool:
+        return self.backward_contract is not None and self.backward_contract.covers(
+            dtype
+        )
 
 
 # -- Rule 1: fold a row-scale into the routed-reduction epilogue --------------
@@ -219,7 +262,7 @@ FOLD_ROW_SCALE_EPILOGUE = RewriteRule(
     matcher=_match_row_scale_after_reduce,
     preconditions=(BARRIER_FREE, SINGLE_CONSUMER),
     equivalence=EquivalenceClass.FLOATING_POINT,
-    # Envelopes match the GPU differential gates in
+    # Forward envelopes match the GPU differential gates in
     # tests/test_compiler_epilogue_gpu.py (FORWARD_TOL).
     tolerance_envelope={
         "float32_atol": 1e-5,
@@ -227,11 +270,20 @@ FOLD_ROW_SCALE_EPILOGUE = RewriteRule(
         "bfloat16_atol": 2e-2,
     },
     forward_mapping=_fold_row_scale_forward,
-    # The Triton prototype computes gradients for weights, values AND the row
-    # scale (recomputing un-scaled tiles); the IR-level rule stays conservative
-    # until those differential gates pass on every supported dtype.
-    backward_mapping=None,
-    forward_only_restriction=ForwardOnlyRestriction.BACKWARD_UNVERIFIED,
+    # Certified backward: the experimental anchor computes gradients for
+    # weights, values AND the row scale by recomputing un-scaled reduction
+    # tiles; differential gates pass on every supported dtype
+    # (tests/test_compiler_epilogue_gpu.py::BACKWARD_TOL). No forward-only
+    # restriction remains, so no contradictory obligation pair can be emitted.
+    backward_contract=BackwardContract(
+        strategy=BackwardStrategy.TILE_RECOMPUTE,
+        verified_dtypes=(DType.FLOAT32, DType.FLOAT16, DType.BFLOAT16),
+        tolerance_envelope={"atol": 8e-2, "rtol": 4e-2},
+        evidence=(
+            "tests/test_compiler_epilogue_gpu.py::"
+            "test_backward_covers_weights_values_and_row_scale"
+        ),
+    ),
     saved_state_policy=SavedStatePolicy.RECOMPUTE,
     communication_volume_delta_bytes=0,
     traffic_bytes_delta=-2,  # avoids one full read+write of [Q, D]
@@ -293,11 +345,30 @@ DELAY_ROW_SCALE_THROUGH_GEMM = RewriteRule(
         BARRIER_FREE,
         SCALE_IS_ROWWISE_LINEAR,
     ),
-    equivalence=EquivalenceClass.EXACT,
-    tolerance_envelope=None,
+    # Algebraically exact over real arithmetic only: the rewrite changes the
+    # floating-point operation order (scale-after-GEMM vs scale-before-GEMM),
+    # so it is classified FLOATING_POINT and carries dtype-specific envelopes
+    # validated by tests/test_compiler_delayed_scaling.py. `exact` is reserved
+    # for execution models promising bitwise-equivalent results.
+    equivalence=EquivalenceClass.FLOATING_POINT,
+    tolerance_envelope={
+        "float32_atol": 1e-5,
+        "float16_atol": 4e-2,
+        "bfloat16_atol": 9e-2,
+    },
     forward_mapping=_delay_row_scale_through_gemm,
     # Self-inverse direction: swapping back is the same construction with the
-    # ops transposed; gradients follow from linearity (see tests).
+    # ops transposed; gradients follow from linearity of the intervening map.
+    backward_contract=BackwardContract(
+        strategy=BackwardStrategy.LINEARITY,
+        verified_dtypes=(DType.FLOAT32, DType.FLOAT16, DType.BFLOAT16),
+        tolerance_envelope={
+            "float32_atol": 1e-5,
+            "float16_atol": 4e-2,
+            "bfloat16_atol": 9e-2,
+        },
+        evidence="tests/test_compiler_delayed_scaling.py",
+    ),
     backward_mapping=_delay_row_scale_through_gemm,
     saved_state_policy=SavedStatePolicy.NONE,
     communication_volume_delta_bytes=0,
@@ -397,6 +468,52 @@ class RewriteEngine:
                     continue
                 found.append((rule, match))
         return tuple(found)
+
+    @staticmethod
+    def candidate_id(rule: RewriteRule, match: RewriteMatch) -> str:
+        """Stable candidate identifier for one rewrite occurrence."""
+        return f"rewrite:{rule.name}@{match.subject.name}"
+
+    def apply_candidate(
+        self,
+        program: SemanticProgram,
+        rule: RewriteRule,
+        match: RewriteMatch,
+    ) -> RewriteResult:
+        """Apply exactly one enumerated candidate; ``program`` is not mutated.
+
+        Raises :class:`CompilerError` when the candidate's preconditions no
+        longer hold; callers must re-enumerate against the current program.
+        """
+        from urm.compiler.diagnostics import CompilerError, Diagnostic
+
+        verdict = self._evaluate(program, rule, match)
+        if not verdict.ok:
+            raise CompilerError(
+                (
+                    Diagnostic(
+                        code=verdict.reason_code
+                        or DiagnosticCode.REWRITE_PRECONDITION_FAILED,
+                        message=f"{self.candidate_id(rule, match)}: {verdict.message}",
+                        subject=match.subject.name,
+                    ),
+                )
+            )
+        replacement = rule.forward_mapping(program, match)
+        ops = self._splice(list(program.ops), match, replacement)
+        rewritten = program.replaced(tuple(ops))
+        rewritten.validate()
+        attempt = RuleAttempt(
+            rule=rule.name, subject_op=match.subject.name, outcome="accepted"
+        )
+        return RewriteResult(
+            program=rewritten,
+            trace=RewriteTrace(
+                attempts=(attempt,),
+                obligations=self._obligations_for(rule, match),
+            ),
+            changed=True,
+        )
 
     def apply(self, program: SemanticProgram) -> RewriteResult:
         attempts: list[RuleAttempt] = []

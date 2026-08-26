@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Solver-guided simulated placement selection",
+  "type": "object",
+  "required": ["schema_version", "generated_utc", "provenance", "instances", "summary"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "generated_utc": {"type": "string"},
+    "provenance": {"$ref": "#/$defs/provenance"},
+    "instances": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "mesh",
+          "item_count",
+          "device_capacity_bytes",
+          "z3",
+          "baselines",
+          "exhaustive_agreement"
+        ],
+        "properties": {
+          "name": {"type": "string"},
+          "mesh": {"type": "string"},
+          "item_count": {"type": "integer"},
+          "edge_count": {"type": "integer"},
+          "replication_factor": {"type": "integer"},
+          "device_capacity_bytes": {"type": "integer"},
+          "z3": {
+            "type": "object",
+            "required": ["status", "owners", "metrics", "solve_ms", "verified"],
+            "properties": {
+              "status": {"enum": ["sat", "unsat", "unknown"]},
+              "owners": {"type": "object"},
+              "metrics": {"$ref": "#/$defs/metrics"},
+              "solve_ms": {"type": "number"},
+              "verified": {"type": "boolean"},
+              "verification_failures": {"type": "array"},
+              "unsat_core_names": {"type": "array", "items": {"type": "string"}}
+            }
+          },
+          "baselines": {
+            "type": "object",
+            "required": ["round_robin", "greedy"],
+            "properties": {
+              "round_robin": {"$ref": "#/$defs/baseline"},
+              "greedy": {"$ref": "#/$defs/baseline"}
+            }
+          },
+          "exhaustive_agreement": {
+            "type": "object",
+            "required": ["run", "agree"],
+            "properties": {
+              "run": {"type": "boolean"},
+              "agree": {"type": "boolean"},
+              "owners": {"type": ["object", "null"]},
+              "metrics": {"$ref": "#/$defs/metrics"}
+            }
+          },
+          "communication_savings_vs_round_robin_pct": {"type": "number"}
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["instances_run", "all_verified", "exhaustive_agreements"],
+      "properties": {
+        "instances_run": {"type": "integer"},
+        "all_verified": {"type": "boolean"},
+        "exhaustive_agreements": {"type": "integer"},
+        "mean_comm_savings_vs_round_robin_pct": {"type": "number"}
+      }
+    }
+  },
+  "$defs": {
+    "provenance": {
+      "type": "object",
+      "required": [
+        "git_revision",
+        "dirty_tree",
+        "benchmark_command",
+        "config_hash",
+        "solver_version",
+        "constraint_model_hash"
+      ],
+      "properties": {
+        "git_revision": {"type": ["string", "null"], "minLength": 40},
+        "dirty_tree": {"type": "boolean"},
+        "benchmark_command": {"type": "string"},
+        "config_hash": {"type": "string"},
+        "solver_version": {"type": ["string", "null"]},
+        "constraint_model_hash": {"type": "string"},
+        "python": {"type": "string"},
+        "platform": {"type": "string"}
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "required": ["max_load", "total_bytes", "critical_path_proxy", "peer_pairs"],
+      "properties": {
+        "max_load": {"type": "number"},
+        "total_bytes": {"type": "number"},
+        "critical_path_proxy": {"type": "number"},
+        "peer_pairs": {"type": "number"}
+      }
+    },
+    "baseline": {
+      "type": "object",
+      "required": ["owners", "metrics", "feasible"],
+      "properties": {
+        "owners": {"type": "object"},
+        "metrics": {"$ref": "#/$defs/metrics"},
+        "feasible": {"type": "boolean"}
+      }
+    }
+  }
+}

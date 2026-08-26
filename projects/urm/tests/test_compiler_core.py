@@ -208,7 +208,10 @@ def test_fold_row_scale_epilogue_positive_and_negative() -> None:
     attempts = {attempt.outcome for attempt in result.trace.attempts}
     assert attempts == {"accepted"}
     kinds = [obligation.kind for obligation in result.trace.obligations]
-    assert "recompute_backward" in kinds and "forward_only" in kinds
+    # Backward is certified for every supported dtype: the recompute
+    # obligation stands, but no contradictory forward-only obligation exists.
+    assert "recompute_backward" in kinds
+    assert "forward_only" not in kinds
 
     # Negative: nonlinear transform between reduce and scale.
     program = SemanticProgram.build(
@@ -327,8 +330,15 @@ def test_trace_is_deterministic_and_serializable() -> None:
 
 def test_delayed_scaling_rule_contract_fields() -> None:
     rule = DELAY_ROW_SCALE_THROUGH_GEMM
-    assert rule.equivalence is EquivalenceClass.EXACT
-    assert rule.tolerance_envelope is None
+    # Algebraically exact over real arithmetic only: the rewrite reorders
+    # floating-point operations, so it is classified FLOATING_POINT with
+    # dtype-specific envelopes (never `exact`).
+    assert rule.equivalence is EquivalenceClass.FLOATING_POINT
+    assert rule.tolerance_envelope is not None
+    assert (
+        rule.tolerance_envelope["bfloat16_atol"]
+        > rule.tolerance_envelope["float32_atol"]
+    )
     assert rule.saved_state_policy is SavedStatePolicy.NONE
     assert not rule.forward_only
     folded = FOLD_ROW_SCALE_EPILOGUE
@@ -337,7 +347,14 @@ def test_delayed_scaling_rule_contract_fields() -> None:
         folded.tolerance_envelope["bfloat16_atol"]
         > folded.tolerance_envelope["float32_atol"]
     )
-    assert folded.forward_only
+    # Backward is certified for weights, values AND the row scale.
+    assert not folded.forward_only
+    assert folded.backward_contract is not None
+    assert set(folded.backward_contract.verified_dtypes) >= {
+        DType.FLOAT32,
+        DType.FLOAT16,
+        DType.BFLOAT16,
+    }
     assert folded.traffic_bytes_delta < 0
 
 

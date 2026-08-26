@@ -44,6 +44,13 @@ fla = [
   # verified against this exact release.
   "flash-linear-attention==0.5.2",
 ]
+solver = [
+  # Optional compiler dependency for constraint feasibility/optimization
+  # (docs/kernel-generation.md). Core URM functionality never requires it.
+  # Pinned exactly: the validated line used by every committed solver
+  # artifact; artifacts record the installed version alongside this pin.
+  "z3-solver==4.15.3.0",
+]
 
 [tool.ruff.lint]
 # Import order is part of the acceptance gates: `ruff check` must cover it.

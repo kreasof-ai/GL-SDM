@@ -4,6 +4,7 @@
   "type": "object",
   "required": [
     "schema_version",
+    "provenance",
     "environment",
     "semantics",
     "forward_cases",
@@ -13,39 +14,133 @@
     "estimates_are_analytical_not_measured_counters"
   ],
   "properties": {
-    "schema_version": { "const": 1 },
+    "schema_version": {
+      "const": 1
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "git_revision",
+        "dirty_tree",
+        "benchmark_command",
+        "config_hash",
+        "solver_version",
+        "constraint_model_hash"
+      ],
+      "properties": {
+        "git_revision": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 40
+        },
+        "dirty_tree": {
+          "type": "boolean"
+        },
+        "benchmark_command": {
+          "type": "string"
+        },
+        "config_hash": {
+          "type": "string"
+        },
+        "solver_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "constraint_model_hash": {
+          "type": "string"
+        }
+      }
+    },
     "environment": {
       "type": "object",
-      "required": ["gpu", "torch", "triton", "git_revision"],
+      "required": [
+        "gpu",
+        "torch",
+        "triton",
+        "git_revision"
+      ],
       "properties": {
-        "gpu": { "type": "string" },
-        "torch": { "type": "string" },
-        "triton": { "type": ["string", "null"] },
-        "cuda": { "type": ["string", "null"] },
-        "git_revision": { "type": ["string", "null"] }
+        "gpu": {
+          "type": "string"
+        },
+        "torch": {
+          "type": "string"
+        },
+        "triton": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cuda": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "git_revision": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
       }
     },
     "semantics": {
       "type": "string",
       "pattern": "row_scale"
     },
-    "forward_cases": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/case" } },
-    "backward_cases": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/case" } },
+    "forward_cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/case"
+      }
+    },
+    "backward_cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/case"
+      }
+    },
     "schedule_C_fullrow_variant": {
       "type": "object",
-      "required": ["median_device_ms", "accepted_schedule", "rejected_schedules_retained"],
+      "required": [
+        "median_device_ms",
+        "accepted_schedule",
+        "rejected_schedules_retained"
+      ],
       "properties": {
-        "median_device_ms": { "type": "object" },
-        "accepted_schedule": { "type": "string" },
+        "median_device_ms": {
+          "type": "object"
+        },
+        "accepted_schedule": {
+          "type": "string"
+        },
         "rejected_schedules_retained": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["schedule", "median_device_ms", "reason"],
+            "required": [
+              "schedule",
+              "median_device_ms",
+              "reason"
+            ],
             "properties": {
-              "schedule": { "type": "string" },
-              "median_device_ms": { "type": "number" },
-              "reason": { "type": "string" }
+              "schedule": {
+                "type": "string"
+              },
+              "median_device_ms": {
+                "type": "number"
+              },
+              "reason": {
+                "type": "string"
+              }
             }
           }
         }
@@ -53,7 +148,11 @@
     },
     "correctness_by_dtype": {
       "type": "object",
-      "required": ["float32", "float16", "bfloat16"],
+      "required": [
+        "float32",
+        "float16",
+        "bfloat16"
+      ],
       "additionalProperties": {
         "type": "object",
         "required": [
@@ -63,14 +162,24 @@
           "rtol"
         ],
         "properties": {
-          "max_abs_error_vs_eager_reference": { "type": "number" },
-          "reference_max_abs": { "type": "number" },
-          "atol": { "type": "number" },
-          "rtol": { "type": "number" }
+          "max_abs_error_vs_eager_reference": {
+            "type": "number"
+          },
+          "reference_max_abs": {
+            "type": "number"
+          },
+          "atol": {
+            "type": "number"
+          },
+          "rtol": {
+            "type": "number"
+          }
         }
       }
     },
-    "estimates_are_analytical_not_measured_counters": { "const": true }
+    "estimates_are_analytical_not_measured_counters": {
+      "const": true
+    }
   },
   "$defs": {
     "case": {
@@ -86,23 +195,56 @@
       "properties": {
         "case": {
           "type": "object",
-          "required": ["queries", "route_width", "sources", "value_dim", "regime"],
+          "required": [
+            "queries",
+            "route_width",
+            "sources",
+            "value_dim",
+            "regime"
+          ],
           "properties": {
-            "name": { "type": "string" },
-            "queries": { "type": "integer" },
-            "route_width": { "type": "integer" },
-            "sources": { "type": "integer" },
-            "value_dim": { "type": "integer" },
-            "dtype": { "type": "string" },
-            "regime": { "enum": ["host_bound", "gpu_bound"] }
+            "name": {
+              "type": "string"
+            },
+            "queries": {
+              "type": "integer"
+            },
+            "route_width": {
+              "type": "integer"
+            },
+            "sources": {
+              "type": "integer"
+            },
+            "value_dim": {
+              "type": "integer"
+            },
+            "dtype": {
+              "type": "string"
+            },
+            "regime": {
+              "enum": [
+                "host_bound",
+                "gpu_bound"
+              ]
+            }
           }
         },
-        "mode": { "enum": ["forward", "backward"] },
+        "mode": {
+          "enum": [
+            "forward",
+            "backward"
+          ]
+        },
         "analytic_traffic_bytes_upper_bound_no_l2_reuse": {
           "type": "object",
-          "required": ["shared_bytes", "materialized_extra_bytes"]
+          "required": [
+            "shared_bytes",
+            "materialized_extra_bytes"
+          ]
         },
-        "launch_counts_documented_model": { "type": "object" },
+        "launch_counts_documented_model": {
+          "type": "object"
+        },
         "measurements": {
           "type": "object",
           "required": [
@@ -117,15 +259,27 @@
               "p95_device_ms"
             ],
             "properties": {
-              "wall_ms_per_call": { "type": "number" },
-              "median_device_ms": { "type": "number" },
-              "p95_device_ms": { "type": "number" },
-              "min_device_ms": { "type": "number" },
-              "dispatch_share_wall_minus_device": { "type": "number" }
+              "wall_ms_per_call": {
+                "type": "number"
+              },
+              "median_device_ms": {
+                "type": "number"
+              },
+              "p95_device_ms": {
+                "type": "number"
+              },
+              "min_device_ms": {
+                "type": "number"
+              },
+              "dispatch_share_wall_minus_device": {
+                "type": "number"
+              }
             }
           }
         },
-        "avoided_materialization_bytes_estimate": { "type": "integer" }
+        "avoided_materialization_bytes_estimate": {
+          "type": "integer"
+        }
       }
     }
   }

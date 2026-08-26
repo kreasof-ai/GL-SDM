@@ -84,11 +84,22 @@ class ExecutionAnchor:
         )
     )
     supported_visitors: frozenset[VisitorKind] = frozenset()
+    # Capability contract extensions (solver-facing facts):
+    forward_only: bool = False
+    backward_verified_dtypes: frozenset[str] = frozenset()
+    """Dtypes whose backward passes committed differential gates."""
+    honored_obligations: frozenset[str] = frozenset()
+    """Rewrite obligations this anchor resolves (e.g. ``recompute_backward``)."""
+    deterministic_accumulation: bool = True
+    commit_capable: bool = False
 
     def accepts(self, visitor: VisitorDescriptor) -> bool:
         return visitor.kind in self.supported_visitors and self.result_locality.accepts(
             visitor.locality
         )
+
+    def backward_covers(self, dtype_name: str) -> bool:
+        return dtype_name in self.backward_verified_dtypes
 
 
 @dataclass(frozen=True, slots=True)
@@ -195,16 +206,19 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
     ExecutionAnchor(
         kind=AnchorKind.GEMM,
         name="torch_linear",
+        backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
         supported_visitors=frozenset({VisitorKind.FINAL_SCALE_CONVERT}),
     ),
     ExecutionAnchor(
         kind=AnchorKind.ATTENTION,
         name="flash_attention_adapter",
+        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
         supported_visitors=frozenset(),
     ),
     ExecutionAnchor(
         kind=AnchorKind.RECURRENT_SCAN,
         name="fla_gated_delta_rule_adapter",
+        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
         supported_visitors=frozenset(),
     ),
     ExecutionAnchor(
@@ -217,16 +231,22 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
         name="routed_reduction_v1",
         # The frozen v1 kernel has no epilogue capability: a requested row-scale
         # epilogue must route to the experimental anchor instead.
+        backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
         supported_visitors=frozenset({VisitorKind.SIDE_OUTPUT}),
     ),
     ExecutionAnchor(
         kind=AnchorKind.ROUTED_REDUCTION,
         name="routed_reduction_row_scale_epilogue_v0",
         # Compiler-generated fused-epilogue capability (Phase 4 prototype).
-        # It becomes a fully trusted anchor only while its differential and
-        # performance gates hold; v1 remains the default without visitors.
+        # Backward covers weights, values AND row scale via tile recomputation;
+        # certification evidence lives in the rewrite contract and in
+        # tests/test_compiler_epilogue_gpu.py. It becomes fully trusted only
+        # while its differential and performance gates hold; v1 remains the
+        # default without visitors.
         experimental=True,
         result_locality=LocalityConstraint(min=Locality.TILE, max=Locality.DEVICE),
+        backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
+        honored_obligations=frozenset({"recompute_backward"}),
         supported_visitors=frozenset(
             {
                 VisitorKind.FINAL_SCALE_CONVERT,
@@ -243,6 +263,7 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
     ExecutionAnchor(
         kind=AnchorKind.COLLECTIVE_EXCHANGE,
         name="simulated_collective",
+        commit_capable=True,
         supported_visitors=frozenset(),
     ),
 )

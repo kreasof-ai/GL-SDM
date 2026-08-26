@@ -1,0 +1,412 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Solver-guided routed-epilogue schedule selection",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "generated_utc",
+    "provenance",
+    "problem",
+    "space_size",
+    "legality",
+    "z3_selection"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "generated_utc": {
+      "type": "string"
+    },
+    "provenance": {
+      "$ref": "#/$defs/provenance"
+    },
+    "problem": {
+      "type": "object",
+      "required": [
+        "queries",
+        "sources",
+        "route_width",
+        "value_dim",
+        "training"
+      ],
+      "properties": {
+        "queries": {
+          "type": "integer"
+        },
+        "sources": {
+          "type": "integer"
+        },
+        "route_width": {
+          "type": "integer"
+        },
+        "value_dim": {
+          "type": "integer"
+        },
+        "dtype": {
+          "type": "string"
+        },
+        "training": {
+          "type": "boolean"
+        },
+        "deterministic": {
+          "type": "boolean"
+        }
+      }
+    },
+    "space_size": {
+      "type": "object",
+      "required": [
+        "total_points",
+        "legal_points",
+        "pruned_by_constraints"
+      ],
+      "properties": {
+        "total_points": {
+          "type": "integer"
+        },
+        "legal_points": {
+          "type": "integer"
+        },
+        "pruned_by_constraints": {
+          "type": "integer"
+        }
+      }
+    },
+    "legality": {
+      "type": "object",
+      "required": [
+        "reference_impl",
+        "reference_matches_model_sweep",
+        "z3_sat_assignments",
+        "agreement"
+      ],
+      "properties": {
+        "reference_impl": {
+          "type": "string",
+          "const": "schedule_space.legal_schedules"
+        },
+        "exhaustive_legal": {
+          "type": "integer"
+        },
+        "z3_sat_assignments": {
+          "type": "integer"
+        },
+        "agreement": {
+          "type": "boolean"
+        },
+        "legality_accuracy": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "reference_matches_model_sweep": {
+          "type": "boolean"
+        }
+      }
+    },
+    "unsat_core_example": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "core_names",
+        "concise_message"
+      ],
+      "properties": {
+        "core_names": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "concise_message": {
+          "type": "string"
+        }
+      }
+    },
+    "z3_selection": {
+      "type": "object",
+      "required": [
+        "status",
+        "selected_schedule",
+        "solve_ms",
+        "objective_values",
+        "verified"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "sat",
+            "unsat",
+            "unknown"
+          ]
+        },
+        "selected_schedule": {
+          "$ref": "#/$defs/schedulePoint"
+        },
+        "solve_ms": {
+          "type": "number"
+        },
+        "feasibility_solve_ms": {
+          "type": "number"
+        },
+        "optimization_solve_ms": {
+          "type": "number"
+        },
+        "objective_values": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "verified": {
+          "type": "boolean"
+        },
+        "verification_failures": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "solver_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model_hash": {
+          "type": "string"
+        }
+      }
+    },
+    "heuristic_schedule": {
+      "$ref": "#/$defs/schedulePoint"
+    },
+    "compile_feedback": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "success"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "registers_per_thread": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "shared_mem_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "nogood_added": {
+            "type": "boolean"
+          },
+          "nogood_budget_exhausted": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "empirical": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "measured_points",
+        "best_point",
+        "regret"
+      ],
+      "properties": {
+        "gpu": {
+          "type": "string"
+        },
+        "measured_points": {
+          "type": "integer"
+        },
+        "compile_failures_avoided": {
+          "type": "integer"
+        },
+        "best_point": {
+          "$ref": "#/$defs/schedulePoint"
+        },
+        "best_median_ms": {
+          "type": "number"
+        },
+        "regret": {
+          "type": "object",
+          "required": [
+            "z3_vs_best_pct",
+            "heuristic_vs_best_pct"
+          ],
+          "properties": {
+            "z3_vs_best_pct": {
+              "type": "number"
+            },
+            "heuristic_vs_best_pct": {
+              "type": "number"
+            }
+          }
+        },
+        "samples": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "schedule",
+              "median_ms"
+            ],
+            "properties": {
+              "schedule": {
+                "$ref": "#/$defs/schedulePoint"
+              },
+              "median_ms": {
+                "type": "number"
+              },
+              "p95_ms": {
+                "type": "number"
+              },
+              "registers_per_thread": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "shared_mem_bytes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "provenance": {
+      "type": "object",
+      "required": [
+        "git_revision",
+        "dirty_tree",
+        "benchmark_command",
+        "config_hash",
+        "solver_version",
+        "constraint_model_hash"
+      ],
+      "properties": {
+        "git_revision": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 40
+        },
+        "dirty_tree": {
+          "type": "boolean"
+        },
+        "benchmark_command": {
+          "type": "string"
+        },
+        "config_hash": {
+          "type": "string"
+        },
+        "solver_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "constraint_model_hash": {
+          "type": "string"
+        },
+        "python": {
+          "type": "string"
+        },
+        "platform": {
+          "type": "string"
+        }
+      }
+    },
+    "schedulePoint": {
+      "type": "object",
+      "required": [
+        "plan",
+        "block_d",
+        "num_warps",
+        "num_stages",
+        "grad_values_decomposition",
+        "grad_values_schedule",
+        "dtype"
+      ],
+      "properties": {
+        "plan": {
+          "enum": [
+            "base",
+            "fused"
+          ]
+        },
+        "block_d": {
+          "enum": [
+            32,
+            64,
+            128,
+            256
+          ]
+        },
+        "num_warps": {
+          "enum": [
+            1,
+            2,
+            4,
+            8
+          ]
+        },
+        "num_stages": {
+          "enum": [
+            1,
+            2,
+            4
+          ]
+        },
+        "grad_values_decomposition": {
+          "enum": [
+            "per_query",
+            "per_route"
+          ]
+        },
+        "grad_values_schedule": {
+          "enum": [
+            "full_row",
+            "segmented"
+          ]
+        },
+        "dtype": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

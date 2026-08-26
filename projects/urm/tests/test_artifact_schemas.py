@@ -86,6 +86,55 @@ def test_committed_compilation_matrix_validates_against_schema() -> None:
     for row in artifact["rows"]:
         assert set(row["architecture_params"]) >= {"preset", "routing"}
         assert isinstance(row["schedule_params"], dict)
+    # Honest coverage metrics must be present and internally consistent:
+    # the routing skeleton rate never implies full-architecture coverage.
+    assert (
+        summary["full_architecture_compile_rate"]
+        <= summary["routing_skeleton_compile_rate"]
+    )
+
+
+def test_committed_solver_artifacts_validate_against_schemas() -> None:
+    for schema_name, artifact_name in (
+        (
+            "routed-epilogue-selection-schema.json",
+            "compiler/solver/routed-epilogue-selection.json",
+        ),
+        ("placement-selection-schema.json", "compiler/solver/placement-selection.json"),
+        ("unsat-diagnostics-schema.json", "compiler/solver/unsat-diagnostics.json"),
+    ):
+        schema = _load(PROJECT_ROOT / "benchmarks" / schema_name)
+        artifact = _artifact(artifact_name)
+        validate(artifact, schema)
+        # Provenance is mandatory and complete in every solver artifact.
+        provenance = artifact["provenance"]
+        for field in (
+            "git_revision",
+            "dirty_tree",
+            "benchmark_command",
+            "config_hash",
+            "solver_version",
+            "constraint_model_hash",
+        ):
+            assert field in provenance, (artifact_name, field)
+
+
+def test_committed_unsat_diagnostics_all_map() -> None:
+    artifact = _artifact("compiler/solver/unsat-diagnostics.json")
+    assert artifact["summary"]["all_unsat"]
+    assert artifact["summary"]["all_cores_mapped"]
+    assert artifact["summary"]["cases_run"] >= 9
+
+
+def test_committed_epilogue_selection_agrees_with_exhaustive() -> None:
+    artifact = _artifact("compiler/solver/routed-epilogue-selection.json")
+    legality = artifact["legality"]
+    assert legality["agreement"] is True
+    assert legality["legality_accuracy"] == pytest.approx(1.0)
+    z3 = artifact["z3_selection"]
+    assert z3["status"] == "sat"
+    assert z3["verified"] is True
+    assert z3["verification_failures"] == []
 
 
 def test_attention_headline_overhead_matches_documented_values() -> None:

@@ -12,12 +12,21 @@ SDM-style page ops / collectives / generated kernels).
 architecture/NAS specification
   -> semantic routing and state IR          (compiler/semantic.py)
   -> verified algebraic reparameterization  (compiler/rewrite.py)
-  -> placement, sharding, communication     (compiler/placement.py, planner.py)
+  -> immutable candidate enumeration        (compiler/planner.py)
+  -> backend-independent constraint IR      (compiler/constraints.py)
+  -> optional Z3 feasibility/optimization   (compiler/solver.py)
+  -> independent imperative verification    (compiler/verification.py)
+  -> placement, sharding, communication     (compiler/placement.py,
+                                             compiler/route_protocols.py,
+                                             planner.py)
   -> trusted execution anchors + visitors   (compiler/execution.py)
   -> FA / FLA / grouped GEMM / scan / SDM /
      collectives / generated kernels        (urm/adapters, urm/backends,
                                              compiler/anchors)
 ```
+
+The normative kernel-generation pipeline lives in
+[docs/kernel-generation.md](kernel-generation.md).
 
 Performance is an acceptance requirement of individual lowerings; it is not
 the definition of URM. A lowering that cannot beat its baseline is recorded as
@@ -41,10 +50,13 @@ such and retained; a semantic that cannot be expressed at all is a URM failure.
 5. **Reparameterization only through registered, verified rewrite rules.**
    Each rule declares preconditions, equivalence class, numerical envelope,
    backward status, saved-state/recomputation requirements, and traffic
-   effects (`rewrite.py`). No ad-hoc algebra on live tensors.
+   effects (`rewrite.py`). `exact` equivalence is reserved for execution
+   models promising bitwise-equivalent results; rewrites that change
+   floating-point operation order are `floating_point` with dtype envelopes.
 6. **Performance hints and schedules must not alter semantic meaning.**
    `ScheduleParams` may pick among legal lowerings; it may never change
-   routing results, merge policies, or commit boundaries.
+   routing results, merge policies, or commit boundaries. Hints are validated;
+   invalid hints produce structured diagnostics, never silent reinterpretation.
 7. **Existing production kernels remain valid lowering targets.** FlashAttention
    and FLA adapters are first-class anchors; wrapping upstream beats replacing
    upstream whenever overhead is measured to be low.
@@ -58,6 +70,27 @@ such and retained; a semantic that cannot be expressed at all is a URM failure.
 10. **NAS-facing architecture parameters remain separate from backend schedule
     parameters** in every API surface and serialized artifact
     (`planner.ArchitectureParams` vs `planner.ScheduleParams`).
+11. **Compilation intent is explicit.** `CompilationIntent` (inference /
+    training / forward-only analysis) gates legality: training rejects
+    forward-only anchors, rewrites without certified backward, missing
+    gradient coverage for operand dtypes, and unresolved recomputation or
+    forward-only obligations.
+12. **Candidate selection never mutates the program implicitly.** The base
+    plan is always a candidate; every rewrite occurrence has a stable ID;
+    callers may select explicitly; automatic selection runs through the
+    solver or the documented cost heuristic; traces record the selected
+    candidate and rejected alternatives.
+13. **Solver models are untrusted.** Every Z3 model passes an independent,
+    solver-free verifier before any plan or kernel is generated from it.
+14. **Solver expressions never leak.** Z3 lives behind `compiler/solver.py`
+    behind the backend-independent constraint vocabulary in
+    `compiler/constraints.py`; semantic IR, execution IR, serialized
+    architecture specifications, and public adapter APIs contain no solver
+    objects.
+15. **Push and pull communication protocols are never conflated.**
+    Token-to-expert dispatch with required return (`PUSH_DISPATCH_RETURN`)
+    and query-owner gather (`PULL_GATHER`) are distinct typed protocols with
+    their own directions, conservation laws, and return obligations.
 
 ## What the compiler owes each compiled program
 

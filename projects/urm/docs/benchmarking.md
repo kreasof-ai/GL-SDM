@@ -15,6 +15,25 @@
   separate fields, and an incompatible installed version is rejected at
   dispatch time instead of being relabeled as the pin
   (tests/test_upstream_version_contract.py).
+- z3-solver is pinned to exactly `4.15.3.0` in the optional `solver` extra.
+  It is never a core dependency: the full suite passes without the extra
+  (solver-dependent tests skip; the compiler falls back to its documented
+  deterministic cost heuristic). Artifacts record the installed version.
+
+## Artifact provenance protocol
+
+Every committed benchmark artifact records: the exact `git` revision whose
+clean tree produced it, whether the tree was dirty (`dirty_tree`), the full
+benchmark command, a SHA-256 hash of the benchmark configuration, the
+installed solver version (when relevant), and a hash of the constraint-model
+summaries. The workflow is two-commit:
+
+1. commit the implementation;
+2. run every benchmark on that exact clean implementation commit;
+3. commit artifacts and documentation.
+
+An artifact whose revision points at code other than the code that produced
+it is invalid and must be regenerated.
 
 ## Comparison levels
 
@@ -126,6 +145,41 @@ cold compilation separately, and emits JSON conforming to
   instead), peak/temporary memory, paired direct-versus-adapter overhead,
   and final-state materialization cost. Nsight Compute fields remain
   explicit `not_available` on this host.
+- `benchmarks/compilation_matrix.py`: builds semantic programs from every
+  canonical preset, enumerates rewrite/lowering candidates under an explicit
+  training intent, compiles what is supported, records structured decline
+  reasons for what is not, and emits `results/compiler/compilation-matrix.json`
+  (escape-hatch count stays zero; architecture and schedule parameters
+  serialized separately). Coverage metrics are named for what they measure:
+  `routing_skeleton_compile_rate` (coarse routing skeleton maps to compiled
+  routed reduction - this does NOT mean dense attention, MoE, or sparse
+  attention is fully compiled), `full_architecture_compile_rate` (complete
+  family detail lowered today), `native_lowering_rate`,
+  `upstream_adapter_rate`.
+- `benchmarks/routed_epilogue_selection.py`: solver-guided schedule selection
+  for the routed-scale epilogue. Runs the full documented pipeline -
+  candidates, constraint model, Z3 feasibility + bounded lexicographic
+  optimization, independent verification, exhaustive-sweep agreement check -
+  then measures the legal fused schedule grid on GPU (fwd+bwd medians via
+  CUDA events), captures compile feedback (registers/thread, shared memory),
+  and reports legality accuracy, solve time, pruned candidates, and empirical
+  regret of the Z3-selected versus heuristic schedules. Emits
+  `results/compiler/solver/routed-epilogue-selection.json`.
+- `benchmarks/placement_selection.py`: solver-guided expert/page placement on
+  simulated 2x2 / 2x4 meshes against capacity, ownership/replication,
+  colocation and anti-affinity constraints; lexicographic objectives
+  (max load, critical path, bytes, peer pairs, deterministic tie-break);
+  compared against round-robin, greedy load balancing, and a brute-force
+  optimum on tiny instances; every returned plan independently verified.
+  Emits `results/compiler/solver/placement-selection.json`.
+- `benchmarks/unsat_diagnostics.py`: runs the representative impossible
+  problems (training with forward-only anchor, tile/vector mismatch,
+  shared-memory overrun, unsupported dtype, unplaceable item, replication
+  beyond mesh, deterministic merge with atomic-only anchors, transactional
+  update without commit lowering, push dispatch without return path) and
+  commits their unsat cores mapped to concise messages as
+  `results/compiler/solver/unsat-diagnostics.json`. Raw solver formulas are
+  never the primary diagnostic.
 - `benchmarks/routed_scale_epilogue.py`: materialized versus fused plans for
   `output[q,d] = row_scale[q] * routed_reduce(...)`. Compares the trusted v1 +
   scale plan against the compiler-generated fused epilogue anchor; host-bound
@@ -134,11 +188,6 @@ cold compilation separately, and emits JSON conforming to
   a full-row-tile schedule variant is measured and retained whether accepted
   or rejected. Numerical differences are recorded by dtype against eager
   references with assert_close semantics.
-- `benchmarks/compilation_matrix.py`: builds semantic programs from every
-  canonical preset, enumerates rewrite/lowering candidates, compiles what is
-  supported, records structured decline reasons for what is not, and emits
-  `results/compiler/compilation-matrix.json` (escape-hatch count stays zero;
-  architecture and schedule parameters serialized separately).
 
 ## Working milestone targets
 

@@ -70,7 +70,12 @@ projects/urm/
 |   |-- cases.toml               # canonical shape and trace grid
 |   |-- routed_reduce.py         # CUDA-event PyTorch/Triton comparison
 |   |-- routed_scale_epilogue.py # materialized vs fused epilogue prototype
+|   |-- epilogue_schedules.py    # parameterized fused-epilogue schedule variants
+|   |-- routed_epilogue_selection.py # solver-guided schedule selection (GPU)
+|   |-- placement_selection.py   # solver-guided simulated mesh placement
+|   |-- unsat_diagnostics.py     # representative impossible problems + cores
 |   |-- compilation_matrix.py    # NAS-facing preset compilation matrix
+|   |-- provenance.py            # shared artifact provenance capture
 |   |-- compare_results.py       # constraint checker (median/p95/memory gates)
 |   |-- measure_device_limits.py # measured HBM bandwidth and compute peaks
 |   |-- profile_roofline.py      # MFU/MBU and per-kernel roofline profiling
@@ -80,6 +85,9 @@ projects/urm/
 |   |-- attention-result-schema.json  # attention comparator schema
 |   |-- compiler-epilogue-schema.json # fused-epilogue comparison schema
 |   |-- compilation-matrix-schema.json # NAS compilation matrix schema
+|   |-- routed-epilogue-selection-schema.json # schedule selection schema
+|   |-- placement-selection-schema.json       # placement selection schema
+|   |-- unsat-diagnostics-schema.json         # unsat diagnostics schema
 |   |-- validated-environment.json    # exact validated dependency versions
 |   |-- triton_preflight.py      # environment and GPU readiness report
 |   `-- reference_smoke.py       # dependency-light harness smoke test
@@ -88,6 +96,7 @@ projects/urm/
 |   |-- baselines.md             # comparator catalog and scope rules
 |   |-- benchmarking.md          # correctness, measurement, and acceptance gates
 |   |-- compiler-charter.md      # normative compiler invariants (v1)
+|   |-- kernel-generation.md     # normative kernel-generation pipeline
 |   |-- coda-retrospective.md    # CODA strategy mapping and adoption decisions
 |   |-- triton-backend.md        # routed-reduction v1 contract and workflows
 |   |-- triton-optimization-report.md # optimization, profiling, comparator report
@@ -98,7 +107,8 @@ projects/urm/
 |   |-- device-limits.json       # measured bandwidth / FP32 / BF16 peaks
 |   |-- attention/               # dense causal attention comparison artifacts
 |   |-- fla-gated-delta-rule/    # gated delta-rule comparison artifacts
-|   `-- compiler/                # epilogue prototype + compilation matrix
+|   `-- compiler/                # epilogue prototype, compilation matrix,
+|                                #   solver/ selection artifacts
 |-- src/urm/
 |   |-- backend.py               # explicit backend protocol and registry
 |   |-- adapters/                # pinned upstream adapters (dense attention,

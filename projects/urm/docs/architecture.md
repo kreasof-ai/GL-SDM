@@ -97,12 +97,23 @@ Model adapters
   PyTorch SDPA / FlexAttention / FLA / Mamba / MoE / original SDM / GL-SDM
                           |
 NAS-facing compilation API (planner.UrmCompiler)
-  validate -> enumerate candidates -> compile -> cost features
+  validate -> enumerate candidates -> build constraints -> check feasible
+    -> solve schedule -> verify model -> compile candidate
+    -> cost features + benchmark ticket
                           |
 Semantic routing/state IR + verified rewrites (src/urm/compiler)
   logical domains, routes, effects, locality, registered rules
                           |
-Placement, sharding, communication planning (simulated mesh today)
+Backend-independent constraint IR (constraints.py) - no solver objects leak
+                          |
+Optional Z3 passes (solver.py): feasibility with tracked named assertions;
+  bounded lexicographic optimization; UNSAT cores mapped to diagnostics
+                          |
+Independent imperative verification (verification.py): every solver model is
+  re-checked without a solver before any kernel is generated
+                          |
+Placement, sharding, typed route protocols (simulated mesh today):
+  PULL_GATHER vs PUSH_DISPATCH_RETURN are distinct directions
                           |
 Trusted execution anchors + constrained visitors
   GEMM | attention | recurrent scan | grouped GEMM |
@@ -126,10 +137,11 @@ URM reports five coverage axes separately; conflating them hides real gaps.
 | Axis | Today |
 | --- | --- |
 | Semantic coverage | Dense/block-sparse/top-k/threshold/product-key routes over sequence/expert/parameter-block/recurrent-state/memory-page domains; ordered recurrence represented as a typed barrier op; transactional commits with version boundaries; collective intent (`all_reduce`, `all_to_all`, ...) as first-class effects |
-| Compiler/reparameterization coverage | Two verified rules: routed-reduction row-scale epilogue folding and delayed row scaling through linear maps; deterministic traces; structured rejections (non-row-wise scales, nonlinear intervening transforms, effect barriers, multi-consumer intermediates) |
+| Compiler/reparameterization coverage | Two verified rules: routed-reduction row-scale epilogue folding (backward certified for fp32/fp16/bf16 via tile recomputation) and delayed row scaling through linear maps (floating-point equivalence with dtype envelopes); explicit compilation intents; immutable candidate enumeration with stable IDs; deterministic traces; structured rejections (non-row-wise scales, nonlinear intervening transforms, effect barriers, multi-consumer intermediates, training-vs-forward-only conflicts) |
+| Solver-guided decision coverage | Backend-independent constraint IR; optional pinned Z3 (`4.15.3.0`) feasibility + bounded lexicographic optimization passes; UNSAT-core diagnostics for nine representative impossible problems; independent non-Z3 model verification; exhaustive-sweep agreement on bounded spaces; solver-guided epilogue schedule selection and simulated expert/page placement with baselines |
 | Upstream adapter coverage | FlashAttention 2.8.3 dense causal; FLA 0.5.2 gated delta-rule (prefill + decode) |
-| Native backend coverage | One Triton lowering family: routed-reduction v1 forward/backward; plus the experimental compiler-generated row-scale epilogue anchor |
-| Distributed planning coverage | Simulated mesh only: deterministic executable plans with grouped exchanges, byte estimates, send/receive counts, commit steps; no multi-device host validation yet |
+| Native backend coverage | One Triton lowering family: routed-reduction v1 forward/backward; plus the compiler-generated row-scale epilogue anchor with certified backward and solver-selected launch schedules |
+| Distributed planning coverage | Simulated mesh only: typed route protocols (pull gather vs push dispatch+return) with conservation/return/collision/capacity contracts; deterministic executable plans with grouped exchanges, byte estimates, send/receive counts, commit steps; solver-guided placement prototype; no multi-device host validation yet |
 
 ## Success metrics beyond peak kernel speed
 

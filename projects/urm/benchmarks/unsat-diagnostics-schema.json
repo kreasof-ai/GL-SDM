@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Representative unsat diagnostics",
+  "type": "object",
+  "required": ["schema_version", "generated_utc", "provenance", "cases", "summary"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "generated_utc": {"type": "string"},
+    "provenance": {"$ref": "#/$defs/provenance"},
+    "cases": {
+      "type": "array",
+      "minItems": 9,
+      "items": {
+        "type": "object",
+        "required": [
+          "case",
+          "category",
+          "status",
+          "core_names",
+          "core_mapped",
+          "concise_message"
+        ],
+        "properties": {
+          "case": {"type": "string"},
+          "category": {"type": "string"},
+          "status": {"const": "unsat"},
+          "core_names": {"type": "array", "items": {"type": "string"}},
+          "core_mapped": {"type": "boolean"},
+          "concise_message": {"type": "string", "minLength": 1},
+          "diagnostic_code": {"type": "string"},
+          "severity": {"enum": ["error", "warning"]},
+          "solve_ms": {"type": "number"}
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["cases_run", "all_unsat", "all_cores_mapped"],
+      "properties": {
+        "cases_run": {"type": "integer"},
+        "all_unsat": {"type": "boolean"},
+        "all_cores_mapped": {"type": "boolean"}
+      }
+    }
+  },
+  "$defs": {
+    "provenance": {
+      "type": "object",
+      "required": [
+        "git_revision",
+        "dirty_tree",
+        "benchmark_command",
+        "config_hash",
+        "solver_version",
+        "constraint_model_hash"
+      ],
+      "properties": {
+        "git_revision": {"type": ["string", "null"], "minLength": 40},
+        "dirty_tree": {"type": "boolean"},
+        "benchmark_command": {"type": "string"},
+        "config_hash": {"type": "string"},
+        "solver_version": {"type": ["string", "null"]},
+        "constraint_model_hash": {"type": "string"},
+        "python": {"type": "string"},
+        "platform": {"type": "string"}
+      }
+    }
+  }
+}

@@ -66,12 +66,18 @@ wall/GPU time against the materialized plan.
 ## Prototype summary (this iteration)
 
 - Rule set: `fold_row_scale_into_routed_reduction_epilogue` (floating-point
-  equivalence, forward-only at kernel level, recomputation obligation) and
-  `delay_row_scale_through_linear_matmul` (exact equivalence, full gradient
-  proof).
+  equivalence; backward CERTIFIED for fp32/fp16/bf16 via tile recomputation -
+  gradients cover weights, values AND the row scale - with a resolved
+  recomputation obligation) and `delay_row_scale_through_linear_matmul`
+  (floating-point equivalence with dtype envelopes; full gradient proof via
+  linearity). Neither rule carries a forward-only restriction any more, and
+  `exact` equivalence is reserved for bitwise-equivalent execution models.
 - Differential results: fp32/bf16/fp16 envelopes hold on GPU
   (`tests/test_compiler_epilogue_gpu.py`, CPU GEMM identity:
   `tests/test_compiler_delayed_scaling.py`).
 - Measured comparison: `results/compiler/routed-scale-epilogue/benchmark.json`
   (materialized vs fused; host-bound and GPU-bound shapes separated;
   rejected schedule retained).
+- Solver-guided selection of launch schedules for this epilogue:
+  `docs/kernel-generation.md` and
+  `results/compiler/solver/routed-epilogue-selection.json`.

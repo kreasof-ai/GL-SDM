@@ -304,9 +304,23 @@ def main() -> None:
     # Schedule C: full-row tile variant, measured and retained either way.
     schedule_c = evaluate_fullrow_variant()
 
+    from provenance import provenance
+
     artifact = {
         "schema_version": 1,
         "environment": environment_metadata(),
+        "provenance": {
+            **provenance(
+                "python benchmarks/routed_scale_epilogue.py",
+                {
+                    "cases": sorted(CASES),
+                    "warmup": args.warmup,
+                    "samples": args.samples,
+                },
+            ),
+            # No solver constraint model participates in this comparison.
+            "constraint_model_hash": "not_applicable_kernel_comparison",
+        },
         "semantics": (
             "output[q,d] = row_scale[q] * sum_k w[q,k]*V[idx[q,k],d]; "
             "plan A materializes base, plan B folds the scale into a typed "
