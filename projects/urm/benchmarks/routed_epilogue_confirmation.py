@@ -257,13 +257,13 @@ def run_single_confirmation(
                         "candidate_index": cand_idx,
                         "candidate": cand_sched,
                         "direction": direction,
-                        "candidate_median_ms": round(c_med, 6),
-                        "reference_median_ms": round(r_med, 6),
-                        "paired_ratio": round(paired_ratio, 6),
-                        "paired_log_ratio": round(paired_log_ratio, 6),
-                        "paired_slowdown_pct": round(paired_slowdown_pct, 4),
-                        "candidate_raw_samples_ms": [round(s, 6) for s in cand_raw],
-                        "reference_raw_samples_ms": [round(s, 6) for s in ref_raw],
+                        "candidate_median_ms": c_med,
+                        "reference_median_ms": r_med,
+                        "paired_ratio": paired_ratio,
+                        "paired_log_ratio": paired_log_ratio,
+                        "paired_slowdown_pct": paired_slowdown_pct,
+                        "candidate_raw_samples_ms": [float(s) for s in cand_raw],
+                        "reference_raw_samples_ms": [float(s) for s in ref_raw],
                     }
                 )
             b += 1
@@ -299,16 +299,18 @@ def run_single_confirmation(
         )
         gpu_after = capture_gpu_operating_conditions()
 
-        if (
-            sentinel_drift_pct > sentinel_drift_threshold_pct
-            and retry_idx < max_retries
-        ):
-            print(
-                f"Run {run_id} sentinel drift {sentinel_drift_pct:.2f}% "
-                f"> {sentinel_drift_threshold_pct}%; retrying ({retry_idx + 1}/{max_retries})..."
+        if sentinel_drift_pct > sentinel_drift_threshold_pct:
+            if retry_idx < max_retries:
+                print(
+                    f"Run {run_id} sentinel drift {sentinel_drift_pct:.2f}% "
+                    f"> {sentinel_drift_threshold_pct}%; retrying ({retry_idx + 1}/{max_retries})..."
+                )
+                current_seed += 9999
+                continue
+            raise RuntimeError(
+                f"Run {run_id} persistent sentinel drift {sentinel_drift_pct:.2f}% "
+                f"> {sentinel_drift_threshold_pct}% exceeded threshold after {max_retries} retries"
             )
-            current_seed += 9999
-            continue
 
         # Successful or final run
         run_artifact = {
@@ -331,6 +333,8 @@ def run_single_confirmation(
                 "seed": current_seed,
                 "initial_seed": seed,
                 "retries_performed": retry_idx,
+                "min_blocks": min_blocks,
+                "max_blocks": max_blocks,
                 "total_blocks_executed": block_count,
                 "samples_per_pair": samples_per_pair,
                 "warmup_runs": warmup_runs,
@@ -406,7 +410,7 @@ def validate_child_provenance_invariants(
             # Check measurement config invariants
             meta_i = child_artifacts[i]["run_metadata"]
             meta_j = child_artifacts[j]["run_metadata"]
-            for mkey in ("samples_per_pair", "warmup_runs"):
+            for mkey in ("samples_per_pair", "warmup_runs", "min_blocks", "max_blocks"):
                 mval_i = meta_i.get(mkey)
                 mval_j = meta_j.get(mkey)
                 if mval_i != mval_j:

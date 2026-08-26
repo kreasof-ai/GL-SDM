@@ -4,15 +4,19 @@ from __future__ import annotations
 
 import json
 import math
+import sys
 from pathlib import Path
 
 import pytest
 from jsonschema import validate
+
+PROJECT_ROOT = Path(__file__).parents[1]
+if str(PROJECT_ROOT / "benchmarks") not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT / "benchmarks"))
+
 from measurement import (
     hierarchical_bootstrap_paired_slowdown,
 )
-
-PROJECT_ROOT = Path(__file__).parents[1]
 
 
 def _load(path: Path) -> dict:
@@ -119,6 +123,8 @@ def test_provenance_tampering_fails_closed() -> None:
         "run_metadata": {
             "samples_per_pair": 5,
             "warmup_runs": 5,
+            "min_blocks": 8,
+            "max_blocks": 16,
             "sentinel_drift": {
                 "threshold_pct": 15.0,
             },
@@ -250,4 +256,54 @@ def test_committed_confirmation_artifact_semantic_facts() -> None:
         assert cand["is_practically_equivalent"] == expected_equiv, (
             f"candidate {cand['candidate_index']} equivalence must match upper bound rule: "
             f"ci95_upper={cand['ci95_upper_slowdown_pct']} <= {margin}"
+        )
+
+
+def test_persistent_sentinel_drift_raises_runtime_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Sentinel drift exceeding threshold on final retry must fail closed and raise RuntimeError."""
+    import sys
+
+    if str(PROJECT_ROOT / "benchmarks") not in sys.path:
+        sys.path.insert(0, str(PROJECT_ROOT / "benchmarks"))
+    import routed_epilogue_confirmation as rec
+
+    monkeypatch.setattr("torch.cuda.is_available", lambda: True)
+    monkeypatch.setattr("torch.cuda.synchronize", lambda: None)
+    monkeypatch.setattr(
+        "epilogue_schedules.make_inputs", lambda *args: (None, None, None, None)
+    )
+    monkeypatch.setattr("epilogue_schedules.forward_launch", lambda *args: (None, None))
+    monkeypatch.setattr(
+        "epilogue_schedules.backward_launch", lambda *args: (None, None)
+    )
+
+    call_count = 0
+
+    def mock_collect(_workload, samples_per_round=5):
+        nonlocal call_count
+        call_count += 1
+        # Drift: start is 0.200, end is 0.300 (>15% drift)
+        if call_count % 2 == 1:
+            return [0.200] * samples_per_round
+        return [0.300] * samples_per_round
+
+    monkeypatch.setattr("measurement.collect_cuda_samples", mock_collect)
+    monkeypatch.setattr(
+        "measurement.capture_gpu_operating_conditions",
+        lambda *args: {"gpu_name": "MockGPU"},
+    )
+
+    with pytest.raises(RuntimeError, match="persistent sentinel drift"):
+        rec.run_single_confirmation(
+            seed=42,
+            run_id=0,
+            output_path=tmp_path / "drift_fail.json",
+            min_blocks=2,
+            max_blocks=2,
+            samples_per_pair=2,
+            warmup_runs=1,
+            sentinel_drift_threshold_pct=10.0,
+            max_retries=2,
         )
