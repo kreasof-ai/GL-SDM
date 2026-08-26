@@ -385,3 +385,183 @@ def test_constraint_models_are_backend_independent() -> None:
     text = json.dumps(model.to_summary())
     assert "z3" not in text.lower()
     assert isinstance(model, ConstraintModel)
+
+
+# -- Regression tests for override and hint truthfulness -------------------------------
+
+
+def test_valid_explicit_fused_override_compiles_successfully() -> None:
+    """Explicit override to the fused anchor produces fused schedule and launch config."""
+    program = _program()
+    compiler = UrmCompiler()
+    params = ScheduleParams(
+        anchor_overrides={"reduce": "routed_reduction_row_scale_epilogue_v0"}
+    )
+    result = compiler.compile(program, schedule_params=params)
+    assert result.plan.steps[0].anchor == "routed_reduction_row_scale_epilogue_v0"
+    assert result.plan.steps[0].launch_config is not None
+    assert result.schedule_decision is not None
+    assert result.schedule_decision.schedule_point.plan == "fused"
+
+
+def test_explicit_override_with_missing_semantic_inputs_declines_cleanly() -> None:
+    """Overriding to fused anchor when row scale input is absent fails with structured error."""
+    from urm.compiler.semantic import routed_reduction_program
+
+    program = routed_reduction_program(
+        queries=8, route_width=2, sources=8, value_dim=16
+    )
+    compiler = UrmCompiler()
+    params = ScheduleParams(
+        anchor_overrides={"reduce": "routed_reduction_row_scale_epilogue_v0"}
+    )
+    with pytest.raises(CompilerError) as excinfo:
+        compiler.compile(program, schedule_params=params)
+    codes = {d.code for d in excinfo.value.diagnostics}
+    assert (
+        DiagnosticCode.NO_ANCHOR_AVAILABLE in codes
+        or DiagnosticCode.ANCHOR_DECLINED in codes
+    )
+
+
+def test_unconsumed_explicit_overrides_are_rejected() -> None:
+    """Every unconsumed explicit override is rejected with structured diagnostic."""
+    program = _program()
+    compiler = UrmCompiler()
+
+    # 1. Known but rewritten-away operation (apply_row_scale is fused into reduce)
+    with pytest.raises(CompilerError) as exc1:
+        compiler.compile(
+            program,
+            schedule_params=ScheduleParams(
+                anchor_overrides={"apply_row_scale": "routed_reduction_v1"}
+            ),
+        )
+    assert exc1.value.diagnostics[0].code is DiagnosticCode.SCHEDULE_HINT_INVALID
+    assert "rewritten or fused" in exc1.value.diagnostics[0].message
+
+    # 2. Known interior gather (fused into routed-reduction dispatch)
+    from urm.compiler.semantic import routed_reduction_program
+
+    gather_prog = routed_reduction_program(
+        queries=8, route_width=2, sources=8, value_dim=16
+    )
+    with pytest.raises(CompilerError) as exc2:
+        compiler.compile(
+            gather_prog,
+            schedule_params=ScheduleParams(
+                anchor_overrides={"gather": "routed_reduction_v1"}
+            ),
+        )
+    assert exc2.value.diagnostics[0].code is DiagnosticCode.SCHEDULE_HINT_INVALID
+    assert "interior gather" in exc2.value.diagnostics[0].message
+
+    # 3. Known non-anchorable operation (Transform without anchor site)
+    from urm.compiler.semantic import TransformKind
+
+    base = routed_reduction_program(queries=8, route_width=2, sources=8, value_dim=16)
+    nonlin_prog = SemanticProgram.build(
+        name="nonlin_prog",
+        inputs=base.inputs,
+        ops=(
+            *base.ops,
+            Transform(
+                name="gelu_transform",
+                inputs=("base",),
+                outputs=("out",),
+                kind=TransformKind.GELU,
+            ),
+        ),
+        outputs=("out",),
+    )
+    with pytest.raises(CompilerError) as exc3:
+        compiler.compile(
+            nonlin_prog,
+            schedule_params=ScheduleParams(
+                anchor_overrides={"gelu_transform": "routed_reduction_v1"}
+            ),
+        )
+    assert exc3.value.diagnostics[0].code is DiagnosticCode.SCHEDULE_HINT_INVALID
+    assert "no anchor-dispatch site" in exc3.value.diagnostics[0].message
+
+    # 4. Incompatible anchor kind (torch_linear is a GEMM anchor, not ROUTED_REDUCTION)
+    with pytest.raises(CompilerError) as exc4:
+        compiler.compile(
+            program,
+            schedule_params=ScheduleParams(anchor_overrides={"reduce": "torch_linear"}),
+        )
+    codes4 = {d.code for d in exc4.value.diagnostics}
+    assert (
+        DiagnosticCode.NO_ANCHOR_AVAILABLE in codes4
+        or DiagnosticCode.ANCHOR_DECLINED in codes4
+    )
+
+    # 5. Wildcard override is NOT treated as an unconsumed explicit key
+    res_wildcard = compiler.compile(
+        program,
+        schedule_params=ScheduleParams(
+            anchor_overrides={"*": "routed_reduction_row_scale_epilogue_v0"}
+        ),
+    )
+    assert res_wildcard.plan.steps[0].anchor == "routed_reduction_row_scale_epilogue_v0"
+
+
+def test_schedule_knobs_rejected_for_unscheduled_lowerings() -> None:
+    """Providing block, warp, or stage hints when lowering unscheduled base raises error."""
+    from urm.compiler.semantic import routed_reduction_program
+
+    program = routed_reduction_program(
+        queries=8, route_width=2, sources=8, value_dim=16
+    )
+    compiler = UrmCompiler()
+
+    # Base lowering with block hint
+    with pytest.raises(CompilerError) as exc1:
+        compiler.compile(
+            program, schedule_params=ScheduleParams(block_hints={"BLOCK_D": 256})
+        )
+    assert exc1.value.diagnostics[0].code is DiagnosticCode.SCHEDULE_HINT_INVALID
+    assert (
+        "unscheduled and does not consume launch configurations"
+        in exc1.value.diagnostics[0].message
+    )
+
+    # Base lowering with warp count
+    with pytest.raises(CompilerError) as exc2:
+        compiler.compile(program, schedule_params=ScheduleParams(warp_count=8))
+    assert exc2.value.diagnostics[0].code is DiagnosticCode.SCHEDULE_HINT_INVALID
+
+    # Base lowering with stage count
+    with pytest.raises(CompilerError) as exc3:
+        compiler.compile(program, schedule_params=ScheduleParams(stage_count=4))
+    assert exc3.value.diagnostics[0].code is DiagnosticCode.SCHEDULE_HINT_INVALID
+
+
+def test_anchor_capability_is_schedule_domain_source_of_truth() -> None:
+    """Changing an anchor's declared capabilities alters the generated constraint model."""
+    from urm.compiler.execution import AnchorKind, ExecutionAnchor
+    from urm.compiler.kernel_plan import exhaustive_schedule_sweep
+
+    # Custom anchor with constrained warps=(4,) and blocks=(128,)
+    custom_anchor = ExecutionAnchor(
+        kind=AnchorKind.ROUTED_REDUCTION,
+        name="custom_test_anchor",
+        schedulable=True,
+        consumes_launch_config=True,
+        supported_plan_kinds=frozenset({"fused"}),
+        supported_blocks=(128,),
+        supported_warps=(4,),
+        supported_stages=(1, 2),
+        supported_decompositions=("per_query",),
+        supported_schedules=("segmented",),
+    )
+
+    compiler = UrmCompiler()
+    program = _program()
+    model = compiler.build_constraints(program, FUSED_ID, anchor=custom_anchor)
+    legal, _, _ = exhaustive_schedule_sweep(model)
+    assert legal, "constrained space should be satisfiable"
+    assert all(a["block_d"] == 128 for a in legal)
+    assert all(a["num_warps"] == 4 for a in legal)
+    assert all(a.get("decomp_per_query") is True for a in legal)
+    assert all(a.get("gradsched_segmented") is True for a in legal)

@@ -15,7 +15,15 @@
         "benchmark_command": { "type": "string" },
         "config_hash": { "type": "string" },
         "solver_version": { "type": ["string", "null"] },
-        "constraint_model_hash": { "type": "string" }
+        "constraint_model_hash": { "type": "string" },
+        "constraint_model_hashes": { "type": "array" },
+        "python": { "type": "string" },
+        "platform": { "type": "string" },
+        "pytorch": { "type": ["string", "null"] },
+        "triton": { "type": ["string", "null"] },
+        "cuda": { "type": ["string", "null"] },
+        "driver": { "type": ["string", "null"] },
+        "gpu": { "type": ["string", "null"] }
       }
     },
     "summary": {
@@ -41,8 +49,8 @@
         "candidates_rejected_by_imperative_checks": { "type": "integer" },
         "infeasible_candidates": { "type": "integer" },
         "candidates_ranked_out_by_objective": { "type": "integer" },
-        "compile_probe_failures": { "type": "integer" },
-        "nogoods_added": { "type": "integer" },
+        "compile_probe_failures": { "type": ["integer", "null"] },
+        "nogoods_added": { "type": ["integer", "null"] },
         "candidates_rejected_by_z3": { "type": "integer" },
         "verified_models": { "type": "integer" },
         "schedule_models_verified": { "type": "integer" },

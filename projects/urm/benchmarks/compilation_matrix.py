@@ -151,15 +151,19 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     args = parser.parse_args()
 
-    from provenance import config_hash, git_revision, tree_is_dirty
+    import torch
+    from provenance import (
+        provenance,
+    )
 
+    from urm.compiler.anchors.routed_reduction_epilogue import make_triton_compile_probe
     from urm.compiler.diagnostics import CompilerError
     from urm.compiler.planner import CompilationIntent, UrmCompiler
-    from urm.compiler.solver import z3_available, z3_version
     from urm.presets import CATALOG as ALL_PRESETS
 
     intent = CompilationIntent.TRAINING
-    compiler = UrmCompiler()
+    probe = make_triton_compile_probe() if torch.cuda.is_available() else None
+    compiler = UrmCompiler(compile_probe=probe)
     rows: list[dict[str, object]] = []
     solver_totals = {
         "solver_time_ms": 0.0,
@@ -347,25 +351,22 @@ def main() -> None:
         for row in rows
         if any(a in UPSTREAM_ANCHORS for a in row.get("anchors_selected", []))
     )
+    matrix_provenance = provenance(
+        "python benchmarks/compilation_matrix.py",
+        {
+            "presets": [r["architecture_params"]["preset"] for r in rows],
+            "intent": intent.value,
+        },
+    )
+    matrix_provenance["constraint_model_hash"] = (
+        model_hashes[0] if model_hashes else "not_applicable_static_analysis"
+    )
+    matrix_provenance["constraint_model_hashes"] = model_hashes
+
     artifact = {
         "schema_version": 2,
         "generated_utc": datetime.now(UTC).isoformat(),
-        "provenance": {
-            "git_revision": git_revision(),
-            "dirty_tree": tree_is_dirty(),
-            "benchmark_command": "python benchmarks/compilation_matrix.py",
-            "config_hash": config_hash(
-                {
-                    "presets": [r["architecture_params"]["preset"] for r in rows],
-                    "intent": intent.value,
-                }
-            ),
-            "constraint_model_hash": (
-                model_hashes[0] if model_hashes else "not_applicable_static_analysis"
-            ),
-            "constraint_model_hashes": model_hashes,
-            "solver_version": z3_version() if z3_available() else None,
-        },
+        "provenance": matrix_provenance,
         "summary": {
             "presets_evaluated": presets,
             "valid_semantic_programs": valid_programs,
@@ -379,8 +380,12 @@ def main() -> None:
             "candidates_ranked_out_by_objective": solver_totals[
                 "candidates_ranked_out_by_objective"
             ],
-            "compile_probe_failures": solver_totals["compile_probe_failures"],
-            "nogoods_added": solver_totals["nogoods_added"],
+            "compile_probe_failures": (
+                solver_totals["compile_probe_failures"] if probe is not None else None
+            ),
+            "nogoods_added": (
+                solver_totals["nogoods_added"] if probe is not None else None
+            ),
             "verified_models": solver_totals["verified_models"],
             "schedule_models_verified": solver_totals["schedule_models_verified"],
             "unsat_categories": sorted(solver_totals["unsat_codes"]),

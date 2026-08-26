@@ -79,6 +79,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from urm.compiler.constraints import Assignment, ConstraintModel
+    from urm.compiler.execution import ExecutionAnchor
     from urm.compiler.search import CompileProbe, ScheduleDecision
     from urm.compiler.semantic import SemanticNode, SemanticProgram
     from urm.compiler.solver import FeasibilityResult, OptimizationResult
@@ -584,6 +585,7 @@ class UrmCompiler:
         intent: CompilationIntent = CompilationIntent.INFERENCE,
         *,
         schedule_params: ScheduleParams | None = None,
+        anchor: ExecutionAnchor | None = None,
     ) -> ConstraintModel:
         """Build the backend-independent constraint model for one candidate."""
         from urm.compiler.kernel_plan import build_schedule_model
@@ -607,6 +609,7 @@ class UrmCompiler:
             intent=intent,
             schedule_params=schedule_params or ScheduleParams(),
             device_limits=self.device_limits,
+            anchor=anchor,
         )
 
     def check_feasible(self, model: ConstraintModel) -> FeasibilityResult:
@@ -691,23 +694,58 @@ class UrmCompiler:
 
         # Resolve effective anchor lowering identity before schedule search.
         effective_decisions = self._resolve_effective_anchors(
-            compiled, intent, schedule_params
+            compiled, intent, schedule_params, original_program=program
         )
+
+        # Validate that requested tuning knobs have a valid consumer in effective lowerings
+        active_tuning_knobs: list[str] = []
+        if schedule_params.block_hints:
+            active_tuning_knobs.append(f"block_hints={schedule_params.block_hints}")
+        if schedule_params.warp_count is not None:
+            active_tuning_knobs.append(f"warp_count={schedule_params.warp_count}")
+        if schedule_params.stage_count is not None:
+            active_tuning_knobs.append(f"stage_count={schedule_params.stage_count}")
+
+        schedulable_anchors = [
+            d.anchor
+            for d in effective_decisions.values()
+            if d.anchor is not None and d.anchor.schedulable
+        ]
+        if active_tuning_knobs and not schedulable_anchors:
+            anchors_summary = (
+                ", ".join(
+                    d.anchor.name
+                    for d in effective_decisions.values()
+                    if d.anchor is not None
+                )
+                or "none"
+            )
+            raise CompilerError(
+                (
+                    Diagnostic(
+                        code=DiagnosticCode.SCHEDULE_HINT_INVALID,
+                        message=(
+                            f"scheduling hints ({', '.join(active_tuning_knobs)}) were provided, "
+                            f"but the effective lowering ({anchors_summary}) is unscheduled "
+                            "and does not consume launch configurations"
+                        ),
+                    ),
+                )
+            )
 
         # Candidate-bound schedule search runs only when the effective lowering
         # targets a schedulable anchor that consumes an external launch configuration.
-        needs_schedule_search = any(
-            d.anchor is not None and d.anchor.schedulable
-            for d in effective_decisions.values()
-        )
+        needs_schedule_search = bool(schedulable_anchors)
         schedule_decision = None
         if needs_schedule_search:
+            effective_anchor = schedulable_anchors[0]
             schedule_decision = self._search_schedule(
                 program=program,
                 compiled=compiled,
                 chosen=chosen,
                 intent=intent,
                 schedule_params=schedule_params,
+                effective_anchor=effective_anchor,
             )
 
         steps, anchors_chosen, cost_parts = self._lower_to_anchors(
@@ -805,6 +843,7 @@ class UrmCompiler:
         chosen: CompilationCandidate,
         intent: CompilationIntent,
         schedule_params: ScheduleParams,
+        effective_anchor: ExecutionAnchor | None = None,
     ) -> ScheduleDecision | None:
         """Solve, verify, and (optionally) probe the candidate-bound schedule.
 
@@ -820,7 +859,11 @@ class UrmCompiler:
         from urm.compiler.search import CompilationSearch
 
         model = self.build_constraints(
-            program, chosen.candidate_id, intent, schedule_params=schedule_params
+            program,
+            chosen.candidate_id,
+            intent,
+            schedule_params=schedule_params,
+            anchor=effective_anchor,
         )
         search = CompilationSearch(
             model=model,
@@ -1013,17 +1056,26 @@ class UrmCompiler:
         compiled: SemanticProgram,
         intent: CompilationIntent,
         schedule_params: ScheduleParams,
+        *,
+        original_program: SemanticProgram | None = None,
     ) -> dict[str, AnchorDecision]:
         effective_decisions: dict[str, AnchorDecision] = {}
+        consumed_explicit_overrides: set[str] = set()
+        explicit_keys = {k for k in schedule_params.anchor_overrides if k != "*"}
         for op in compiled.ops:
             if self._is_interior_gather(compiled, op):
                 continue  # fused into the routed-reduction dispatch
             request_kind, visitors = self._request_for(op)
             if request_kind is None:
                 continue
-            override = schedule_params.anchor_overrides.get(op.name) or (
-                schedule_params.anchor_overrides.get("*")
-            )
+            if op.name in schedule_params.anchor_overrides:
+                override = schedule_params.anchor_overrides[op.name]
+                if op.name != "*":
+                    consumed_explicit_overrides.add(op.name)
+            elif "*" in schedule_params.anchor_overrides:
+                override = schedule_params.anchor_overrides["*"]
+            else:
+                override = None
             decision: AnchorDecision = self.anchors.select(
                 AnchorRequest(
                     kind=request_kind,
@@ -1047,6 +1099,47 @@ class UrmCompiler:
                 compiled, op, decision.anchor, intent, schedule_params
             )
             effective_decisions[op.name] = decision
+
+        unconsumed = explicit_keys - consumed_explicit_overrides
+        if unconsumed:
+            diagnostics = []
+            for key in sorted(unconsumed):
+                compiled_op = compiled.find(key)
+                orig_op = original_program.find(key) if original_program else None
+                if compiled_op is None and orig_op is not None:
+                    msg = (
+                        f"anchor override for {key!r} was not consumed: "
+                        "operation was rewritten or fused into another operation"
+                    )
+                elif compiled_op is not None and self._is_interior_gather(
+                    compiled, compiled_op
+                ):
+                    msg = (
+                        f"anchor override for {key!r} was not consumed: "
+                        "operation was internalized as an interior gather in routed-reduction dispatch"
+                    )
+                elif (
+                    compiled_op is not None
+                    and self._request_for(compiled_op)[0] is None
+                ):
+                    msg = (
+                        f"anchor override for {key!r} was not consumed: "
+                        f"operation {key!r} ({type(compiled_op).__name__}) has no anchor-dispatch site"
+                    )
+                else:
+                    msg = (
+                        f"anchor override for {key!r} was not consumed by any "
+                        "effective anchor-dispatch operation"
+                    )
+                diagnostics.append(
+                    Diagnostic(
+                        code=DiagnosticCode.SCHEDULE_HINT_INVALID,
+                        message=msg,
+                        subject=key,
+                    )
+                )
+            raise CompilerError(tuple(diagnostics))
+
         return effective_decisions
 
     def _lower_to_anchors(
@@ -1133,11 +1226,14 @@ class UrmCompiler:
         if anchor.required_semantic_inputs:
             from urm.compiler.semantic import WeightedReduce
 
-            if isinstance(op, WeightedReduce):
-                for req_input in anchor.required_semantic_inputs:
-                    if req_input == "row_scale" and (
-                        op.epilogue is None or op.epilogue.scale_tensor is None
-                    ):
+            for req_input in anchor.required_semantic_inputs:
+                if req_input == "row_scale":
+                    has_row_scale = (
+                        isinstance(op, WeightedReduce)
+                        and op.epilogue is not None
+                        and bool(getattr(op.epilogue, "scale", None))
+                    )
+                    if not has_row_scale:
                         return AnchorDecision(
                             anchor=None,
                             decline=Decline(

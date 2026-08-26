@@ -247,6 +247,21 @@
         "gate_pass": {
           "type": "boolean"
         },
+        "delta_mean_ms": {
+          "type": "number"
+        },
+        "delta_median_ms": {
+          "type": "number"
+        },
+        "delta_std_ms": {
+          "type": "number"
+        },
+        "paired_samples_count": {
+          "type": "integer"
+        },
+        "batch_launches_per_sample": {
+          "type": "integer"
+        },
         "note": {
           "type": "string"
         }
@@ -475,6 +490,36 @@
         },
         "platform": {
           "type": "string"
+        },
+        "pytorch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "triton": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cuda": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "driver": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "gpu": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       }
     },

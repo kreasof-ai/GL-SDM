@@ -206,12 +206,13 @@ def test_no_z3_heuristic_path_passes_the_same_verifier(
 def test_unverified_assignment_never_reaches_lowering_or_probe(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from urm.compiler.search import CompileContext
     from urm.compiler.verification import VerificationFailure, VerificationReport
 
-    probe_calls: list[SchedulePoint] = []
+    probe_calls: list[CompileContext] = []
 
-    def probe(point: SchedulePoint) -> CompileProbeResult:
-        probe_calls.append(point)
+    def probe(ctx: CompileContext) -> CompileProbeResult:
+        probe_calls.append(ctx)
         return CompileProbeResult(ok=True)
 
     def rejecting_verifier(_model, _assignment) -> VerificationReport:
@@ -237,9 +238,9 @@ def test_unverified_assignment_never_reaches_lowering_or_probe(
 # -- compile-feedback retry loop ------------------------------------------------------
 
 
-def _first_failure_probe(calls: list[SchedulePoint]):
-    def probe(point: SchedulePoint) -> CompileProbeResult:
-        calls.append(point)
+def _first_failure_probe(calls: list[object]):
+    def probe(ctx: object) -> CompileProbeResult:
+        calls.append(ctx)
         if len(calls) == 1:
             return CompileProbeResult(ok=False, reason="synthetic compile failure")
         return CompileProbeResult(ok=True, registers_per_thread=24)
@@ -284,6 +285,39 @@ def test_compile_probe_failure_adds_exact_nogood_then_recovers() -> None:
     )
     assert not fires_on_success
     assert decision.attempts[1].nogood_forbidden is None
+
+
+def test_compile_probe_type_error_fails_cleanly_without_legacy_fallback() -> None:
+    """A TypeError raised inside the probe fails closed and records an exact nogood."""
+    call_count = 0
+
+    def buggy_probe(ctx) -> CompileProbeResult:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            # Simulate an internal TypeError (e.g. bug inside the probe implementation)
+            raise TypeError(
+                "unexpected NoneType in internal tensor dimension calculation"
+            )
+        return CompileProbeResult(ok=True, registers_per_thread=32)
+
+    program = _program()
+    compiler = UrmCompiler(compile_probe=buggy_probe, max_nogoods=4)
+    result = compiler.compile(program, intent=CompilationIntent.TRAINING)
+    decision = result.schedule_decision
+    assert decision is not None
+    # Called exactly once per assignment attempt: attempt 0 failed, attempt 1 succeeded
+    assert call_count == 2
+    assert len(decision.attempts) == 2
+    attempt0 = decision.attempts[0]
+    assert attempt0.compile_status is CompileStatus.FAILED
+    assert "probe raised TypeError" in str(attempt0.compile_detail)
+    assert attempt0.nogood_added is True
+    assert attempt0.nogood_forbidden is not None
+    assert decision.compile_status is CompileStatus.SUCCEEDED
+    assert decision.compile_failures_observed == 1
+    assert decision.nogoods_added == 1
+    assert decision.recoveries == 1
 
 
 def test_retry_exhaustion_returns_structured_diagnostic() -> None:

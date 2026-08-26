@@ -65,6 +65,56 @@ def solver_version() -> str | None:
         return None
 
 
+def pytorch_version() -> str | None:
+    try:
+        import torch
+
+        return str(torch.__version__)
+    except ImportError:
+        return None
+
+
+def triton_version() -> str | None:
+    try:
+        import triton
+
+        return str(triton.__version__)
+    except ImportError:
+        return None
+
+
+def cuda_version() -> str | None:
+    try:
+        import torch
+
+        return str(torch.version.cuda) if torch.cuda.is_available() else None
+    except ImportError:
+        return None
+
+
+def driver_version() -> str | None:
+    try:
+        res = subprocess.run(
+            ["nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        lines = res.stdout.strip().splitlines()
+        return lines[0] if lines else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def gpu_name() -> str | None:
+    try:
+        import torch
+
+        return str(torch.cuda.get_device_name(0)) if torch.cuda.is_available() else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def provenance(command: str, configuration: object) -> dict[str, object]:
     return {
         "git_revision": git_revision(),
@@ -74,6 +124,11 @@ def provenance(command: str, configuration: object) -> dict[str, object]:
         "solver_version": solver_version(),
         "python": sys.version.split()[0],
         "platform": platform.platform(),
+        "pytorch": pytorch_version(),
+        "triton": triton_version(),
+        "cuda": cuda_version(),
+        "driver": driver_version(),
+        "gpu": gpu_name(),
     }
 
 

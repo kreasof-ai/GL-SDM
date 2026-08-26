@@ -414,8 +414,19 @@ class CompilationSearch:
                 )
                 try:
                     result = self.probe(context)
-                except TypeError:
-                    result = self.probe(point)
+                    if not isinstance(result, CompileProbeResult):
+                        result = CompileProbeResult(
+                            ok=False,
+                            reason=(
+                                f"probe returned invalid type {type(result).__name__}; "
+                                "expected CompileProbeResult"
+                            ),
+                        )
+                except Exception as error:  # noqa: BLE001
+                    result = CompileProbeResult(
+                        ok=False,
+                        reason=f"probe raised {type(error).__name__}: {error}",
+                    )
                 detail = result.reason
                 regs = result.registers_per_thread
                 smem = result.shared_mem_bytes

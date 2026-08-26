@@ -69,6 +69,8 @@ def main() -> None:
 
     from urm.compiler.anchors.routed_reduction_epilogue import (
         RoutedEpilogueLaunchConfig,
+        _extract_resource_usage,
+        make_triton_compile_probe,
     )
     from urm.compiler.kernel_plan import (
         decode_schedule_point,
@@ -97,7 +99,7 @@ def main() -> None:
         value_dim=PROBLEM["value_dim"],
         value_dtype=DType.BFLOAT16,
     )
-    compiler = UrmCompiler()
+    compiler = UrmCompiler(compile_probe=make_triton_compile_probe())
     candidates = compiler.enumerate_candidates(program, intent)
     fused = next(c for c in candidates if c.kind == "rewrite")
     model = compiler.build_constraints(
@@ -305,13 +307,31 @@ def main() -> None:
 
     def workload(point: SchedulePoint):
         def run() -> None:
-            output, info = sched.forward_launch(
+            output, fwd_info = sched.forward_launch(
                 point, indices, weights, values, row_scale
             )
-            feedback = sched.compile_feedback_for(info.handle)
+            _grads, bwd_info = sched.backward_launch(
+                point, indices, weights, values, row_scale, output
+            )
             if point.stable_key not in resource_by_key:
-                resource_by_key[point.stable_key] = feedback
-            sched.backward_launch(point, indices, weights, values, row_scale, output)
+                fwd_res = _extract_resource_usage(fwd_info.kernel, fwd_info.handle)
+                all_kres = [fwd_res]
+                for name, handle in bwd_info.extra_handles:
+                    all_kres.append(_extract_resource_usage(name, handle))
+                known_regs = [
+                    k.registers_per_thread
+                    for k in all_kres
+                    if k.registers_per_thread is not None
+                ]
+                known_smem = [
+                    k.shared_mem_bytes
+                    for k in all_kres
+                    if k.shared_mem_bytes is not None
+                ]
+                resource_by_key[point.stable_key] = {
+                    "registers_per_thread": max(known_regs) if known_regs else None,
+                    "shared_mem_bytes": max(known_smem) if known_smem else None,
+                }
 
         return run
 
@@ -427,32 +447,62 @@ def main() -> None:
     )
     if step_config is not None:
         direct_config = RoutedEpilogueLaunchConfig.from_point(z3_point)
-
-        def direct_forward() -> None:
-            sched.launch_prepared_step(
-                direct_config, indices, weights, values, row_scale
-            )
-
         # Decoding the serialized plan into an executable configuration is
         # COMPILATION: it happens once, outside every timed region. The timed
         # region compares steady-state dispatch through the prepared plan
         # against a direct production launch.
         prepared_config = sched.prepare_plan_step(step_config)
+        assert direct_config == prepared_config, (
+            "direct and decoded configurations must be operationally equal"
+        )
 
-        def compiler_driven_forward() -> None:
+        # Warm up both dispatch paths before timing
+        for _ in range(20):
+            sched.launch_prepared_step(
+                direct_config, indices, weights, values, row_scale
+            )
             sched.launch_prepared_step(
                 prepared_config, indices, weights, values, row_scale
             )
+        torch.cuda.synchronize()
 
-        overhead_samples = measure_schedules_interleaved(
-            {"direct": direct_forward, "compiler_driven": compiler_driven_forward},
-            warmup_runs=MEASUREMENT["warmup_runs"],
-            rounds=MEASUREMENT["rounds"],
-            samples_per_round=MEASUREMENT["samples_per_round"],
-            seed=MEASUREMENT["seed"] + 1,
-        )
-        direct_stats = summarize_samples(overhead_samples["direct"])
-        driven_stats = summarize_samples(overhead_samples["compiler_driven"])
+        BATCH_SIZE = 50
+        ROUNDS = 20
+        import random
+
+        from measurement import quantile
+
+        def time_batched_launch(cfg: RoutedEpilogueLaunchConfig) -> float:
+            start_ev = torch.cuda.Event(enable_timing=True)
+            end_ev = torch.cuda.Event(enable_timing=True)
+            start_ev.record()
+            for _ in range(BATCH_SIZE):
+                sched.launch_prepared_step(cfg, indices, weights, values, row_scale)
+            end_ev.record()
+            torch.cuda.synchronize()
+            return start_ev.elapsed_time(end_ev) / BATCH_SIZE
+
+        rng = random.Random(MEASUREMENT["seed"] + 1)
+        direct_times: list[float] = []
+        driven_times: list[float] = []
+        deltas: list[float] = []
+
+        for _ in range(ROUNDS):
+            order = [("direct", direct_config), ("driven", prepared_config)]
+            rng.shuffle(order)
+            results = {}
+            for name, cfg in order:
+                results[name] = time_batched_launch(cfg)
+            direct_times.append(results["direct"])
+            driven_times.append(results["driven"])
+            deltas.append(results["driven"] - results["direct"])
+
+        direct_stats = summarize_samples(direct_times)
+        driven_stats = summarize_samples(driven_times)
+        delta_mean = sum(deltas) / len(deltas)
+        delta_median = quantile(deltas, 0.5)
+        delta_std = (sum((x - delta_mean) ** 2 for x in deltas) / len(deltas)) ** 0.5
+
         overhead_pct = round(
             100.0
             * (driven_stats["median_ms"] - direct_stats["median_ms"])
@@ -465,10 +515,16 @@ def main() -> None:
             "overhead_pct": overhead_pct,
             "gate_pct": OVERHEAD_GATE_PCT,
             "gate_pass": bool(overhead_pct <= OVERHEAD_GATE_PCT),
+            "delta_mean_ms": round(delta_mean, 6),
+            "delta_median_ms": round(delta_median, 6),
+            "delta_std_ms": round(delta_std, 6),
+            "paired_samples_count": ROUNDS,
+            "batch_launches_per_sample": BATCH_SIZE,
             "note": (
-                "compiler-driven dispatch executes through the launch "
-                "configuration decoded from the SERIALIZED executable plan; "
-                "decoding/compilation stays outside the timed region"
+                "dispatch equivalence evaluates steady-state execution through "
+                "the decoded launch configuration from the serialized executable "
+                "plan versus direct configuration launch over repeated batched "
+                "launches with paired randomized sampling"
             ),
         }
 

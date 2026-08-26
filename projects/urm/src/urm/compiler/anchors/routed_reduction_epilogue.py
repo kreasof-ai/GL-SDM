@@ -757,37 +757,34 @@ def make_triton_compile_probe(
     """Real GPU compile probe over the EXACT target specialization.
 
     Probes compile + launch the production kernels for the requested anchor,
-    shapes, dtypes, and launch configurations (BLOCK_D, num_warps, num_stages,
+    exact specialization parameters (operand dtypes, route width, value
+    dimension, launch configuration: BLOCK_D, num_warps, num_stages,
     decomposition, traversal), exercising forward and backward when intent is
-    training. Register/shared-memory facts flow back from the compiled handles.
+    training.
+
+    Note on runtime extents: Q (queries) and S (sources) are runtime tensor
+    dimensions, not compile-time Triton specialization constants. Using
+    bounded representative extents for Q and S avoids excessive probe latency
+    while still compiling and running the identical specialized kernels.
+    Register/shared-memory facts flow back from the compiled handles.
     """
     if not torch.cuda.is_available():  # pragma: no cover - guarded by callers
         raise RuntimeError("make_triton_compile_probe requires CUDA")
     device = torch.device("cuda")
 
     def probe(context) -> CompileProbeResult:
-        from urm.compiler.schedule_space import SchedulePoint
         from urm.compiler.search import CompileProbeResult
 
         try:
-            if isinstance(context, SchedulePoint):
-                point = context
-                effective_anchor = "routed_reduction_row_scale_epilogue_v0"
-                eff_queries = queries
-                eff_sources = sources
-                eff_route_width = route_width
-                eff_value_dim = value_dim
-                eff_dtype_name = dtype_name
-                is_training = True
-            else:
-                point = context.schedule_point
-                effective_anchor = context.anchor_name
-                eff_queries = min(context.queries, 4) if context.queries > 0 else 4
-                eff_sources = max(min(context.sources, 8), context.route_width)
-                eff_route_width = context.route_width
-                eff_value_dim = context.value_dim
-                eff_dtype_name = context.dtype
-                is_training = context.intent == "training"
+            point = context.schedule_point
+            effective_anchor = context.anchor_name
+            # Representative runtime extents (not Triton constexpr specializations)
+            eff_queries = min(context.queries, 4) if context.queries > 0 else 4
+            eff_sources = max(min(context.sources, 8), context.route_width)
+            eff_route_width = context.route_width
+            eff_value_dim = context.value_dim
+            eff_dtype_name = context.dtype
+            is_training = context.intent == "training"
 
             dtype = getattr(torch, eff_dtype_name)
             generator = torch.Generator(device=device).manual_seed(11)
@@ -814,8 +811,6 @@ def make_triton_compile_probe(
                 torch.cuda.synchronize()
                 fwd_res = _extract_resource_usage(fwd_info.kernel, fwd_info.handle)
                 resources = {"forward": fwd_res}
-                max_regs = fwd_res.registers_per_thread
-                max_shared = fwd_res.shared_mem_bytes or 0
 
                 if is_training:
                     grad_output = torch.randn(
@@ -827,26 +822,32 @@ def make_triton_compile_probe(
                     torch.cuda.synchronize()
                     for name, handle in bwd_info.extra_handles:
                         kres = _extract_resource_usage(name, handle)
-                        tag = (
-                            "grad_weights"
-                            if "weights" in name
-                            else (
-                                "grad_scale"
-                                if "scale" in name or "row" in name
-                                else "grad_values"
-                            )
-                        )
+                        if "weights" in name:
+                            tag = "grad_weights"
+                        elif "values" in name:
+                            tag = "grad_values"
+                        elif "scale" in name or "row" in name:
+                            tag = "grad_row_scale"
+                        else:
+                            tag = name
                         resources[tag] = kres
-                        if kres.registers_per_thread is not None:
-                            max_regs = (
-                                max(max_regs, kres.registers_per_thread)
-                                if max_regs is not None
-                                else kres.registers_per_thread
-                            )
-                        if kres.shared_mem_bytes is not None:
-                            max_shared = max(max_shared, kres.shared_mem_bytes)
 
                 del output
+
+                known_regs = [
+                    k.registers_per_thread
+                    for k in resources.values()
+                    if k.registers_per_thread is not None
+                ]
+                max_regs = max(known_regs) if known_regs else None
+
+                known_shared = [
+                    k.shared_mem_bytes
+                    for k in resources.values()
+                    if k.shared_mem_bytes is not None
+                ]
+                max_shared = max(known_shared) if known_shared else None
+
                 return CompileProbeResult(
                     ok=True,
                     registers_per_thread=max_regs,

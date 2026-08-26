@@ -129,31 +129,36 @@ Stages 2 through 11 run INSIDE `UrmCompiler.compile()` for every program with
 routed-reduction work, orchestrated by `compiler/planner.py` and
 `compiler/search.py` (`CompilationSearch` -> serializable `ScheduleDecision`):
 
-- **Anchor-first lowering identity:** Effective candidate and anchor identity
-  (including valid user overrides) are resolved before schedule search begins.
-  Incompatible overrides fail closed with structured diagnostics rather than
-  producing decorative or contradictory schedules.
-- **Anchor capability registry:** Each registered anchor explicitly declares its
-  supported plan kinds, valid schedule knobs, required visitors, and semantic
-  inputs. Base `routed_reduction_v1` is excluded from configurable schedule
-  search (it uses an internal launch heuristic) and reported honestly as
-  unscheduled (`schedule_decision=None`). Unknown candidate rules fail closed.
-- **Exact specialization compile probe:** Probing receives a `CompileContext`
-  containing the exact target specialization (anchor name, operand dtypes,
-  route width, value dimension, shape, intent, and launch configuration),
-  compiling the specific anchor path (forward and backward under training)
-  instead of unconditionally probing the fused path.
-- **Resource evidence preservation:** Register and shared-memory usage are
-  captured per kernel from compiled handles and carried through `ScheduleAttempt`,
-  `ScheduleDecision`, and serialized JSON artifacts. When unavailable, explicit
-  reasons are reported rather than manufactured values.
+- **Anchor-first lowering identity and override consumption:** Effective candidate
+  and anchor identity are resolved before schedule search begins. Compatible explicit
+  overrides (e.g. `{"reduce": "routed_reduction_row_scale_epilogue_v0"}`) compile
+  successfully, while unconsumed explicit overrides (rewritten-away operations,
+  interior gathers, non-anchorable operations) and missing semantic inputs fail closed
+  with structured `SCHEDULE_HINT_INVALID` or `ANCHOR_DECLINED` diagnostics.
+- **Anchor capability single source of truth:** Schedulable `ExecutionAnchor`
+  contracts define the single source of truth for schedule domains (`supported_blocks`,
+  `supported_warps`, `supported_stages`, `supported_decompositions`, `supported_schedules`,
+  `supported_plan_kinds`). Schedule models derive configurable choices directly from
+  the resolved anchor. Unscheduled lowerings (such as base `routed_reduction_v1`)
+  reject tuning knob hints with `SCHEDULE_HINT_INVALID` and return `schedule_decision=None`
+  and `launch_config=None`.
+- **Exact specialization compile probe:** `CompileProbe` accepts `CompileContext`
+  exclusively without exception-driven legacy fallbacks. Probing compiles and launches
+  the exact compile-time specialization constants (operand dtypes, route width, value
+  dimension, launch configurations) across forward and backward passes under training,
+  while distinguishing compile-time specializations from bounded representative runtime
+  extents (Q/S). Probe exceptions fail closed into structured nogoods and retries.
+- **Per-kernel resource evidence preservation:** Forward and backward compiled handles
+  yield per-kernel resource records (`forward`, `grad_weights`, `grad_values`,
+  `grad_row_scale`) that survive `ScheduleAttempt`, `ScheduleDecision`, and serialized
+  JSON artifacts, preserving genuine zero shared memory versus unavailable metadata.
 - **Exact schedule domain:** `per_route/full_row` is excluded from legal
   schedule domains (both the reference model and Z3 formulation) because
   `per_route` is segmented across program instances by construction. Stage counts
   are strictly bounded to `{1, 2, 4}`.
-- **End-to-end truthfulness:** Emitted `PlanStep.launch_config`, the solver
-  decision, executed kernel specializations, and benchmark artifacts never
-  disagree or report launch parameters that the underlying kernel ignores.
+- **Dispatch equivalence evaluation:** Decoded `ExecutablePlan` launch configurations
+  are asserted equal to direct configurations and evaluated through repeated batched
+  launches with paired randomized sampling to minimize microsecond timer noise.
 
 ## Invariants recap
 

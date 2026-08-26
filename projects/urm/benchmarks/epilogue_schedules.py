@@ -72,27 +72,21 @@ def forward_launch(point, indices, weights, values, row_scale):
 
 def backward_launch(point, indices, weights, values, row_scale, grad_output):
     """Production backward launch for one schedule point."""
-    grads, _info = _production_backward(
+    grads, info = _production_backward(
         _config_from(point), indices, weights, values, row_scale, grad_output
     )
-    return grads
+    return grads, info
 
 
 def compile_feedback_for(handle) -> dict[str, int | None]:
     """Best-effort register/shared-memory metadata from a compiled kernel."""
-    feedback: dict[str, int | None] = {
-        "registers_per_thread": None,
-        "shared_mem_bytes": None,
+    from urm.compiler.anchors.routed_reduction_epilogue import _extract_resource_usage
+
+    kres = _extract_resource_usage("kernel", handle)
+    return {
+        "registers_per_thread": kres.registers_per_thread,
+        "shared_mem_bytes": kres.shared_mem_bytes,
     }
-    try:
-        feedback["registers_per_thread"] = int(getattr(handle, "n_regs", 0))
-    except (TypeError, ValueError, AttributeError):
-        pass
-    try:
-        feedback["shared_mem_bytes"] = int(handle.metadata.shared)
-    except (TypeError, ValueError, AttributeError):
-        pass
-    return feedback
 
 
 def make_inputs(queries, route_width, sources, value_dim, dtype_name, seed=7):

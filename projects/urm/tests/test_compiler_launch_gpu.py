@@ -229,3 +229,82 @@ def test_base_schedules_probe_base_anchor() -> None:
     )
     res = probe(context)
     assert res.ok
+
+
+def test_valid_explicit_fused_override_gpu_training_with_probe() -> None:
+    """Explicit fused override compiles and retains per-kernel resource facts on GPU."""
+    program = row_scaled_routed_reduction_program(
+        queries=64,
+        route_width=4,
+        sources=128,
+        value_dim=96,
+        value_dtype=DType.BFLOAT16,
+    )
+    compiler = UrmCompiler(compile_probe=make_triton_compile_probe())
+    params = ScheduleParams(
+        anchor_overrides={"reduce": "routed_reduction_row_scale_epilogue_v0"}
+    )
+    result = compiler.compile(
+        program,
+        intent=CompilationIntent.TRAINING,
+        schedule_params=params,
+    )
+    decision = result.schedule_decision
+    assert decision is not None
+    assert decision.compile_status is CompileStatus.SUCCEEDED
+    assert result.plan.steps[0].anchor == "routed_reduction_row_scale_epilogue_v0"
+
+    # Per-kernel resource breakdown is preserved
+    kres = decision.kernel_resources
+    assert kres is not None
+    for required_tag in (
+        "forward",
+        "grad_weights",
+        "grad_values",
+        "grad_row_scale",
+    ):
+        assert required_tag in kres
+        record = kres[required_tag]
+        regs = (
+            record.registers_per_thread
+            if hasattr(record, "registers_per_thread")
+            else record["registers_per_thread"]
+        )
+        assert regs is not None
+        assert regs > 0
+
+
+def test_probe_failure_recovers_via_exact_nogood_gpu() -> None:
+    """A simulated probe failure on GPU adds exact nogood and recovers."""
+    from urm.compiler.search import CompileProbeResult
+
+    real_probe = make_triton_compile_probe()
+    call_count = 0
+
+    def flaky_probe(ctx) -> CompileProbeResult:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return CompileProbeResult(
+                ok=False, reason="simulated GPU resource limit failure"
+            )
+        return real_probe(ctx)
+
+    program = row_scaled_routed_reduction_program(
+        queries=64,
+        route_width=4,
+        sources=128,
+        value_dim=96,
+        value_dtype=DType.BFLOAT16,
+    )
+    compiler = UrmCompiler(compile_probe=flaky_probe, max_nogoods=4)
+    result = compiler.compile(program, intent=CompilationIntent.TRAINING)
+    decision = result.schedule_decision
+    assert decision is not None
+    assert decision.compile_status is CompileStatus.SUCCEEDED
+    assert decision.compile_failures_observed == 1
+    assert decision.nogoods_added == 1
+    assert decision.recoveries == 1
+    assert len(decision.attempts) == 2
+    assert decision.attempts[0].compile_status is CompileStatus.FAILED
+    assert decision.attempts[1].compile_status is CompileStatus.SUCCEEDED

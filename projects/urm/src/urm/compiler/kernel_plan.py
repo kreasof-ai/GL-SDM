@@ -205,6 +205,7 @@ def build_schedule_model(
     device_limits,
     problem: ScheduleProblem | None = None,
     allowed_plans: Sequence[PlanKind] | None = None,
+    anchor=None,
 ) -> ConstraintModel:
     """Constraint model for one candidate's routed-epilogue schedule space.
 
@@ -212,35 +213,61 @@ def build_schedule_model(
     follow the documented eight-level lexicographic order with a final
     deterministic stable-ordering tie-break.
 
-    The model is CANDIDATE-BOUND: ``allowed_plans`` (default: derived from the
-    candidate through :func:`plan_kinds_for_candidate`) pins the execution
-    plans this candidate's lowering can run, so schedule selection can never
-    contradict the already-selected rewrite candidate.
+    The model is CANDIDATE-BOUND and ANCHOR-OWNED: allowed plans and
+    configurable domains derive directly from the resolved execution anchor
+    capabilities.
     """
     from urm.compiler.diagnostics import CompilerError, Diagnostic, DiagnosticCode
+    from urm.compiler.execution import TRUSTED_ANCHORS
     from urm.compiler.planner import CompilationIntent
     from urm.compiler.semantic import WeightedReduce
 
-    if allowed_plans is None:
-        try:
-            allowed_plans = plan_kinds_for_candidate(candidate)
-        except ValueError as err:
+    if anchor is None:
+        rule = getattr(candidate, "rule", None)
+        if getattr(candidate, "kind", "") == "base":
+            anchor = next(
+                (a for a in TRUSTED_ANCHORS if a.name == "routed_reduction_v1"), None
+            )
+        elif rule in _RULE_TO_ANCHOR_PLAN:
+            anchor_name = _RULE_TO_ANCHOR_PLAN[rule][0]
+            anchor = next((a for a in TRUSTED_ANCHORS if a.name == anchor_name), None)
+        else:
             raise CompilerError(
                 (
                     Diagnostic(
                         code=DiagnosticCode.CANDIDATE_ILLEGAL,
-                        message=str(err),
+                        message=(
+                            f"unregistered rewrite rule {rule!r}; "
+                            "candidate/anchor bindings fail closed"
+                        ),
                     ),
                 )
-            ) from err
+            )
+
+    if allowed_plans is None:
+        if anchor is not None and anchor.supported_plan_kinds:
+            allowed_plans = tuple(PlanKind(p) for p in anchor.supported_plan_kinds)
+        else:
+            try:
+                allowed_plans = plan_kinds_for_candidate(candidate)
+            except ValueError as err:
+                raise CompilerError(
+                    (
+                        Diagnostic(
+                            code=DiagnosticCode.CANDIDATE_ILLEGAL,
+                            message=str(err),
+                        ),
+                    )
+                ) from err
     allowed_plans = tuple(allowed_plans)
-    if not allowed_plans:
+    if not allowed_plans or (anchor is not None and not anchor.schedulable):
         raise CompilerError(
             (
                 Diagnostic(
                     code=DiagnosticCode.SCHEDULE_HINT_INVALID,
                     message=(
-                        f"candidate {candidate.candidate_id!r} has no "
+                        f"candidate {candidate.candidate_id!r} / anchor "
+                        f"{getattr(anchor, 'name', 'unknown')!r} has no "
                         "configurable schedule space"
                     ),
                 ),
@@ -249,6 +276,39 @@ def build_schedule_model(
     unknown = [p for p in allowed_plans if p not in set(PlanKind)]
     if unknown:
         raise ValueError(f"unknown plan kinds: {unknown}")
+
+    supported_blocks = (
+        anchor.supported_blocks
+        if (anchor and anchor.supported_blocks)
+        else SUPPORTED_BLOCKS
+    )
+    supported_warps = (
+        anchor.supported_warps
+        if (anchor and anchor.supported_warps)
+        else SUPPORTED_WARPS
+    )
+    supported_stages = (
+        anchor.supported_stages
+        if (anchor and anchor.supported_stages)
+        else SUPPORTED_STAGES
+    )
+    supported_decompositions = (
+        anchor.supported_decompositions
+        if (anchor and anchor.supported_decompositions)
+        else tuple(d.value for d in GradValuesDecomposition)
+    )
+    supported_schedules = (
+        anchor.supported_schedules
+        if (anchor and anchor.supported_schedules)
+        else tuple(s.value for s in GradValuesSchedule)
+    )
+
+    config_choices = tuple(
+        (block, stage, warps)
+        for block in supported_blocks
+        for stage in supported_stages
+        for warps in supported_warps
+    )
 
     # Derive shape facts from the program when hints exist.
     reduce_op = next((op for op in program.ops if isinstance(op, WeightedReduce)), None)
@@ -277,7 +337,7 @@ def build_schedule_model(
         )
 
     model = ConstraintModel(name=f"routed_epilogue_schedule:{candidate.candidate_id}")
-    anchor_name = (
+    anchor_name = getattr(anchor, "name", None) or (
         "routed_reduction_row_scale_epilogue_v0"
         if PlanKind.FUSED in allowed_plans
         else "routed_reduction_v1"
@@ -306,7 +366,7 @@ def build_schedule_model(
     )
 
     origin = Origin(kind="schedule_param", id=candidate.candidate_id)
-    anchor_origin = Origin(kind="anchor", id="routed_reduction_row_scale_epilogue_v0")
+    anchor_origin = Origin(kind="anchor", id=anchor_name)
 
     # -- variables ----------------------------------------------------------
     # Joint (BLOCK_D, num_stages, num_warps) configuration channel: one
@@ -314,7 +374,7 @@ def build_schedule_model(
     # quantity (staging bytes, route-metadata re-loads, latency-hiding
     # factor) linear in the indicators.
     cfg_vars: dict[tuple[int, int, int], str] = {}
-    for index, (block, stage, warps) in enumerate(CONFIG_CHOICES):
+    for index, (block, stage, warps) in enumerate(config_choices):
         name = f"cfg_{index}_b{block}_s{stage}_w{warps}"
         model.add_variable(BoolVar(name))
         cfg_vars[(block, stage, warps)] = name
@@ -334,14 +394,16 @@ def build_schedule_model(
     model.add_variable(BoolVar("obligations_open"))
 
     model.add_variable(
-        IntVar(name="block_d", lower=min(SUPPORTED_BLOCKS), upper=max(SUPPORTED_BLOCKS))
+        IntVar(name="block_d", lower=min(supported_blocks), upper=max(supported_blocks))
     )
     model.add_variable(
-        IntVar(name="num_warps", lower=min(SUPPORTED_WARPS), upper=max(SUPPORTED_WARPS))
+        IntVar(name="num_warps", lower=min(supported_warps), upper=max(supported_warps))
     )
     model.add_variable(
         IntVar(
-            name="num_stages", lower=min(SUPPORTED_STAGES), upper=max(SUPPORTED_STAGES)
+            name="num_stages",
+            lower=min(supported_stages),
+            upper=max(supported_stages),
         )
     )
 
@@ -387,6 +449,36 @@ def build_schedule_model(
         CATEGORY_SCHEDULE,
         exactly_one_org,
     )
+
+    # Pin off decompositions not supported by the anchor
+    for value in decomp_values:
+        if value in supported_decompositions:
+            continue
+        model.add_constraint(
+            Equality(
+                name=f"anchor_disallows_decomp_{value}",
+                category=CATEGORY_SCHEDULE,
+                explanation=f"anchor does not support {value!r} decomposition",
+                origin=anchor_origin,
+                lhs=LinearExpr.var(f"decomp_{value}"),
+                rhs=LinearExpr.const(0),
+            )
+        )
+
+    # Pin off schedules not supported by the anchor
+    for value in sched_values:
+        if value in supported_schedules:
+            continue
+        model.add_constraint(
+            Equality(
+                name=f"anchor_disallows_schedule_{value}",
+                category=CATEGORY_SCHEDULE,
+                explanation=f"anchor does not support {value!r} schedule",
+                origin=anchor_origin,
+                lhs=LinearExpr.var(f"gradsched_{value}"),
+                rhs=LinearExpr.const(0),
+            )
+        )
 
     # Candidate-plan binding: plans outside the candidate's own lowering are
     # pinned off, so the schedule stage can never contradict candidate
@@ -795,13 +887,13 @@ def build_schedule_model(
         )
     )
 
-    cfg_index = {cfg: i for i, cfg in enumerate(CONFIG_CHOICES)}
+    cfg_index = {cfg: i for i, cfg in enumerate(config_choices)}
     sizes = (
         len(dtype_values),
         len(plan_values),
         len(decomp_values),
         len(sched_values),
-        len(CONFIG_CHOICES),
+        len(config_choices),
     )
     weights = []
     acc = 1
@@ -924,23 +1016,24 @@ def schedule_point_assignments(model: ConstraintModel):
     plans = [p.value for p in PlanKind]
     decomps = [d.value for d in GradValuesDecomposition]
     scheds = [s.value for s in GradValuesSchedule]
-    for (block, stage, warps), decomp, sched, plan, dtype in product(
-        CONFIG_CHOICES, decomps, scheds, plans, dtypes
+    cfg_var_names = [v.name for v in model.variables if v.name.startswith("cfg_")]
+    for cfg_name, decomp, sched, plan, dtype in product(
+        cfg_var_names, decomps, scheds, plans, dtypes
     ):
         assignment: Assignment = {}
         for variable in model.variables:
             if isinstance(variable, BoolVar):
                 assignment[variable.name] = False
-        cfg_name = (
-            f"cfg_{CONFIG_CHOICES.index((block, stage, warps))}"
-            f"_b{block}_s{stage}_w{warps}"
-        )
         assignment[cfg_name] = True
         assignment[f"decomp_{decomp}"] = True
         assignment[f"gradsched_{sched}"] = True
         assignment[f"plan_{plan}"] = True
         assignment[f"dtype_{dtype}"] = True
         assignment["obligations_open"] = False
+        parts = cfg_name.split("_")
+        block = int(parts[2][1:])
+        stage = int(parts[3][1:])
+        warps = int(parts[4][1:])
         for derived, value in (
             ("block_d", block),
             ("num_warps", warps),
@@ -967,13 +1060,17 @@ def schedule_point_to_assignment(
         if isinstance(variable, BoolVar):
             assignment[variable.name] = False
     config = (point.block_d, point.num_stages, point.num_warps)
-    if config not in CONFIG_CHOICES:
-        raise ValueError(f"schedule point {config} is not an implemented launch config")
-    cfg_name = (
-        f"cfg_{CONFIG_CHOICES.index(config)}_b{config[0]}_s{config[1]}_w{config[2]}"
+    suffix = f"_b{config[0]}_s{config[1]}_w{config[2]}"
+    cfg_name = next(
+        (
+            v.name
+            for v in model.variables
+            if v.name.startswith("cfg_") and v.name.endswith(suffix)
+        ),
+        None,
     )
-    if model.variable_named(cfg_name) is None:
-        raise ValueError(f"model has no launch-config variable {cfg_name!r}")
+    if cfg_name is None:
+        raise ValueError(f"model has no launch-config variable for {config}")
     assignment[cfg_name] = True
     for prefix, value in (
         ("decomp_", point.grad_values_decomposition),
