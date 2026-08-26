@@ -1,0 +1,1385 @@
+{
+  "schema_version": 1,
+  "generated_utc": "2026-08-26T07:04:05.499909+00:00",
+  "summary": {
+    "presets_evaluated": 19,
+    "valid_semantic_programs": 20,
+    "generated_candidates": 10,
+    "rewrite_accepted": 10,
+    "rewrite_rejected": 0,
+    "compile_success_rate": 0.5263,
+    "escape_hatch_count": 0
+  },
+  "rows": [
+    {
+      "architecture_params": {
+        "preset": "dense_attention",
+        "routing": "dense",
+        "query_domain": "sequence",
+        "source_domain": "sequence",
+        "normalization": "softmax",
+        "mutation": "none",
+        "residency": "device",
+        "collision_policy": "not_applicable"
+      },
+      "schedule_params": {
+        "anchor_overrides": {},
+        "block_hints": {}
+      },
+      "valid_semantic_programs": 2,
+      "compiled_programs": 2,
+      "candidates": [
+        {
+          "rule": "fold_row_scale_into_routed_reduction_epilogue",
+          "subject_op": "apply_row_scale",
+          "legal": true,
+          "reason_code": null
+        }
+      ],
+      "rewrite_accepted": 1,
+      "rewrite_rejected": 0,
+      "compiled": true,
+      "anchors_selected": [
+        "routed_reduction_row_scale_epilogue_v0",
+        "routed_reduction_v1"
+      ],
+      "estimated_costs": [
+        {
+          "useful_flops": 8388608,
+          "logical_bytes": 9519104,
+          "physical_bytes_estimate": 9519104,
+          "launch_count": 1,
+          "temporary_bytes": 1048576,
+          "route_imbalance": 0.0,
+          "atomic_contention_indicator": 0.0,
+          "communication_bytes": 0,
+          "collective_startup_us": 0.0,
+          "critical_path_us": 0.0,
+          "recompute_bytes": 0,
+          "saved_state_bytes": 0,
+          "provenance": "analytical_estimate",
+          "notes": [
+            "gather upper bound assumes no L2 reuse of duplicate rows"
+          ]
+        },
+        {
+          "useful_flops": 8912896,
+          "logical_bytes": 9519104,
+          "physical_bytes_estimate": 9519104,
+          "launch_count": 1,
+          "temporary_bytes": 1048576,
+          "route_imbalance": 0.0,
+          "atomic_contention_indicator": 0.0,
+          "communication_bytes": 0,
+          "collective_startup_us": 0.0,
+          "critical_path_us": 0.0,
+          "recompute_bytes": 0,
+          "saved_state_bytes": 0,
+          "provenance": "analytical_estimate",
+          "notes": [
+            "gather upper bound assumes no L2 reuse of duplicate rows",
+            "fused epilogue avoids 1050624 B"
+          ]
+        }
+      ],
+      "traces": [
+        {
+          "attempts": [],
+          "obligations": [],
+          "chosen_anchors": [
+            "routed_reduction_v1"
+          ],
+          "estimated_costs": {
+            "useful_flops": 8388608,
+            "physical_bytes_estimate": 9519104,
+            "launch_count": 1
+          }
+        },
+        {
+          "attempts": [
+            {
+              "rule": "fold_row_scale_into_routed_reduction_epilogue",
+              "subject_op": "apply_row_scale",
+              "outcome": "accepted",
+              "reason_code": null,
+              "detail": null
+            }
+          ],
+          "obligations": [
+            {
+              "kind": "recompute_backward",
+              "subject_op": "apply_row_scale",
+              "detail": "fold_row_scale_into_routed_reduction_epilogue: backward recomputes un-scaled reduction tiles so the row-scale gradient exists; it is never silently omitted"
+            },
+            {
+              "kind": "forward_only",
+              "subject_op": "apply_row_scale",
+              "detail": "fold_row_scale_into_routed_reduction_epilogue: backward_unverified_this_prototype"
+            }
+          ],
+          "chosen_anchors": [
+            "routed_reduction_row_scale_epilogue_v0"
+          ],
+          "estimated_costs": {
+            "useful_flops": 8912896,
+            "physical_bytes_estimate": 9519104,
+            "launch_count": 1
+          }
+        }
+      ],
+      "escape_hatch_count": 0,
+      "measured_performance_pointer": "results/final/*-forward.json (routed-reduction v1 is the only family with a runnable native lowering on this host)"
+    },
+    {
+      "architecture_params": {
+        "preset": "block_sparse_attention",
+        "routing": "block_sparse",
+        "query_domain": "sequence",
+        "source_domain": "sequence",
+        "normalization": "softmax",
+        "mutation": "none",
+        "residency": "device",
+        "collision_policy": "not_applicable"
+      },
+      "schedule_params": {
+        "anchor_overrides": {},
+        "block_hints": {}
+      },
+      "valid_semantic_programs": 2,
+      "compiled_programs": 2,
+      "candidates": [
+        {
+          "rule": "fold_row_scale_into_routed_reduction_epilogue",
+          "subject_op": "apply_row_scale",
+          "legal": true,
+          "reason_code": null
+        }
+      ],
+      "rewrite_accepted": 1,
+      "rewrite_rejected": 0,
+      "compiled": true,
+      "anchors_selected": [
+        "routed_reduction_row_scale_epilogue_v0",
+        "routed_reduction_v1"
+      ],
+      "estimated_costs": [
+        {
+          "useful_flops": 8388608,
+          "logical_bytes": 9519104,
+          "physical_bytes_estimate": 9519104,
+          "launch_count": 1,
+          "temporary_bytes": 1048576,
+          "route_imbalance": 0.0,
+          "atomic_contention_indicator": 0.0,
+          "communication_bytes": 0,
+          "collective_startup_us": 0.0,
+          "critical_path_us": 0.0,
+          "recompute_bytes": 0,
+          "saved_state_bytes": 0,
+          "provenance": "analytical_estimate",
+          "notes": [
+            "gather upper bound assumes no L2 reuse of duplicate rows"
+          ]
+        },
+        {
+          "useful_flops": 8912896,
+          "logical_bytes": 9519104,
+          "physical_bytes_estimate": 9519104,
+          "launch_count": 1,
+          "temporary_bytes": 1048576,
+          "route_imbalance": 0.0,
+          "atomic_contention_indicator": 0.0,
+          "communication_bytes": 0,
+          "collective_startup_us": 0.0,
+          "critical_path_us": 0.0,
+          "recompute_bytes": 0,
+          "saved_state_bytes": 0,
+          "provenance": "analytical_estimate",
+          "notes": [
+            "gather upper bound assumes no L2 reuse of duplicate rows",
+            "fused epilogue avoids 1050624 B"
+          ]
+        }
+      ],
+      "traces": [
+        {
+          "attempts": [],
+          "obligations": [],
+          "chosen_anchors": [
+            "routed_reduction_v1"
+          ],
+          "estimated_costs": {
+            "useful_flops": 8388608,
+            "physical_bytes_estimate": 9519104,
+            "launch_count": 1
+          }
+        },
+        {
+          "attempts": [
+            {
+              "rule": "fold_row_scale_into_routed_reduction_epilogue",
+              "subject_op": "apply_row_scale",
+              "outcome": "accepted",
+              "reason_code": null,
+              "detail": null
+            }
+          ],
+          "obligations": [
+            {
+              "kind": "recompute_backward",
+              "subject_op": "apply_row_scale",
+              "detail": "fold_row_scale_into_routed_reduction_epilogue: backward recomputes un-scaled reduction tiles so the row-scale gradient exists; it is never silently omitted"
+            },
+            {
+              "kind": "forward_only",
+              "subject_op": "apply_row_scale",
+              "detail": "fold_row_scale_into_routed_reduction_epilogue: backward_unverified_this_prototype"
+            }
+          ],
+          "chosen_anchors": [
+            "routed_reduction_row_scale_epilogue_v0"
+          ],
+          "estimated_costs": {
+            "useful_flops": 8912896,
+            "physical_bytes_estimate": 9519104,
+            "launch_count": 1
+          }
+        }
+      ],
+      "escape_hatch_count": 0,
+      "measured_performance_pointer": "results/final/*-forward.json (routed-reduction v1 is the only family with a runnable native lowering on this host)"
+    },
+    {
+      "architecture_params": {
+        "preset": "deepseek_sparse_attention",
+        "routing": "top_k",
+        "query_domain": "sequence",
+        "source_domain": "sequence",
+        "normalization": "softmax",
+        "mutation": "none",
+        "residency": "device",
+        "collision_policy": "not_applicable"
+      },
+      "schedule_params": {
+        "anchor_overrides": {},
+        "block_hints": {}
+      },
+      "valid_semantic_programs": 2,
+      "compiled_programs": 2,
+      "candidates": [
+        {
+          "rule": "fold_row_scale_into_routed_reduction_epilogue",
+          "subject_op": "apply_row_scale",
+          "legal": true,
+          "reason_code": null
+        }
+      ],
+      "rewrite_accepted": 1,
+      "rewrite_rejected": 0,
+      "compiled": true,
+      "anchors_selected": [
+        "routed_reduction_row_scale_epilogue_v0",
+        "routed_reduction_v1"
+      ],
+      "estimated_costs": [
+        {
+          "useful_flops": 67108864,
+          "logical_bytes": 68812800,
+          "physical_bytes_estimate": 68812800,
+          "launch_count": 1,
+          "temporary_bytes": 1048576,
+          "route_imbalance": 0.0,
+          "atomic_contention_indicator": 0.0,
+          "communication_bytes": 0,
+          "collective_startup_us": 0.0,
+          "critical_path_us": 0.0,
+          "recompute_bytes": 0,
+          "saved_state_bytes": 0,
+          "provenance": "analytical_estimate",
+          "notes": [
+            "gather upper bound assumes no L2 reuse of duplicate rows"
+          ]
+        },
+        {
+          "useful_flops": 67633152,
+          "logical_bytes": 68812800,
+          "physical_bytes_estimate": 68812800,
+          "launch_count": 1,
+          "temporary_bytes": 1048576,
+          "route_imbalance": 0.0,
+          "atomic_contention_indicator": 0.0,
+          "communication_bytes": 0,
+          "collective_startup_us": 0.0,
+          "critical_path_us": 0.0,
+          "recompute_bytes": 0,
+          "saved_state_bytes": 0,
+          "provenance": "analytical_estimate",
+          "notes": [
+            "gather upper bound assumes no L2 reuse of duplicate rows",
+            "fused epilogue avoids 1050624 B"
+          ]
+        }
+      ],
+      "traces": [
+        {
+          "attempts": [],
+          "obligations": [],
+          "chosen_anchors": [
+            "routed_reduction_v1"
+          ],
+          "estimated_costs": {
+            "useful_flops": 67108864,
+            "physical_bytes_estimate": 68812800,
+            "launch_count": 1
+          }
+        },
+        {
+          "attempts": [
+            {
+              "rule": "fold_row_scale_into_routed_reduction_epilogue",
+              "subject_op": "apply_row_scale",
+              "outcome": "accepted",
+              "reason_code": null,
+              "detail": null
+            }
+          ],
+          "obligations": [
+            {
+              "kind": "recompute_backward",
+              "subject_op": "apply_row_scale",
+              "detail": "fold_row_scale_into_routed_reduction_epilogue: backward recomputes un-scaled reduction tiles so the row-scale gradient exists; it is never silently omitted"
+            },
+            {
+              "kind": "forward_only",
+              "subject_op": "apply_row_scale",
+              "detail": "fold_row_scale_into_routed_reduction_epilogue: backward_unverified_this_prototype"
+            }
+          ],
+          "chosen_anchors": [
+            "routed_reduction_row_scale_epilogue_v0"
+          ],
+          "estimated_costs": {
+            "useful_flops": 67633152,
+            "physical_bytes_estimate": 68812800,
+            "launch_count": 1
+          }
+        }
+      ],
+      "escape_hatch_count": 0,
+      "measured_performance_pointer": "results/final/*-forward.json (routed-reduction v1 is the only family with a runnable native lowering on this host)"
+    },
+    {
+      "architecture_params": {
+        "preset": "minimax_sparse_attention",
+        "routing": "top_k",
+        "query_domain": "sequence",
+        "source_domain": "sequence",
+        "normalization": "softmax",
+        "mutation": "none",
+        "residency": "device",
+        "collision_policy": "not_applicable"
+      },
+      "schedule_params": {
+        "anchor_overrides": {},
+        "block_hints": {}
+      },
+      "valid_semantic_programs": 2,
+      "compiled_programs": 2,
+      "candidates": [
+        {
+          "rule": "fold_row_scale_into_routed_reduction_epilogue",
+          "subject_op": "apply_row_scale",
+          "legal": true,
+          "reason_code": null
+        }
+      ],
+      "rewrite_accepted": 1,
+      "rewrite_rejected": 0,
+      "compiled": true,
+      "anchors_selected": [
+        "routed_reduction_row_scale_epilogue_v0",
+        "routed_reduction_v1"
+      ],
+      "estimated_costs": [
+        {
+          "useful_flops": 16777216,
+          "logical_bytes": 17989632,
+          "physical_bytes_estimate": 17989632,
+          "launch_count": 1,
+          "temporary_bytes": 1048576,
+          "route_imbalance": 0.0,
+          "atomic_contention_indicator": 0.0,
+          "communication_bytes": 0,
+          "collective_startup_us": 0.0,
+          "critical_path_us": 0.0,
+          "recompute_bytes": 0,
+          "saved_state_bytes": 0,
+          "provenance": "analytical_estimate",
+          "notes": [
+            "gather upper bound assumes no L2 reuse of duplicate rows"
+          ]
+        },
+        {
+          "useful_flops": 17301504,
+          "logical_bytes": 17989632,
+          "physical_bytes_estimate": 17989632,
+          "launch_count": 1,
+          "temporary_bytes": 1048576,
+          "route_imbalance": 0.0,
+          "atomic_contention_indicator": 0.0,
+          "communication_bytes": 0,
+          "collective_startup_us": 0.0,
+          "critical_path_us": 0.0,
+          "recompute_bytes": 0,
+          "saved_state_bytes": 0,
+          "provenance": "analytical_estimate",
+          "notes": [
+            "gather upper bound assumes no L2 reuse of duplicate rows",
+            "fused epilogue avoids 1050624 B"
+          ]
+        }
+      ],
+      "traces": [
+        {
+          "attempts": [],
+          "obligations": [],
+          "chosen_anchors": [
+            "routed_reduction_v1"
+          ],
+          "estimated_costs": {
+            "useful_flops": 16777216,
+            "physical_bytes_estimate": 17989632,
+            "launch_count": 1
+          }
+        },
+        {
+          "attempts": [
+            {
+              "rule": "fold_row_scale_into_routed_reduction_epilogue",
+              "subject_op": "apply_row_scale",
+              "outcome": "accepted",
+              "reason_code": null,
+              "detail": null
+            }
+          ],
+          "obligations": [
+            {
+              "kind": "recompute_backward",
+              "subject_op": "apply_row_scale",
+              "detail": "fold_row_scale_into_routed_reduction_epilogue: backward recomputes un-scaled reduction tiles so the row-scale gradient exists; it is never silently omitted"
+            },
+            {
+              "kind": "forward_only",
+              "subject_op": "apply_row_scale",
+              "detail": "fold_row_scale_into_routed_reduction_epilogue: backward_unverified_this_prototype"
+            }
+          ],
+          "chosen_anchors": [
+            "routed_reduction_row_scale_epilogue_v0"
+          ],
+          "estimated_costs": {
+            "useful_flops": 17301504,
+            "physical_bytes_estimate": 17989632,
+            "launch_count": 1
+          }
+        }
+      ],
+      "escape_hatch_count": 0,
+      "measured_performance_pointer": "results/final/*-forward.json (routed-reduction v1 is the only family with a runnable native lowering on this host)"
+    },
+    {
+      "architecture_params": {
+        "preset": "top2_moe",
+        "routing": "top_k",
+        "query_domain": "sequence",
+        "source_domain": "expert",
+        "normalization": "softmax",
+        "mutation": "none",
+        "residency": "device",
+        "collision_policy": "not_applicable"
+      },
+      "schedule_params": {
+        "anchor_overrides": {},
+        "block_hints": {}
+      },
+      "valid_semantic_programs": 2,
+      "compiled_programs": 2,
+      "candidates": [
+        {
+          "rule": "fold_row_scale_into_routed_reduction_epilogue",
+          "subject_op": "apply_row_scale",
+          "legal": true,
+          "reason_code": null
+        }
+      ],
+      "rewrite_accepted": 1,
+      "rewrite_rejected": 0,
+      "compiled": true,
+      "anchors_selected": [
+        "routed_reduction_row_scale_epilogue_v0",
+        "routed_reduction_v1"
+      ],
+      "estimated_costs": [
+        {
+          "useful_flops": 2097152,
+          "logical_bytes": 3166208,
+          "physical_bytes_estimate": 3166208,
+          "launch_count": 1,
+          "temporary_bytes": 1048576,
+          "route_imbalance": 0.0,
+          "atomic_contention_indicator": 0.0,
+          "communication_bytes": 0,
+          "collective_startup_us": 0.0,
+          "critical_path_us": 0.0,
+          "recompute_bytes": 0,
+          "saved_state_bytes": 0,
+          "provenance": "analytical_estimate",
+          "notes": [
+            "gather upper bound assumes no L2 reuse of duplicate rows"
+          ]
+        },
+        {
+          "useful_flops": 2621440,
+          "logical_bytes": 3166208,
+          "physical_bytes_estimate": 3166208,
+          "launch_count": 1,
+          "temporary_bytes": 1048576,
+          "route_imbalance": 0.0,
+          "atomic_contention_indicator": 0.0,
+          "communication_bytes": 0,
+          "collective_startup_us": 0.0,
+          "critical_path_us": 0.0,
+          "recompute_bytes": 0,
+          "saved_state_bytes": 0,
+          "provenance": "analytical_estimate",
+          "notes": [
+            "gather upper bound assumes no L2 reuse of duplicate rows",
+            "fused epilogue avoids 1050624 B"
+          ]
+        }
+      ],
+      "traces": [
+        {
+          "attempts": [],
+          "obligations": [],
+          "chosen_anchors": [
+            "routed_reduction_v1"
+          ],
+          "estimated_costs": {
+            "useful_flops": 2097152,
+            "physical_bytes_estimate": 3166208,
+            "launch_count": 1
+          }
+        },
+        {
+          "attempts": [
+            {
+              "rule": "fold_row_scale_into_routed_reduction_epilogue",
+              "subject_op": "apply_row_scale",
+              "outcome": "accepted",
+              "reason_code": null,
+              "detail": null
+            }
+          ],
+          "obligations": [
+            {
+              "kind": "recompute_backward",
+              "subject_op": "apply_row_scale",
+              "detail": "fold_row_scale_into_routed_reduction_epilogue: backward recomputes un-scaled reduction tiles so the row-scale gradient exists; it is never silently omitted"
+            },
+            {
+              "kind": "forward_only",
+              "subject_op": "apply_row_scale",
+              "detail": "fold_row_scale_into_routed_reduction_epilogue: backward_unverified_this_prototype"
+            }
+          ],
+          "chosen_anchors": [
+            "routed_reduction_row_scale_epilogue_v0"
+          ],
+          "estimated_costs": {
+            "useful_flops": 2621440,
+            "physical_bytes_estimate": 3166208,
+            "launch_count": 1
+          }
+        }
+      ],
+      "escape_hatch_count": 0,
+      "measured_performance_pointer": "results/final/*-forward.json (routed-reduction v1 is the only family with a runnable native lowering on this host)"
+    },
+    {
+      "architecture_params": {
+        "preset": "deepseek_moe_16b",
+        "routing": "top_k",
+        "query_domain": "sequence",
+        "source_domain": "expert",
+        "normalization": "none",
+        "mutation": "none",
+        "residency": "device",
+        "collision_policy": "not_applicable"
+      },
+      "schedule_params": {
+        "anchor_overrides": {},
+        "block_hints": {}
+      },
+      "valid_semantic_programs": 2,
+      "compiled_programs": 2,
+      "candidates": [
+        {
+          "rule": "fold_row_scale_into_routed_reduction_epilogue",
+          "subject_op": "apply_row_scale",
+          "legal": true,
+          "reason_code": null
+        }
+      ],
+      "rewrite_accepted": 1,
+      "rewrite_rejected": 0,
+      "compiled": true,
+      "anchors_selected": [
+        "routed_reduction_row_scale_epilogue_v0",
+        "routed_reduction_v1"
+      ],
+      "estimated_costs": [
+        {
+          "useful_flops": 6291456,
+          "logical_bytes": 7401472,
+          "physical_bytes_estimate": 7401472,
+          "launch_count": 1,
+          "temporary_bytes": 1048576,
+          "route_imbalance": 0.0,
+          "atomic_contention_indicator": 0.0,
+          "communication_bytes": 0,
+          "collective_startup_us": 0.0,
+          "critical_path_us": 0.0,
+          "recompute_bytes": 0,
+          "saved_state_bytes": 0,
+          "provenance": "analytical_estimate",
+          "notes": [
+            "gather upper bound assumes no L2 reuse of duplicate rows"
+          ]
+        },
+        {
+          "useful_flops": 6815744,
+          "logical_bytes": 7401472,
+          "physical_bytes_estimate": 7401472,
+          "launch_count": 1,
+          "temporary_bytes": 1048576,
+          "route_imbalance": 0.0,
+          "atomic_contention_indicator": 0.0,
+          "communication_bytes": 0,
+          "collective_startup_us": 0.0,
+          "critical_path_us": 0.0,
+          "recompute_bytes": 0,
+          "saved_state_bytes": 0,
+          "provenance": "analytical_estimate",
+          "notes": [
+            "gather upper bound assumes no L2 reuse of duplicate rows",
+            "fused epilogue avoids 1050624 B"
+          ]
+        }
+      ],
+      "traces": [
+        {
+          "attempts": [],
+          "obligations": [],
+          "chosen_anchors": [
+            "routed_reduction_v1"
+          ],
+          "estimated_costs": {
+            "useful_flops": 6291456,
+            "physical_bytes_estimate": 7401472,
+            "launch_count": 1
+          }
+        },
+        {
+          "attempts": [
+            {
+              "rule": "fold_row_scale_into_routed_reduction_epilogue",
+              "subject_op": "apply_row_scale",
+              "outcome": "accepted",
+              "reason_code": null,
+              "detail": null
+            }
+          ],
+          "obligations": [
+            {
+              "kind": "recompute_backward",
+              "subject_op": "apply_row_scale",
+              "detail": "fold_row_scale_into_routed_reduction_epilogue: backward recomputes un-scaled reduction tiles so the row-scale gradient exists; it is never silently omitted"
+            },
+            {
+              "kind": "forward_only",
+              "subject_op": "apply_row_scale",
+              "detail": "fold_row_scale_into_routed_reduction_epilogue: backward_unverified_this_prototype"
+            }
+          ],
+          "chosen_anchors": [
+            "routed_reduction_row_scale_epilogue_v0"
+          ],
+          "estimated_costs": {
+            "useful_flops": 6815744,
+            "physical_bytes_estimate": 7401472,
+            "launch_count": 1
+          }
+        }
+      ],
+      "escape_hatch_count": 0,
+      "measured_performance_pointer": "results/final/*-forward.json (routed-reduction v1 is the only family with a runnable native lowering on this host)"
+    },
+    {
+      "architecture_params": {
+        "preset": "deepseek_v3_moe",
+        "routing": "top_k",
+        "query_domain": "sequence",
+        "source_domain": "expert",
+        "normalization": "l1",
+        "mutation": "none",
+        "residency": "sharded",
+        "collision_policy": "not_applicable"
+      },
+      "schedule_params": {
+        "anchor_overrides": {},
+        "block_hints": {}
+      },
+      "valid_semantic_programs": 2,
+      "compiled_programs": 2,
+      "candidates": [
+        {
+          "rule": "fold_row_scale_into_routed_reduction_epilogue",
+          "subject_op": "apply_row_scale",
+          "legal": true,
+          "reason_code": null
+        }
+      ],
+      "rewrite_accepted": 1,
+      "rewrite_rejected": 0,
+      "compiled": true,
+      "anchors_selected": [
+        "routed_reduction_row_scale_epilogue_v0",
+        "routed_reduction_v1"
+      ],
+      "estimated_costs": [
+        {
+          "useful_flops": 8388608,
+          "logical_bytes": 9519104,
+          "physical_bytes_estimate": 9519104,
+          "launch_count": 1,
+          "temporary_bytes": 1048576,
+          "route_imbalance": 0.0,
+          "atomic_contention_indicator": 0.0,
+          "communication_bytes": 0,
+          "collective_startup_us": 0.0,
+          "critical_path_us": 0.0,
+          "recompute_bytes": 0,
+          "saved_state_bytes": 0,
+          "provenance": "analytical_estimate",
+          "notes": [
+            "gather upper bound assumes no L2 reuse of duplicate rows"
+          ]
+        },
+        {
+          "useful_flops": 8912896,
+          "logical_bytes": 9519104,
+          "physical_bytes_estimate": 9519104,
+          "launch_count": 1,
+          "temporary_bytes": 1048576,
+          "route_imbalance": 0.0,
+          "atomic_contention_indicator": 0.0,
+          "communication_bytes": 0,
+          "collective_startup_us": 0.0,
+          "critical_path_us": 0.0,
+          "recompute_bytes": 0,
+          "saved_state_bytes": 0,
+          "provenance": "analytical_estimate",
+          "notes": [
+            "gather upper bound assumes no L2 reuse of duplicate rows",
+            "fused epilogue avoids 1050624 B"
+          ]
+        }
+      ],
+      "traces": [
+        {
+          "attempts": [],
+          "obligations": [],
+          "chosen_anchors": [
+            "routed_reduction_v1"
+          ],
+          "estimated_costs": {
+            "useful_flops": 8388608,
+            "physical_bytes_estimate": 9519104,
+            "launch_count": 1
+          }
+        },
+        {
+          "attempts": [
+            {
+              "rule": "fold_row_scale_into_routed_reduction_epilogue",
+              "subject_op": "apply_row_scale",
+              "outcome": "accepted",
+              "reason_code": null,
+              "detail": null
+            }
+          ],
+          "obligations": [
+            {
+              "kind": "recompute_backward",
+              "subject_op": "apply_row_scale",
+              "detail": "fold_row_scale_into_routed_reduction_epilogue: backward recomputes un-scaled reduction tiles so the row-scale gradient exists; it is never silently omitted"
+            },
+            {
+              "kind": "forward_only",
+              "subject_op": "apply_row_scale",
+              "detail": "fold_row_scale_into_routed_reduction_epilogue: backward_unverified_this_prototype"
+            }
+          ],
+          "chosen_anchors": [
+            "routed_reduction_row_scale_epilogue_v0"
+          ],
+          "estimated_costs": {
+            "useful_flops": 8912896,
+            "physical_bytes_estimate": 9519104,
+            "launch_count": 1
+          }
+        }
+      ],
+      "escape_hatch_count": 0,
+      "measured_performance_pointer": "results/final/*-forward.json (routed-reduction v1 is the only family with a runnable native lowering on this host)"
+    },
+    {
+      "architecture_params": {
+        "preset": "routing_free_moe",
+        "routing": "threshold",
+        "query_domain": "sequence",
+        "source_domain": "expert",
+        "normalization": "none",
+        "mutation": "none",
+        "residency": "device",
+        "collision_policy": "not_applicable"
+      },
+      "schedule_params": {
+        "anchor_overrides": {},
+        "block_hints": {}
+      },
+      "valid_semantic_programs": 2,
+      "compiled_programs": 2,
+      "candidates": [
+        {
+          "rule": "fold_row_scale_into_routed_reduction_epilogue",
+          "subject_op": "apply_row_scale",
+          "legal": true,
+          "reason_code": null
+        }
+      ],
+      "rewrite_accepted": 1,
+      "rewrite_rejected": 0,
+      "compiled": true,
+      "anchors_selected": [
+        "routed_reduction_row_scale_epilogue_v0",
+        "routed_reduction_v1"
+      ],
+      "estimated_costs": [
+        {
+          "useful_flops": 8388608,
+          "logical_bytes": 9519104,
+          "physical_bytes_estimate": 9519104,
+          "launch_count": 1,
+          "temporary_bytes": 1048576,
+          "route_imbalance": 0.0,
+          "atomic_contention_indicator": 0.0,
+          "communication_bytes": 0,
+          "collective_startup_us": 0.0,
+          "critical_path_us": 0.0,
+          "recompute_bytes": 0,
+          "saved_state_bytes": 0,
+          "provenance": "analytical_estimate",
+          "notes": [
+            "gather upper bound assumes no L2 reuse of duplicate rows"
+          ]
+        },
+        {
+          "useful_flops": 8912896,
+          "logical_bytes": 9519104,
+          "physical_bytes_estimate": 9519104,
+          "launch_count": 1,
+          "temporary_bytes": 1048576,
+          "route_imbalance": 0.0,
+          "atomic_contention_indicator": 0.0,
+          "communication_bytes": 0,
+          "collective_startup_us": 0.0,
+          "critical_path_us": 0.0,
+          "recompute_bytes": 0,
+          "saved_state_bytes": 0,
+          "provenance": "analytical_estimate",
+          "notes": [
+            "gather upper bound assumes no L2 reuse of duplicate rows",
+            "fused epilogue avoids 1050624 B"
+          ]
+        }
+      ],
+      "traces": [
+        {
+          "attempts": [],
+          "obligations": [],
+          "chosen_anchors": [
+            "routed_reduction_v1"
+          ],
+          "estimated_costs": {
+            "useful_flops": 8388608,
+            "physical_bytes_estimate": 9519104,
+            "launch_count": 1
+          }
+        },
+        {
+          "attempts": [
+            {
+              "rule": "fold_row_scale_into_routed_reduction_epilogue",
+              "subject_op": "apply_row_scale",
+              "outcome": "accepted",
+              "reason_code": null,
+              "detail": null
+            }
+          ],
+          "obligations": [
+            {
+              "kind": "recompute_backward",
+              "subject_op": "apply_row_scale",
+              "detail": "fold_row_scale_into_routed_reduction_epilogue: backward recomputes un-scaled reduction tiles so the row-scale gradient exists; it is never silently omitted"
+            },
+            {
+              "kind": "forward_only",
+              "subject_op": "apply_row_scale",
+              "detail": "fold_row_scale_into_routed_reduction_epilogue: backward_unverified_this_prototype"
+            }
+          ],
+          "chosen_anchors": [
+            "routed_reduction_row_scale_epilogue_v0"
+          ],
+          "estimated_costs": {
+            "useful_flops": 8912896,
+            "physical_bytes_estimate": 9519104,
+            "launch_count": 1
+          }
+        }
+      ],
+      "escape_hatch_count": 0,
+      "measured_performance_pointer": "results/final/*-forward.json (routed-reduction v1 is the only family with a runnable native lowering on this host)"
+    },
+    {
+      "architecture_params": {
+        "preset": "kimi_k3_stable_latent_moe",
+        "routing": "top_k",
+        "query_domain": "sequence",
+        "source_domain": "expert",
+        "normalization": "l1",
+        "mutation": "none",
+        "residency": "sharded",
+        "collision_policy": "not_applicable"
+      },
+      "schedule_params": {
+        "anchor_overrides": {},
+        "block_hints": {}
+      },
+      "valid_semantic_programs": 2,
+      "compiled_programs": 2,
+      "candidates": [
+        {
+          "rule": "fold_row_scale_into_routed_reduction_epilogue",
+          "subject_op": "apply_row_scale",
+          "legal": true,
+          "reason_code": null
+        }
+      ],
+      "rewrite_accepted": 1,
+      "rewrite_rejected": 0,
+      "compiled": true,
+      "anchors_selected": [
+        "routed_reduction_row_scale_epilogue_v0",
+        "routed_reduction_v1"
+      ],
+      "estimated_costs": [
+        {
+          "useful_flops": 16777216,
+          "logical_bytes": 17989632,
+          "physical_bytes_estimate": 17989632,
+          "launch_count": 1,
+          "temporary_bytes": 1048576,
+          "route_imbalance": 0.0,
+          "atomic_contention_indicator": 0.0,
+          "communication_bytes": 0,
+          "collective_startup_us": 0.0,
+          "critical_path_us": 0.0,
+          "recompute_bytes": 0,
+          "saved_state_bytes": 0,
+          "provenance": "analytical_estimate",
+          "notes": [
+            "gather upper bound assumes no L2 reuse of duplicate rows"
+          ]
+        },
+        {
+          "useful_flops": 17301504,
+          "logical_bytes": 17989632,
+          "physical_bytes_estimate": 17989632,
+          "launch_count": 1,
+          "temporary_bytes": 1048576,
+          "route_imbalance": 0.0,
+          "atomic_contention_indicator": 0.0,
+          "communication_bytes": 0,
+          "collective_startup_us": 0.0,
+          "critical_path_us": 0.0,
+          "recompute_bytes": 0,
+          "saved_state_bytes": 0,
+          "provenance": "analytical_estimate",
+          "notes": [
+            "gather upper bound assumes no L2 reuse of duplicate rows",
+            "fused epilogue avoids 1050624 B"
+          ]
+        }
+      ],
+      "traces": [
+        {
+          "attempts": [],
+          "obligations": [],
+          "chosen_anchors": [
+            "routed_reduction_v1"
+          ],
+          "estimated_costs": {
+            "useful_flops": 16777216,
+            "physical_bytes_estimate": 17989632,
+            "launch_count": 1
+          }
+        },
+        {
+          "attempts": [
+            {
+              "rule": "fold_row_scale_into_routed_reduction_epilogue",
+              "subject_op": "apply_row_scale",
+              "outcome": "accepted",
+              "reason_code": null,
+              "detail": null
+            }
+          ],
+          "obligations": [
+            {
+              "kind": "recompute_backward",
+              "subject_op": "apply_row_scale",
+              "detail": "fold_row_scale_into_routed_reduction_epilogue: backward recomputes un-scaled reduction tiles so the row-scale gradient exists; it is never silently omitted"
+            },
+            {
+              "kind": "forward_only",
+              "subject_op": "apply_row_scale",
+              "detail": "fold_row_scale_into_routed_reduction_epilogue: backward_unverified_this_prototype"
+            }
+          ],
+          "chosen_anchors": [
+            "routed_reduction_row_scale_epilogue_v0"
+          ],
+          "estimated_costs": {
+            "useful_flops": 17301504,
+            "physical_bytes_estimate": 17989632,
+            "launch_count": 1
+          }
+        }
+      ],
+      "escape_hatch_count": 0,
+      "measured_performance_pointer": "results/final/*-forward.json (routed-reduction v1 is the only family with a runnable native lowering on this host)"
+    },
+    {
+      "architecture_params": {
+        "preset": "parameter_token_mixer",
+        "routing": "dense",
+        "query_domain": "sequence",
+        "source_domain": "parameter_block",
+        "normalization": "softmax",
+        "mutation": "none",
+        "residency": "device",
+        "collision_policy": "not_applicable"
+      },
+      "schedule_params": {
+        "anchor_overrides": {},
+        "block_hints": {}
+      },
+      "valid_semantic_programs": 2,
+      "compiled_programs": 2,
+      "candidates": [
+        {
+          "rule": "fold_row_scale_into_routed_reduction_epilogue",
+          "subject_op": "apply_row_scale",
+          "legal": true,
+          "reason_code": null
+        }
+      ],
+      "rewrite_accepted": 1,
+      "rewrite_rejected": 0,
+      "compiled": true,
+      "anchors_selected": [
+        "routed_reduction_row_scale_epilogue_v0",
+        "routed_reduction_v1"
+      ],
+      "estimated_costs": [
+        {
+          "useful_flops": 8388608,
+          "logical_bytes": 9519104,
+          "physical_bytes_estimate": 9519104,
+          "launch_count": 1,
+          "temporary_bytes": 1048576,
+          "route_imbalance": 0.0,
+          "atomic_contention_indicator": 0.0,
+          "communication_bytes": 0,
+          "collective_startup_us": 0.0,
+          "critical_path_us": 0.0,
+          "recompute_bytes": 0,
+          "saved_state_bytes": 0,
+          "provenance": "analytical_estimate",
+          "notes": [
+            "gather upper bound assumes no L2 reuse of duplicate rows"
+          ]
+        },
+        {
+          "useful_flops": 8912896,
+          "logical_bytes": 9519104,
+          "physical_bytes_estimate": 9519104,
+          "launch_count": 1,
+          "temporary_bytes": 1048576,
+          "route_imbalance": 0.0,
+          "atomic_contention_indicator": 0.0,
+          "communication_bytes": 0,
+          "collective_startup_us": 0.0,
+          "critical_path_us": 0.0,
+          "recompute_bytes": 0,
+          "saved_state_bytes": 0,
+          "provenance": "analytical_estimate",
+          "notes": [
+            "gather upper bound assumes no L2 reuse of duplicate rows",
+            "fused epilogue avoids 1050624 B"
+          ]
+        }
+      ],
+      "traces": [
+        {
+          "attempts": [],
+          "obligations": [],
+          "chosen_anchors": [
+            "routed_reduction_v1"
+          ],
+          "estimated_costs": {
+            "useful_flops": 8388608,
+            "physical_bytes_estimate": 9519104,
+            "launch_count": 1
+          }
+        },
+        {
+          "attempts": [
+            {
+              "rule": "fold_row_scale_into_routed_reduction_epilogue",
+              "subject_op": "apply_row_scale",
+              "outcome": "accepted",
+              "reason_code": null,
+              "detail": null
+            }
+          ],
+          "obligations": [
+            {
+              "kind": "recompute_backward",
+              "subject_op": "apply_row_scale",
+              "detail": "fold_row_scale_into_routed_reduction_epilogue: backward recomputes un-scaled reduction tiles so the row-scale gradient exists; it is never silently omitted"
+            },
+            {
+              "kind": "forward_only",
+              "subject_op": "apply_row_scale",
+              "detail": "fold_row_scale_into_routed_reduction_epilogue: backward_unverified_this_prototype"
+            }
+          ],
+          "chosen_anchors": [
+            "routed_reduction_row_scale_epilogue_v0"
+          ],
+          "estimated_costs": {
+            "useful_flops": 8912896,
+            "physical_bytes_estimate": 9519104,
+            "launch_count": 1
+          }
+        }
+      ],
+      "escape_hatch_count": 0,
+      "measured_performance_pointer": "results/final/*-forward.json (routed-reduction v1 is the only family with a runnable native lowering on this host)"
+    },
+    {
+      "architecture_params": {
+        "preset": "linear_recurrent_mixer",
+        "routing": "kernelized_recurrence",
+        "query_domain": "sequence",
+        "source_domain": "recurrent_state",
+        "normalization": "none",
+        "mutation": "in_place_recurrent",
+        "residency": "device",
+        "collision_policy": "not_applicable"
+      },
+      "schedule_params": {},
+      "valid_semantic_programs": 0,
+      "candidates": [],
+      "rewrite_accepted": 0,
+      "rewrite_rejected": 0,
+      "compiled": false,
+      "decline_reason": "ordered recurrence is represented but its scan equation stays backend-owned; compilation requires selecting a family adapter (FLA gated delta-rule adapter exists outside this matrix)",
+      "escape_hatch_count": 0
+    },
+    {
+      "architecture_params": {
+        "preset": "mamba",
+        "routing": "kernelized_recurrence",
+        "query_domain": "sequence",
+        "source_domain": "recurrent_state",
+        "normalization": "none",
+        "mutation": "in_place_recurrent",
+        "residency": "device",
+        "collision_policy": "not_applicable"
+      },
+      "schedule_params": {},
+      "valid_semantic_programs": 0,
+      "candidates": [],
+      "rewrite_accepted": 0,
+      "rewrite_rejected": 0,
+      "compiled": false,
+      "decline_reason": "ordered recurrence is represented but its scan equation stays backend-owned; compilation requires selecting a family adapter (FLA gated delta-rule adapter exists outside this matrix)",
+      "escape_hatch_count": 0
+    },
+    {
+      "architecture_params": {
+        "preset": "mamba2",
+        "routing": "kernelized_recurrence",
+        "query_domain": "sequence",
+        "source_domain": "recurrent_state",
+        "normalization": "none",
+        "mutation": "in_place_recurrent",
+        "residency": "device",
+        "collision_policy": "not_applicable"
+      },
+      "schedule_params": {},
+      "valid_semantic_programs": 0,
+      "candidates": [],
+      "rewrite_accepted": 0,
+      "rewrite_rejected": 0,
+      "compiled": false,
+      "decline_reason": "ordered recurrence is represented but its scan equation stays backend-owned; compilation requires selecting a family adapter (FLA gated delta-rule adapter exists outside this matrix)",
+      "escape_hatch_count": 0
+    },
+    {
+      "architecture_params": {
+        "preset": "mamba3",
+        "routing": "kernelized_recurrence",
+        "query_domain": "sequence",
+        "source_domain": "recurrent_state",
+        "normalization": "none",
+        "mutation": "in_place_recurrent",
+        "residency": "device",
+        "collision_policy": "not_applicable"
+      },
+      "schedule_params": {},
+      "valid_semantic_programs": 0,
+      "candidates": [],
+      "rewrite_accepted": 0,
+      "rewrite_rejected": 0,
+      "compiled": false,
+      "decline_reason": "ordered recurrence is represented but its scan equation stays backend-owned; compilation requires selecting a family adapter (FLA gated delta-rule adapter exists outside this matrix)",
+      "escape_hatch_count": 0
+    },
+    {
+      "architecture_params": {
+        "preset": "gated_deltanet",
+        "routing": "kernelized_recurrence",
+        "query_domain": "sequence",
+        "source_domain": "recurrent_state",
+        "normalization": "none",
+        "mutation": "in_place_recurrent",
+        "residency": "device",
+        "collision_policy": "not_applicable"
+      },
+      "schedule_params": {},
+      "valid_semantic_programs": 0,
+      "candidates": [],
+      "rewrite_accepted": 0,
+      "rewrite_rejected": 0,
+      "compiled": false,
+      "decline_reason": "ordered recurrence is represented but its scan equation stays backend-owned; compilation requires selecting a family adapter (FLA gated delta-rule adapter exists outside this matrix)",
+      "escape_hatch_count": 0
+    },
+    {
+      "architecture_params": {
+        "preset": "gated_deltanet2",
+        "routing": "kernelized_recurrence",
+        "query_domain": "sequence",
+        "source_domain": "recurrent_state",
+        "normalization": "none",
+        "mutation": "in_place_recurrent",
+        "residency": "device",
+        "collision_policy": "not_applicable"
+      },
+      "schedule_params": {},
+      "valid_semantic_programs": 0,
+      "candidates": [],
+      "rewrite_accepted": 0,
+      "rewrite_rejected": 0,
+      "compiled": false,
+      "decline_reason": "ordered recurrence is represented but its scan equation stays backend-owned; compilation requires selecting a family adapter (FLA gated delta-rule adapter exists outside this matrix)",
+      "escape_hatch_count": 0
+    },
+    {
+      "architecture_params": {
+        "preset": "kimi_delta_attention",
+        "routing": "kernelized_recurrence",
+        "query_domain": "sequence",
+        "source_domain": "recurrent_state",
+        "normalization": "none",
+        "mutation": "in_place_recurrent",
+        "residency": "device",
+        "collision_policy": "not_applicable"
+      },
+      "schedule_params": {},
+      "valid_semantic_programs": 0,
+      "candidates": [],
+      "rewrite_accepted": 0,
+      "rewrite_rejected": 0,
+      "compiled": false,
+      "decline_reason": "ordered recurrence is represented but its scan equation stays backend-owned; compilation requires selecting a family adapter (FLA gated delta-rule adapter exists outside this matrix)",
+      "escape_hatch_count": 0
+    },
+    {
+      "architecture_params": {
+        "preset": "sparse_delta_memory",
+        "routing": "top_k",
+        "query_domain": "sequence",
+        "source_domain": "memory_page",
+        "normalization": "softmax",
+        "mutation": "in_place_recurrent",
+        "residency": "hbm",
+        "collision_policy": "ordered"
+      },
+      "schedule_params": {},
+      "valid_semantic_programs": 0,
+      "candidates": [],
+      "rewrite_accepted": 0,
+      "rewrite_rejected": 0,
+      "compiled": false,
+      "decline_reason": "stateful presets require the state-planning slice (transactional commit planning lands with the SDM adapter)",
+      "escape_hatch_count": 0
+    },
+    {
+      "architecture_params": {
+        "preset": "gl_sdm_transaction",
+        "routing": "top_k",
+        "query_domain": "sequence",
+        "source_domain": "memory_page",
+        "normalization": "softmax",
+        "mutation": "transactional",
+        "residency": "hbm",
+        "collision_policy": "sum"
+      },
+      "schedule_params": {},
+      "valid_semantic_programs": 0,
+      "candidates": [],
+      "rewrite_accepted": 0,
+      "rewrite_rejected": 0,
+      "compiled": false,
+      "decline_reason": "stateful presets require the state-planning slice (transactional commit planning lands with the SDM adapter)",
+      "escape_hatch_count": 0
+    }
+  ]
+}

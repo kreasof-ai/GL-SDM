@@ -1,0 +1,297 @@
+{
+  "schema_version": 1,
+  "environment": {
+    "timestamp_utc": "2026-08-26T07:02:20.661974+00:00",
+    "git_revision": "7258a81cdcc26039251e70a25492a863946c7e0d",
+    "platform": "Linux-6.12.95-124.187.amzn2023.x86_64-x86_64-with-glibc2.39",
+    "python": "3.12.13",
+    "torch": "2.8.0",
+    "triton": "3.4.0",
+    "cuda": "12.9",
+    "gpu": "NVIDIA A10G",
+    "compute_capability": [
+      8,
+      6
+    ]
+  },
+  "semantics": "output[q,d] = row_scale[q] * sum_k w[q,k]*V[idx[q,k],d]; plan A materializes base, plan B folds the scale into a typed routed-reduction epilogue",
+  "forward_cases": [
+    {
+      "case": {
+        "queries": 64,
+        "route_width": 2,
+        "sources": 256,
+        "value_dim": 128,
+        "dtype": "bfloat16",
+        "regime": "host_bound",
+        "name": "decode_hostbound"
+      },
+      "mode": "forward",
+      "analytic_traffic_bytes_upper_bound_no_l2_reuse": {
+        "shared_bytes": 34048,
+        "materialized_extra_bytes": 32768,
+        "scale_vector_bytes": 128
+      },
+      "launch_counts_documented_model": {
+        "A_forward_launches": 2,
+        "B_forward_launches": 1,
+        "A_backward_launches_approximate": 6,
+        "B_backward_launches_exact": 3
+      },
+      "measurements": {
+        "A_materialized_v1_plus_scale": {
+          "wall_ms_per_call": 0.09613189999072347,
+          "median_device_ms": 0.06963200122117996,
+          "p95_device_ms": 0.08188799768686295,
+          "min_device_ms": 0.06758400052785873,
+          "dispatch_share_wall_minus_device": 0.026499898769543506
+        },
+        "B_fused_row_scale_epilogue": {
+          "wall_ms_per_call": 0.09788094001123682,
+          "median_device_ms": 0.07424000278115273,
+          "p95_device_ms": 0.0870399996638298,
+          "min_device_ms": 0.058368001133203506,
+          "dispatch_share_wall_minus_device": 0.02364093723008409
+        }
+      },
+      "avoided_materialization_bytes_estimate": 32768
+    },
+    {
+      "case": {
+        "queries": 1024,
+        "route_width": 8,
+        "sources": 512,
+        "value_dim": 1024,
+        "dtype": "float16",
+        "regime": "gpu_bound",
+        "name": "mid_balanced"
+      },
+      "mode": "forward",
+      "analytic_traffic_bytes_upper_bound_no_l2_reuse": {
+        "shared_bytes": 16859136,
+        "materialized_extra_bytes": 4194304,
+        "scale_vector_bytes": 2048
+      },
+      "launch_counts_documented_model": {
+        "A_forward_launches": 2,
+        "B_forward_launches": 1,
+        "A_backward_launches_approximate": 6,
+        "B_backward_launches_exact": 3
+      },
+      "measurements": {
+        "A_materialized_v1_plus_scale": {
+          "wall_ms_per_call": 0.09579867997672409,
+          "median_device_ms": 0.07065600156784058,
+          "p95_device_ms": 0.07680000364780426,
+          "min_device_ms": 0.06956800073385239,
+          "dispatch_share_wall_minus_device": 0.025142678408883512
+        },
+        "B_fused_row_scale_epilogue": {
+          "wall_ms_per_call": 0.09533249998639803,
+          "median_device_ms": 0.07014400139451027,
+          "p95_device_ms": 0.08908800035715103,
+          "min_device_ms": 0.05734400078654289,
+          "dispatch_share_wall_minus_device": 0.025188498591887765
+        }
+      },
+      "avoided_materialization_bytes_estimate": 4194304
+    },
+    {
+      "case": {
+        "queries": 4096,
+        "route_width": 8,
+        "sources": 1024,
+        "value_dim": 2048,
+        "dtype": "bfloat16",
+        "regime": "gpu_bound",
+        "name": "prefill_gpu_bound"
+      },
+      "mode": "forward",
+      "analytic_traffic_bytes_upper_bound_no_l2_reuse": {
+        "shared_bytes": 134545408,
+        "materialized_extra_bytes": 33554432,
+        "scale_vector_bytes": 8192
+      },
+      "launch_counts_documented_model": {
+        "A_forward_launches": 2,
+        "B_forward_launches": 1,
+        "A_backward_launches_approximate": 6,
+        "B_backward_launches_exact": 3
+      },
+      "measurements": {
+        "A_materialized_v1_plus_scale": {
+          "wall_ms_per_call": 0.19517806002113502,
+          "median_device_ms": 0.1669120043516159,
+          "p95_device_ms": 0.17715199291706085,
+          "min_device_ms": 0.16486400365829468,
+          "dispatch_share_wall_minus_device": 0.02826605566951912
+        },
+        "B_fused_row_scale_epilogue": {
+          "wall_ms_per_call": 0.12822696000512224,
+          "median_device_ms": 0.10239999741315842,
+          "p95_device_ms": 0.11264000087976456,
+          "min_device_ms": 0.10035199671983719,
+          "dispatch_share_wall_minus_device": 0.02582696259196382
+        }
+      },
+      "avoided_materialization_bytes_estimate": 33554432
+    }
+  ],
+  "backward_cases": [
+    {
+      "case": {
+        "queries": 64,
+        "route_width": 2,
+        "sources": 256,
+        "value_dim": 128,
+        "dtype": "bfloat16",
+        "regime": "host_bound",
+        "name": "decode_hostbound"
+      },
+      "mode": "backward",
+      "analytic_traffic_bytes_upper_bound_no_l2_reuse": {
+        "shared_bytes": 34048,
+        "materialized_extra_bytes": 32768,
+        "scale_vector_bytes": 128
+      },
+      "launch_counts_documented_model": {
+        "A_forward_launches": 2,
+        "B_forward_launches": 1,
+        "A_backward_launches_approximate": 6,
+        "B_backward_launches_exact": 3
+      },
+      "measurements": {
+        "A_materialized_v1_plus_scale": {
+          "wall_ms_per_call": 0.5237241600116249,
+          "median_device_ms": 0.462336003780365,
+          "p95_device_ms": 0.6000639796257019,
+          "min_device_ms": 0.40038400888442993,
+          "dispatch_share_wall_minus_device": 0.06138815623125993
+        },
+        "B_fused_row_scale_epilogue": {
+          "wall_ms_per_call": 0.469753099969239,
+          "median_device_ms": 0.4198399931192398,
+          "p95_device_ms": 0.5294079780578613,
+          "min_device_ms": 0.37887999415397644,
+          "dispatch_share_wall_minus_device": 0.04991310684999917
+        }
+      },
+      "avoided_materialization_bytes_estimate": 32768
+    },
+    {
+      "case": {
+        "queries": 1024,
+        "route_width": 8,
+        "sources": 512,
+        "value_dim": 1024,
+        "dtype": "float16",
+        "regime": "gpu_bound",
+        "name": "mid_balanced"
+      },
+      "mode": "backward",
+      "analytic_traffic_bytes_upper_bound_no_l2_reuse": {
+        "shared_bytes": 16859136,
+        "materialized_extra_bytes": 4194304,
+        "scale_vector_bytes": 2048
+      },
+      "launch_counts_documented_model": {
+        "A_forward_launches": 2,
+        "B_forward_launches": 1,
+        "A_backward_launches_approximate": 6,
+        "B_backward_launches_exact": 3
+      },
+      "measurements": {
+        "A_materialized_v1_plus_scale": {
+          "wall_ms_per_call": 0.5323889399733162,
+          "median_device_ms": 0.49561600387096405,
+          "p95_device_ms": 0.5345280170440674,
+          "min_device_ms": 0.4065279960632324,
+          "dispatch_share_wall_minus_device": 0.036772936102352105
+        },
+        "B_fused_row_scale_epilogue": {
+          "wall_ms_per_call": 0.4590366999764228,
+          "median_device_ms": 0.4121600091457367,
+          "p95_device_ms": 0.5253120064735413,
+          "min_device_ms": 0.3758719861507416,
+          "dispatch_share_wall_minus_device": 0.04687669083068613
+        }
+      },
+      "avoided_materialization_bytes_estimate": 4194304
+    },
+    {
+      "case": {
+        "queries": 4096,
+        "route_width": 8,
+        "sources": 1024,
+        "value_dim": 2048,
+        "dtype": "bfloat16",
+        "regime": "gpu_bound",
+        "name": "prefill_gpu_bound"
+      },
+      "mode": "backward",
+      "analytic_traffic_bytes_upper_bound_no_l2_reuse": {
+        "shared_bytes": 134545408,
+        "materialized_extra_bytes": 33554432,
+        "scale_vector_bytes": 8192
+      },
+      "launch_counts_documented_model": {
+        "A_forward_launches": 2,
+        "B_forward_launches": 1,
+        "A_backward_launches_approximate": 6,
+        "B_backward_launches_exact": 3
+      },
+      "measurements": {
+        "A_materialized_v1_plus_scale": {
+          "wall_ms_per_call": 1.699886679998599,
+          "median_device_ms": 1.6368639469146729,
+          "p95_device_ms": 1.7530879974365234,
+          "min_device_ms": 1.6250879764556885,
+          "dispatch_share_wall_minus_device": 0.06302273308392614
+        },
+        "B_fused_row_scale_epilogue": {
+          "wall_ms_per_call": 1.0040606999973534,
+          "median_device_ms": 0.9461759924888611,
+          "p95_device_ms": 1.0209280252456665,
+          "min_device_ms": 0.9093120098114014,
+          "dispatch_share_wall_minus_device": 0.057884707508492284
+        }
+      },
+      "avoided_materialization_bytes_estimate": 33554432
+    }
+  ],
+  "schedule_C_fullrow_variant": {
+    "median_device_ms": {
+      "heuristic": 0.05222399905323982,
+      "fullrow_16warps": 0.04710400104522705
+    },
+    "accepted_schedule": "fullrow_16warps",
+    "rejected_schedules_retained": [
+      {
+        "schedule": "heuristic",
+        "median_device_ms": 0.05222399905323982,
+        "reason": "slower than accepted schedule"
+      }
+    ]
+  },
+  "correctness_by_dtype": {
+    "float32": {
+      "max_abs_error_vs_eager_reference": 1.9073486328125e-06,
+      "reference_max_abs": 19.1055908203125,
+      "atol": 1e-05,
+      "rtol": 0.02
+    },
+    "float16": {
+      "max_abs_error_vs_eager_reference": 0.0038595199584960938,
+      "reference_max_abs": 19.09506607055664,
+      "atol": 0.015,
+      "rtol": 0.02
+    },
+    "bfloat16": {
+      "max_abs_error_vs_eager_reference": 0.04740142822265625,
+      "reference_max_abs": 19.047401428222656,
+      "atol": 0.02,
+      "rtol": 0.02
+    }
+  },
+  "estimates_are_analytical_not_measured_counters": true
+}

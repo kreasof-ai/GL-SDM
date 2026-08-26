@@ -7,6 +7,11 @@ routing skeleton of several mixer families while preserving specialized
 lowerings. It is a compiler and kernel research boundary, not a claim that all
 mixers have identical mathematics.
 
+As of this iteration URM is explicitly a **semantic-to-execution compiler for
+routed sequence models** (see the [compiler charter](compiler-charter.md) and
+the [CODA retrospective](coda-retrospective.md)); optimized kernels are its
+lowering targets, not its definition.
+
 The fixed skeleton is:
 
 ```text
@@ -90,11 +95,21 @@ GL-SDM retains buffered snapshot-and-commit semantics.
 ```text
 Model adapters
   PyTorch SDPA / FlexAttention / FLA / Mamba / MoE / original SDM / GL-SDM
-                         |
-Restricted MixerSpec + trace/result schema
-                         |
+                          |
+NAS-facing compilation API (planner.UrmCompiler)
+  validate -> enumerate candidates -> compile -> cost features
+                          |
+Semantic routing/state IR + verified rewrites (src/urm/compiler)
+  logical domains, routes, effects, locality, registered rules
+                          |
+Placement, sharding, communication planning (simulated mesh today)
+                          |
+Trusted execution anchors + constrained visitors
+  GEMM | attention | recurrent scan | grouped GEMM |
+  routed reduction | page gather/update | collective exchange
+                          |
 Reference oracle | framework baseline | optimized upstream | URM lowering
-                         |
+                          |
 CPU             | CUDA/Triton          | future ROCm/XPU backends
 ```
 
@@ -103,6 +118,35 @@ deterministic ties, and write-collision behavior. It deliberately refuses the
 advanced detail records until family-specific semantic oracles are added; a
 coarse gather/reduce result must not be presented as equivalence for a named
 architecture.
+
+## Compiler coverage (distinct from kernel coverage)
+
+URM reports five coverage axes separately; conflating them hides real gaps.
+
+| Axis | Today |
+| --- | --- |
+| Semantic coverage | Dense/block-sparse/top-k/threshold/product-key routes over sequence/expert/parameter-block/recurrent-state/memory-page domains; ordered recurrence represented as a typed barrier op; transactional commits with version boundaries; collective intent (`all_reduce`, `all_to_all`, ...) as first-class effects |
+| Compiler/reparameterization coverage | Two verified rules: routed-reduction row-scale epilogue folding and delayed row scaling through linear maps; deterministic traces; structured rejections (non-row-wise scales, nonlinear intervening transforms, effect barriers, multi-consumer intermediates) |
+| Upstream adapter coverage | FlashAttention 2.8.3 dense causal; FLA 0.5.2 gated delta-rule (prefill + decode) |
+| Native backend coverage | One Triton lowering family: routed-reduction v1 forward/backward; plus the experimental compiler-generated row-scale epilogue anchor |
+| Distributed planning coverage | Simulated mesh only: deterministic executable plans with grouped exchanges, byte estimates, send/receive counts, commit steps; no multi-device host validation yet |
+
+## Success metrics beyond peak kernel speed
+
+- Semantic-family coverage (families expressible without escape hatches).
+- Percentage of architectures requiring escape hatches (target: zero; the
+  committed compilation matrix reports the current count).
+- Valid-compilation rate over preset architectures (compilation matrix).
+- Performance regret versus the best pinned upstream implementation per family
+  (paired-overhead methodology from docs/benchmarking.md).
+- Avoided materializations and HBM bytes (analytic bound plus measured wall/
+  device deltas for the epilogue prototype).
+- Communication volume and critical-path estimates from route plans.
+- Adapter overhead (dispatch share) per covered family.
+- NAS candidates evaluated per unit time (candidate enumeration is metadata-
+  level and needs no hardware).
+- Reproducibility and correctness-gate pass rate (clean-environment suites,
+  artifact-schema tests, deterministic traces).
 
 ## First vertical slice
 
@@ -126,5 +170,6 @@ Subsequent slices are:
 - A general tensor compiler.
 - Training a language model.
 - Reimplementing every upstream kernel.
-- Distributed expert or memory sharding.
+- Distributed expert or memory sharding (simulated planning exists; real
+  multi-device execution does not yet).
 - Selecting GL-SDM's final address or update algorithm.

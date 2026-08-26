@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "URM NAS-facing compilation matrix artifact",
+  "type": "object",
+  "required": ["schema_version", "generated_utc", "summary", "rows"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "generated_utc": { "type": "string" },
+    "summary": {
+      "type": "object",
+      "required": [
+        "presets_evaluated",
+        "valid_semantic_programs",
+        "generated_candidates",
+        "rewrite_accepted",
+        "rewrite_rejected",
+        "compile_success_rate",
+        "escape_hatch_count"
+      ],
+      "properties": {
+        "presets_evaluated": { "type": "integer", "minimum": 1 },
+        "valid_semantic_programs": { "type": "integer" },
+        "generated_candidates": { "type": "integer" },
+        "rewrite_accepted": { "type": "integer" },
+        "rewrite_rejected": { "type": "integer" },
+        "compile_success_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "escape_hatch_count": { "const": 0 }
+      }
+    },
+    "rows": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "architecture_params",
+          "schedule_params",
+          "compiled",
+          "escape_hatch_count"
+        ],
+        "properties": {
+          "architecture_params": {
+            "type": "object",
+            "required": ["preset", "routing"],
+            "properties": {
+              "preset": { "type": "string" },
+              "routing": { "type": "string" },
+              "source_domain": { "type": "string" }
+            }
+          },
+          "schedule_params": { "type": "object" },
+          "valid_semantic_programs": { "type": "integer" },
+          "candidates": { "type": "array" },
+          "rewrite_accepted": { "type": "integer" },
+          "rewrite_rejected": { "type": "integer" },
+          "compiled": { "type": "boolean" },
+          "decline_reason": { "type": ["string", "null"] },
+          "anchors_selected": { "type": "array", "items": { "type": "string" } },
+          "estimated_costs": { "type": "array" },
+          "traces": { "type": "array" },
+          "escape_hatch_count": { "const": 0 },
+          "measured_performance_pointer": { "type": ["string", "null"] }
+        }
+      }
+    }
+  }
+}

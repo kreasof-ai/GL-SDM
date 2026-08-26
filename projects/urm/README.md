@@ -25,14 +25,23 @@ optimized, profiled, and compared against a pinned production kernel:
   cases), with roofline profiling, measured device-limit denominators;
 - a four-level dense-causal-attention comparator (methodology v2: no cloning
   in timed regions, paired interleaved direct-vs-adapter sampling with
-  bootstrap-CI overhead distributions) whose URM dispatch overhead is within
-  1.7% median on every steady-state shape; and
+  bootstrap-CI overhead distributions) whose URM dispatch overhead stays within
+  a +2.32% worst steady-state median (worst bootstrap-CI upper bound +4.53%;
+  values derived from results/attention/dense-causal.json); and
 - a four-level FLA gated-delta-rule comparator (fp32 recurrent oracle, eager
   recurrence, pinned flash-linear-attention 0.5.2 direct, and the same calls
   behind a typed URM adapter) with separate prefill and token-by-token
-  decode regimes and the frozen contract in docs/fla-gated-delta-rule.md.
+  decode regimes and the frozen contract in docs/fla-gated-delta-rule.md; and
+- a layered compiler (docs/compiler-charter.md): typed semantic IR over logical
+  domains with explicit locality/effect models, two verified reparameterization
+  rules with deterministic traces, a simulated routing-to-communication
+  planner, an analytical cost model, and a NAS-facing compilation API - proven
+  by a CODA-inspired routed-reduction row-scale epilogue prototype
+  (results/compiler/) whose fused plan avoids materializing `base` entirely.
 
-See [Triton backend preparation](docs/triton-backend.md),
+See [the compiler charter](docs/compiler-charter.md), the
+[CODA retrospective](docs/coda-retrospective.md),
+[Triton backend preparation](docs/triton-backend.md),
 [the optimization and profiling report](docs/triton-optimization-report.md),
 and `benchmarks/validated-environment.json` for exact versions.
 
@@ -60,6 +69,8 @@ projects/urm/
 |-- benchmarks/
 |   |-- cases.toml               # canonical shape and trace grid
 |   |-- routed_reduce.py         # CUDA-event PyTorch/Triton comparison
+|   |-- routed_scale_epilogue.py # materialized vs fused epilogue prototype
+|   |-- compilation_matrix.py    # NAS-facing preset compilation matrix
 |   |-- compare_results.py       # constraint checker (median/p95/memory gates)
 |   |-- measure_device_limits.py # measured HBM bandwidth and compute peaks
 |   |-- profile_roofline.py      # MFU/MBU and per-kernel roofline profiling
@@ -67,6 +78,8 @@ projects/urm/
 |   |-- result-schema.json       # benchmark result schema (+ optional profiling)
 |   |-- profiling-schema.json    # roofline artifact schema
 |   |-- attention-result-schema.json  # attention comparator schema
+|   |-- compiler-epilogue-schema.json # fused-epilogue comparison schema
+|   |-- compilation-matrix-schema.json # NAS compilation matrix schema
 |   |-- validated-environment.json    # exact validated dependency versions
 |   |-- triton_preflight.py      # environment and GPU readiness report
 |   `-- reference_smoke.py       # dependency-light harness smoke test
@@ -74,6 +87,8 @@ projects/urm/
 |   |-- architecture.md          # target contract and non-goals
 |   |-- baselines.md             # comparator catalog and scope rules
 |   |-- benchmarking.md          # correctness, measurement, and acceptance gates
+|   |-- compiler-charter.md      # normative compiler invariants (v1)
+|   |-- coda-retrospective.md    # CODA strategy mapping and adoption decisions
 |   |-- triton-backend.md        # routed-reduction v1 contract and workflows
 |   |-- triton-optimization-report.md # optimization, profiling, comparator report
 |   `-- fla-gated-delta-rule.md  # frozen FLA gated delta-rule contract (v1)
@@ -82,18 +97,21 @@ projects/urm/
 |   |-- profiling/               # committed roofline summaries
 |   |-- device-limits.json       # measured bandwidth / FP32 / BF16 peaks
 |   |-- attention/               # dense causal attention comparison artifacts
-|   `-- fla-gated-delta-rule/    # gated delta-rule comparison artifacts
+|   |-- fla-gated-delta-rule/    # gated delta-rule comparison artifacts
+|   `-- compiler/                # epilogue prototype + compilation matrix
 |-- src/urm/
 |   |-- backend.py               # explicit backend protocol and registry
 |   |-- adapters/                # pinned upstream adapters (dense attention,
 |   |                            #   gated delta rule) and shared references
 |   |-- backends/                # reference and optimized routed-reduction backends
+|   |-- compiler/                # semantic IR, locality/effects, verified
+|   |                            #   rewrites, anchors, planner, cost model
 |   |-- ir.py                    # restricted typed operator contract
 |   |-- presets.py               # canonical semantic-family specifications
 |   |-- routed_reduction.py      # frozen v1 tensor/capability contract
 |   |-- triton_kernels/          # lazy GPU kernels and autograd wrappers
 |   `-- reference.py             # slow NumPy oracle and transactional merge
-`-- tests/                       # contract, oracle, adapter, and schema tests
+`-- tests/                       # contract, oracle, adapter, schema, compiler tests
 ```
 
 ## Baseline strategy
@@ -129,7 +147,8 @@ model.
 
 - Add PyTorch SDPA math and flash-dispatch adapters (dense causal attention is
   done via `src/urm/adapters` and `benchmarks/dense_attention.py`; the URM
-  dispatch overhead gate of 5% median is met with <=1.7% measured on every
+  dispatch overhead gate of 5% median is met with a +2.32% worst steady-state
+  median measured on every
   steady-state shape under paired interleaved sampling).
 - Add the FLA gated-delta-rule comparator (typed adapter, four levels,
   prefill + decode; see docs/fla-gated-delta-rule.md) - first recurrence
@@ -137,7 +156,7 @@ model.
 - Add a transparent top-k MoE and sparse-memory gather/scatter baseline.
 - Capture correctness, route, and memory-traffic metadata in one result schema.
 
-### Phase 2 - specialized kernels
+### Phase 2 - specialized kernels (in progress)
 
 - Add FlexAttention/block-sparse, FLA/Mamba recurrence, and optimized MoE
   adapters.
@@ -145,6 +164,17 @@ model.
 - Prototype URM page-local gather-reduce and write-merge kernels only after
   matching the original SDM semantics and traces.
 - Compare URM dispatch overhead with direct upstream calls.
+
+### Phase 2.5 - compiler architecture (this iteration)
+
+- Layered semantic/execution IR with locality and effect models
+  (docs/compiler-charter.md).
+- Verified reparameterization: registered rules, deterministic traces,
+  positive and negative differential tests.
+- CODA-inspired routed-reduction row-scale epilogue prototype with measured
+  avoided materialization (results/compiler/routed-scale-epilogue/).
+- Simulated routing-to-communication planner and analytical cost model.
+- NAS-facing compilation API plus a preset compilation matrix artifact.
 
 ### Phase 3 - systems path
 

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
@@ -105,6 +104,15 @@ def test_flavor_identity_is_recorded_or_not_applicable() -> None:
     identity = fla_version()
     if "package" in identity:
         assert identity["version"]
+        # Expected pin and installed version are recorded separately, and
+        # compatibility is an explicit derived flag rather than an assumption.
+        assert identity["expected_version"] == "0.5.2"
+        assert identity["installed_version"]
+        assert isinstance(identity["version_compatible"], bool)
+        if identity["installed_version"] == identity["expected_version"]:
+            assert identity["version_compatible"] is True
+        else:
+            assert identity["version_compatible"] is False
         assert identity["license"] == "MIT"
         assert "externally" in identity["usage"] or "external" in identity["usage"]
     else:
@@ -317,13 +325,3 @@ def test_adapter_rejects_mode_mismatch() -> None:
     q, k, v, g, beta = _sample(b=1, t=4)
     with pytest.raises(RuntimeError, match="unsupported configuration"):
         UrmGatedDeltaRuleAdapter("decode").execute(q, k, v, g, beta)
-
-
-def test_committed_gated_delta_rule_artifact_validates_against_schema() -> None:
-    schema_path = PROJECT_ROOT / "benchmarks" / "gated-delta-rule-result-schema.json"
-    artifact_path = PROJECT_ROOT / "results" / "fla-gated-delta-rule" / "benchmark.json"
-    if not artifact_path.exists():
-        pytest.skip("gated delta-rule benchmark has not been run yet")
-    from jsonschema import validate
-
-    validate(json.loads(artifact_path.read_text()), json.loads(schema_path.read_text()))

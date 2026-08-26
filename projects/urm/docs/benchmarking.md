@@ -1,5 +1,21 @@
 # Benchmark and acceptance protocol
 
+## Dependency policy
+
+- NumPy: `numpy>=1.26,<3`. The validated GPU line (and every committed
+  artifact) uses **1.26.4**; the CPU oracle and schema tests also run on
+  numpy 2.x. Both ends of the range are exercised in clean environments before
+  each release commit, so `pyproject.toml` never demands a version the
+  validated environment does not have (or vice versa).
+- Triton: `triton>=3.4,<3.5` in the `gpu` extra (the validated line).
+- Ruff is pinned (`ruff==0.16.4`) for reproducible lint/format results;
+  import order (`I` rules) is part of `ruff check`.
+- flash-linear-attention is pinned to exactly `0.5.2` for the gated delta-rule
+  comparator. The expected pin and the installed version are recorded as
+  separate fields, and an incompatible installed version is rejected at
+  dispatch time instead of being relabeled as the pin
+  (tests/test_upstream_version_contract.py).
+
 ## Comparison levels
 
 Every covered operation is measured at four levels when available:
@@ -110,6 +126,19 @@ cold compilation separately, and emits JSON conforming to
   instead), peak/temporary memory, paired direct-versus-adapter overhead,
   and final-state materialization cost. Nsight Compute fields remain
   explicit `not_available` on this host.
+- `benchmarks/routed_scale_epilogue.py`: materialized versus fused plans for
+  `output[q,d] = row_scale[q] * routed_reduce(...)`. Compares the trusted v1 +
+  scale plan against the compiler-generated fused epilogue anchor; host-bound
+  and GPU-bound shapes measured separately; wall and device-span recorded
+  separately; launch counts and traffic deltas are documented analytic models;
+  a full-row-tile schedule variant is measured and retained whether accepted
+  or rejected. Numerical differences are recorded by dtype against eager
+  references with assert_close semantics.
+- `benchmarks/compilation_matrix.py`: builds semantic programs from every
+  canonical preset, enumerates rewrite/lowering candidates, compiles what is
+  supported, records structured decline reasons for what is not, and emits
+  `results/compiler/compilation-matrix.json` (escape-hatch count stays zero;
+  architecture and schedule parameters serialized separately).
 
 ## Working milestone targets
 

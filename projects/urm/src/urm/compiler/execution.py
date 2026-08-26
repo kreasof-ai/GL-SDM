@@ -1,0 +1,254 @@
+"""Execution layer: trusted anchors and their typed, locality-constrained visitors.
+
+An execution anchor is a *trusted* lowering target: an existing production
+kernel family (GEMM, attention, recurrent scan, grouped GEMM, routed
+reduction, page gather/update, collective exchange) or a generated kernel that
+has passed its differential gates.
+
+Anchors expose constrained visitors - typed descriptors of the extra work a
+program may do inside the anchor's lifetime (prologue, epilogue, side output).
+Visitors are NOT Python callables: they are data interpreted by registered
+anchor implementations, so no arbitrary tensor callback can enter the core IR.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
+from enum import StrEnum
+
+from urm.compiler.diagnostics import DiagnosticCode
+from urm.compiler.effects import PURE, EffectSignature
+from urm.compiler.locality import Locality, LocalityConstraint
+
+
+class AnchorKind(StrEnum):
+    """Trusted execution-anchor classes."""
+
+    GEMM = "gemm"
+    ATTENTION = "attention"
+    RECURRENT_SCAN = "recurrent_scan"
+    GROUPED_GEMM = "grouped_gemm"
+    ROUTED_REDUCTION = "routed_reduction"
+    PAGE_GATHER_UPDATE = "page_gather_update"
+    COLLECTIVE_EXCHANGE = "collective_exchange"
+
+
+class VisitorKind(StrEnum):
+    """Constrained visitor vocabulary exposed by anchors."""
+
+    ELEMENTWISE_MAP = "elementwise_map"
+    PAIRWISE_MAP = "pairwise_map"
+    VECTOR_LOAD_STORE = "vector_load_store"
+    TILE_LOAD_STORE = "tile_load_store"
+    PARTIAL_REDUCTION = "partial_reduction"  # row/column partial reductions
+    STATEFUL_TILE_TRANSFORM = "stateful_tile_transform"
+    SIDE_OUTPUT = "auxiliary_side_output"
+    FINAL_SCALE_CONVERT = "final_scaling_conversion"
+
+
+@dataclass(frozen=True, slots=True)
+class VisitorDescriptor:
+    """A typed visitor instance an anchor may execute in its lifetime.
+
+    ``locality`` bounds where the visited values live; ``accumulation_dtype``
+    pins numeric semantics. Anchors reject visitors they cannot honor.
+    """
+
+    kind: VisitorKind
+    element_dtype: str  # DType name; a string keeps this module dependency-light
+    accumulation_dtype: str = "float32"
+    locality: Locality = Locality.TILE
+    arity: int = 1
+
+    def __post_init__(self) -> None:
+        if self.arity < 1:
+            raise ValueError("visitor arity must be >= 1")
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionAnchor:
+    """One trusted lowering target with its capability contract."""
+
+    kind: AnchorKind
+    name: str
+    trusted: bool = True  # only verified kernels carry True
+    experimental: bool = False  # compiler-generated capability under evaluation
+    effect: EffectSignature = PURE
+    operand_locality: LocalityConstraint = field(
+        default_factory=lambda: LocalityConstraint()
+    )
+    result_locality: LocalityConstraint = field(
+        default_factory=lambda: LocalityConstraint(
+            min=Locality.DEVICE, max=Locality.DEVICE
+        )
+    )
+    supported_visitors: frozenset[VisitorKind] = frozenset()
+
+    def accepts(self, visitor: VisitorDescriptor) -> bool:
+        return visitor.kind in self.supported_visitors and self.result_locality.accepts(
+            visitor.locality
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class Decline:
+    """An explicit refusal; never a silent semantic change."""
+
+    reason_code: DiagnosticCode
+    message: str
+
+
+@dataclass(frozen=True, slots=True)
+class AnchorRequest:
+    """What the planner asks for before choosing a lowering."""
+
+    kind: AnchorKind
+    visitors: tuple[VisitorDescriptor, ...] = ()
+    schedule_params: dict[str, str | int | float | bool] | None = None
+
+
+AnchorSelector = Callable[[AnchorRequest], "AnchorDecision | None"]
+
+
+@dataclass(frozen=True, slots=True)
+class AnchorDecision:
+    anchor: ExecutionAnchor | None
+    decline: Decline | None
+
+    @property
+    def ok(self) -> bool:
+        return self.anchor is not None
+
+
+def make_selector(
+    anchors: Sequence[ExecutionAnchor],
+) -> AnchorSelector:
+    """Build a selector over explicit anchor instances.
+
+    The selector returns ``None`` to abstain so later selectors can answer.
+    Within its catalog it scans every anchor of the requested kind: the first
+    one that accepts all visitors wins; a refusal is returned only after no
+    compatible anchor was found, so experimental anchors can still answer.
+    """
+
+    def _select(request: AnchorRequest) -> AnchorDecision | None:
+        first_refusal: Decline | None = None
+        for anchor in anchors:
+            if anchor.kind is not request.kind or not anchor.trusted:
+                continue
+            unmet = [
+                visitor.kind.value
+                for visitor in request.visitors
+                if not anchor.accepts(visitor)
+            ]
+            if unmet:
+                if first_refusal is None:
+                    first_refusal = Decline(
+                        reason_code=DiagnosticCode.ANCHOR_DECLINED,
+                        message=f"anchor {anchor.name} declined visitors: {unmet}",
+                    )
+                continue
+            return AnchorDecision(anchor=anchor, decline=None)
+        return (
+            AnchorDecision(anchor=None, decline=first_refusal)
+            if first_refusal is not None
+            else None
+        )
+
+    return _select
+
+
+class AnchorRegistry:
+    """Deterministic selection over registered anchors.
+
+    Selectors run in registration order. A backend that cannot support a
+    program must decline with a reason - silently changing semantics violates
+    the URM charter.
+    """
+
+    def __init__(self) -> None:
+        self._selectors: list[AnchorSelector] = []
+
+    def register(self, selector: AnchorSelector) -> None:
+        self._selectors.append(selector)
+
+    def select(self, request: AnchorRequest) -> AnchorDecision:
+        for selector in tuple(self._selectors):
+            decision = selector(request)
+            if decision is not None:
+                return decision
+        return AnchorDecision(
+            anchor=None,
+            decline=Decline(
+                reason_code=DiagnosticCode.NO_ANCHOR_AVAILABLE,
+                message=f"no registered selector answered request for {request.kind}",
+            ),
+        )
+
+
+# -- Standard anchor catalog -------------------------------------------------
+# Descriptors of the production families URM lowers onto. These carry no code;
+# concrete kernels remain in urm.backends / urm.adapters / upstream packages.
+
+TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
+    ExecutionAnchor(
+        kind=AnchorKind.GEMM,
+        name="torch_linear",
+        supported_visitors=frozenset({VisitorKind.FINAL_SCALE_CONVERT}),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.ATTENTION,
+        name="flash_attention_adapter",
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name="fla_gated_delta_rule_adapter",
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.GROUPED_GEMM,
+        name="grouped_gemm_reserved",
+        trusted=False,  # reserved until the MoE comparator lands
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.ROUTED_REDUCTION,
+        name="routed_reduction_v1",
+        # The frozen v1 kernel has no epilogue capability: a requested row-scale
+        # epilogue must route to the experimental anchor instead.
+        supported_visitors=frozenset({VisitorKind.SIDE_OUTPUT}),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.ROUTED_REDUCTION,
+        name="routed_reduction_row_scale_epilogue_v0",
+        # Compiler-generated fused-epilogue capability (Phase 4 prototype).
+        # It becomes a fully trusted anchor only while its differential and
+        # performance gates hold; v1 remains the default without visitors.
+        experimental=True,
+        result_locality=LocalityConstraint(min=Locality.TILE, max=Locality.DEVICE),
+        supported_visitors=frozenset(
+            {
+                VisitorKind.FINAL_SCALE_CONVERT,
+                VisitorKind.SIDE_OUTPUT,
+                VisitorKind.PARTIAL_REDUCTION,
+            }
+        ),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.PAGE_GATHER_UPDATE,
+        name="page_gather_update_reserved",
+        trusted=False,  # reserved for the SDM/GL-SDM slice
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.COLLECTIVE_EXCHANGE,
+        name="simulated_collective",
+        supported_visitors=frozenset(),
+    ),
+)
+
+
+def default_registry() -> AnchorRegistry:
+    registry = AnchorRegistry()
+    registry.register(make_selector(TRUSTED_ANCHORS))
+    return registry

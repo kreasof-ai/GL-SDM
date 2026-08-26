@@ -28,6 +28,18 @@ SUPPORTED_DTYPES = (torch.bfloat16, torch.float16)
 MODE_PREFILL = "prefill"
 MODE_DECODE = "decode"
 
+# Frozen upstream pin for this comparator contract
+# (docs/fla-gated-delta-rule.md). Recorded SEPARATELY from whatever version is
+# actually installed: an incompatible installation must be rejected, never
+# relabeled as the expected pin.
+EXPECTED_FLA_VERSION = "0.5.2"
+
+
+def _version_compatible(installed: str) -> bool:
+    """Exact-match contract: 0.5.2 == 0.5.2; any other version is rejected."""
+
+    return installed == EXPECTED_FLA_VERSION
+
 
 @dataclass(frozen=True, slots=True)
 class GatedDeltaRuleSpec:
@@ -122,14 +134,25 @@ class GatedDeltaRuleSpec:
 
 
 def fla_version() -> dict[str, object]:
-    """Identity of the pinned FLA upstream, resolved dynamically."""
+    """Identity of the pinned FLA upstream, resolved dynamically.
+
+    ``expected_version`` is the frozen contract pin; ``installed_version`` is
+    what importlib.metadata actually resolves. They are recorded separately and
+    ``version_compatible`` compares them: the adapter refuses to run against an
+    incompatible installation instead of labeling it with the expected pin.
+    """
+
     try:
         distribution = importlib.metadata.distribution("flash-linear-attention")
+        installed_version = distribution.metadata["Version"]
         import fla.ops.gated_delta_rule as gdr_module
 
         return {
             "package": "flash-linear-attention",
-            "version": distribution.metadata["Version"],
+            "expected_version": EXPECTED_FLA_VERSION,
+            "installed_version": installed_version,
+            "version_compatible": _version_compatible(installed_version),
+            "version": installed_version,
             "helper_package": {
                 name: importlib.metadata.version(name)
                 for name in ("fla-core",)
@@ -140,7 +163,8 @@ def fla_version() -> dict[str, object]:
             "decode_entry_point": f"{gdr_module.fused_recurrent_gated_delta_rule.__module__}"
             ".fused_recurrent_gated_delta_rule",
             "repository": "https://github.com/fla-org/flash-linear-attention",
-            "pin": "release 0.5.2 (GitHub tag v0.5.2)",
+            "pin": f"release {EXPECTED_FLA_VERSION} (GitHub tag "
+            f"v{EXPECTED_FLA_VERSION}); installed version recorded separately",
             "license": "MIT",
             "usage": "URM calls the installed package externally; no FLA "
             "source is vendored into URM",
@@ -188,6 +212,16 @@ class UrmGatedDeltaRuleAdapter:
     def support_status(self, spec: GatedDeltaRuleSpec) -> str | None:
         if self._import_error is not None:
             return f"flash-linear-attention unavailable: {self._import_error}"
+        identity = fla_version()
+        if identity.get("status") == "not_applicable":
+            return f"flash-linear-attention identity unresolved: {identity['reason']}"
+        if not identity["version_compatible"]:
+            return (
+                "installed flash-linear-attention "
+                f"{identity['installed_version']} does not satisfy the frozen "
+                f"contract pin =={EXPECTED_FLA_VERSION}; reinstall the pinned "
+                "release instead of running unverified semantics"
+            )
         if spec.mode != self.mode:
             return f"adapter built for mode {self.mode!r}, got {spec.mode!r}"
         if self.mode == MODE_DECODE and spec.sequence != 1:

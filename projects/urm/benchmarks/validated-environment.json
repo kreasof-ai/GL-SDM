@@ -24,5 +24,5 @@
     "fla-pin": "PyPI flash-linear-attention==0.5.2 (GitHub tag v0.5.2 of fla-org/flash-linear-attention), MIT license, called externally"
   },
   "cuda_runtime": "12.9",
-  "notes": "gpu extra pins triton>=3.4,<3.5; dev pins ruff==0.16.4 for reproducible formatting; fla extra pins flash-linear-attention==0.5.2 for the gated delta-rule comparator"
+  "notes": "gpu extra pins triton>=3.4,<3.5; dev pins ruff==0.16.4 for reproducible formatting (import-order rules enforced); fla extra pins flash-linear-attention==0.5.2 for the gated delta-rule comparator (expected pin recorded separately from installed version; incompatible installs are rejected). numpy policy: >=1.26,<3 - this validated line uses 1.26.4 and a clean-environment run on numpy 2.x exercises the upper end of the range before each release commit"
 }

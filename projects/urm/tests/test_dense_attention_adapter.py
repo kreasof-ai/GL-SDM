@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
@@ -132,13 +131,3 @@ def test_gqa_forward_backward_match_oracle() -> None:
     for tensor in (q_g, k_g, v_g):
         assert tensor.grad is not None
         assert torch.isfinite(tensor.grad).all()
-
-
-def test_committed_attention_artifacts_validate_against_schema() -> None:
-    schema_path = PROJECT_ROOT / "benchmarks" / "attention-result-schema.json"
-    artifact_path = PROJECT_ROOT / "results" / "attention" / "dense-causal.json"
-    if not artifact_path.exists():
-        pytest.skip("attention comparator has not been run yet")
-    from jsonschema import validate
-
-    validate(json.loads(artifact_path.read_text()), json.loads(schema_path.read_text()))

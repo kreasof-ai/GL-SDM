@@ -9,7 +9,11 @@ description = "Reference semantics and benchmark harness for the Unified Routed 
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-  "numpy>=2.0",
+  # Compatible range: >=1.26,<3. The validated GPU line (and every committed
+  # artifact) uses numpy 1.26.4; the CPU oracle also runs on numpy 2.x (see
+  # docs/benchmarking.md "Dependency policy"). Both endpoints of the range are
+  # exercised by clean-environment test runs before each release commit.
+  "numpy>=1.26,<3",
 ]
 
 [project.optional-dependencies]
@@ -40,6 +44,10 @@ fla = [
   # verified against this exact release.
   "flash-linear-attention==0.5.2",
 ]
+
+[tool.ruff.lint]
+# Import order is part of the acceptance gates: `ruff check` must cover it.
+extend-select = ["I"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

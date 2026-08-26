@@ -160,14 +160,19 @@ were wrong for a dispatch-bound comparison and were fixed:
 
 ### Adapter overhead results (v2 methodology, 30 pairs/case)
 
+Values in this section are derived programmatically from the committed
+artifact `results/attention/dense-causal.json` (`tests/test_artifact_schemas.py`
+recomputes them, so docs and artifacts cannot drift apart):
+
 | Shape class | FA direct -> URM (median paired) | SDPA-flash -> URM |
 | --- | --- | --- |
-| seq >= 2048 steady state, fwd+bwd (24 case-modes) | **-0.42% .. +1.68%** | similar range |
-| seq 128 (dispatch-bound, ~0.14-0.5 ms) | -10.7% .. +5.0% | same order |
+| seq >= 2048 steady state, fwd+bwd (24 case-modes) | **-0.03% .. +2.32%** | -0.50% .. +1.06% |
+| seq 128 (dispatch-bound, ~0.14-0.5 ms) | +0.52% .. +5.95% median paired | same order |
 
-Every steady-state case passes the <=5% median gate with margin; the largest
-observed bootstrap-CI upper bound among them is +6.6% on a +1.7% median
-(b1/d64/s2048 forward). seq=128 shapes are explicitly marked
+Every steady-state case passes the <=5% median gate with margin. The largest
+observed bootstrap-CI upper bound among steady-state rows is +4.53% on a
++1.53% median (b1/d64/s2048 forward); the worst steady-state median is +2.32%
+(b1/d128/s2048 forward). seq=128 shapes are explicitly marked
 dispatch-bound: their absolute deltas are tens of microseconds and co-host
 noise dominates (the negative "overhead" rows show the adapter's saved-flag
 SDPA path measuring *faster* than per-call context construction - clock and
@@ -305,3 +310,18 @@ a Mamba-3 kernel) can be compared against the same frozen contract; if decode
 dispatch cost matters before then, batching decode steps behind one adapter
 call removes most of the measured ~12-13 us/token integration cost without
 any new kernel.
+
+## Addendum - compiler architecture iteration
+
+A follow-on iteration (see git history after this file's last result update)
+established the compiler layer those next steps plug into:
+docs/compiler-charter.md, docs/coda-retrospective.md, the verified rewrite
+system under `src/urm/compiler/`, the routed-reduction row-scale epilogue
+prototype (`results/compiler/routed-scale-epilogue/`), the simulated
+communication planner, and the preset compilation matrix
+(`results/compiler/compilation-matrix.json`). Headline attention numbers were
+re-derived from the committed artifact during the same pass: worst
+steady-state FA-direct paired median is **+2.32%** and the worst bootstrap-CI
+upper bound is **+4.53%** (`tests/test_artifact_schemas.py` pins docs to
+artifacts). The SDM-adapter recommendation stands, now with placement/state
+planning available to consume it.

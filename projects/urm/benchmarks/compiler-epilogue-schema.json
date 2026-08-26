@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "URM fused row-scale epilogue comparison artifact",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "environment",
+    "semantics",
+    "forward_cases",
+    "backward_cases",
+    "schedule_C_fullrow_variant",
+    "correctness_by_dtype",
+    "estimates_are_analytical_not_measured_counters"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "environment": {
+      "type": "object",
+      "required": ["gpu", "torch", "triton", "git_revision"],
+      "properties": {
+        "gpu": { "type": "string" },
+        "torch": { "type": "string" },
+        "triton": { "type": ["string", "null"] },
+        "cuda": { "type": ["string", "null"] },
+        "git_revision": { "type": ["string", "null"] }
+      }
+    },
+    "semantics": {
+      "type": "string",
+      "pattern": "row_scale"
+    },
+    "forward_cases": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/case" } },
+    "backward_cases": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/case" } },
+    "schedule_C_fullrow_variant": {
+      "type": "object",
+      "required": ["median_device_ms", "accepted_schedule", "rejected_schedules_retained"],
+      "properties": {
+        "median_device_ms": { "type": "object" },
+        "accepted_schedule": { "type": "string" },
+        "rejected_schedules_retained": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["schedule", "median_device_ms", "reason"],
+            "properties": {
+              "schedule": { "type": "string" },
+              "median_device_ms": { "type": "number" },
+              "reason": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "correctness_by_dtype": {
+      "type": "object",
+      "required": ["float32", "float16", "bfloat16"],
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "max_abs_error_vs_eager_reference",
+          "reference_max_abs",
+          "atol",
+          "rtol"
+        ],
+        "properties": {
+          "max_abs_error_vs_eager_reference": { "type": "number" },
+          "reference_max_abs": { "type": "number" },
+          "atol": { "type": "number" },
+          "rtol": { "type": "number" }
+        }
+      }
+    },
+    "estimates_are_analytical_not_measured_counters": { "const": true }
+  },
+  "$defs": {
+    "case": {
+      "type": "object",
+      "required": [
+        "case",
+        "mode",
+        "analytic_traffic_bytes_upper_bound_no_l2_reuse",
+        "launch_counts_documented_model",
+        "measurements",
+        "avoided_materialization_bytes_estimate"
+      ],
+      "properties": {
+        "case": {
+          "type": "object",
+          "required": ["queries", "route_width", "sources", "value_dim", "regime"],
+          "properties": {
+            "name": { "type": "string" },
+            "queries": { "type": "integer" },
+            "route_width": { "type": "integer" },
+            "sources": { "type": "integer" },
+            "value_dim": { "type": "integer" },
+            "dtype": { "type": "string" },
+            "regime": { "enum": ["host_bound", "gpu_bound"] }
+          }
+        },
+        "mode": { "enum": ["forward", "backward"] },
+        "analytic_traffic_bytes_upper_bound_no_l2_reuse": {
+          "type": "object",
+          "required": ["shared_bytes", "materialized_extra_bytes"]
+        },
+        "launch_counts_documented_model": { "type": "object" },
+        "measurements": {
+          "type": "object",
+          "required": [
+            "A_materialized_v1_plus_scale",
+            "B_fused_row_scale_epilogue"
+          ],
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "wall_ms_per_call",
+              "median_device_ms",
+              "p95_device_ms"
+            ],
+            "properties": {
+              "wall_ms_per_call": { "type": "number" },
+              "median_device_ms": { "type": "number" },
+              "p95_device_ms": { "type": "number" },
+              "min_device_ms": { "type": "number" },
+              "dispatch_share_wall_minus_device": { "type": "number" }
+            }
+          }
+        },
+        "avoided_materialization_bytes_estimate": { "type": "integer" }
+      }
+    }
+  }
+}
