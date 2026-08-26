@@ -1,11 +1,19 @@
 {
   "schema_version": 2,
-  "generated_utc": "2026-08-26T13:08:20.090625+00:00",
+  "generated_utc": "2026-08-26T14:05:10.906020+00:00",
   "provenance": {
-    "git_revision": "0adafba59c119ff69eea3bfcb22172370baa89e1",
+    "git_revision": "452f5deb43b4912d30b4773b45031fe2e1fa3e09",
     "dirty_tree": false,
     "benchmark_command": "python benchmarks/compilation_matrix.py",
     "config_hash": "ddbebab1725c1a25565a08945112028907e1ec253cc57b3ef1b5e9ac0817ed3d",
+    "solver_version": "4.15.3",
+    "python": "3.12.13",
+    "platform": "Linux-6.12.95-124.187.amzn2023.x86_64-x86_64-with-glibc2.39",
+    "pytorch": "2.8.0",
+    "triton": "3.4.0",
+    "cuda": "12.9",
+    "driver": "595.91.07",
+    "gpu": "NVIDIA A10G",
     "constraint_model_hash": "2512950288539515fa3eab2419c7529d06ed909ca291c8ba3ca01464e99064f4",
     "constraint_model_hashes": [
       "2512950288539515fa3eab2419c7529d06ed909ca291c8ba3ca01464e99064f4",
@@ -18,8 +26,7 @@
       "c8efebfb93b3825c49baab67bf0eca69a602862f23e102c7087e556ac37773a2",
       "d36e1fc49dec85da500d2369027c579e13316335a5e47549364a6458330e9d52",
       "e35c0fee184be10dad0a0997932c1ace7846c07a30f2b11e4fe714147f7b6bab"
-    ],
-    "solver_version": "4.15.3"
+    ]
   },
   "summary": {
     "presets_evaluated": 19,
@@ -35,7 +42,7 @@
     "verified_models": 10,
     "schedule_models_verified": 10,
     "unsat_categories": [],
-    "solver_time_ms": 706.492,
+    "solver_time_ms": 713.564,
     "compile_failures": 0,
     "routing_skeleton_compile_rate": 0.5263,
     "full_architecture_compile_rate": 0.0,
@@ -127,7 +134,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 75.117,
+            "wall_ms": 71.945,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -162,23 +169,81 @@
               "nogood_added": false,
               "nogood_budget_exhausted": false,
               "nogood_forbidden": null,
-              "compile_status": "not_probed",
+              "compile_status": "succeeded",
               "compile_detail": null,
-              "registers_per_thread": null,
-              "shared_mem_bytes": null,
-              "kernel_resources": null
+              "registers_per_thread": 40,
+              "shared_mem_bytes": 32,
+              "kernel_resources": {
+                "forward": {
+                  "kernel_name": "_rrs_forward_kernel",
+                  "registers_per_thread": 34,
+                  "shared_mem_bytes": 0,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                },
+                "grad_weights": {
+                  "kernel_name": "_rrs_grad_weights_kernel",
+                  "registers_per_thread": 20,
+                  "shared_mem_bytes": 32,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                },
+                "grad_values": {
+                  "kernel_name": "_rrs_grad_values_per_query_fullrow_kernel",
+                  "registers_per_thread": 26,
+                  "shared_mem_bytes": 0,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                },
+                "grad_row_scale": {
+                  "kernel_name": "_rrs_grad_row_scale_kernel",
+                  "registers_per_thread": 40,
+                  "shared_mem_bytes": 32,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                }
+              }
             }
           ],
-          "compile_status": "not_probed",
+          "compile_status": "succeeded",
           "fallback_used": false,
           "rejected_assignments": 0,
           "compile_failures_observed": 0,
           "nogoods_added": 0,
           "recoveries": 0,
           "retry_budget_exhausted": false,
-          "registers_per_thread": null,
-          "shared_mem_bytes": null,
-          "kernel_resources": null
+          "registers_per_thread": 40,
+          "shared_mem_bytes": 32,
+          "kernel_resources": {
+            "forward": {
+              "kernel_name": "_rrs_forward_kernel",
+              "registers_per_thread": 34,
+              "shared_mem_bytes": 0,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            },
+            "grad_weights": {
+              "kernel_name": "_rrs_grad_weights_kernel",
+              "registers_per_thread": 20,
+              "shared_mem_bytes": 32,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            },
+            "grad_values": {
+              "kernel_name": "_rrs_grad_values_per_query_fullrow_kernel",
+              "registers_per_thread": 26,
+              "shared_mem_bytes": 0,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            },
+            "grad_row_scale": {
+              "kernel_name": "_rrs_grad_row_scale_kernel",
+              "registers_per_thread": 40,
+              "shared_mem_bytes": 32,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            }
+          }
         }
       ],
       "rewrite_accepted": 1,
@@ -350,7 +415,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 62.572,
+            "wall_ms": 65.548,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -385,23 +450,81 @@
               "nogood_added": false,
               "nogood_budget_exhausted": false,
               "nogood_forbidden": null,
-              "compile_status": "not_probed",
+              "compile_status": "succeeded",
               "compile_detail": null,
-              "registers_per_thread": null,
-              "shared_mem_bytes": null,
-              "kernel_resources": null
+              "registers_per_thread": 40,
+              "shared_mem_bytes": 32,
+              "kernel_resources": {
+                "forward": {
+                  "kernel_name": "_rrs_forward_kernel",
+                  "registers_per_thread": 34,
+                  "shared_mem_bytes": 0,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                },
+                "grad_weights": {
+                  "kernel_name": "_rrs_grad_weights_kernel",
+                  "registers_per_thread": 20,
+                  "shared_mem_bytes": 32,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                },
+                "grad_values": {
+                  "kernel_name": "_rrs_grad_values_per_query_fullrow_kernel",
+                  "registers_per_thread": 26,
+                  "shared_mem_bytes": 0,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                },
+                "grad_row_scale": {
+                  "kernel_name": "_rrs_grad_row_scale_kernel",
+                  "registers_per_thread": 40,
+                  "shared_mem_bytes": 32,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                }
+              }
             }
           ],
-          "compile_status": "not_probed",
+          "compile_status": "succeeded",
           "fallback_used": false,
           "rejected_assignments": 0,
           "compile_failures_observed": 0,
           "nogoods_added": 0,
           "recoveries": 0,
           "retry_budget_exhausted": false,
-          "registers_per_thread": null,
-          "shared_mem_bytes": null,
-          "kernel_resources": null
+          "registers_per_thread": 40,
+          "shared_mem_bytes": 32,
+          "kernel_resources": {
+            "forward": {
+              "kernel_name": "_rrs_forward_kernel",
+              "registers_per_thread": 34,
+              "shared_mem_bytes": 0,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            },
+            "grad_weights": {
+              "kernel_name": "_rrs_grad_weights_kernel",
+              "registers_per_thread": 20,
+              "shared_mem_bytes": 32,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            },
+            "grad_values": {
+              "kernel_name": "_rrs_grad_values_per_query_fullrow_kernel",
+              "registers_per_thread": 26,
+              "shared_mem_bytes": 0,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            },
+            "grad_row_scale": {
+              "kernel_name": "_rrs_grad_row_scale_kernel",
+              "registers_per_thread": 40,
+              "shared_mem_bytes": 32,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            }
+          }
         }
       ],
       "rewrite_accepted": 1,
@@ -573,7 +696,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 73.687,
+            "wall_ms": 74.144,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -608,23 +731,81 @@
               "nogood_added": false,
               "nogood_budget_exhausted": false,
               "nogood_forbidden": null,
-              "compile_status": "not_probed",
+              "compile_status": "succeeded",
               "compile_detail": null,
-              "registers_per_thread": null,
-              "shared_mem_bytes": null,
-              "kernel_resources": null
+              "registers_per_thread": 42,
+              "shared_mem_bytes": 32,
+              "kernel_resources": {
+                "forward": {
+                  "kernel_name": "_rrs_forward_kernel",
+                  "registers_per_thread": 42,
+                  "shared_mem_bytes": 0,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                },
+                "grad_weights": {
+                  "kernel_name": "_rrs_grad_weights_kernel",
+                  "registers_per_thread": 20,
+                  "shared_mem_bytes": 32,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                },
+                "grad_values": {
+                  "kernel_name": "_rrs_grad_values_per_query_fullrow_kernel",
+                  "registers_per_thread": 26,
+                  "shared_mem_bytes": 0,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                },
+                "grad_row_scale": {
+                  "kernel_name": "_rrs_grad_row_scale_kernel",
+                  "registers_per_thread": 42,
+                  "shared_mem_bytes": 32,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                }
+              }
             }
           ],
-          "compile_status": "not_probed",
+          "compile_status": "succeeded",
           "fallback_used": false,
           "rejected_assignments": 0,
           "compile_failures_observed": 0,
           "nogoods_added": 0,
           "recoveries": 0,
           "retry_budget_exhausted": false,
-          "registers_per_thread": null,
-          "shared_mem_bytes": null,
-          "kernel_resources": null
+          "registers_per_thread": 42,
+          "shared_mem_bytes": 32,
+          "kernel_resources": {
+            "forward": {
+              "kernel_name": "_rrs_forward_kernel",
+              "registers_per_thread": 42,
+              "shared_mem_bytes": 0,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            },
+            "grad_weights": {
+              "kernel_name": "_rrs_grad_weights_kernel",
+              "registers_per_thread": 20,
+              "shared_mem_bytes": 32,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            },
+            "grad_values": {
+              "kernel_name": "_rrs_grad_values_per_query_fullrow_kernel",
+              "registers_per_thread": 26,
+              "shared_mem_bytes": 0,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            },
+            "grad_row_scale": {
+              "kernel_name": "_rrs_grad_row_scale_kernel",
+              "registers_per_thread": 42,
+              "shared_mem_bytes": 32,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            }
+          }
         }
       ],
       "rewrite_accepted": 1,
@@ -796,7 +977,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 70.191,
+            "wall_ms": 71.043,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -831,23 +1012,81 @@
               "nogood_added": false,
               "nogood_budget_exhausted": false,
               "nogood_forbidden": null,
-              "compile_status": "not_probed",
+              "compile_status": "succeeded",
               "compile_detail": null,
-              "registers_per_thread": null,
-              "shared_mem_bytes": null,
-              "kernel_resources": null
+              "registers_per_thread": 40,
+              "shared_mem_bytes": 32,
+              "kernel_resources": {
+                "forward": {
+                  "kernel_name": "_rrs_forward_kernel",
+                  "registers_per_thread": 40,
+                  "shared_mem_bytes": 0,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                },
+                "grad_weights": {
+                  "kernel_name": "_rrs_grad_weights_kernel",
+                  "registers_per_thread": 20,
+                  "shared_mem_bytes": 32,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                },
+                "grad_values": {
+                  "kernel_name": "_rrs_grad_values_per_query_fullrow_kernel",
+                  "registers_per_thread": 26,
+                  "shared_mem_bytes": 0,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                },
+                "grad_row_scale": {
+                  "kernel_name": "_rrs_grad_row_scale_kernel",
+                  "registers_per_thread": 40,
+                  "shared_mem_bytes": 32,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                }
+              }
             }
           ],
-          "compile_status": "not_probed",
+          "compile_status": "succeeded",
           "fallback_used": false,
           "rejected_assignments": 0,
           "compile_failures_observed": 0,
           "nogoods_added": 0,
           "recoveries": 0,
           "retry_budget_exhausted": false,
-          "registers_per_thread": null,
-          "shared_mem_bytes": null,
-          "kernel_resources": null
+          "registers_per_thread": 40,
+          "shared_mem_bytes": 32,
+          "kernel_resources": {
+            "forward": {
+              "kernel_name": "_rrs_forward_kernel",
+              "registers_per_thread": 40,
+              "shared_mem_bytes": 0,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            },
+            "grad_weights": {
+              "kernel_name": "_rrs_grad_weights_kernel",
+              "registers_per_thread": 20,
+              "shared_mem_bytes": 32,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            },
+            "grad_values": {
+              "kernel_name": "_rrs_grad_values_per_query_fullrow_kernel",
+              "registers_per_thread": 26,
+              "shared_mem_bytes": 0,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            },
+            "grad_row_scale": {
+              "kernel_name": "_rrs_grad_row_scale_kernel",
+              "registers_per_thread": 40,
+              "shared_mem_bytes": 32,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            }
+          }
         }
       ],
       "rewrite_accepted": 1,
@@ -1019,7 +1258,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 64.048,
+            "wall_ms": 61.517,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -1054,23 +1293,81 @@
               "nogood_added": false,
               "nogood_budget_exhausted": false,
               "nogood_forbidden": null,
-              "compile_status": "not_probed",
+              "compile_status": "succeeded",
               "compile_detail": null,
-              "registers_per_thread": null,
-              "shared_mem_bytes": null,
-              "kernel_resources": null
+              "registers_per_thread": 26,
+              "shared_mem_bytes": 32,
+              "kernel_resources": {
+                "forward": {
+                  "kernel_name": "_rrs_forward_kernel",
+                  "registers_per_thread": 22,
+                  "shared_mem_bytes": 0,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                },
+                "grad_weights": {
+                  "kernel_name": "_rrs_grad_weights_kernel",
+                  "registers_per_thread": 20,
+                  "shared_mem_bytes": 32,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                },
+                "grad_values": {
+                  "kernel_name": "_rrs_grad_values_per_query_fullrow_kernel",
+                  "registers_per_thread": 24,
+                  "shared_mem_bytes": 0,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                },
+                "grad_row_scale": {
+                  "kernel_name": "_rrs_grad_row_scale_kernel",
+                  "registers_per_thread": 26,
+                  "shared_mem_bytes": 32,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                }
+              }
             }
           ],
-          "compile_status": "not_probed",
+          "compile_status": "succeeded",
           "fallback_used": false,
           "rejected_assignments": 0,
           "compile_failures_observed": 0,
           "nogoods_added": 0,
           "recoveries": 0,
           "retry_budget_exhausted": false,
-          "registers_per_thread": null,
-          "shared_mem_bytes": null,
-          "kernel_resources": null
+          "registers_per_thread": 26,
+          "shared_mem_bytes": 32,
+          "kernel_resources": {
+            "forward": {
+              "kernel_name": "_rrs_forward_kernel",
+              "registers_per_thread": 22,
+              "shared_mem_bytes": 0,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            },
+            "grad_weights": {
+              "kernel_name": "_rrs_grad_weights_kernel",
+              "registers_per_thread": 20,
+              "shared_mem_bytes": 32,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            },
+            "grad_values": {
+              "kernel_name": "_rrs_grad_values_per_query_fullrow_kernel",
+              "registers_per_thread": 24,
+              "shared_mem_bytes": 0,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            },
+            "grad_row_scale": {
+              "kernel_name": "_rrs_grad_row_scale_kernel",
+              "registers_per_thread": 26,
+              "shared_mem_bytes": 32,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            }
+          }
         }
       ],
       "rewrite_accepted": 1,
@@ -1242,7 +1539,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 66.239,
+            "wall_ms": 66.122,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -1277,23 +1574,81 @@
               "nogood_added": false,
               "nogood_budget_exhausted": false,
               "nogood_forbidden": null,
-              "compile_status": "not_probed",
+              "compile_status": "succeeded",
               "compile_detail": null,
-              "registers_per_thread": null,
-              "shared_mem_bytes": null,
-              "kernel_resources": null
+              "registers_per_thread": 36,
+              "shared_mem_bytes": 32,
+              "kernel_resources": {
+                "forward": {
+                  "kernel_name": "_rrs_forward_kernel",
+                  "registers_per_thread": 29,
+                  "shared_mem_bytes": 0,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                },
+                "grad_weights": {
+                  "kernel_name": "_rrs_grad_weights_kernel",
+                  "registers_per_thread": 20,
+                  "shared_mem_bytes": 32,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                },
+                "grad_values": {
+                  "kernel_name": "_rrs_grad_values_per_query_fullrow_kernel",
+                  "registers_per_thread": 26,
+                  "shared_mem_bytes": 0,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                },
+                "grad_row_scale": {
+                  "kernel_name": "_rrs_grad_row_scale_kernel",
+                  "registers_per_thread": 36,
+                  "shared_mem_bytes": 32,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                }
+              }
             }
           ],
-          "compile_status": "not_probed",
+          "compile_status": "succeeded",
           "fallback_used": false,
           "rejected_assignments": 0,
           "compile_failures_observed": 0,
           "nogoods_added": 0,
           "recoveries": 0,
           "retry_budget_exhausted": false,
-          "registers_per_thread": null,
-          "shared_mem_bytes": null,
-          "kernel_resources": null
+          "registers_per_thread": 36,
+          "shared_mem_bytes": 32,
+          "kernel_resources": {
+            "forward": {
+              "kernel_name": "_rrs_forward_kernel",
+              "registers_per_thread": 29,
+              "shared_mem_bytes": 0,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            },
+            "grad_weights": {
+              "kernel_name": "_rrs_grad_weights_kernel",
+              "registers_per_thread": 20,
+              "shared_mem_bytes": 32,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            },
+            "grad_values": {
+              "kernel_name": "_rrs_grad_values_per_query_fullrow_kernel",
+              "registers_per_thread": 26,
+              "shared_mem_bytes": 0,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            },
+            "grad_row_scale": {
+              "kernel_name": "_rrs_grad_row_scale_kernel",
+              "registers_per_thread": 36,
+              "shared_mem_bytes": 32,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            }
+          }
         }
       ],
       "rewrite_accepted": 1,
@@ -1465,7 +1820,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 68.723,
+            "wall_ms": 66.677,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -1500,23 +1855,81 @@
               "nogood_added": false,
               "nogood_budget_exhausted": false,
               "nogood_forbidden": null,
-              "compile_status": "not_probed",
+              "compile_status": "succeeded",
               "compile_detail": null,
-              "registers_per_thread": null,
-              "shared_mem_bytes": null,
-              "kernel_resources": null
+              "registers_per_thread": 40,
+              "shared_mem_bytes": 32,
+              "kernel_resources": {
+                "forward": {
+                  "kernel_name": "_rrs_forward_kernel",
+                  "registers_per_thread": 34,
+                  "shared_mem_bytes": 0,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                },
+                "grad_weights": {
+                  "kernel_name": "_rrs_grad_weights_kernel",
+                  "registers_per_thread": 20,
+                  "shared_mem_bytes": 32,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                },
+                "grad_values": {
+                  "kernel_name": "_rrs_grad_values_per_query_fullrow_kernel",
+                  "registers_per_thread": 26,
+                  "shared_mem_bytes": 0,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                },
+                "grad_row_scale": {
+                  "kernel_name": "_rrs_grad_row_scale_kernel",
+                  "registers_per_thread": 40,
+                  "shared_mem_bytes": 32,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                }
+              }
             }
           ],
-          "compile_status": "not_probed",
+          "compile_status": "succeeded",
           "fallback_used": false,
           "rejected_assignments": 0,
           "compile_failures_observed": 0,
           "nogoods_added": 0,
           "recoveries": 0,
           "retry_budget_exhausted": false,
-          "registers_per_thread": null,
-          "shared_mem_bytes": null,
-          "kernel_resources": null
+          "registers_per_thread": 40,
+          "shared_mem_bytes": 32,
+          "kernel_resources": {
+            "forward": {
+              "kernel_name": "_rrs_forward_kernel",
+              "registers_per_thread": 34,
+              "shared_mem_bytes": 0,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            },
+            "grad_weights": {
+              "kernel_name": "_rrs_grad_weights_kernel",
+              "registers_per_thread": 20,
+              "shared_mem_bytes": 32,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            },
+            "grad_values": {
+              "kernel_name": "_rrs_grad_values_per_query_fullrow_kernel",
+              "registers_per_thread": 26,
+              "shared_mem_bytes": 0,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            },
+            "grad_row_scale": {
+              "kernel_name": "_rrs_grad_row_scale_kernel",
+              "registers_per_thread": 40,
+              "shared_mem_bytes": 32,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            }
+          }
         }
       ],
       "rewrite_accepted": 1,
@@ -1688,7 +2101,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 71.113,
+            "wall_ms": 75.313,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -1723,23 +2136,81 @@
               "nogood_added": false,
               "nogood_budget_exhausted": false,
               "nogood_forbidden": null,
-              "compile_status": "not_probed",
+              "compile_status": "succeeded",
               "compile_detail": null,
-              "registers_per_thread": null,
-              "shared_mem_bytes": null,
-              "kernel_resources": null
+              "registers_per_thread": 40,
+              "shared_mem_bytes": 32,
+              "kernel_resources": {
+                "forward": {
+                  "kernel_name": "_rrs_forward_kernel",
+                  "registers_per_thread": 34,
+                  "shared_mem_bytes": 0,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                },
+                "grad_weights": {
+                  "kernel_name": "_rrs_grad_weights_kernel",
+                  "registers_per_thread": 20,
+                  "shared_mem_bytes": 32,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                },
+                "grad_values": {
+                  "kernel_name": "_rrs_grad_values_per_query_fullrow_kernel",
+                  "registers_per_thread": 26,
+                  "shared_mem_bytes": 0,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                },
+                "grad_row_scale": {
+                  "kernel_name": "_rrs_grad_row_scale_kernel",
+                  "registers_per_thread": 40,
+                  "shared_mem_bytes": 32,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                }
+              }
             }
           ],
-          "compile_status": "not_probed",
+          "compile_status": "succeeded",
           "fallback_used": false,
           "rejected_assignments": 0,
           "compile_failures_observed": 0,
           "nogoods_added": 0,
           "recoveries": 0,
           "retry_budget_exhausted": false,
-          "registers_per_thread": null,
-          "shared_mem_bytes": null,
-          "kernel_resources": null
+          "registers_per_thread": 40,
+          "shared_mem_bytes": 32,
+          "kernel_resources": {
+            "forward": {
+              "kernel_name": "_rrs_forward_kernel",
+              "registers_per_thread": 34,
+              "shared_mem_bytes": 0,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            },
+            "grad_weights": {
+              "kernel_name": "_rrs_grad_weights_kernel",
+              "registers_per_thread": 20,
+              "shared_mem_bytes": 32,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            },
+            "grad_values": {
+              "kernel_name": "_rrs_grad_values_per_query_fullrow_kernel",
+              "registers_per_thread": 26,
+              "shared_mem_bytes": 0,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            },
+            "grad_row_scale": {
+              "kernel_name": "_rrs_grad_row_scale_kernel",
+              "registers_per_thread": 40,
+              "shared_mem_bytes": 32,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            }
+          }
         }
       ],
       "rewrite_accepted": 1,
@@ -1911,7 +2382,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 67.747,
+            "wall_ms": 72.043,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -1946,23 +2417,81 @@
               "nogood_added": false,
               "nogood_budget_exhausted": false,
               "nogood_forbidden": null,
-              "compile_status": "not_probed",
+              "compile_status": "succeeded",
               "compile_detail": null,
-              "registers_per_thread": null,
-              "shared_mem_bytes": null,
-              "kernel_resources": null
+              "registers_per_thread": 40,
+              "shared_mem_bytes": 32,
+              "kernel_resources": {
+                "forward": {
+                  "kernel_name": "_rrs_forward_kernel",
+                  "registers_per_thread": 40,
+                  "shared_mem_bytes": 0,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                },
+                "grad_weights": {
+                  "kernel_name": "_rrs_grad_weights_kernel",
+                  "registers_per_thread": 20,
+                  "shared_mem_bytes": 32,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                },
+                "grad_values": {
+                  "kernel_name": "_rrs_grad_values_per_query_fullrow_kernel",
+                  "registers_per_thread": 26,
+                  "shared_mem_bytes": 0,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                },
+                "grad_row_scale": {
+                  "kernel_name": "_rrs_grad_row_scale_kernel",
+                  "registers_per_thread": 40,
+                  "shared_mem_bytes": 32,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                }
+              }
             }
           ],
-          "compile_status": "not_probed",
+          "compile_status": "succeeded",
           "fallback_used": false,
           "rejected_assignments": 0,
           "compile_failures_observed": 0,
           "nogoods_added": 0,
           "recoveries": 0,
           "retry_budget_exhausted": false,
-          "registers_per_thread": null,
-          "shared_mem_bytes": null,
-          "kernel_resources": null
+          "registers_per_thread": 40,
+          "shared_mem_bytes": 32,
+          "kernel_resources": {
+            "forward": {
+              "kernel_name": "_rrs_forward_kernel",
+              "registers_per_thread": 40,
+              "shared_mem_bytes": 0,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            },
+            "grad_weights": {
+              "kernel_name": "_rrs_grad_weights_kernel",
+              "registers_per_thread": 20,
+              "shared_mem_bytes": 32,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            },
+            "grad_values": {
+              "kernel_name": "_rrs_grad_values_per_query_fullrow_kernel",
+              "registers_per_thread": 26,
+              "shared_mem_bytes": 0,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            },
+            "grad_row_scale": {
+              "kernel_name": "_rrs_grad_row_scale_kernel",
+              "registers_per_thread": 40,
+              "shared_mem_bytes": 32,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            }
+          }
         }
       ],
       "rewrite_accepted": 1,
@@ -2134,7 +2663,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 74.489,
+            "wall_ms": 75.818,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -2169,23 +2698,81 @@
               "nogood_added": false,
               "nogood_budget_exhausted": false,
               "nogood_forbidden": null,
-              "compile_status": "not_probed",
+              "compile_status": "succeeded",
               "compile_detail": null,
-              "registers_per_thread": null,
-              "shared_mem_bytes": null,
-              "kernel_resources": null
+              "registers_per_thread": 40,
+              "shared_mem_bytes": 32,
+              "kernel_resources": {
+                "forward": {
+                  "kernel_name": "_rrs_forward_kernel",
+                  "registers_per_thread": 34,
+                  "shared_mem_bytes": 0,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                },
+                "grad_weights": {
+                  "kernel_name": "_rrs_grad_weights_kernel",
+                  "registers_per_thread": 20,
+                  "shared_mem_bytes": 32,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                },
+                "grad_values": {
+                  "kernel_name": "_rrs_grad_values_per_query_fullrow_kernel",
+                  "registers_per_thread": 26,
+                  "shared_mem_bytes": 0,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                },
+                "grad_row_scale": {
+                  "kernel_name": "_rrs_grad_row_scale_kernel",
+                  "registers_per_thread": 40,
+                  "shared_mem_bytes": 32,
+                  "spill_bytes": 0,
+                  "unavailable_reason": null
+                }
+              }
             }
           ],
-          "compile_status": "not_probed",
+          "compile_status": "succeeded",
           "fallback_used": false,
           "rejected_assignments": 0,
           "compile_failures_observed": 0,
           "nogoods_added": 0,
           "recoveries": 0,
           "retry_budget_exhausted": false,
-          "registers_per_thread": null,
-          "shared_mem_bytes": null,
-          "kernel_resources": null
+          "registers_per_thread": 40,
+          "shared_mem_bytes": 32,
+          "kernel_resources": {
+            "forward": {
+              "kernel_name": "_rrs_forward_kernel",
+              "registers_per_thread": 34,
+              "shared_mem_bytes": 0,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            },
+            "grad_weights": {
+              "kernel_name": "_rrs_grad_weights_kernel",
+              "registers_per_thread": 20,
+              "shared_mem_bytes": 32,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            },
+            "grad_values": {
+              "kernel_name": "_rrs_grad_values_per_query_fullrow_kernel",
+              "registers_per_thread": 26,
+              "shared_mem_bytes": 0,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            },
+            "grad_row_scale": {
+              "kernel_name": "_rrs_grad_row_scale_kernel",
+              "registers_per_thread": 40,
+              "shared_mem_bytes": 32,
+              "spill_bytes": 0,
+              "unavailable_reason": null
+            }
+          }
         }
       ],
       "rewrite_accepted": 1,
