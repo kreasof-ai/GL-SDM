@@ -13,8 +13,7 @@
   ],
   "properties": {
     "schema_version": {
-      "description": "v1 = legacy median-only measurement; v2 = raw-sample statistics with genuine p95. Tightened to a const of 2 once the regenerated artifact lands.",
-      "enum": [1, 2]
+      "const": 2
     },
     "generated_utc": {
       "type": "string"

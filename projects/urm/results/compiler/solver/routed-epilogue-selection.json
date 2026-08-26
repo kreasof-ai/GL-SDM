@@ -1,8 +1,8 @@
 {
   "schema_version": 2,
-  "generated_utc": "2026-08-26T11:38:11.720158+00:00",
+  "generated_utc": "2026-08-26T11:42:45.665768+00:00",
   "provenance": {
-    "git_revision": "2e2356c0d28f5e830fd381ff239406dc22136b1e",
+    "git_revision": "dc94b5ec51032ec72e42da301543121f033f4501",
     "dirty_tree": false,
     "benchmark_command": "python benchmarks/routed_epilogue_selection.py",
     "config_hash": "97d1fdb967561c101c05868379daf406b994aecb9b95ea8f0d30d210cc62ab34",
@@ -27,12 +27,12 @@
   },
   "legality": {
     "reference_impl": "schedule_space.legal_schedules",
-    "reference_legal_points": 384,
+    "reference_legal_points": 192,
     "model_sweep_legal_points": 192,
-    "reference_matches_model_sweep": false,
+    "reference_matches_model_sweep": true,
     "z3_sat_assignments": 1,
-    "agreement": false,
-    "legality_accuracy": 0.0
+    "agreement": true,
+    "legality_accuracy": 1.0
   },
   "unsat_core_example": {
     "core_names": [
@@ -52,9 +52,9 @@
       "dtype": "bfloat16"
     },
     "matches_compiled_decision": true,
-    "solve_ms": 243.501,
-    "feasibility_solve_ms": 85.122,
-    "optimization_solve_ms": 158.379,
+    "solve_ms": 235.231,
+    "feasibility_solve_ms": 86.513,
+    "optimization_solve_ms": 148.719,
     "objective_values": [
       0,
       0,
@@ -102,7 +102,7 @@
       15024
     ],
     "solver_statistics": {
-      "wall_ms": 76.182,
+      "wall_ms": 65.641,
       "timeout_ms": 10000,
       "rlimit": 10000000,
       "objectives": 8
@@ -175,14 +175,14 @@
     "compile_failures_avoided": 0,
     "best_point": {
       "plan": "fused",
-      "block_d": 128,
-      "num_warps": 2,
-      "num_stages": 4,
+      "block_d": 64,
+      "num_warps": 1,
+      "num_stages": 1,
       "grad_values_decomposition": "per_query",
       "grad_values_schedule": "segmented",
       "dtype": "bfloat16"
     },
-    "best_median_ms": 0.2033,
+    "best_median_ms": 0.2038,
     "solver_selected": {
       "plan": "fused",
       "block_d": 256,
@@ -202,8 +202,8 @@
       "dtype": "bfloat16"
     },
     "regret": {
-      "z3_vs_best_pct": 3.49,
-      "heuristic_vs_best_pct": 24.4,
+      "z3_vs_best_pct": 2.5,
+      "heuristic_vs_best_pct": 22.08,
       "target_pct": 10.0,
       "within_target": true,
       "note": "regret is computed within the measured fused grid against the genuine median; the base (unfused) plan was already compared in results/compiler/routed-scale-epilogue/benchmark.json"
@@ -219,8 +219,8 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2463,
-        "p95_ms": 0.2848,
+        "median_ms": 0.2452,
+        "p95_ms": 0.2943,
         "min_ms": 0.2427,
         "sample_count": 20,
         "registers_per_thread": null,
@@ -236,9 +236,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2038,
-        "p95_ms": 0.2184,
-        "min_ms": 0.1997,
+        "median_ms": 0.2043,
+        "p95_ms": 0.2512,
+        "min_ms": 0.2007,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -253,8 +253,8 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2161,
-        "p95_ms": 0.2676,
+        "median_ms": 0.2186,
+        "p95_ms": 0.2886,
         "min_ms": 0.2048,
         "sample_count": 20,
         "registers_per_thread": null,
@@ -270,9 +270,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2832,
-        "p95_ms": 0.3212,
-        "min_ms": 0.2796,
+        "median_ms": 0.2806,
+        "p95_ms": 0.2846,
+        "min_ms": 0.2785,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -288,8 +288,8 @@
           "dtype": "bfloat16"
         },
         "median_ms": 0.2473,
-        "p95_ms": 0.2746,
-        "min_ms": 0.2437,
+        "p95_ms": 0.2881,
+        "min_ms": 0.2417,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -304,9 +304,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2043,
-        "p95_ms": 0.2377,
-        "min_ms": 0.2007,
+        "median_ms": 0.2053,
+        "p95_ms": 0.2627,
+        "min_ms": 0.1997,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -321,8 +321,8 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2079,
-        "p95_ms": 0.2738,
+        "median_ms": 0.2063,
+        "p95_ms": 0.2801,
         "min_ms": 0.2038,
         "sample_count": 20,
         "registers_per_thread": null,
@@ -338,9 +338,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2847,
-        "p95_ms": 0.3238,
-        "min_ms": 0.2796,
+        "median_ms": 0.2805,
+        "p95_ms": 0.292,
+        "min_ms": 0.2785,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -355,9 +355,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2473,
-        "p95_ms": 0.2634,
-        "min_ms": 0.2427,
+        "median_ms": 0.2478,
+        "p95_ms": 0.3014,
+        "min_ms": 0.2406,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -372,8 +372,8 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2033,
-        "p95_ms": 0.2193,
+        "median_ms": 0.2053,
+        "p95_ms": 0.2595,
         "min_ms": 0.2007,
         "sample_count": 20,
         "registers_per_thread": null,
@@ -389,9 +389,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2063,
-        "p95_ms": 0.262,
-        "min_ms": 0.2048,
+        "median_ms": 0.2068,
+        "p95_ms": 0.2923,
+        "min_ms": 0.2028,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -406,9 +406,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2826,
-        "p95_ms": 0.3113,
-        "min_ms": 0.2796,
+        "median_ms": 0.2801,
+        "p95_ms": 0.2878,
+        "min_ms": 0.2775,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -423,9 +423,9 @@
           "grad_values_schedule": "full_row",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2104,
-        "p95_ms": 0.2562,
-        "min_ms": 0.2079,
+        "median_ms": 0.2089,
+        "p95_ms": 0.2483,
+        "min_ms": 0.2068,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -440,8 +440,8 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2488,
-        "p95_ms": 0.2582,
+        "median_ms": 0.2483,
+        "p95_ms": 0.2594,
         "min_ms": 0.2458,
         "sample_count": 20,
         "registers_per_thread": null,
@@ -457,9 +457,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2529,
-        "p95_ms": 0.3116,
-        "min_ms": 0.2447,
+        "median_ms": 0.2488,
+        "p95_ms": 0.3083,
+        "min_ms": 0.2427,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -474,9 +474,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2038,
-        "p95_ms": 0.2372,
-        "min_ms": 0.1987,
+        "median_ms": 0.2063,
+        "p95_ms": 0.2355,
+        "min_ms": 0.2017,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -491,8 +491,8 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2355,
-        "p95_ms": 0.2746,
+        "median_ms": 0.2125,
+        "p95_ms": 0.2736,
         "min_ms": 0.2079,
         "sample_count": 20,
         "registers_per_thread": null,
@@ -508,9 +508,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2509,
-        "p95_ms": 0.3082,
-        "min_ms": 0.2458,
+        "median_ms": 0.2488,
+        "p95_ms": 0.2824,
+        "min_ms": 0.2447,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -525,9 +525,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2499,
-        "p95_ms": 0.2976,
-        "min_ms": 0.2458,
+        "median_ms": 0.2463,
+        "p95_ms": 0.2581,
+        "min_ms": 0.2437,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -542,8 +542,8 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2068,
-        "p95_ms": 0.2796,
+        "median_ms": 0.214,
+        "p95_ms": 0.3124,
         "min_ms": 0.2017,
         "sample_count": 20,
         "registers_per_thread": null,
@@ -559,9 +559,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.234,
-        "p95_ms": 0.2952,
-        "min_ms": 0.2089,
+        "median_ms": 0.2247,
+        "p95_ms": 0.2664,
+        "min_ms": 0.2068,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -576,9 +576,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2488,
-        "p95_ms": 0.2696,
-        "min_ms": 0.2468,
+        "median_ms": 0.2468,
+        "p95_ms": 0.2645,
+        "min_ms": 0.2458,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -593,9 +593,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2504,
-        "p95_ms": 0.296,
-        "min_ms": 0.2417,
+        "median_ms": 0.2478,
+        "p95_ms": 0.2655,
+        "min_ms": 0.2447,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -610,9 +610,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2053,
-        "p95_ms": 0.2339,
-        "min_ms": 0.2028,
+        "median_ms": 0.2048,
+        "p95_ms": 0.292,
+        "min_ms": 0.2007,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -627,9 +627,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.215,
-        "p95_ms": 0.271,
-        "min_ms": 0.2079,
+        "median_ms": 0.2504,
+        "p95_ms": 0.2778,
+        "min_ms": 0.2099,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -644,9 +644,9 @@
           "grad_values_schedule": "full_row",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2222,
-        "p95_ms": 0.258,
-        "min_ms": 0.2202,
+        "median_ms": 0.2217,
+        "p95_ms": 0.2653,
+        "min_ms": 0.2191,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -661,9 +661,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2278,
-        "p95_ms": 0.277,
-        "min_ms": 0.2212,
+        "median_ms": 0.2212,
+        "p95_ms": 0.2621,
+        "min_ms": 0.2191,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -678,8 +678,8 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2212,
-        "p95_ms": 0.2831,
+        "median_ms": 0.2284,
+        "p95_ms": 0.2689,
         "min_ms": 0.2099,
         "sample_count": 20,
         "registers_per_thread": null,
@@ -695,8 +695,8 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2365,
-        "p95_ms": 0.2762,
+        "median_ms": 0.2335,
+        "p95_ms": 0.2479,
         "min_ms": 0.2314,
         "sample_count": 20,
         "registers_per_thread": null,
@@ -712,9 +712,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.3261,
-        "p95_ms": 0.3382,
-        "min_ms": 0.3215,
+        "median_ms": 0.342,
+        "p95_ms": 0.3651,
+        "min_ms": 0.3236,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -729,9 +729,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.5888,
-        "p95_ms": 0.6032,
-        "min_ms": 0.5786,
+        "median_ms": 0.5857,
+        "p95_ms": 0.6022,
+        "min_ms": 0.5765,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -746,9 +746,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2125,
-        "p95_ms": 0.2304,
-        "min_ms": 0.2099,
+        "median_ms": 0.2145,
+        "p95_ms": 0.2616,
+        "min_ms": 0.2089,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -763,9 +763,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2371,
-        "p95_ms": 0.3166,
-        "min_ms": 0.2324,
+        "median_ms": 0.2324,
+        "p95_ms": 0.2412,
+        "min_ms": 0.2304,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -780,8 +780,8 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.3267,
-        "p95_ms": 0.3508,
+        "median_ms": 0.3282,
+        "p95_ms": 0.352,
         "min_ms": 0.3226,
         "sample_count": 20,
         "registers_per_thread": null,
@@ -797,8 +797,8 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.5858,
-        "p95_ms": 0.6032,
+        "median_ms": 0.5811,
+        "p95_ms": 0.5972,
         "min_ms": 0.5765,
         "sample_count": 20,
         "registers_per_thread": null,
@@ -814,9 +814,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2171,
-        "p95_ms": 0.2618,
-        "min_ms": 0.2109,
+        "median_ms": 0.2181,
+        "p95_ms": 0.2677,
+        "min_ms": 0.2089,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -831,8 +831,8 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.237,
-        "p95_ms": 0.2714,
+        "median_ms": 0.2386,
+        "p95_ms": 0.3014,
         "min_ms": 0.2324,
         "sample_count": 20,
         "registers_per_thread": null,
@@ -848,8 +848,8 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.3261,
-        "p95_ms": 0.3377,
+        "median_ms": 0.3277,
+        "p95_ms": 0.3543,
         "min_ms": 0.3215,
         "sample_count": 20,
         "registers_per_thread": null,
@@ -865,9 +865,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.5791,
-        "p95_ms": 0.5975,
-        "min_ms": 0.5765,
+        "median_ms": 0.5775,
+        "p95_ms": 0.5868,
+        "min_ms": 0.5755,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -882,9 +882,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2084,
-        "p95_ms": 0.2837,
-        "min_ms": 0.2028,
+        "median_ms": 0.2038,
+        "p95_ms": 0.2541,
+        "min_ms": 0.2017,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -899,8 +899,8 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2104,
-        "p95_ms": 0.2492,
+        "median_ms": 0.2089,
+        "p95_ms": 0.2122,
         "min_ms": 0.2068,
         "sample_count": 20,
         "registers_per_thread": null,
@@ -916,9 +916,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2796,
-        "p95_ms": 0.3216,
-        "min_ms": 0.2734,
+        "median_ms": 0.278,
+        "p95_ms": 0.3003,
+        "min_ms": 0.2724,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -933,9 +933,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.4255,
-        "p95_ms": 0.4696,
-        "min_ms": 0.4239,
+        "median_ms": 0.4245,
+        "p95_ms": 0.4311,
+        "min_ms": 0.4219,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -950,9 +950,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2068,
-        "p95_ms": 0.2341,
-        "min_ms": 0.2028,
+        "median_ms": 0.2063,
+        "p95_ms": 0.226,
+        "min_ms": 0.2017,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -967,9 +967,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2099,
-        "p95_ms": 0.2358,
-        "min_ms": 0.2079,
+        "median_ms": 0.2181,
+        "p95_ms": 0.2633,
+        "min_ms": 0.2068,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -984,9 +984,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.277,
-        "p95_ms": 0.295,
-        "min_ms": 0.2744,
+        "median_ms": 0.2765,
+        "p95_ms": 0.3041,
+        "min_ms": 0.2724,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -1001,9 +1001,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.4393,
-        "p95_ms": 0.4578,
-        "min_ms": 0.4239,
+        "median_ms": 0.425,
+        "p95_ms": 0.4682,
+        "min_ms": 0.4229,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -1018,9 +1018,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2115,
-        "p95_ms": 0.2307,
-        "min_ms": 0.2028,
+        "median_ms": 0.2038,
+        "p95_ms": 0.2238,
+        "min_ms": 0.2017,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -1035,9 +1035,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2109,
-        "p95_ms": 0.2749,
-        "min_ms": 0.2079,
+        "median_ms": 0.2135,
+        "p95_ms": 0.294,
+        "min_ms": 0.2069,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -1052,9 +1052,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2775,
-        "p95_ms": 0.2889,
-        "min_ms": 0.2744,
+        "median_ms": 0.2764,
+        "p95_ms": 0.3076,
+        "min_ms": 0.2714,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -1069,9 +1069,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.4393,
-        "p95_ms": 0.4557,
-        "min_ms": 0.4239,
+        "median_ms": 0.425,
+        "p95_ms": 0.4396,
+        "min_ms": 0.4229,
         "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
@@ -1079,15 +1079,16 @@
     ]
   },
   "dispatch_overhead": {
-    "direct_median_ms": 0.0599,
-    "compiler_driven_median_ms": 0.0696,
-    "overhead_pct": 16.208,
+    "direct_median_ms": 0.0604,
+    "compiler_driven_median_ms": 0.0594,
+    "overhead_pct": -1.695,
     "gate_pct": 5.0,
-    "gate_pass": false,
-    "note": "compiler-driven dispatch rebuilds the launch configuration from the SERIALIZED executable plan each call; compilation itself stays outside the timed region"
+    "gate_pass": true,
+    "note": "compiler-driven dispatch executes through the launch configuration decoded from the SERIALIZED executable plan; decoding/compilation stays outside the timed region"
   },
   "notes": [
     "exhaustive sweep enumerates the decoded point space and re-checks every named constraint imperatively; it is the legality oracle",
+    "reference legality is restricted to the selected candidate's allowed plans so the comparison is like-for-like against the candidate-bound model",
     "empirical numbers are computed from RAW CUDA-event samples with a tested type-7 percentile; analytical objective values are never presented as measurements",
     "schedules are deduplicated by stable key before measurement and measured in seeded, shuffled interleaved rounds"
   ]

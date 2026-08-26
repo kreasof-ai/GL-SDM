@@ -1,12 +1,34 @@
 {
   "schema_version": 2,
-  "generated_utc": "2026-08-26T10:12:49.167318+00:00",
+  "generated_utc": "2026-08-26T11:43:20.157038+00:00",
   "provenance": {
-    "git_revision": "2cea8d3cfeb4e7a709314dee404fadc450223571",
+    "git_revision": "dc94b5ec51032ec72e42da301543121f033f4501",
     "dirty_tree": false,
     "benchmark_command": "python benchmarks/compilation_matrix.py",
     "config_hash": "ddbebab1725c1a25565a08945112028907e1ec253cc57b3ef1b5e9ac0817ed3d",
-    "constraint_model_hash": "not_applicable_static_analysis",
+    "constraint_model_hash": "019d4b49e20d9a4a8eba260740e17c43a5c58330d8f8292094fe7751acb24955",
+    "constraint_model_hashes": [
+      "019d4b49e20d9a4a8eba260740e17c43a5c58330d8f8292094fe7751acb24955",
+      "062eff3c4ab125e0512900575c96bd8d685c3183be2c5fa2fe764e5a279c977b",
+      "0a685d6f4551f73fcd43912a0cf440afb34a9a800cb8fc0c6c079a6bae22d605",
+      "0b2b0cab7ef10981447932f34b0d94c392dff4edf5e4392720c2c7c2beef7349",
+      "0db18f2cc4314dba27c2555878218002b9bb998d6831f05644f143b339444d14",
+      "1199af15c76ff0762defcee1acd7f40db05164b71d5f0fa2ac15d38e8e3a040a",
+      "1847b211a8731bb872cfb72f235bb7c3059f2f81a52cff9af1ce44f03ad0297a",
+      "19f0f90365b909793df9703fb6ee9b409d9069a1c1e866e1d450d75432542c9a",
+      "2ca0f2a6bf7994c86d0995c7d550f9939f3d12a6a5fd40da84f0c1dfe0bb212b",
+      "355eee340599336c105eddbe7bdb988d9dd8c6bf3c3b44e14c346926c76c6537",
+      "66949f2dd6e5350c0a3857afc5cbd411f75eabad4bc925fbf980afc10073340b",
+      "6e5427a9dd8c6339b9476a3dad7d0f5f67289e630d896c7e22d97d42ab5f0f53",
+      "793b06add1e00d5d14d683111d4e4078ec722591b339b9ddf0408207eb389308",
+      "8fd20eb16ad9064d492930c65c26dd43a0322138a69d6ca0d33354536464de78",
+      "a2bf3641527921b782f20657d97baca58681596e226b88a16847547febd92716",
+      "ae5e0fb3e9ae375cc58b1b3a9e474e736335a7e1c863c41188b142354ce80456",
+      "cae584341e381be255a3ca1aa30e939faba71a1f8eee029deca99ea2b820e388",
+      "cbbbdebde629104842a66b9e09477fd4723c07037c96d5761caf41f6d79436a7",
+      "d687fa22b74787179058f389493f67d43c7aa3642880272a7013c9822ffd758e",
+      "f5b737b034e6f93eb160caa989eecdd7a8b53155cd180960292174f0f8f01e1d"
+    ],
     "solver_version": "4.15.3"
   },
   "summary": {
@@ -16,10 +38,11 @@
     "rewrite_accepted": 10,
     "rewrite_rejected": 0,
     "candidates_rejected_by_imperative_checks": 0,
-    "candidates_rejected_by_z3": 0,
-    "verified_models": 0,
+    "candidates_rejected_by_z3": 10,
+    "verified_models": 20,
+    "schedule_models_verified": 20,
     "unsat_categories": [],
-    "solver_time_ms": 12.16,
+    "solver_time_ms": 1441.723,
     "compile_failures": 0,
     "routing_skeleton_compile_rate": 0.5263,
     "full_architecture_compile_rate": 0.0,
@@ -76,6 +99,166 @@
       "selection_policies": [
         "cost_heuristic",
         "solver_guided"
+      ],
+      "schedule_decisions": [
+        {
+          "schedule": {
+            "plan": "base",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "launch_config": {
+            "plan": "base",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "selection_policy": "solver_guided",
+          "model_hash": "19f0f90365b909793df9703fb6ee9b409d9069a1c1e866e1d450d75432542c9a",
+          "objective_values": [
+            0,
+            1048576,
+            0,
+            0,
+            1048576,
+            6,
+            96,
+            14976
+          ],
+          "solver_statistics": {
+            "wall_ms": 79.135,
+            "timeout_ms": 10000,
+            "rlimit": 10000000,
+            "objectives": 8
+          },
+          "verification_checks_run": [
+            "variables_in_range",
+            "equalities",
+            "inequalities",
+            "divisibility",
+            "allowed_sets",
+            "implications",
+            "at_most_one",
+            "exactly_one",
+            "capacity_bounds",
+            "nogoods"
+          ],
+          "attempts": [
+            {
+              "index": 0,
+              "selection_policy": "solver_guided",
+              "schedule": {
+                "plan": "base",
+                "block_d": 256,
+                "num_warps": 8,
+                "num_stages": 1,
+                "grad_values_decomposition": "per_query",
+                "grad_values_schedule": "full_row",
+                "dtype": "float32"
+              },
+              "verified": true,
+              "rejection_reasons": [],
+              "nogood_added": false,
+              "nogood_budget_exhausted": false,
+              "nogood_forbidden": null,
+              "compile_status": "not_probed",
+              "compile_detail": null
+            }
+          ],
+          "compile_status": "not_probed",
+          "fallback_used": false,
+          "rejected_assignments": 0,
+          "compile_failures_observed": 0,
+          "nogoods_added": 0,
+          "recoveries": 0,
+          "retry_budget_exhausted": false
+        },
+        {
+          "schedule": {
+            "plan": "fused",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "launch_config": {
+            "plan": "fused",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "selection_policy": "solver_guided",
+          "model_hash": "2ca0f2a6bf7994c86d0995c7d550f9939f3d12a6a5fd40da84f0c1dfe0bb212b",
+          "objective_values": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            4,
+            55,
+            15024
+          ],
+          "solver_statistics": {
+            "wall_ms": 72.701,
+            "timeout_ms": 10000,
+            "rlimit": 10000000,
+            "objectives": 8
+          },
+          "verification_checks_run": [
+            "variables_in_range",
+            "equalities",
+            "inequalities",
+            "divisibility",
+            "allowed_sets",
+            "implications",
+            "at_most_one",
+            "exactly_one",
+            "capacity_bounds",
+            "nogoods"
+          ],
+          "attempts": [
+            {
+              "index": 0,
+              "selection_policy": "solver_guided",
+              "schedule": {
+                "plan": "fused",
+                "block_d": 256,
+                "num_warps": 8,
+                "num_stages": 1,
+                "grad_values_decomposition": "per_query",
+                "grad_values_schedule": "full_row",
+                "dtype": "float32"
+              },
+              "verified": true,
+              "rejection_reasons": [],
+              "nogood_added": false,
+              "nogood_budget_exhausted": false,
+              "nogood_forbidden": null,
+              "compile_status": "not_probed",
+              "compile_detail": null
+            }
+          ],
+          "compile_status": "not_probed",
+          "fallback_used": false,
+          "rejected_assignments": 0,
+          "compile_failures_observed": 0,
+          "nogoods_added": 0,
+          "recoveries": 0,
+          "retry_budget_exhausted": false
+        }
       ],
       "rewrite_accepted": 1,
       "rewrite_rejected": 0,
@@ -212,6 +395,166 @@
         "cost_heuristic",
         "solver_guided"
       ],
+      "schedule_decisions": [
+        {
+          "schedule": {
+            "plan": "base",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "launch_config": {
+            "plan": "base",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "selection_policy": "solver_guided",
+          "model_hash": "66949f2dd6e5350c0a3857afc5cbd411f75eabad4bc925fbf980afc10073340b",
+          "objective_values": [
+            0,
+            1048576,
+            0,
+            0,
+            1048576,
+            6,
+            96,
+            14976
+          ],
+          "solver_statistics": {
+            "wall_ms": 73.884,
+            "timeout_ms": 10000,
+            "rlimit": 10000000,
+            "objectives": 8
+          },
+          "verification_checks_run": [
+            "variables_in_range",
+            "equalities",
+            "inequalities",
+            "divisibility",
+            "allowed_sets",
+            "implications",
+            "at_most_one",
+            "exactly_one",
+            "capacity_bounds",
+            "nogoods"
+          ],
+          "attempts": [
+            {
+              "index": 0,
+              "selection_policy": "solver_guided",
+              "schedule": {
+                "plan": "base",
+                "block_d": 256,
+                "num_warps": 8,
+                "num_stages": 1,
+                "grad_values_decomposition": "per_query",
+                "grad_values_schedule": "full_row",
+                "dtype": "float32"
+              },
+              "verified": true,
+              "rejection_reasons": [],
+              "nogood_added": false,
+              "nogood_budget_exhausted": false,
+              "nogood_forbidden": null,
+              "compile_status": "not_probed",
+              "compile_detail": null
+            }
+          ],
+          "compile_status": "not_probed",
+          "fallback_used": false,
+          "rejected_assignments": 0,
+          "compile_failures_observed": 0,
+          "nogoods_added": 0,
+          "recoveries": 0,
+          "retry_budget_exhausted": false
+        },
+        {
+          "schedule": {
+            "plan": "fused",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "launch_config": {
+            "plan": "fused",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "selection_policy": "solver_guided",
+          "model_hash": "355eee340599336c105eddbe7bdb988d9dd8c6bf3c3b44e14c346926c76c6537",
+          "objective_values": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            4,
+            55,
+            15024
+          ],
+          "solver_statistics": {
+            "wall_ms": 73.953,
+            "timeout_ms": 10000,
+            "rlimit": 10000000,
+            "objectives": 8
+          },
+          "verification_checks_run": [
+            "variables_in_range",
+            "equalities",
+            "inequalities",
+            "divisibility",
+            "allowed_sets",
+            "implications",
+            "at_most_one",
+            "exactly_one",
+            "capacity_bounds",
+            "nogoods"
+          ],
+          "attempts": [
+            {
+              "index": 0,
+              "selection_policy": "solver_guided",
+              "schedule": {
+                "plan": "fused",
+                "block_d": 256,
+                "num_warps": 8,
+                "num_stages": 1,
+                "grad_values_decomposition": "per_query",
+                "grad_values_schedule": "full_row",
+                "dtype": "float32"
+              },
+              "verified": true,
+              "rejection_reasons": [],
+              "nogood_added": false,
+              "nogood_budget_exhausted": false,
+              "nogood_forbidden": null,
+              "compile_status": "not_probed",
+              "compile_detail": null
+            }
+          ],
+          "compile_status": "not_probed",
+          "fallback_used": false,
+          "rejected_assignments": 0,
+          "compile_failures_observed": 0,
+          "nogoods_added": 0,
+          "recoveries": 0,
+          "retry_budget_exhausted": false
+        }
+      ],
       "rewrite_accepted": 1,
       "rewrite_rejected": 0,
       "rejected_by_training_intent": 0,
@@ -346,6 +689,166 @@
       "selection_policies": [
         "cost_heuristic",
         "solver_guided"
+      ],
+      "schedule_decisions": [
+        {
+          "schedule": {
+            "plan": "base",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "launch_config": {
+            "plan": "base",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "selection_policy": "solver_guided",
+          "model_hash": "1199af15c76ff0762defcee1acd7f40db05164b71d5f0fa2ac15d38e8e3a040a",
+          "objective_values": [
+            0,
+            1048576,
+            0,
+            0,
+            1048576,
+            6,
+            116,
+            14976
+          ],
+          "solver_statistics": {
+            "wall_ms": 66.0,
+            "timeout_ms": 10000,
+            "rlimit": 10000000,
+            "objectives": 8
+          },
+          "verification_checks_run": [
+            "variables_in_range",
+            "equalities",
+            "inequalities",
+            "divisibility",
+            "allowed_sets",
+            "implications",
+            "at_most_one",
+            "exactly_one",
+            "capacity_bounds",
+            "nogoods"
+          ],
+          "attempts": [
+            {
+              "index": 0,
+              "selection_policy": "solver_guided",
+              "schedule": {
+                "plan": "base",
+                "block_d": 256,
+                "num_warps": 8,
+                "num_stages": 1,
+                "grad_values_decomposition": "per_query",
+                "grad_values_schedule": "full_row",
+                "dtype": "float32"
+              },
+              "verified": true,
+              "rejection_reasons": [],
+              "nogood_added": false,
+              "nogood_budget_exhausted": false,
+              "nogood_forbidden": null,
+              "compile_status": "not_probed",
+              "compile_detail": null
+            }
+          ],
+          "compile_status": "not_probed",
+          "fallback_used": false,
+          "rejected_assignments": 0,
+          "compile_failures_observed": 0,
+          "nogoods_added": 0,
+          "recoveries": 0,
+          "retry_budget_exhausted": false
+        },
+        {
+          "schedule": {
+            "plan": "fused",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "launch_config": {
+            "plan": "fused",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "selection_policy": "solver_guided",
+          "model_hash": "cbbbdebde629104842a66b9e09477fd4723c07037c96d5761caf41f6d79436a7",
+          "objective_values": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            4,
+            75,
+            15024
+          ],
+          "solver_statistics": {
+            "wall_ms": 76.497,
+            "timeout_ms": 10000,
+            "rlimit": 10000000,
+            "objectives": 8
+          },
+          "verification_checks_run": [
+            "variables_in_range",
+            "equalities",
+            "inequalities",
+            "divisibility",
+            "allowed_sets",
+            "implications",
+            "at_most_one",
+            "exactly_one",
+            "capacity_bounds",
+            "nogoods"
+          ],
+          "attempts": [
+            {
+              "index": 0,
+              "selection_policy": "solver_guided",
+              "schedule": {
+                "plan": "fused",
+                "block_d": 256,
+                "num_warps": 8,
+                "num_stages": 1,
+                "grad_values_decomposition": "per_query",
+                "grad_values_schedule": "full_row",
+                "dtype": "float32"
+              },
+              "verified": true,
+              "rejection_reasons": [],
+              "nogood_added": false,
+              "nogood_budget_exhausted": false,
+              "nogood_forbidden": null,
+              "compile_status": "not_probed",
+              "compile_detail": null
+            }
+          ],
+          "compile_status": "not_probed",
+          "fallback_used": false,
+          "rejected_assignments": 0,
+          "compile_failures_observed": 0,
+          "nogoods_added": 0,
+          "recoveries": 0,
+          "retry_budget_exhausted": false
+        }
       ],
       "rewrite_accepted": 1,
       "rewrite_rejected": 0,
@@ -482,6 +985,166 @@
         "cost_heuristic",
         "solver_guided"
       ],
+      "schedule_decisions": [
+        {
+          "schedule": {
+            "plan": "base",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "launch_config": {
+            "plan": "base",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "selection_policy": "solver_guided",
+          "model_hash": "f5b737b034e6f93eb160caa989eecdd7a8b53155cd180960292174f0f8f01e1d",
+          "objective_values": [
+            0,
+            1048576,
+            0,
+            0,
+            1048576,
+            6,
+            99,
+            14976
+          ],
+          "solver_statistics": {
+            "wall_ms": 69.38,
+            "timeout_ms": 10000,
+            "rlimit": 10000000,
+            "objectives": 8
+          },
+          "verification_checks_run": [
+            "variables_in_range",
+            "equalities",
+            "inequalities",
+            "divisibility",
+            "allowed_sets",
+            "implications",
+            "at_most_one",
+            "exactly_one",
+            "capacity_bounds",
+            "nogoods"
+          ],
+          "attempts": [
+            {
+              "index": 0,
+              "selection_policy": "solver_guided",
+              "schedule": {
+                "plan": "base",
+                "block_d": 256,
+                "num_warps": 8,
+                "num_stages": 1,
+                "grad_values_decomposition": "per_query",
+                "grad_values_schedule": "full_row",
+                "dtype": "float32"
+              },
+              "verified": true,
+              "rejection_reasons": [],
+              "nogood_added": false,
+              "nogood_budget_exhausted": false,
+              "nogood_forbidden": null,
+              "compile_status": "not_probed",
+              "compile_detail": null
+            }
+          ],
+          "compile_status": "not_probed",
+          "fallback_used": false,
+          "rejected_assignments": 0,
+          "compile_failures_observed": 0,
+          "nogoods_added": 0,
+          "recoveries": 0,
+          "retry_budget_exhausted": false
+        },
+        {
+          "schedule": {
+            "plan": "fused",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "launch_config": {
+            "plan": "fused",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "selection_policy": "solver_guided",
+          "model_hash": "793b06add1e00d5d14d683111d4e4078ec722591b339b9ddf0408207eb389308",
+          "objective_values": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            4,
+            58,
+            15024
+          ],
+          "solver_statistics": {
+            "wall_ms": 73.192,
+            "timeout_ms": 10000,
+            "rlimit": 10000000,
+            "objectives": 8
+          },
+          "verification_checks_run": [
+            "variables_in_range",
+            "equalities",
+            "inequalities",
+            "divisibility",
+            "allowed_sets",
+            "implications",
+            "at_most_one",
+            "exactly_one",
+            "capacity_bounds",
+            "nogoods"
+          ],
+          "attempts": [
+            {
+              "index": 0,
+              "selection_policy": "solver_guided",
+              "schedule": {
+                "plan": "fused",
+                "block_d": 256,
+                "num_warps": 8,
+                "num_stages": 1,
+                "grad_values_decomposition": "per_query",
+                "grad_values_schedule": "full_row",
+                "dtype": "float32"
+              },
+              "verified": true,
+              "rejection_reasons": [],
+              "nogood_added": false,
+              "nogood_budget_exhausted": false,
+              "nogood_forbidden": null,
+              "compile_status": "not_probed",
+              "compile_detail": null
+            }
+          ],
+          "compile_status": "not_probed",
+          "fallback_used": false,
+          "rejected_assignments": 0,
+          "compile_failures_observed": 0,
+          "nogoods_added": 0,
+          "recoveries": 0,
+          "retry_budget_exhausted": false
+        }
+      ],
       "rewrite_accepted": 1,
       "rewrite_rejected": 0,
       "rejected_by_training_intent": 0,
@@ -616,6 +1279,166 @@
       "selection_policies": [
         "cost_heuristic",
         "solver_guided"
+      ],
+      "schedule_decisions": [
+        {
+          "schedule": {
+            "plan": "base",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "launch_config": {
+            "plan": "base",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "selection_policy": "solver_guided",
+          "model_hash": "1847b211a8731bb872cfb72f235bb7c3059f2f81a52cff9af1ce44f03ad0297a",
+          "objective_values": [
+            0,
+            1048576,
+            0,
+            0,
+            1048576,
+            6,
+            93,
+            14976
+          ],
+          "solver_statistics": {
+            "wall_ms": 75.579,
+            "timeout_ms": 10000,
+            "rlimit": 10000000,
+            "objectives": 8
+          },
+          "verification_checks_run": [
+            "variables_in_range",
+            "equalities",
+            "inequalities",
+            "divisibility",
+            "allowed_sets",
+            "implications",
+            "at_most_one",
+            "exactly_one",
+            "capacity_bounds",
+            "nogoods"
+          ],
+          "attempts": [
+            {
+              "index": 0,
+              "selection_policy": "solver_guided",
+              "schedule": {
+                "plan": "base",
+                "block_d": 256,
+                "num_warps": 8,
+                "num_stages": 1,
+                "grad_values_decomposition": "per_query",
+                "grad_values_schedule": "full_row",
+                "dtype": "float32"
+              },
+              "verified": true,
+              "rejection_reasons": [],
+              "nogood_added": false,
+              "nogood_budget_exhausted": false,
+              "nogood_forbidden": null,
+              "compile_status": "not_probed",
+              "compile_detail": null
+            }
+          ],
+          "compile_status": "not_probed",
+          "fallback_used": false,
+          "rejected_assignments": 0,
+          "compile_failures_observed": 0,
+          "nogoods_added": 0,
+          "recoveries": 0,
+          "retry_budget_exhausted": false
+        },
+        {
+          "schedule": {
+            "plan": "fused",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "launch_config": {
+            "plan": "fused",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "selection_policy": "solver_guided",
+          "model_hash": "cae584341e381be255a3ca1aa30e939faba71a1f8eee029deca99ea2b820e388",
+          "objective_values": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            4,
+            52,
+            15024
+          ],
+          "solver_statistics": {
+            "wall_ms": 64.682,
+            "timeout_ms": 10000,
+            "rlimit": 10000000,
+            "objectives": 8
+          },
+          "verification_checks_run": [
+            "variables_in_range",
+            "equalities",
+            "inequalities",
+            "divisibility",
+            "allowed_sets",
+            "implications",
+            "at_most_one",
+            "exactly_one",
+            "capacity_bounds",
+            "nogoods"
+          ],
+          "attempts": [
+            {
+              "index": 0,
+              "selection_policy": "solver_guided",
+              "schedule": {
+                "plan": "fused",
+                "block_d": 256,
+                "num_warps": 8,
+                "num_stages": 1,
+                "grad_values_decomposition": "per_query",
+                "grad_values_schedule": "full_row",
+                "dtype": "float32"
+              },
+              "verified": true,
+              "rejection_reasons": [],
+              "nogood_added": false,
+              "nogood_budget_exhausted": false,
+              "nogood_forbidden": null,
+              "compile_status": "not_probed",
+              "compile_detail": null
+            }
+          ],
+          "compile_status": "not_probed",
+          "fallback_used": false,
+          "rejected_assignments": 0,
+          "compile_failures_observed": 0,
+          "nogoods_added": 0,
+          "recoveries": 0,
+          "retry_budget_exhausted": false
+        }
       ],
       "rewrite_accepted": 1,
       "rewrite_rejected": 0,
@@ -752,6 +1575,166 @@
         "cost_heuristic",
         "solver_guided"
       ],
+      "schedule_decisions": [
+        {
+          "schedule": {
+            "plan": "base",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "launch_config": {
+            "plan": "base",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "selection_policy": "solver_guided",
+          "model_hash": "062eff3c4ab125e0512900575c96bd8d685c3183be2c5fa2fe764e5a279c977b",
+          "objective_values": [
+            0,
+            1048576,
+            0,
+            0,
+            1048576,
+            6,
+            94,
+            14976
+          ],
+          "solver_statistics": {
+            "wall_ms": 68.872,
+            "timeout_ms": 10000,
+            "rlimit": 10000000,
+            "objectives": 8
+          },
+          "verification_checks_run": [
+            "variables_in_range",
+            "equalities",
+            "inequalities",
+            "divisibility",
+            "allowed_sets",
+            "implications",
+            "at_most_one",
+            "exactly_one",
+            "capacity_bounds",
+            "nogoods"
+          ],
+          "attempts": [
+            {
+              "index": 0,
+              "selection_policy": "solver_guided",
+              "schedule": {
+                "plan": "base",
+                "block_d": 256,
+                "num_warps": 8,
+                "num_stages": 1,
+                "grad_values_decomposition": "per_query",
+                "grad_values_schedule": "full_row",
+                "dtype": "float32"
+              },
+              "verified": true,
+              "rejection_reasons": [],
+              "nogood_added": false,
+              "nogood_budget_exhausted": false,
+              "nogood_forbidden": null,
+              "compile_status": "not_probed",
+              "compile_detail": null
+            }
+          ],
+          "compile_status": "not_probed",
+          "fallback_used": false,
+          "rejected_assignments": 0,
+          "compile_failures_observed": 0,
+          "nogoods_added": 0,
+          "recoveries": 0,
+          "retry_budget_exhausted": false
+        },
+        {
+          "schedule": {
+            "plan": "fused",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "launch_config": {
+            "plan": "fused",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "selection_policy": "solver_guided",
+          "model_hash": "0b2b0cab7ef10981447932f34b0d94c392dff4edf5e4392720c2c7c2beef7349",
+          "objective_values": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            4,
+            53,
+            15024
+          ],
+          "solver_statistics": {
+            "wall_ms": 69.059,
+            "timeout_ms": 10000,
+            "rlimit": 10000000,
+            "objectives": 8
+          },
+          "verification_checks_run": [
+            "variables_in_range",
+            "equalities",
+            "inequalities",
+            "divisibility",
+            "allowed_sets",
+            "implications",
+            "at_most_one",
+            "exactly_one",
+            "capacity_bounds",
+            "nogoods"
+          ],
+          "attempts": [
+            {
+              "index": 0,
+              "selection_policy": "solver_guided",
+              "schedule": {
+                "plan": "fused",
+                "block_d": 256,
+                "num_warps": 8,
+                "num_stages": 1,
+                "grad_values_decomposition": "per_query",
+                "grad_values_schedule": "full_row",
+                "dtype": "float32"
+              },
+              "verified": true,
+              "rejection_reasons": [],
+              "nogood_added": false,
+              "nogood_budget_exhausted": false,
+              "nogood_forbidden": null,
+              "compile_status": "not_probed",
+              "compile_detail": null
+            }
+          ],
+          "compile_status": "not_probed",
+          "fallback_used": false,
+          "rejected_assignments": 0,
+          "compile_failures_observed": 0,
+          "nogoods_added": 0,
+          "recoveries": 0,
+          "retry_budget_exhausted": false
+        }
+      ],
       "rewrite_accepted": 1,
       "rewrite_rejected": 0,
       "rejected_by_training_intent": 0,
@@ -886,6 +1869,166 @@
       "selection_policies": [
         "cost_heuristic",
         "solver_guided"
+      ],
+      "schedule_decisions": [
+        {
+          "schedule": {
+            "plan": "base",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "launch_config": {
+            "plan": "base",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "selection_policy": "solver_guided",
+          "model_hash": "ae5e0fb3e9ae375cc58b1b3a9e474e736335a7e1c863c41188b142354ce80456",
+          "objective_values": [
+            0,
+            1048576,
+            0,
+            0,
+            1048576,
+            6,
+            96,
+            14976
+          ],
+          "solver_statistics": {
+            "wall_ms": 66.877,
+            "timeout_ms": 10000,
+            "rlimit": 10000000,
+            "objectives": 8
+          },
+          "verification_checks_run": [
+            "variables_in_range",
+            "equalities",
+            "inequalities",
+            "divisibility",
+            "allowed_sets",
+            "implications",
+            "at_most_one",
+            "exactly_one",
+            "capacity_bounds",
+            "nogoods"
+          ],
+          "attempts": [
+            {
+              "index": 0,
+              "selection_policy": "solver_guided",
+              "schedule": {
+                "plan": "base",
+                "block_d": 256,
+                "num_warps": 8,
+                "num_stages": 1,
+                "grad_values_decomposition": "per_query",
+                "grad_values_schedule": "full_row",
+                "dtype": "float32"
+              },
+              "verified": true,
+              "rejection_reasons": [],
+              "nogood_added": false,
+              "nogood_budget_exhausted": false,
+              "nogood_forbidden": null,
+              "compile_status": "not_probed",
+              "compile_detail": null
+            }
+          ],
+          "compile_status": "not_probed",
+          "fallback_used": false,
+          "rejected_assignments": 0,
+          "compile_failures_observed": 0,
+          "nogoods_added": 0,
+          "recoveries": 0,
+          "retry_budget_exhausted": false
+        },
+        {
+          "schedule": {
+            "plan": "fused",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "launch_config": {
+            "plan": "fused",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "selection_policy": "solver_guided",
+          "model_hash": "0a685d6f4551f73fcd43912a0cf440afb34a9a800cb8fc0c6c079a6bae22d605",
+          "objective_values": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            4,
+            55,
+            15024
+          ],
+          "solver_statistics": {
+            "wall_ms": 70.832,
+            "timeout_ms": 10000,
+            "rlimit": 10000000,
+            "objectives": 8
+          },
+          "verification_checks_run": [
+            "variables_in_range",
+            "equalities",
+            "inequalities",
+            "divisibility",
+            "allowed_sets",
+            "implications",
+            "at_most_one",
+            "exactly_one",
+            "capacity_bounds",
+            "nogoods"
+          ],
+          "attempts": [
+            {
+              "index": 0,
+              "selection_policy": "solver_guided",
+              "schedule": {
+                "plan": "fused",
+                "block_d": 256,
+                "num_warps": 8,
+                "num_stages": 1,
+                "grad_values_decomposition": "per_query",
+                "grad_values_schedule": "full_row",
+                "dtype": "float32"
+              },
+              "verified": true,
+              "rejection_reasons": [],
+              "nogood_added": false,
+              "nogood_budget_exhausted": false,
+              "nogood_forbidden": null,
+              "compile_status": "not_probed",
+              "compile_detail": null
+            }
+          ],
+          "compile_status": "not_probed",
+          "fallback_used": false,
+          "rejected_assignments": 0,
+          "compile_failures_observed": 0,
+          "nogoods_added": 0,
+          "recoveries": 0,
+          "retry_budget_exhausted": false
+        }
       ],
       "rewrite_accepted": 1,
       "rewrite_rejected": 0,
@@ -1022,6 +2165,166 @@
         "cost_heuristic",
         "solver_guided"
       ],
+      "schedule_decisions": [
+        {
+          "schedule": {
+            "plan": "base",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "launch_config": {
+            "plan": "base",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "selection_policy": "solver_guided",
+          "model_hash": "8fd20eb16ad9064d492930c65c26dd43a0322138a69d6ca0d33354536464de78",
+          "objective_values": [
+            0,
+            1048576,
+            0,
+            0,
+            1048576,
+            6,
+            96,
+            14976
+          ],
+          "solver_statistics": {
+            "wall_ms": 75.27,
+            "timeout_ms": 10000,
+            "rlimit": 10000000,
+            "objectives": 8
+          },
+          "verification_checks_run": [
+            "variables_in_range",
+            "equalities",
+            "inequalities",
+            "divisibility",
+            "allowed_sets",
+            "implications",
+            "at_most_one",
+            "exactly_one",
+            "capacity_bounds",
+            "nogoods"
+          ],
+          "attempts": [
+            {
+              "index": 0,
+              "selection_policy": "solver_guided",
+              "schedule": {
+                "plan": "base",
+                "block_d": 256,
+                "num_warps": 8,
+                "num_stages": 1,
+                "grad_values_decomposition": "per_query",
+                "grad_values_schedule": "full_row",
+                "dtype": "float32"
+              },
+              "verified": true,
+              "rejection_reasons": [],
+              "nogood_added": false,
+              "nogood_budget_exhausted": false,
+              "nogood_forbidden": null,
+              "compile_status": "not_probed",
+              "compile_detail": null
+            }
+          ],
+          "compile_status": "not_probed",
+          "fallback_used": false,
+          "rejected_assignments": 0,
+          "compile_failures_observed": 0,
+          "nogoods_added": 0,
+          "recoveries": 0,
+          "retry_budget_exhausted": false
+        },
+        {
+          "schedule": {
+            "plan": "fused",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "launch_config": {
+            "plan": "fused",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "selection_policy": "solver_guided",
+          "model_hash": "0db18f2cc4314dba27c2555878218002b9bb998d6831f05644f143b339444d14",
+          "objective_values": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            4,
+            55,
+            15024
+          ],
+          "solver_statistics": {
+            "wall_ms": 71.186,
+            "timeout_ms": 10000,
+            "rlimit": 10000000,
+            "objectives": 8
+          },
+          "verification_checks_run": [
+            "variables_in_range",
+            "equalities",
+            "inequalities",
+            "divisibility",
+            "allowed_sets",
+            "implications",
+            "at_most_one",
+            "exactly_one",
+            "capacity_bounds",
+            "nogoods"
+          ],
+          "attempts": [
+            {
+              "index": 0,
+              "selection_policy": "solver_guided",
+              "schedule": {
+                "plan": "fused",
+                "block_d": 256,
+                "num_warps": 8,
+                "num_stages": 1,
+                "grad_values_decomposition": "per_query",
+                "grad_values_schedule": "full_row",
+                "dtype": "float32"
+              },
+              "verified": true,
+              "rejection_reasons": [],
+              "nogood_added": false,
+              "nogood_budget_exhausted": false,
+              "nogood_forbidden": null,
+              "compile_status": "not_probed",
+              "compile_detail": null
+            }
+          ],
+          "compile_status": "not_probed",
+          "fallback_used": false,
+          "rejected_assignments": 0,
+          "compile_failures_observed": 0,
+          "nogoods_added": 0,
+          "recoveries": 0,
+          "retry_budget_exhausted": false
+        }
+      ],
       "rewrite_accepted": 1,
       "rewrite_rejected": 0,
       "rejected_by_training_intent": 0,
@@ -1157,6 +2460,166 @@
         "cost_heuristic",
         "solver_guided"
       ],
+      "schedule_decisions": [
+        {
+          "schedule": {
+            "plan": "base",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "launch_config": {
+            "plan": "base",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "selection_policy": "solver_guided",
+          "model_hash": "d687fa22b74787179058f389493f67d43c7aa3642880272a7013c9822ffd758e",
+          "objective_values": [
+            0,
+            1048576,
+            0,
+            0,
+            1048576,
+            6,
+            99,
+            14976
+          ],
+          "solver_statistics": {
+            "wall_ms": 63.671,
+            "timeout_ms": 10000,
+            "rlimit": 10000000,
+            "objectives": 8
+          },
+          "verification_checks_run": [
+            "variables_in_range",
+            "equalities",
+            "inequalities",
+            "divisibility",
+            "allowed_sets",
+            "implications",
+            "at_most_one",
+            "exactly_one",
+            "capacity_bounds",
+            "nogoods"
+          ],
+          "attempts": [
+            {
+              "index": 0,
+              "selection_policy": "solver_guided",
+              "schedule": {
+                "plan": "base",
+                "block_d": 256,
+                "num_warps": 8,
+                "num_stages": 1,
+                "grad_values_decomposition": "per_query",
+                "grad_values_schedule": "full_row",
+                "dtype": "float32"
+              },
+              "verified": true,
+              "rejection_reasons": [],
+              "nogood_added": false,
+              "nogood_budget_exhausted": false,
+              "nogood_forbidden": null,
+              "compile_status": "not_probed",
+              "compile_detail": null
+            }
+          ],
+          "compile_status": "not_probed",
+          "fallback_used": false,
+          "rejected_assignments": 0,
+          "compile_failures_observed": 0,
+          "nogoods_added": 0,
+          "recoveries": 0,
+          "retry_budget_exhausted": false
+        },
+        {
+          "schedule": {
+            "plan": "fused",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "launch_config": {
+            "plan": "fused",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "selection_policy": "solver_guided",
+          "model_hash": "a2bf3641527921b782f20657d97baca58681596e226b88a16847547febd92716",
+          "objective_values": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            4,
+            58,
+            15024
+          ],
+          "solver_statistics": {
+            "wall_ms": 66.243,
+            "timeout_ms": 10000,
+            "rlimit": 10000000,
+            "objectives": 8
+          },
+          "verification_checks_run": [
+            "variables_in_range",
+            "equalities",
+            "inequalities",
+            "divisibility",
+            "allowed_sets",
+            "implications",
+            "at_most_one",
+            "exactly_one",
+            "capacity_bounds",
+            "nogoods"
+          ],
+          "attempts": [
+            {
+              "index": 0,
+              "selection_policy": "solver_guided",
+              "schedule": {
+                "plan": "fused",
+                "block_d": 256,
+                "num_warps": 8,
+                "num_stages": 1,
+                "grad_values_decomposition": "per_query",
+                "grad_values_schedule": "full_row",
+                "dtype": "float32"
+              },
+              "verified": true,
+              "rejection_reasons": [],
+              "nogood_added": false,
+              "nogood_budget_exhausted": false,
+              "nogood_forbidden": null,
+              "compile_status": "not_probed",
+              "compile_detail": null
+            }
+          ],
+          "compile_status": "not_probed",
+          "fallback_used": false,
+          "rejected_assignments": 0,
+          "compile_failures_observed": 0,
+          "nogoods_added": 0,
+          "recoveries": 0,
+          "retry_budget_exhausted": false
+        }
+      ],
       "rewrite_accepted": 1,
       "rewrite_rejected": 0,
       "rejected_by_training_intent": 0,
@@ -1291,6 +2754,166 @@
       "selection_policies": [
         "cost_heuristic",
         "solver_guided"
+      ],
+      "schedule_decisions": [
+        {
+          "schedule": {
+            "plan": "base",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "launch_config": {
+            "plan": "base",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "selection_policy": "solver_guided",
+          "model_hash": "019d4b49e20d9a4a8eba260740e17c43a5c58330d8f8292094fe7751acb24955",
+          "objective_values": [
+            0,
+            1048576,
+            0,
+            0,
+            1048576,
+            6,
+            96,
+            14976
+          ],
+          "solver_statistics": {
+            "wall_ms": 76.992,
+            "timeout_ms": 10000,
+            "rlimit": 10000000,
+            "objectives": 8
+          },
+          "verification_checks_run": [
+            "variables_in_range",
+            "equalities",
+            "inequalities",
+            "divisibility",
+            "allowed_sets",
+            "implications",
+            "at_most_one",
+            "exactly_one",
+            "capacity_bounds",
+            "nogoods"
+          ],
+          "attempts": [
+            {
+              "index": 0,
+              "selection_policy": "solver_guided",
+              "schedule": {
+                "plan": "base",
+                "block_d": 256,
+                "num_warps": 8,
+                "num_stages": 1,
+                "grad_values_decomposition": "per_query",
+                "grad_values_schedule": "full_row",
+                "dtype": "float32"
+              },
+              "verified": true,
+              "rejection_reasons": [],
+              "nogood_added": false,
+              "nogood_budget_exhausted": false,
+              "nogood_forbidden": null,
+              "compile_status": "not_probed",
+              "compile_detail": null
+            }
+          ],
+          "compile_status": "not_probed",
+          "fallback_used": false,
+          "rejected_assignments": 0,
+          "compile_failures_observed": 0,
+          "nogoods_added": 0,
+          "recoveries": 0,
+          "retry_budget_exhausted": false
+        },
+        {
+          "schedule": {
+            "plan": "fused",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "launch_config": {
+            "plan": "fused",
+            "block_d": 256,
+            "num_warps": 8,
+            "num_stages": 1,
+            "grad_values_decomposition": "per_query",
+            "grad_values_schedule": "full_row",
+            "dtype": "float32"
+          },
+          "selection_policy": "solver_guided",
+          "model_hash": "6e5427a9dd8c6339b9476a3dad7d0f5f67289e630d896c7e22d97d42ab5f0f53",
+          "objective_values": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            4,
+            55,
+            15024
+          ],
+          "solver_statistics": {
+            "wall_ms": 71.476,
+            "timeout_ms": 10000,
+            "rlimit": 10000000,
+            "objectives": 8
+          },
+          "verification_checks_run": [
+            "variables_in_range",
+            "equalities",
+            "inequalities",
+            "divisibility",
+            "allowed_sets",
+            "implications",
+            "at_most_one",
+            "exactly_one",
+            "capacity_bounds",
+            "nogoods"
+          ],
+          "attempts": [
+            {
+              "index": 0,
+              "selection_policy": "solver_guided",
+              "schedule": {
+                "plan": "fused",
+                "block_d": 256,
+                "num_warps": 8,
+                "num_stages": 1,
+                "grad_values_decomposition": "per_query",
+                "grad_values_schedule": "full_row",
+                "dtype": "float32"
+              },
+              "verified": true,
+              "rejection_reasons": [],
+              "nogood_added": false,
+              "nogood_budget_exhausted": false,
+              "nogood_forbidden": null,
+              "compile_status": "not_probed",
+              "compile_detail": null
+            }
+          ],
+          "compile_status": "not_probed",
+          "fallback_used": false,
+          "rejected_assignments": 0,
+          "compile_failures_observed": 0,
+          "nogoods_added": 0,
+          "recoveries": 0,
+          "retry_budget_exhausted": false
+        }
       ],
       "rewrite_accepted": 1,
       "rewrite_rejected": 0,
