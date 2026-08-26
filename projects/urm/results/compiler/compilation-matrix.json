@@ -1,11 +1,11 @@
 {
   "schema_version": 2,
-  "generated_utc": "2026-08-26T14:05:10.906020+00:00",
+  "generated_utc": "2026-08-26T15:17:23.034724+00:00",
   "provenance": {
-    "git_revision": "452f5deb43b4912d30b4773b45031fe2e1fa3e09",
+    "git_revision": "b29fbfc577449c71b814d70e7f12b2d16fd3dc94",
     "dirty_tree": false,
-    "benchmark_command": "python benchmarks/compilation_matrix.py",
-    "config_hash": "ddbebab1725c1a25565a08945112028907e1ec253cc57b3ef1b5e9ac0817ed3d",
+    "benchmark_command": "python benchmarks/compilation_matrix.py --probe required",
+    "config_hash": "4e799c64c838665e073cb26d3498a9b51d4bc978c0ed4671b4fc8fa411d0a5a8",
     "solver_version": "4.15.3",
     "python": "3.12.13",
     "platform": "Linux-6.12.95-124.187.amzn2023.x86_64-x86_64-with-glibc2.39",
@@ -14,6 +14,8 @@
     "cuda": "12.9",
     "driver": "595.91.07",
     "gpu": "NVIDIA A10G",
+    "probe_mode": "required",
+    "probing_active": true,
     "constraint_model_hash": "2512950288539515fa3eab2419c7529d06ed909ca291c8ba3ca01464e99064f4",
     "constraint_model_hashes": [
       "2512950288539515fa3eab2419c7529d06ed909ca291c8ba3ca01464e99064f4",
@@ -42,7 +44,7 @@
     "verified_models": 10,
     "schedule_models_verified": 10,
     "unsat_categories": [],
-    "solver_time_ms": 713.564,
+    "solver_time_ms": 708.105,
     "compile_failures": 0,
     "routing_skeleton_compile_rate": 0.5263,
     "full_architecture_compile_rate": 0.0,
@@ -134,7 +136,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 71.945,
+            "wall_ms": 73.713,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -415,7 +417,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 65.548,
+            "wall_ms": 63.439,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -696,7 +698,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 74.144,
+            "wall_ms": 73.481,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -977,7 +979,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 71.043,
+            "wall_ms": 68.563,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -1258,7 +1260,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 61.517,
+            "wall_ms": 60.677,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -1539,7 +1541,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 66.122,
+            "wall_ms": 67.882,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -1820,7 +1822,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 66.677,
+            "wall_ms": 66.552,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -2101,7 +2103,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 75.313,
+            "wall_ms": 72.894,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -2382,7 +2384,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 72.043,
+            "wall_ms": 67.553,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -2663,7 +2665,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 75.818,
+            "wall_ms": 80.081,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8

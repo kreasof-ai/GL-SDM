@@ -1,8 +1,8 @@
 {
   "schema_version": 2,
-  "generated_utc": "2026-08-26T14:05:03.824582+00:00",
+  "generated_utc": "2026-08-26T15:17:29.929171+00:00",
   "provenance": {
-    "git_revision": "452f5deb43b4912d30b4773b45031fe2e1fa3e09",
+    "git_revision": "b29fbfc577449c71b814d70e7f12b2d16fd3dc94",
     "dirty_tree": false,
     "benchmark_command": "python benchmarks/routed_epilogue_selection.py",
     "config_hash": "97d1fdb967561c101c05868379daf406b994aecb9b95ea8f0d30d210cc62ab34",
@@ -36,7 +36,7 @@
     "model_sweep_legal_points": 144,
     "reference_matches_model_sweep": true,
     "exact_set_agreement": true,
-    "z3_sat_assignments": 1,
+    "solver_assignments_checked": 1,
     "agreement": true,
     "legality_accuracy": 1.0
   },
@@ -58,9 +58,9 @@
       "dtype": "bfloat16"
     },
     "matches_compiled_decision": true,
-    "solve_ms": 251.419,
-    "feasibility_solve_ms": 92.531,
-    "optimization_solve_ms": 158.888,
+    "solve_ms": 249.591,
+    "feasibility_solve_ms": 94.378,
+    "optimization_solve_ms": 155.213,
     "objective_values": [
       0,
       0,
@@ -108,7 +108,7 @@
       15024
     ],
     "solver_statistics": {
-      "wall_ms": 74.854,
+      "wall_ms": 75.021,
       "timeout_ms": 10000,
       "rlimit": 10000000,
       "objectives": 8
@@ -241,18 +241,18 @@
     "gpu": "NVIDIA A10G",
     "measured_points": 50,
     "compile_failures_observed": 0,
+    "failed_points_excluded_from_measurement": 0,
     "nogoods_added": 0,
-    "compile_failures_avoided": 0,
     "best_point": {
       "plan": "fused",
-      "block_d": 64,
-      "num_warps": 1,
-      "num_stages": 4,
+      "block_d": 128,
+      "num_warps": 4,
+      "num_stages": 1,
       "grad_values_decomposition": "per_query",
       "grad_values_schedule": "segmented",
       "dtype": "bfloat16"
     },
-    "best_median_ms": 0.2028,
+    "best_median_ms": 0.2109,
     "solver_selected": {
       "plan": "fused",
       "block_d": 256,
@@ -272,10 +272,10 @@
       "dtype": "bfloat16"
     },
     "regret": {
-      "z3_vs_best_pct": 23.22,
-      "heuristic_vs_best_pct": 21.7,
+      "z3_vs_best_pct": 0.52,
+      "heuristic_vs_best_pct": 19.44,
       "target_pct": 10.0,
-      "within_target": false,
+      "within_target": true,
       "note": "regret is computed within the measured fused grid against the genuine median; the base (unfused) plan was already compared in results/compiler/routed-scale-epilogue/benchmark.json"
     },
     "samples": [
@@ -289,9 +289,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2463,
-        "p95_ms": 0.2985,
-        "min_ms": 0.2416,
+        "median_ms": 0.2488,
+        "p95_ms": 0.258,
+        "min_ms": 0.2458,
         "sample_count": 20,
         "registers_per_thread": 47,
         "shared_mem_bytes": 0
@@ -306,9 +306,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.215,
-        "p95_ms": 0.3022,
-        "min_ms": 0.2027,
+        "median_ms": 0.2202,
+        "p95_ms": 0.2756,
+        "min_ms": 0.2089,
         "sample_count": 20,
         "registers_per_thread": 46,
         "shared_mem_bytes": 8
@@ -323,9 +323,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.215,
-        "p95_ms": 0.2793,
-        "min_ms": 0.2027,
+        "median_ms": 0.2109,
+        "p95_ms": 0.2377,
+        "min_ms": 0.2068,
         "sample_count": 20,
         "registers_per_thread": 40,
         "shared_mem_bytes": 16
@@ -340,9 +340,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.28,
-        "p95_ms": 0.2988,
-        "min_ms": 0.2765,
+        "median_ms": 0.2826,
+        "p95_ms": 0.3176,
+        "min_ms": 0.2796,
         "sample_count": 20,
         "registers_per_thread": 40,
         "shared_mem_bytes": 16
@@ -357,9 +357,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2458,
-        "p95_ms": 0.2892,
-        "min_ms": 0.2417,
+        "median_ms": 0.2529,
+        "p95_ms": 0.2942,
+        "min_ms": 0.2468,
         "sample_count": 20,
         "registers_per_thread": 47,
         "shared_mem_bytes": 256
@@ -374,9 +374,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2053,
-        "p95_ms": 0.2358,
-        "min_ms": 0.2007,
+        "median_ms": 0.2176,
+        "p95_ms": 0.2498,
+        "min_ms": 0.2099,
         "sample_count": 20,
         "registers_per_thread": 46,
         "shared_mem_bytes": 256
@@ -391,9 +391,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2043,
-        "p95_ms": 0.2695,
-        "min_ms": 0.2017,
+        "median_ms": 0.2197,
+        "p95_ms": 0.3063,
+        "min_ms": 0.2089,
         "sample_count": 20,
         "registers_per_thread": 40,
         "shared_mem_bytes": 16
@@ -408,9 +408,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.28,
-        "p95_ms": 0.3019,
-        "min_ms": 0.2775,
+        "median_ms": 0.3016,
+        "p95_ms": 0.3247,
+        "min_ms": 0.2806,
         "sample_count": 20,
         "registers_per_thread": 40,
         "shared_mem_bytes": 16
@@ -425,9 +425,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2447,
-        "p95_ms": 0.2857,
-        "min_ms": 0.2417,
+        "median_ms": 0.2498,
+        "p95_ms": 0.2948,
+        "min_ms": 0.2458,
         "sample_count": 20,
         "registers_per_thread": 47,
         "shared_mem_bytes": 768
@@ -442,9 +442,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2043,
-        "p95_ms": 0.2253,
-        "min_ms": 0.2017,
+        "median_ms": 0.2181,
+        "p95_ms": 0.2527,
+        "min_ms": 0.2079,
         "sample_count": 20,
         "registers_per_thread": 46,
         "shared_mem_bytes": 768
@@ -459,9 +459,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2058,
-        "p95_ms": 0.2722,
-        "min_ms": 0.2028,
+        "median_ms": 0.2401,
+        "p95_ms": 0.2912,
+        "min_ms": 0.2099,
         "sample_count": 20,
         "registers_per_thread": 40,
         "shared_mem_bytes": 16
@@ -476,9 +476,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2796,
-        "p95_ms": 0.2934,
-        "min_ms": 0.2765,
+        "median_ms": 0.3103,
+        "p95_ms": 0.3316,
+        "min_ms": 0.2796,
         "sample_count": 20,
         "registers_per_thread": 40,
         "shared_mem_bytes": 16
@@ -493,9 +493,9 @@
           "grad_values_schedule": "full_row",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2499,
-        "p95_ms": 0.2724,
-        "min_ms": 0.2068,
+        "median_ms": 0.212,
+        "p95_ms": 0.2619,
+        "min_ms": 0.2089,
         "sample_count": 20,
         "registers_per_thread": 40,
         "shared_mem_bytes": 32
@@ -510,9 +510,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2458,
-        "p95_ms": 0.2555,
-        "min_ms": 0.2437,
+        "median_ms": 0.2632,
+        "p95_ms": 0.3033,
+        "min_ms": 0.2509,
         "sample_count": 20,
         "registers_per_thread": 66,
         "shared_mem_bytes": 0
@@ -527,9 +527,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2468,
-        "p95_ms": 0.2593,
-        "min_ms": 0.2447,
+        "median_ms": 0.2519,
+        "p95_ms": 0.2796,
+        "min_ms": 0.2498,
         "sample_count": 20,
         "registers_per_thread": 52,
         "shared_mem_bytes": 8
@@ -544,9 +544,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2079,
-        "p95_ms": 0.28,
-        "min_ms": 0.2007,
+        "median_ms": 0.213,
+        "p95_ms": 0.2593,
+        "min_ms": 0.2089,
         "sample_count": 20,
         "registers_per_thread": 40,
         "shared_mem_bytes": 16
@@ -561,9 +561,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2094,
-        "p95_ms": 0.2521,
-        "min_ms": 0.2068,
+        "median_ms": 0.2253,
+        "p95_ms": 0.2786,
+        "min_ms": 0.2099,
         "sample_count": 20,
         "registers_per_thread": 40,
         "shared_mem_bytes": 32
@@ -578,9 +578,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2703,
-        "p95_ms": 0.3278,
-        "min_ms": 0.2458,
+        "median_ms": 0.2888,
+        "p95_ms": 0.3167,
+        "min_ms": 0.2509,
         "sample_count": 20,
         "registers_per_thread": 66,
         "shared_mem_bytes": 512
@@ -595,9 +595,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2544,
-        "p95_ms": 0.3105,
-        "min_ms": 0.2447,
+        "median_ms": 0.2519,
+        "p95_ms": 0.3216,
+        "min_ms": 0.2499,
         "sample_count": 20,
         "registers_per_thread": 52,
         "shared_mem_bytes": 512
@@ -612,9 +612,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2068,
-        "p95_ms": 0.2474,
-        "min_ms": 0.1997,
+        "median_ms": 0.2109,
+        "p95_ms": 0.2183,
+        "min_ms": 0.2089,
         "sample_count": 20,
         "registers_per_thread": 40,
         "shared_mem_bytes": 512
@@ -629,9 +629,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2263,
-        "p95_ms": 0.2963,
-        "min_ms": 0.2058,
+        "median_ms": 0.2191,
+        "p95_ms": 0.3125,
+        "min_ms": 0.2099,
         "sample_count": 20,
         "registers_per_thread": 40,
         "shared_mem_bytes": 32
@@ -646,9 +646,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2759,
-        "p95_ms": 0.3176,
-        "min_ms": 0.2447,
+        "median_ms": 0.2555,
+        "p95_ms": 0.2939,
+        "min_ms": 0.2488,
         "sample_count": 20,
         "registers_per_thread": 66,
         "shared_mem_bytes": 1536
@@ -663,9 +663,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2468,
-        "p95_ms": 0.3103,
-        "min_ms": 0.2447,
+        "median_ms": 0.2524,
+        "p95_ms": 0.3005,
+        "min_ms": 0.2488,
         "sample_count": 20,
         "registers_per_thread": 52,
         "shared_mem_bytes": 1536
@@ -680,9 +680,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2094,
-        "p95_ms": 0.2817,
-        "min_ms": 0.2017,
+        "median_ms": 0.212,
+        "p95_ms": 0.2727,
+        "min_ms": 0.2079,
         "sample_count": 20,
         "registers_per_thread": 40,
         "shared_mem_bytes": 1536
@@ -697,9 +697,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2104,
-        "p95_ms": 0.2648,
-        "min_ms": 0.2058,
+        "median_ms": 0.2171,
+        "p95_ms": 0.2697,
+        "min_ms": 0.2089,
         "sample_count": 20,
         "registers_per_thread": 40,
         "shared_mem_bytes": 32
@@ -714,9 +714,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2294,
-        "p95_ms": 0.2959,
-        "min_ms": 0.2181,
+        "median_ms": 0.2273,
+        "p95_ms": 0.2452,
+        "min_ms": 0.2212,
         "sample_count": 20,
         "registers_per_thread": 40,
         "shared_mem_bytes": 32
@@ -731,9 +731,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.213,
-        "p95_ms": 0.2763,
-        "min_ms": 0.2079,
+        "median_ms": 0.2171,
+        "p95_ms": 0.299,
+        "min_ms": 0.2109,
         "sample_count": 20,
         "registers_per_thread": 39,
         "shared_mem_bytes": 0
@@ -748,9 +748,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2319,
-        "p95_ms": 0.2757,
-        "min_ms": 0.2294,
+        "median_ms": 0.2483,
+        "p95_ms": 0.2776,
+        "min_ms": 0.2314,
         "sample_count": 20,
         "registers_per_thread": 40,
         "shared_mem_bytes": 0
@@ -765,9 +765,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.3262,
-        "p95_ms": 0.3465,
-        "min_ms": 0.3215,
+        "median_ms": 0.3354,
+        "p95_ms": 0.3495,
+        "min_ms": 0.3236,
         "sample_count": 20,
         "registers_per_thread": 40,
         "shared_mem_bytes": 0
@@ -782,8 +782,8 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.5868,
-        "p95_ms": 0.5971,
+        "median_ms": 0.5816,
+        "p95_ms": 0.5954,
         "min_ms": 0.5775,
         "sample_count": 20,
         "registers_per_thread": 40,
@@ -799,9 +799,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2217,
-        "p95_ms": 0.2817,
-        "min_ms": 0.2079,
+        "median_ms": 0.2186,
+        "p95_ms": 0.2546,
+        "min_ms": 0.2099,
         "sample_count": 20,
         "registers_per_thread": 39,
         "shared_mem_bytes": 0
@@ -816,9 +816,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2319,
-        "p95_ms": 0.2452,
-        "min_ms": 0.2304,
+        "median_ms": 0.2345,
+        "p95_ms": 0.251,
+        "min_ms": 0.2324,
         "sample_count": 20,
         "registers_per_thread": 40,
         "shared_mem_bytes": 0
@@ -833,9 +833,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.3272,
-        "p95_ms": 0.3552,
-        "min_ms": 0.3226,
+        "median_ms": 0.3297,
+        "p95_ms": 0.3573,
+        "min_ms": 0.3236,
         "sample_count": 20,
         "registers_per_thread": 40,
         "shared_mem_bytes": 0
@@ -850,9 +850,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.5872,
-        "p95_ms": 0.6032,
-        "min_ms": 0.5765,
+        "median_ms": 0.5816,
+        "p95_ms": 0.5971,
+        "min_ms": 0.5775,
         "sample_count": 20,
         "registers_per_thread": 40,
         "shared_mem_bytes": 0
@@ -867,9 +867,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2166,
-        "p95_ms": 0.3011,
-        "min_ms": 0.2079,
+        "median_ms": 0.2135,
+        "p95_ms": 0.2905,
+        "min_ms": 0.2109,
         "sample_count": 20,
         "registers_per_thread": 39,
         "shared_mem_bytes": 0
@@ -884,9 +884,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.233,
-        "p95_ms": 0.2572,
-        "min_ms": 0.2294,
+        "median_ms": 0.2417,
+        "p95_ms": 0.302,
+        "min_ms": 0.2324,
         "sample_count": 20,
         "registers_per_thread": 40,
         "shared_mem_bytes": 0
@@ -901,9 +901,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.3282,
-        "p95_ms": 0.3483,
-        "min_ms": 0.3215,
+        "median_ms": 0.3287,
+        "p95_ms": 0.3405,
+        "min_ms": 0.3246,
         "sample_count": 20,
         "registers_per_thread": 40,
         "shared_mem_bytes": 0
@@ -918,9 +918,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.5883,
-        "p95_ms": 0.6012,
-        "min_ms": 0.5755,
+        "median_ms": 0.5827,
+        "p95_ms": 0.6085,
+        "min_ms": 0.5775,
         "sample_count": 20,
         "registers_per_thread": 40,
         "shared_mem_bytes": 0
@@ -935,9 +935,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2207,
-        "p95_ms": 0.314,
-        "min_ms": 0.2007,
+        "median_ms": 0.2166,
+        "p95_ms": 0.278,
+        "min_ms": 0.2099,
         "sample_count": 20,
         "registers_per_thread": 41,
         "shared_mem_bytes": 0
@@ -952,9 +952,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2514,
-        "p95_ms": 0.2766,
-        "min_ms": 0.2058,
+        "median_ms": 0.2304,
+        "p95_ms": 0.296,
+        "min_ms": 0.2099,
         "sample_count": 20,
         "registers_per_thread": 44,
         "shared_mem_bytes": 8
@@ -969,9 +969,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2744,
-        "p95_ms": 0.2922,
-        "min_ms": 0.2714,
+        "median_ms": 0.2795,
+        "p95_ms": 0.3196,
+        "min_ms": 0.2734,
         "sample_count": 20,
         "registers_per_thread": 40,
         "shared_mem_bytes": 8
@@ -986,9 +986,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.425,
-        "p95_ms": 0.4315,
-        "min_ms": 0.4229,
+        "median_ms": 0.4296,
+        "p95_ms": 0.4569,
+        "min_ms": 0.425,
         "sample_count": 20,
         "registers_per_thread": 40,
         "shared_mem_bytes": 8
@@ -1003,9 +1003,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2033,
-        "p95_ms": 0.2277,
-        "min_ms": 0.2007,
+        "median_ms": 0.2406,
+        "p95_ms": 0.2989,
+        "min_ms": 0.2089,
         "sample_count": 20,
         "registers_per_thread": 41,
         "shared_mem_bytes": 128
@@ -1020,9 +1020,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2079,
-        "p95_ms": 0.2582,
-        "min_ms": 0.2048,
+        "median_ms": 0.2253,
+        "p95_ms": 0.2869,
+        "min_ms": 0.21,
         "sample_count": 20,
         "registers_per_thread": 44,
         "shared_mem_bytes": 8
@@ -1037,9 +1037,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2764,
-        "p95_ms": 0.3177,
-        "min_ms": 0.2714,
+        "median_ms": 0.2785,
+        "p95_ms": 0.3196,
+        "min_ms": 0.2765,
         "sample_count": 20,
         "registers_per_thread": 40,
         "shared_mem_bytes": 8
@@ -1054,8 +1054,8 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.4265,
-        "p95_ms": 0.4527,
+        "median_ms": 0.427,
+        "p95_ms": 0.4517,
         "min_ms": 0.4239,
         "sample_count": 20,
         "registers_per_thread": 40,
@@ -1071,9 +1071,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2028,
-        "p95_ms": 0.2171,
-        "min_ms": 0.1997,
+        "median_ms": 0.2376,
+        "p95_ms": 0.2868,
+        "min_ms": 0.2099,
         "sample_count": 20,
         "registers_per_thread": 41,
         "shared_mem_bytes": 384
@@ -1088,9 +1088,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2084,
-        "p95_ms": 0.2684,
-        "min_ms": 0.2048,
+        "median_ms": 0.2135,
+        "p95_ms": 0.233,
+        "min_ms": 0.2089,
         "sample_count": 20,
         "registers_per_thread": 44,
         "shared_mem_bytes": 8
@@ -1105,9 +1105,9 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2734,
-        "p95_ms": 0.3125,
-        "min_ms": 0.2714,
+        "median_ms": 0.2775,
+        "p95_ms": 0.305,
+        "min_ms": 0.2734,
         "sample_count": 20,
         "registers_per_thread": 40,
         "shared_mem_bytes": 8
@@ -1122,8 +1122,8 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.4337,
-        "p95_ms": 0.4735,
+        "median_ms": 0.4265,
+        "p95_ms": 0.4435,
         "min_ms": 0.4239,
         "sample_count": 20,
         "registers_per_thread": 40,
@@ -1132,14 +1132,14 @@
     ]
   },
   "dispatch_overhead": {
-    "direct_median_ms": 0.0376,
-    "compiler_driven_median_ms": 0.0374,
-    "overhead_pct": -0.517,
+    "direct_median_ms": 0.0389,
+    "compiler_driven_median_ms": 0.0388,
+    "overhead_pct": -0.342,
     "gate_pct": 5.0,
     "gate_pass": true,
-    "delta_mean_ms": -0.001034,
-    "delta_median_ms": -0.000338,
-    "delta_std_ms": 0.003187,
+    "delta_mean_ms": 0.001444,
+    "delta_median_ms": 0.000716,
+    "delta_std_ms": 0.004092,
     "paired_samples_count": 20,
     "batch_launches_per_sample": 50,
     "note": "dispatch equivalence evaluates steady-state execution through the decoded launch configuration from the serialized executable plan versus direct configuration launch over repeated batched launches with paired randomized sampling"
