@@ -1,15 +1,15 @@
 {
-  "schema_version": 1,
-  "generated_utc": "2026-08-26T10:12:51.187572+00:00",
+  "schema_version": 2,
+  "generated_utc": "2026-08-26T11:38:11.720158+00:00",
   "provenance": {
-    "git_revision": "2cea8d3cfeb4e7a709314dee404fadc450223571",
+    "git_revision": "2e2356c0d28f5e830fd381ff239406dc22136b1e",
     "dirty_tree": false,
     "benchmark_command": "python benchmarks/routed_epilogue_selection.py",
     "config_hash": "97d1fdb967561c101c05868379daf406b994aecb9b95ea8f0d30d210cc62ab34",
     "solver_version": "4.15.3",
     "python": "3.12.13",
     "platform": "Linux-6.12.95-124.187.amzn2023.x86_64-x86_64-with-glibc2.39",
-    "constraint_model_hash": "dccbc900c3dc830febcbbda6f73237eebaed109e8a6c682287c5a1b09dcafa6e"
+    "constraint_model_hash": "f4b700bd91c42c5bef0542c4426b603f35198a9998e6a54883394a9f572d6e77"
   },
   "problem": {
     "queries": 1024,
@@ -22,17 +22,17 @@
   },
   "space_size": {
     "total_points": 384,
-    "legal_points": 384,
-    "pruned_by_constraints": 0
+    "legal_points": 192,
+    "pruned_by_constraints": 192
   },
   "legality": {
     "reference_impl": "schedule_space.legal_schedules",
     "reference_legal_points": 384,
-    "model_sweep_legal_points": 384,
-    "reference_matches_model_sweep": true,
+    "model_sweep_legal_points": 192,
+    "reference_matches_model_sweep": false,
     "z3_sat_assignments": 1,
-    "agreement": true,
-    "legality_accuracy": 1.0
+    "agreement": false,
+    "legality_accuracy": 0.0
   },
   "unsat_core_example": {
     "core_names": [
@@ -51,9 +51,10 @@
       "grad_values_schedule": "full_row",
       "dtype": "bfloat16"
     },
-    "solve_ms": 252.327,
-    "feasibility_solve_ms": 95.83,
-    "optimization_solve_ms": 156.497,
+    "matches_compiled_decision": true,
+    "solve_ms": 243.501,
+    "feasibility_solve_ms": 85.122,
+    "optimization_solve_ms": 158.379,
     "objective_values": [
       0,
       0,
@@ -67,7 +68,94 @@
     "verified": true,
     "verification_failures": [],
     "solver_version": "4.15.3",
-    "model_hash": "dccbc900c3dc830febcbbda6f73237eebaed109e8a6c682287c5a1b09dcafa6e"
+    "model_hash": "f4b700bd91c42c5bef0542c4426b603f35198a9998e6a54883394a9f572d6e77"
+  },
+  "schedule_decision": {
+    "schedule": {
+      "plan": "fused",
+      "block_d": 256,
+      "num_warps": 8,
+      "num_stages": 1,
+      "grad_values_decomposition": "per_query",
+      "grad_values_schedule": "full_row",
+      "dtype": "bfloat16"
+    },
+    "launch_config": {
+      "plan": "fused",
+      "block_d": 256,
+      "num_warps": 8,
+      "num_stages": 1,
+      "grad_values_decomposition": "per_query",
+      "grad_values_schedule": "full_row",
+      "dtype": "bfloat16"
+    },
+    "selection_policy": "solver_guided",
+    "model_hash": "f4b700bd91c42c5bef0542c4426b603f35198a9998e6a54883394a9f572d6e77",
+    "objective_values": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      4,
+      129,
+      15024
+    ],
+    "solver_statistics": {
+      "wall_ms": 76.182,
+      "timeout_ms": 10000,
+      "rlimit": 10000000,
+      "objectives": 8
+    },
+    "verification_checks_run": [
+      "variables_in_range",
+      "equalities",
+      "inequalities",
+      "divisibility",
+      "allowed_sets",
+      "implications",
+      "at_most_one",
+      "exactly_one",
+      "capacity_bounds",
+      "nogoods"
+    ],
+    "attempts": [
+      {
+        "index": 0,
+        "selection_policy": "solver_guided",
+        "schedule": {
+          "plan": "fused",
+          "block_d": 256,
+          "num_warps": 8,
+          "num_stages": 1,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "full_row",
+          "dtype": "bfloat16"
+        },
+        "verified": true,
+        "rejection_reasons": [],
+        "nogood_added": false,
+        "nogood_budget_exhausted": false,
+        "nogood_forbidden": null,
+        "compile_status": "not_probed",
+        "compile_detail": null
+      }
+    ],
+    "compile_status": "not_probed",
+    "fallback_used": false,
+    "rejected_assignments": 0,
+    "compile_failures_observed": 0,
+    "nogoods_added": 0,
+    "recoveries": 0,
+    "retry_budget_exhausted": false
+  },
+  "measurement": {
+    "quantile_definition": "type-7 linear interpolation over raw CUDA-event samples (rank = q*(n-1); median == statistics.median for every n)",
+    "warmup_runs": 5,
+    "rounds": 4,
+    "samples_per_round": 5,
+    "seed": 17,
+    "deduplicated_before_measurement": true
   },
   "heuristic_schedule": {
     "plan": "fused",
@@ -81,387 +169,49 @@
   "compile_feedback": [],
   "empirical": {
     "gpu": "NVIDIA A10G",
-    "measured_points": 52,
+    "measured_points": 51,
+    "compile_failures_observed": 0,
+    "nogoods_added": 0,
     "compile_failures_avoided": 0,
     "best_point": {
       "plan": "fused",
       "block_d": 128,
+      "num_warps": 2,
+      "num_stages": 4,
+      "grad_values_decomposition": "per_query",
+      "grad_values_schedule": "segmented",
+      "dtype": "bfloat16"
+    },
+    "best_median_ms": 0.2033,
+    "solver_selected": {
+      "plan": "fused",
+      "block_d": 256,
+      "num_warps": 8,
+      "num_stages": 1,
+      "grad_values_decomposition": "per_query",
+      "grad_values_schedule": "full_row",
+      "dtype": "bfloat16"
+    },
+    "heuristic_selected": {
+      "plan": "fused",
+      "block_d": 256,
       "num_warps": 2,
       "num_stages": 1,
       "grad_values_decomposition": "per_query",
       "grad_values_schedule": "segmented",
       "dtype": "bfloat16"
     },
-    "best_median_ms": 0.1828,
     "regret": {
-      "z3_vs_best_pct": 3.06,
-      "heuristic_vs_best_pct": 40.32,
-      "note": "regret is computed within the measured fused grid; the base (unfused) plan was already compared in results/compiler/routed-scale-epilogue/benchmark.json"
+      "z3_vs_best_pct": 3.49,
+      "heuristic_vs_best_pct": 24.4,
+      "target_pct": 10.0,
+      "within_target": true,
+      "note": "regret is computed within the measured fused grid against the genuine median; the base (unfused) plan was already compared in results/compiler/routed-scale-epilogue/benchmark.json"
     },
     "samples": [
       {
         "schedule": {
           "plan": "fused",
-          "block_d": 32,
-          "num_warps": 1,
-          "num_stages": 1,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.193,
-        "p95_ms": 0.193,
-        "registers_per_thread": 35,
-        "shared_mem_bytes": 0
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 32,
-          "num_warps": 1,
-          "num_stages": 2,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.1925,
-        "p95_ms": 0.1925,
-        "registers_per_thread": 35,
-        "shared_mem_bytes": 0
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 32,
-          "num_warps": 1,
-          "num_stages": 4,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.1951,
-        "p95_ms": 0.1951,
-        "registers_per_thread": 35,
-        "shared_mem_bytes": 0
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 32,
-          "num_warps": 2,
-          "num_stages": 1,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.2145,
-        "p95_ms": 0.2145,
-        "registers_per_thread": 38,
-        "shared_mem_bytes": 0
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 32,
-          "num_warps": 2,
-          "num_stages": 2,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.212,
-        "p95_ms": 0.212,
-        "registers_per_thread": 38,
-        "shared_mem_bytes": 0
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 32,
-          "num_warps": 2,
-          "num_stages": 4,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.213,
-        "p95_ms": 0.213,
-        "registers_per_thread": 38,
-        "shared_mem_bytes": 0
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 32,
-          "num_warps": 4,
-          "num_stages": 1,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.318,
-        "p95_ms": 0.318,
-        "registers_per_thread": 37,
-        "shared_mem_bytes": 0
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 32,
-          "num_warps": 4,
-          "num_stages": 2,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.3185,
-        "p95_ms": 0.3185,
-        "registers_per_thread": 37,
-        "shared_mem_bytes": 0
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 32,
-          "num_warps": 4,
-          "num_stages": 4,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.3174,
-        "p95_ms": 0.3174,
-        "registers_per_thread": 37,
-        "shared_mem_bytes": 0
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 32,
-          "num_warps": 8,
-          "num_stages": 1,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.5704,
-        "p95_ms": 0.5704,
-        "registers_per_thread": 37,
-        "shared_mem_bytes": 0
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 32,
-          "num_warps": 8,
-          "num_stages": 2,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.5693,
-        "p95_ms": 0.5693,
-        "registers_per_thread": 37,
-        "shared_mem_bytes": 0
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 32,
-          "num_warps": 8,
-          "num_stages": 4,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.5699,
-        "p95_ms": 0.5699,
-        "registers_per_thread": 37,
-        "shared_mem_bytes": 0
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 64,
-          "num_warps": 1,
-          "num_stages": 1,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.1859,
-        "p95_ms": 0.1859,
-        "registers_per_thread": 36,
-        "shared_mem_bytes": 0
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 64,
-          "num_warps": 1,
-          "num_stages": 2,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.2217,
-        "p95_ms": 0.2217,
-        "registers_per_thread": 36,
-        "shared_mem_bytes": 128
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 64,
-          "num_warps": 1,
-          "num_stages": 4,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.1864,
-        "p95_ms": 0.1864,
-        "registers_per_thread": 32,
-        "shared_mem_bytes": 384
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 64,
-          "num_warps": 2,
-          "num_stages": 1,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.1884,
-        "p95_ms": 0.1884,
-        "registers_per_thread": 36,
-        "shared_mem_bytes": 0
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 64,
-          "num_warps": 2,
-          "num_stages": 2,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.1874,
-        "p95_ms": 0.1874,
-        "registers_per_thread": 36,
-        "shared_mem_bytes": 0
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 64,
-          "num_warps": 2,
-          "num_stages": 4,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.1905,
-        "p95_ms": 0.1905,
-        "registers_per_thread": 36,
-        "shared_mem_bytes": 0
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 64,
-          "num_warps": 4,
-          "num_stages": 1,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.2545,
-        "p95_ms": 0.2545,
-        "registers_per_thread": 37,
-        "shared_mem_bytes": 0
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 64,
-          "num_warps": 4,
-          "num_stages": 2,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.2719,
-        "p95_ms": 0.2719,
-        "registers_per_thread": 37,
-        "shared_mem_bytes": 0
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 64,
-          "num_warps": 4,
-          "num_stages": 4,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.255,
-        "p95_ms": 0.255,
-        "registers_per_thread": 37,
-        "shared_mem_bytes": 0
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 64,
-          "num_warps": 8,
-          "num_stages": 1,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.4147,
-        "p95_ms": 0.4147,
-        "registers_per_thread": 37,
-        "shared_mem_bytes": 0
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 64,
-          "num_warps": 8,
-          "num_stages": 2,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.4157,
-        "p95_ms": 0.4157,
-        "registers_per_thread": 37,
-        "shared_mem_bytes": 0
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 64,
-          "num_warps": 8,
-          "num_stages": 4,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.4209,
-        "p95_ms": 0.4209,
-        "registers_per_thread": 37,
-        "shared_mem_bytes": 0
-      },
-      {
-        "schedule": {
-          "plan": "fused",
           "block_d": 128,
           "num_warps": 1,
           "num_stages": 1,
@@ -469,40 +219,12 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2243,
-        "p95_ms": 0.2243,
-        "registers_per_thread": 43,
-        "shared_mem_bytes": 0
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 128,
-          "num_warps": 1,
-          "num_stages": 2,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.2243,
-        "p95_ms": 0.2243,
-        "registers_per_thread": 44,
-        "shared_mem_bytes": 256
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 128,
-          "num_warps": 1,
-          "num_stages": 4,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.2263,
-        "p95_ms": 0.2263,
-        "registers_per_thread": 42,
-        "shared_mem_bytes": 768
+        "median_ms": 0.2463,
+        "p95_ms": 0.2848,
+        "min_ms": 0.2427,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
       },
       {
         "schedule": {
@@ -514,40 +236,12 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.1828,
-        "p95_ms": 0.1828,
-        "registers_per_thread": 39,
-        "shared_mem_bytes": 0
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 128,
-          "num_warps": 2,
-          "num_stages": 2,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.192,
-        "p95_ms": 0.192,
-        "registers_per_thread": 35,
-        "shared_mem_bytes": 256
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 128,
-          "num_warps": 2,
-          "num_stages": 4,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.1843,
-        "p95_ms": 0.1843,
-        "registers_per_thread": 33,
-        "shared_mem_bytes": 768
+        "median_ms": 0.2038,
+        "p95_ms": 0.2184,
+        "min_ms": 0.1997,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
       },
       {
         "schedule": {
@@ -559,40 +253,12 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2258,
-        "p95_ms": 0.2258,
-        "registers_per_thread": 36,
-        "shared_mem_bytes": 0
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 128,
-          "num_warps": 4,
-          "num_stages": 2,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.2191,
-        "p95_ms": 0.2191,
-        "registers_per_thread": 36,
-        "shared_mem_bytes": 0
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 128,
-          "num_warps": 4,
-          "num_stages": 4,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.1853,
-        "p95_ms": 0.1853,
-        "registers_per_thread": 36,
-        "shared_mem_bytes": 0
+        "median_ms": 0.2161,
+        "p95_ms": 0.2676,
+        "min_ms": 0.2048,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
       },
       {
         "schedule": {
@@ -604,220 +270,148 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2642,
-        "p95_ms": 0.2642,
-        "registers_per_thread": 37,
-        "shared_mem_bytes": 0
+        "median_ms": 0.2832,
+        "p95_ms": 0.3212,
+        "min_ms": 0.2796,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
       },
       {
         "schedule": {
           "plan": "fused",
           "block_d": 128,
-          "num_warps": 8,
-          "num_stages": 2,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.2785,
-        "p95_ms": 0.2785,
-        "registers_per_thread": 37,
-        "shared_mem_bytes": 0
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 128,
-          "num_warps": 8,
-          "num_stages": 4,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.2601,
-        "p95_ms": 0.2601,
-        "registers_per_thread": 37,
-        "shared_mem_bytes": 0
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 256,
-          "num_warps": 1,
-          "num_stages": 1,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.2268,
-        "p95_ms": 0.2268,
-        "registers_per_thread": 63,
-        "shared_mem_bytes": 0
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 256,
           "num_warps": 1,
           "num_stages": 2,
           "grad_values_decomposition": "per_query",
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2299,
-        "p95_ms": 0.2299,
-        "registers_per_thread": 57,
-        "shared_mem_bytes": 512
+        "median_ms": 0.2473,
+        "p95_ms": 0.2746,
+        "min_ms": 0.2437,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
       },
       {
         "schedule": {
           "plan": "fused",
-          "block_d": 256,
+          "block_d": 128,
+          "num_warps": 2,
+          "num_stages": 2,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.2043,
+        "p95_ms": 0.2377,
+        "min_ms": 0.2007,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 128,
+          "num_warps": 4,
+          "num_stages": 2,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.2079,
+        "p95_ms": 0.2738,
+        "min_ms": 0.2038,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 128,
+          "num_warps": 8,
+          "num_stages": 2,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.2847,
+        "p95_ms": 0.3238,
+        "min_ms": 0.2796,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 128,
           "num_warps": 1,
           "num_stages": 4,
           "grad_values_decomposition": "per_query",
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2586,
-        "p95_ms": 0.2586,
-        "registers_per_thread": 54,
-        "shared_mem_bytes": 1536
+        "median_ms": 0.2473,
+        "p95_ms": 0.2634,
+        "min_ms": 0.2427,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
       },
       {
         "schedule": {
           "plan": "fused",
-          "block_d": 256,
-          "num_warps": 2,
-          "num_stages": 1,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.2565,
-        "p95_ms": 0.2565,
-        "registers_per_thread": 44,
-        "shared_mem_bytes": 0
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 256,
-          "num_warps": 2,
-          "num_stages": 2,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.2273,
-        "p95_ms": 0.2273,
-        "registers_per_thread": 42,
-        "shared_mem_bytes": 512
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 256,
+          "block_d": 128,
           "num_warps": 2,
           "num_stages": 4,
           "grad_values_decomposition": "per_query",
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2273,
-        "p95_ms": 0.2273,
-        "registers_per_thread": 39,
-        "shared_mem_bytes": 1536
+        "median_ms": 0.2033,
+        "p95_ms": 0.2193,
+        "min_ms": 0.2007,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
       },
       {
         "schedule": {
           "plan": "fused",
-          "block_d": 256,
-          "num_warps": 4,
-          "num_stages": 1,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.1833,
-        "p95_ms": 0.1833,
-        "registers_per_thread": 35,
-        "shared_mem_bytes": 0
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 256,
-          "num_warps": 4,
-          "num_stages": 2,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.2324,
-        "p95_ms": 0.2324,
-        "registers_per_thread": 34,
-        "shared_mem_bytes": 512
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 256,
+          "block_d": 128,
           "num_warps": 4,
           "num_stages": 4,
           "grad_values_decomposition": "per_query",
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.1859,
-        "p95_ms": 0.1859,
-        "registers_per_thread": 30,
-        "shared_mem_bytes": 1536
+        "median_ms": 0.2063,
+        "p95_ms": 0.262,
+        "min_ms": 0.2048,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
       },
       {
         "schedule": {
           "plan": "fused",
-          "block_d": 256,
-          "num_warps": 8,
-          "num_stages": 1,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.1899,
-        "p95_ms": 0.1899,
-        "registers_per_thread": 36,
-        "shared_mem_bytes": 0
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 256,
-          "num_warps": 8,
-          "num_stages": 2,
-          "grad_values_decomposition": "per_query",
-          "grad_values_schedule": "segmented",
-          "dtype": "bfloat16"
-        },
-        "median_ms": 0.1884,
-        "p95_ms": 0.1884,
-        "registers_per_thread": 36,
-        "shared_mem_bytes": 0
-      },
-      {
-        "schedule": {
-          "plan": "fused",
-          "block_d": 256,
+          "block_d": 128,
           "num_warps": 8,
           "num_stages": 4,
           "grad_values_decomposition": "per_query",
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.1905,
-        "p95_ms": 0.1905,
-        "registers_per_thread": 36,
-        "shared_mem_bytes": 0
+        "median_ms": 0.2826,
+        "p95_ms": 0.3113,
+        "min_ms": 0.2796,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
       },
       {
         "schedule": {
@@ -829,8 +423,61 @@
           "grad_values_schedule": "full_row",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.1884,
-        "p95_ms": 0.1884,
+        "median_ms": 0.2104,
+        "p95_ms": 0.2562,
+        "min_ms": 0.2079,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 256,
+          "num_warps": 1,
+          "num_stages": 1,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.2488,
+        "p95_ms": 0.2582,
+        "min_ms": 0.2458,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 256,
+          "num_warps": 2,
+          "num_stages": 1,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.2529,
+        "p95_ms": 0.3116,
+        "min_ms": 0.2447,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 256,
+          "num_warps": 4,
+          "num_stages": 1,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.2038,
+        "p95_ms": 0.2372,
+        "min_ms": 0.1987,
+        "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
       },
@@ -844,8 +491,146 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.1904,
-        "p95_ms": 0.1904,
+        "median_ms": 0.2355,
+        "p95_ms": 0.2746,
+        "min_ms": 0.2079,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 256,
+          "num_warps": 1,
+          "num_stages": 2,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.2509,
+        "p95_ms": 0.3082,
+        "min_ms": 0.2458,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 256,
+          "num_warps": 2,
+          "num_stages": 2,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.2499,
+        "p95_ms": 0.2976,
+        "min_ms": 0.2458,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 256,
+          "num_warps": 4,
+          "num_stages": 2,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.2068,
+        "p95_ms": 0.2796,
+        "min_ms": 0.2017,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 256,
+          "num_warps": 8,
+          "num_stages": 2,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.234,
+        "p95_ms": 0.2952,
+        "min_ms": 0.2089,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 256,
+          "num_warps": 1,
+          "num_stages": 4,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.2488,
+        "p95_ms": 0.2696,
+        "min_ms": 0.2468,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 256,
+          "num_warps": 2,
+          "num_stages": 4,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.2504,
+        "p95_ms": 0.296,
+        "min_ms": 0.2417,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 256,
+          "num_warps": 4,
+          "num_stages": 4,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.2053,
+        "p95_ms": 0.2339,
+        "min_ms": 0.2028,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 256,
+          "num_warps": 8,
+          "num_stages": 4,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.215,
+        "p95_ms": 0.271,
+        "min_ms": 0.2079,
+        "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
       },
@@ -859,8 +644,10 @@
           "grad_values_schedule": "full_row",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.1997,
-        "p95_ms": 0.1997,
+        "median_ms": 0.2222,
+        "p95_ms": 0.258,
+        "min_ms": 0.2202,
+        "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
       },
@@ -874,15 +661,434 @@
           "grad_values_schedule": "segmented",
           "dtype": "bfloat16"
         },
-        "median_ms": 0.2017,
-        "p95_ms": 0.2017,
+        "median_ms": 0.2278,
+        "p95_ms": 0.277,
+        "min_ms": 0.2212,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 32,
+          "num_warps": 1,
+          "num_stages": 1,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.2212,
+        "p95_ms": 0.2831,
+        "min_ms": 0.2099,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 32,
+          "num_warps": 2,
+          "num_stages": 1,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.2365,
+        "p95_ms": 0.2762,
+        "min_ms": 0.2314,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 32,
+          "num_warps": 4,
+          "num_stages": 1,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.3261,
+        "p95_ms": 0.3382,
+        "min_ms": 0.3215,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 32,
+          "num_warps": 8,
+          "num_stages": 1,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.5888,
+        "p95_ms": 0.6032,
+        "min_ms": 0.5786,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 32,
+          "num_warps": 1,
+          "num_stages": 2,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.2125,
+        "p95_ms": 0.2304,
+        "min_ms": 0.2099,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 32,
+          "num_warps": 2,
+          "num_stages": 2,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.2371,
+        "p95_ms": 0.3166,
+        "min_ms": 0.2324,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 32,
+          "num_warps": 4,
+          "num_stages": 2,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.3267,
+        "p95_ms": 0.3508,
+        "min_ms": 0.3226,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 32,
+          "num_warps": 8,
+          "num_stages": 2,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.5858,
+        "p95_ms": 0.6032,
+        "min_ms": 0.5765,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 32,
+          "num_warps": 1,
+          "num_stages": 4,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.2171,
+        "p95_ms": 0.2618,
+        "min_ms": 0.2109,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 32,
+          "num_warps": 2,
+          "num_stages": 4,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.237,
+        "p95_ms": 0.2714,
+        "min_ms": 0.2324,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 32,
+          "num_warps": 4,
+          "num_stages": 4,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.3261,
+        "p95_ms": 0.3377,
+        "min_ms": 0.3215,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 32,
+          "num_warps": 8,
+          "num_stages": 4,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.5791,
+        "p95_ms": 0.5975,
+        "min_ms": 0.5765,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 64,
+          "num_warps": 1,
+          "num_stages": 1,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.2084,
+        "p95_ms": 0.2837,
+        "min_ms": 0.2028,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 64,
+          "num_warps": 2,
+          "num_stages": 1,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.2104,
+        "p95_ms": 0.2492,
+        "min_ms": 0.2068,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 64,
+          "num_warps": 4,
+          "num_stages": 1,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.2796,
+        "p95_ms": 0.3216,
+        "min_ms": 0.2734,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 64,
+          "num_warps": 8,
+          "num_stages": 1,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.4255,
+        "p95_ms": 0.4696,
+        "min_ms": 0.4239,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 64,
+          "num_warps": 1,
+          "num_stages": 2,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.2068,
+        "p95_ms": 0.2341,
+        "min_ms": 0.2028,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 64,
+          "num_warps": 2,
+          "num_stages": 2,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.2099,
+        "p95_ms": 0.2358,
+        "min_ms": 0.2079,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 64,
+          "num_warps": 4,
+          "num_stages": 2,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.277,
+        "p95_ms": 0.295,
+        "min_ms": 0.2744,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 64,
+          "num_warps": 8,
+          "num_stages": 2,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.4393,
+        "p95_ms": 0.4578,
+        "min_ms": 0.4239,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 64,
+          "num_warps": 1,
+          "num_stages": 4,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.2115,
+        "p95_ms": 0.2307,
+        "min_ms": 0.2028,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 64,
+          "num_warps": 2,
+          "num_stages": 4,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.2109,
+        "p95_ms": 0.2749,
+        "min_ms": 0.2079,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 64,
+          "num_warps": 4,
+          "num_stages": 4,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.2775,
+        "p95_ms": 0.2889,
+        "min_ms": 0.2744,
+        "sample_count": 20,
+        "registers_per_thread": null,
+        "shared_mem_bytes": null
+      },
+      {
+        "schedule": {
+          "plan": "fused",
+          "block_d": 64,
+          "num_warps": 8,
+          "num_stages": 4,
+          "grad_values_decomposition": "per_query",
+          "grad_values_schedule": "segmented",
+          "dtype": "bfloat16"
+        },
+        "median_ms": 0.4393,
+        "p95_ms": 0.4557,
+        "min_ms": 0.4239,
+        "sample_count": 20,
         "registers_per_thread": null,
         "shared_mem_bytes": null
       }
     ]
   },
+  "dispatch_overhead": {
+    "direct_median_ms": 0.0599,
+    "compiler_driven_median_ms": 0.0696,
+    "overhead_pct": 16.208,
+    "gate_pct": 5.0,
+    "gate_pass": false,
+    "note": "compiler-driven dispatch rebuilds the launch configuration from the SERIALIZED executable plan each call; compilation itself stays outside the timed region"
+  },
   "notes": [
     "exhaustive sweep enumerates the decoded point space and re-checks every named constraint imperatively; it is the legality oracle",
-    "empirical numbers are measured medians on the committed GPU host; analytical objective values are never presented as measurements"
+    "empirical numbers are computed from RAW CUDA-event samples with a tested type-7 percentile; analytical objective values are never presented as measurements",
+    "schedules are deduplicated by stable key before measurement and measured in seeded, shuffled interleaved rounds"
   ]
 }

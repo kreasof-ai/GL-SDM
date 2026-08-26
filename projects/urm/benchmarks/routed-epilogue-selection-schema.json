@@ -13,7 +13,8 @@
   ],
   "properties": {
     "schema_version": {
-      "const": 1
+      "description": "v1 = legacy median-only measurement; v2 = raw-sample statistics with genuine p95. Tightened to a const of 2 once the regenerated artifact lands.",
+      "enum": [1, 2]
     },
     "generated_utc": {
       "type": "string"
@@ -146,6 +147,9 @@
         "selected_schedule": {
           "$ref": "#/$defs/schedulePoint"
         },
+        "matches_compiled_decision": {
+          "type": "boolean"
+        },
         "solve_ms": {
           "type": "number"
         },
@@ -177,6 +181,71 @@
           ]
         },
         "model_hash": {
+          "type": "string"
+        }
+      }
+    },
+    "schedule_decision": {
+      "type": "object"
+    },
+    "measurement": {
+      "type": "object",
+      "required": [
+        "quantile_definition",
+        "rounds",
+        "samples_per_round",
+        "seed",
+        "deduplicated_before_measurement"
+      ],
+      "properties": {
+        "quantile_definition": {
+          "type": "string"
+        },
+        "warmup_runs": {
+          "type": "integer"
+        },
+        "rounds": {
+          "type": "integer"
+        },
+        "samples_per_round": {
+          "type": "integer"
+        },
+        "seed": {
+          "type": "integer"
+        },
+        "deduplicated_before_measurement": {
+          "type": "boolean"
+        }
+      }
+    },
+    "dispatch_overhead": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "direct_median_ms",
+        "compiler_driven_median_ms",
+        "overhead_pct",
+        "gate_pass"
+      ],
+      "properties": {
+        "direct_median_ms": {
+          "type": "number"
+        },
+        "compiler_driven_median_ms": {
+          "type": "number"
+        },
+        "overhead_pct": {
+          "type": "number"
+        },
+        "gate_pct": {
+          "type": "number"
+        },
+        "gate_pass": {
+          "type": "boolean"
+        },
+        "note": {
           "type": "string"
         }
       }
@@ -239,7 +308,13 @@
         "measured_points": {
           "type": "integer"
         },
+        "compile_failures_observed": {
+          "type": "integer"
+        },
         "compile_failures_avoided": {
+          "type": "integer"
+        },
+        "nogoods_added": {
           "type": "integer"
         },
         "best_point": {
@@ -260,6 +335,15 @@
             },
             "heuristic_vs_best_pct": {
               "type": "number"
+            },
+            "target_pct": {
+              "type": "number"
+            },
+            "within_target": {
+              "type": "boolean"
+            },
+            "note": {
+              "type": "string"
             }
           }
         },
@@ -269,7 +353,8 @@
             "type": "object",
             "required": [
               "schedule",
-              "median_ms"
+              "median_ms",
+              "p95_ms"
             ],
             "properties": {
               "schedule": {
@@ -280,6 +365,12 @@
               },
               "p95_ms": {
                 "type": "number"
+              },
+              "min_ms": {
+                "type": "number"
+              },
+              "sample_count": {
+                "type": "integer"
               },
               "registers_per_thread": {
                 "type": [
@@ -305,6 +396,41 @@
       }
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "schema_version": { "const": 2 } },
+        "required": ["schema_version"]
+      },
+      "then": {
+        "required": [
+          "measurement",
+          "dispatch_overhead",
+          "schedule_decision"
+        ],
+        "properties": {
+          "measurement": {
+            "required": [
+              "quantile_definition",
+              "rounds",
+              "samples_per_round",
+              "seed",
+              "deduplicated_before_measurement"
+            ]
+          },
+          "empirical": {
+            "properties": {
+              "samples": {
+                "items": {
+                  "required": ["min_ms", "sample_count"]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
   "$defs": {
     "provenance": {
       "type": "object",

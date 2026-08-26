@@ -123,6 +123,31 @@ Z3 proves that **symbolic side conditions are satisfiable**, and nothing else.
     performance questions. The measured-best schedule is reported next to the
     solver-selected one so analytical regret stays visible.
 
+### Integration closure (normative since the schedule-search iteration)
+
+Stages 2 through 11 run INSIDE `UrmCompiler.compile()` for every program with
+routed-reduction work, orchestrated by `compiler/search.py`
+(`CompilationSearch` -> serializable `ScheduleDecision`):
+
+- The schedule model is CANDIDATE-BOUND: `kernel_plan.plan_kinds_for_candidate`
+  pins the execution plans each selected candidate's lowering implements, so
+  candidate selection and schedule selection can never contradict each other.
+- Without Z3, the deterministic heuristic optimum is lifted to a complete
+  assignment (`schedule_point_to_assignment`) and passes the SAME independent
+  verifier; the fallback is recorded in the decision.
+- Every unverified assignment is rejected before lowering or probing.
+- A compile probe (GPU callers inject one, e.g.
+  `make_triton_compile_probe()`) exercises the EXACT selected configuration;
+  failures add an exact nogood for THAT assignment and the search re-solves
+  within `SolverLimits.max_nogoods`. Without a probe the decision records
+  `compile_status=not_probed` and never claims compile success.
+- The decision's launch configuration is serialized into every
+  anchor-dispatch `PlanStep` and into `CompilationResult.schedule_decision`;
+  the production anchor (`RoutedEpilogueLaunchConfig`) honors every field,
+  and benchmarks execute those same production implementations.
+
+## Invariants recap
+
 13. **Differential correctness.** Forward and backward match eager references
     inside dtype-specific envelopes on degenerate, non-power-of-two, repeated-
     route, and zero-scale shapes before any schedule is trusted.
@@ -131,6 +156,29 @@ Z3 proves that **symbolic side conditions are satisfiable**, and nothing else.
     verified executable plan with trace, obligations, analytical costs, and
     solver statistics - or a structured diagnostic. Unsupported programs and
     timed-out solving return explicit diagnostics, never a silent fallback.
+
+### Integration closure (normative since the schedule-search iteration)
+
+Stages 2 through 11 run INSIDE `UrmCompiler.compile()` for every program with
+routed-reduction work, orchestrated by `compiler/search.py`
+(`CompilationSearch` -> serializable `ScheduleDecision`):
+
+- The schedule model is CANDIDATE-BOUND: `kernel_plan.plan_kinds_for_candidate`
+  pins the execution plans each selected candidate's lowering implements, so
+  candidate selection and schedule selection can never contradict each other.
+- Without Z3, the deterministic heuristic optimum is lifted to a complete
+  assignment (`schedule_point_to_assignment`) and passes the SAME independent
+  verifier; the fallback is recorded in the decision.
+- Every unverified assignment is rejected before lowering or probing.
+- A compile probe (GPU callers inject one, e.g.
+  `make_triton_compile_probe()`) exercises the EXACT selected configuration;
+  failures add an exact nogood for THAT assignment and the search re-solves
+  within `SolverLimits.max_nogoods`. Without a probe the decision records
+  `compile_status=not_probed` and never claims compile success.
+- The decision's launch configuration is serialized into every
+  anchor-dispatch `PlanStep` and into `CompilationResult.schedule_decision`;
+  the production anchor (`RoutedEpilogueLaunchConfig`) honors every field,
+  and benchmarks execute those same production implementations.
 
 ## Invariants recap
 

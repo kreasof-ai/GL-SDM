@@ -6,7 +6,11 @@ plans through an explicit pipeline:
     semantic program -> validated rewrite/lowering CANDIDATES
       -> (optional) Z3 feasibility + bounded lexicographic ranking
       -> independent imperative model verification
-      -> anchor selection -> placement/sharding -> executable plan
+      -> CANDIDATE-BOUND schedule solve (or deterministic heuristic fallback)
+         -> independent schedule verification -> bounded nogood/retry
+         -> optional compile probe of the exact selected configuration
+      -> anchor selection carrying the selected LAUNCH CONFIGURATION
+      -> placement/sharding -> executable plan (+ serialized decision)
       -> deterministic compilation trace
 
 Two parameter namespaces are kept separate everywhere: *architecture*
@@ -71,12 +75,16 @@ from urm.compiler.semantic import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
-    from urm.compiler.constraints import ConstraintModel
+    from urm.compiler.constraints import Assignment, ConstraintModel
+    from urm.compiler.search import CompileProbe, ScheduleDecision
     from urm.compiler.semantic import SemanticNode, SemanticProgram
     from urm.compiler.solver import FeasibilityResult, OptimizationResult
     from urm.compiler.verification import VerificationReport
+
+    ScheduleVerifier = Callable[[ConstraintModel, Assignment], VerificationReport]
 
 
 # -- Parameter namespaces -----------------------------------------------------
@@ -303,6 +311,9 @@ class ExecutablePlan:
                         for ex in step.exchanges
                     ],
                     "note": step.note,
+                    "launch_config": (
+                        dict(step.launch_config) if step.launch_config else None
+                    ),
                 }
                 for step in self.steps
             ],
@@ -328,6 +339,9 @@ class CompilationResult:
     schedule_params: dict[str, object] | None = None
     unresolved_obligations: tuple[tuple[str, str, str], ...] = ()
     solver_statistics: dict[str, float | int] | None = None
+    # Verified schedule decision for programs with routed-reduction work;
+    # ``None`` records honestly that no schedule stage applied.
+    schedule_decision: ScheduleDecision | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -347,6 +361,11 @@ class CompilationResult:
                 for kind, subject, detail in self.unresolved_obligations
             ],
             "solver_statistics": self.solver_statistics,
+            "schedule_decision": (
+                self.schedule_decision.to_dict()
+                if self.schedule_decision is not None
+                else None
+            ),
         }
 
 
@@ -471,10 +490,18 @@ class UrmCompiler:
         rules: Sequence[RewriteRule] | None = None,
         anchors: AnchorRegistry | None = None,
         device_limits_path: Path | None = None,
+        compile_probe: CompileProbe | None = None,
+        max_nogoods: int = 8,
+        schedule_verifier: ScheduleVerifier | None = None,
     ) -> None:
         self.engine = RewriteEngine(rules) if rules is not None else RewriteEngine()
         self.anchors = anchors if anchors is not None else default_registry()
         self.device_limits = DeviceLimits.load(device_limits_path)
+        self.compile_probe = compile_probe
+        self.max_nogoods = max_nogoods
+        # ``None`` selects the standard independent verifier; tests may inject
+        # an oracle to prove unverified assignments never reach lowering.
+        self.schedule_verifier = schedule_verifier
 
     # -- validation --------------------------------------------------------
 
@@ -638,8 +665,27 @@ class UrmCompiler:
             compiled = applied.program
             trace_parts.append(applied.trace)
 
+        # Candidate-bound schedule search: solve (or deterministic fallback),
+        # independently verify, optionally compile-probe the exact selected
+        # configuration, and retry bounded on nogoods. Unverified schedules
+        # never reach lowering.
+        schedule_decision = self._search_schedule(
+            program=program,
+            compiled=compiled,
+            chosen=chosen,
+            intent=intent,
+            schedule_params=schedule_params,
+        )
+
         steps, anchors_chosen, cost_parts = self._lower_to_anchors(
-            compiled, intent, schedule_params
+            compiled,
+            intent,
+            schedule_params,
+            launch_config=(
+                dict(schedule_decision.launch_config)
+                if schedule_decision is not None
+                else None
+            ),
         )
 
         obligations = tuple(
@@ -696,6 +742,7 @@ class UrmCompiler:
             schedule_params=schedule_params.to_dict(),
             unresolved_obligations=unresolved,
             solver_statistics=solver_stats,
+            schedule_decision=schedule_decision,
         )
 
     def compile_candidate(
@@ -717,6 +764,39 @@ class UrmCompiler:
         )
 
     # -- internals -------------------------------------------------------------
+
+    def _search_schedule(
+        self,
+        *,
+        program: SemanticProgram,
+        compiled: SemanticProgram,
+        chosen: CompilationCandidate,
+        intent: CompilationIntent,
+        schedule_params: ScheduleParams,
+    ) -> ScheduleDecision | None:
+        """Solve, verify, and (optionally) probe the candidate-bound schedule.
+
+        Returns ``None`` honestly when the compiled program contains no
+        routed-reduction work for the schedule stage to decide. Structured
+        errors propagate: UNSAT models and exhausted retry budgets are
+        compile failures, never silent fallbacks.
+        """
+        from urm.compiler.semantic import WeightedReduce
+
+        if not any(isinstance(op, WeightedReduce) for op in compiled.ops):
+            return None
+        from urm.compiler.search import CompilationSearch
+
+        model = self.build_constraints(
+            program, chosen.candidate_id, intent, schedule_params=schedule_params
+        )
+        search = CompilationSearch(
+            model=model,
+            max_nogoods=self.max_nogoods,
+            probe=self.compile_probe,
+            verifier=self.schedule_verifier,
+        )
+        return search.run()
 
     def _select_candidate(
         self,
@@ -901,6 +981,7 @@ class UrmCompiler:
         compiled: SemanticProgram,
         intent: CompilationIntent,
         schedule_params: ScheduleParams,
+        launch_config: dict[str, str | int] | None = None,
     ):
         steps: list[PlanStep] = []
         anchors_chosen: list[str] = []
@@ -916,7 +997,13 @@ class UrmCompiler:
                 schedule_params.anchor_overrides.get("*")
             )
             decision: AnchorDecision = self.anchors.select(
-                AnchorRequest(kind=request_kind, visitors=visitors)
+                AnchorRequest(
+                    kind=request_kind,
+                    visitors=visitors,
+                    schedule_params=(
+                        dict(launch_config) if launch_config is not None else None
+                    ),
+                )
             )
             if override is not None:
                 decision = self._apply_override(request_kind, visitors, override, op)
@@ -941,6 +1028,9 @@ class UrmCompiler:
                     kind="anchor_dispatch",
                     anchor=decision.anchor.name,
                     note=op.name,
+                    launch_config=(
+                        dict(launch_config) if launch_config is not None else None
+                    ),
                 )
             )
             step_id += 1

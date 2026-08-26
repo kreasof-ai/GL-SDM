@@ -37,7 +37,15 @@ optimized, profiled, and compared against a pinned production kernel:
   rules with deterministic traces, a simulated routing-to-communication
   planner, an analytical cost model, and a NAS-facing compilation API - proven
   by a CODA-inspired routed-reduction row-scale epilogue prototype
-  (results/compiler/) whose fused plan avoids materializing `base` entirely.
+  (results/compiler/) whose fused plan avoids materializing `base` entirely; and
+- compiler-to-kernel schedule integration closure: `UrmCompiler.compile()` now
+  runs a candidate-bound schedule search (`compiler/search.py`: Z3 solve or
+  deterministic heuristic fallback -> independent verification -> optional GPU
+  compile probe -> bounded nogood/retry), and the selected
+  `RoutedEpilogueLaunchConfig` is serialized into the executable plan and
+  drives the PRODUCTION Triton anchor launchers (benchmarks call the same
+  implementations); the committed selection artifact reports genuine raw-sample
+  medians and p95s with seeded interleaved rounds.
 
 See [the compiler charter](docs/compiler-charter.md), the
 [CODA retrospective](docs/coda-retrospective.md),
@@ -70,7 +78,8 @@ projects/urm/
 |   |-- cases.toml               # canonical shape and trace grid
 |   |-- routed_reduce.py         # CUDA-event PyTorch/Triton comparison
 |   |-- routed_scale_epilogue.py # materialized vs fused epilogue prototype
-|   |-- epilogue_schedules.py    # parameterized fused-epilogue schedule variants
+|   |-- epilogue_schedules.py    # SchedulePoint adapter over PRODUCTION kernels
+|   |-- measurement.py           # raw samples, tested percentiles, interleaving
 |   |-- routed_epilogue_selection.py # solver-guided schedule selection (GPU)
 |   |-- placement_selection.py   # solver-guided simulated mesh placement
 |   |-- unsat_diagnostics.py     # representative impossible problems + cores
@@ -115,7 +124,8 @@ projects/urm/
 |   |                            #   gated delta rule) and shared references
 |   |-- backends/                # reference and optimized routed-reduction backends
 |   |-- compiler/                # semantic IR, locality/effects, verified
-|   |                            #   rewrites, anchors, planner, cost model
+|   |                            #   rewrites, anchors, planner, cost model,
+|   |                            #   bounded schedule search (compiler/search.py)
 |   |-- ir.py                    # restricted typed operator contract
 |   |-- presets.py               # canonical semantic-family specifications
 |   |-- routed_reduction.py      # frozen v1 tensor/capability contract
@@ -175,7 +185,7 @@ model.
   matching the original SDM semantics and traces.
 - Compare URM dispatch overhead with direct upstream calls.
 
-### Phase 2.5 - compiler architecture (this iteration)
+### Phase 2.5 - compiler architecture (complete through integration closure)
 
 - Layered semantic/execution IR with locality and effect models
   (docs/compiler-charter.md).
@@ -185,6 +195,16 @@ model.
   avoided materialization (results/compiler/routed-scale-epilogue/).
 - Simulated routing-to-communication planner and analytical cost model.
 - NAS-facing compilation API plus a preset compilation matrix artifact.
+- Compiler-to-kernel schedule integration closure: verified schedules are
+  selected inside `compile()`, probed on GPU when available, serialized in
+  the executable plan, and executed by the production Triton anchor
+  (results/compiler/solver/routed-epilogue-selection.json).
+- Next bounded follow-up (known defect, deliberately NOT mixed into this
+  iteration): `decode_placement()` keeps only the first owner for replicated
+  items and `placement_metrics()` divides item bytes by the replication
+  factor; every committed placement case uses replication factor 1, so no
+  committed artifact is affected. Multi-owner replication decoding and
+  byte accounting is queued as its own change.
 
 ### Phase 3 - systems path
 

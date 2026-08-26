@@ -143,6 +143,9 @@ class PlanStep:
     anchor: str | None = None
     exchanges: tuple[ExchangeStep, ...] = ()
     note: str | None = None
+    # Verified schedule/launch configuration for anchor-dispatch steps;
+    # plain serializable data only (see urm.compiler.search.ScheduleDecision).
+    launch_config: dict[str, str | int] | None = None
 
 
 def group_exchanges_by_destination(

@@ -41,6 +41,7 @@
         "candidates_rejected_by_imperative_checks": { "type": "integer" },
         "candidates_rejected_by_z3": { "type": "integer" },
         "verified_models": { "type": "integer" },
+        "schedule_models_verified": { "type": "integer" },
         "unsat_categories": { "type": "array", "items": { "type": "string" } },
         "solver_time_ms": { "type": "number" },
         "compile_failures": { "type": "integer" },
@@ -86,6 +87,10 @@
           "candidates": { "type": "array" },
           "selected_candidate_ids": { "type": "array", "items": {"type": "string"} },
           "selection_policies": { "type": "array", "items": {"type": "string"} },
+          "schedule_decisions": {
+            "type": "array",
+            "items": { "type": ["object", "null"] }
+          },
           "rewrite_accepted": { "type": "integer" },
           "rewrite_rejected": { "type": "integer" },
           "rejected_by_training_intent": { "type": "integer" },

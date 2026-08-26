@@ -134,6 +134,35 @@ def decode_selected_candidate(
     return chosen[0]
 
 
+# -- Candidate-to-plan binding ---------------------------------------------------
+# The two decision stages must never contradict each other: once a rewrite
+# candidate is selected, its schedule model may only choose plans that this
+# candidate's lowering actually implements.
+
+_FUSED_PLAN_RULES = frozenset({"fold_row_scale_into_routed_reduction_epilogue"})
+
+
+def plan_kinds_for_candidate(candidate) -> tuple[PlanKind, ...]:
+    """Plans the candidate's own lowering can legally execute.
+
+    ``base`` lowers through routed-reduction v1 + materialized transform and
+    therefore permits only the base plan; the row-scale epilogue fusion rule
+    permits only its fused anchor. Unknown rewrite rules leave both plans
+    reachable but record the loose binding in model metadata.
+    """
+    if getattr(candidate, "kind", "") == "base":
+        return (PlanKind.BASE,)
+    rule = getattr(candidate, "rule", None)
+    if rule in _FUSED_PLAN_RULES:
+        return (PlanKind.FUSED,)
+    return (PlanKind.BASE, PlanKind.FUSED)
+
+
+def plan_binding_is_total(candidate) -> bool:
+    """True when the candidate pins exactly one executable plan."""
+    return len(plan_kinds_for_candidate(candidate)) == 1
+
+
 # -- Routed-epilogue schedule model -------------------------------------------------
 
 CONFIG_CHOICES = tuple(
@@ -166,15 +195,28 @@ def build_schedule_model(
     schedule_params,
     device_limits,
     problem: ScheduleProblem | None = None,
+    allowed_plans: Sequence[PlanKind] | None = None,
 ) -> ConstraintModel:
     """Constraint model for one candidate's routed-epilogue schedule space.
 
     Hard constraints mirror ``schedule_space.is_legal`` exactly; objectives
     follow the documented eight-level lexicographic order with a final
     deterministic stable-ordering tie-break.
+
+    The model is CANDIDATE-BOUND: ``allowed_plans`` (default: derived from the
+    candidate through :func:`plan_kinds_for_candidate`) pins the execution
+    plans this candidate's lowering can run, so schedule selection can never
+    contradict the already-selected rewrite candidate.
     """
     from urm.compiler.planner import CompilationIntent
     from urm.compiler.semantic import WeightedReduce
+
+    if allowed_plans is None:
+        allowed_plans = plan_kinds_for_candidate(candidate)
+    allowed_plans = tuple(allowed_plans) or (PlanKind.BASE, PlanKind.FUSED)
+    unknown = [p for p in allowed_plans if p not in set(PlanKind)]
+    if unknown:
+        raise ValueError(f"unknown plan kinds: {unknown}")
 
     # Derive shape facts from the program when hints exist.
     reduce_op = next((op for op in program.ops if isinstance(op, WeightedReduce)), None)
@@ -219,6 +261,8 @@ def build_schedule_model(
             "fused_backward_dtypes": ",".join(sorted(problem.fused_backward_dtypes)),
             "base_backward_dtypes": ",".join(sorted(problem.base_backward_dtypes)),
             "shared_mem_limit_bytes": str(problem.shared_mem_bytes_per_block),
+            "allowed_plans": ",".join(p.value for p in allowed_plans),
+            "plan_binding_total": ("1" if len(set(allowed_plans)) == 1 else "0"),
             "schedule_origin": "kernel_plan.build_schedule_model",
         }
     )
@@ -305,6 +349,27 @@ def build_schedule_model(
         CATEGORY_SCHEDULE,
         exactly_one_org,
     )
+
+    # Candidate-plan binding: plans outside the candidate's own lowering are
+    # pinned off, so the schedule stage can never contradict candidate
+    # selection (base candidate -> base plan; epilogue fusion -> fused plan).
+    for value in plan_values:
+        if PlanKind(value) in allowed_plans:
+            continue
+        model.add_constraint(
+            Equality(
+                name=f"candidate_binds_plan_{value}_off",
+                category=CATEGORY_SEMANTIC,
+                explanation=(
+                    f"selected candidate {candidate.candidate_id!r} does not "
+                    f"implement the {value!r} execution plan"
+                ),
+                origin=Origin(kind="rewrite_rule", id=candidate.candidate_id),
+                lhs=LinearExpr.var(f"plan_{value}"),
+                rhs=LinearExpr.const(0),
+            )
+        )
+
     group(
         [f"dtype_{d}" for d in dtype_values],
         "dtype",
@@ -825,6 +890,51 @@ def schedule_point_assignments(model: ConstraintModel):
         yield assignment
 
 
+def schedule_point_to_assignment(
+    model: ConstraintModel, point: SchedulePoint
+) -> Assignment:
+    """Convert exactly one :class:`SchedulePoint` to its full model assignment.
+
+    This is the compile-feedback counterpart of :func:`decode_schedule_point`:
+    when a concrete point fails compilation, the nogood must exclude THAT
+    point's assignment - never some other (e.g. previously optimized)
+    assignment. Every model variable receives a value so the result passes
+    range verification.
+    """
+    assignment: Assignment = {}
+    for variable in model.variables:
+        if isinstance(variable, BoolVar):
+            assignment[variable.name] = False
+    config = (point.block_d, point.num_stages, point.num_warps)
+    if config not in CONFIG_CHOICES:
+        raise ValueError(f"schedule point {config} is not an implemented launch config")
+    cfg_name = (
+        f"cfg_{CONFIG_CHOICES.index(config)}_b{config[0]}_s{config[1]}_w{config[2]}"
+    )
+    if model.variable_named(cfg_name) is None:
+        raise ValueError(f"model has no launch-config variable {cfg_name!r}")
+    assignment[cfg_name] = True
+    for prefix, value in (
+        ("decomp_", point.grad_values_decomposition),
+        ("gradsched_", point.grad_values_schedule),
+        ("plan_", point.plan),
+        ("dtype_", point.dtype),
+    ):
+        name = f"{prefix}{value}"
+        if model.variable_named(name) is not None:
+            assignment[name] = True
+    if model.variable_named("obligations_open") is not None:
+        assignment["obligations_open"] = False
+    for derived, value in (
+        ("block_d", point.block_d),
+        ("num_warps", point.num_warps),
+        ("num_stages", point.num_stages),
+    ):
+        if model.variable_named(derived) is not None:
+            assignment[derived] = value
+    return assignment
+
+
 def exhaustive_schedule_sweep(model: ConstraintModel):
     """(legal assignments, ranked best) over the decoded point space."""
     from urm.compiler.schedule_space import rank_lexicographic
@@ -939,5 +1049,9 @@ __all__ = [
     "build_schedule_model",
     "decode_schedule_point",
     "decode_selected_candidate",
+    "plan_binding_is_total",
+    "plan_kinds_for_candidate",
+    "schedule_point_assignments",
+    "schedule_point_to_assignment",
     "verify_schedule_assignment",
 ]

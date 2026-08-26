@@ -2,13 +2,14 @@
 
 Pipeline exercised end-to-end on the committed problem:
 
-    semantic program -> candidate enumeration -> constraint model
-      -> Z3 feasibility (tracked, named assertions)
-      -> bounded lexicographic optimization
-      -> independent imperative verification
-      -> exhaustive sweep agreement check
-      -> empirical measurement of the legal fused schedule grid on GPU
-      -> compile feedback capture
+    semantic program -> UrmCompiler.compile() end-to-end
+      (candidate selection -> candidate-bound schedule model -> Z3
+       optimization -> independent verification -> serialized decision)
+    -> explicit feasibility/optimization cross-check on the same model
+    -> exhaustive sweep agreement check
+    -> empirical measurement of the deduplicated legal fused schedule grid
+       (raw samples, seeded interleaved rounds, genuine median AND p95)
+    -> compiler-driven vs direct dispatch overhead measurement
 
 Z3 is successful if it removes illegal schedules and produces explainable,
 independently verified plans. It is NOT required to predict the fastest
@@ -19,8 +20,9 @@ from __future__ import annotations
 
 import argparse
 import json
-import statistics
+import math
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import torch
@@ -35,21 +37,21 @@ PROBLEM = {
     "dtype": "bfloat16",
 }
 
+# Measurement methodology (documented in the artifact, tested in
+# tests/test_measurement.py).
+MEASUREMENT = {
+    "quantile_definition": (
+        "type-7 linear interpolation over raw CUDA-event samples "
+        "(rank = q*(n-1); median == statistics.median for every n)"
+    ),
+    "warmup_runs": 5,
+    "rounds": 4,
+    "samples_per_round": 5,
+    "seed": 17,
+}
 
-def cuda_median_ms(fn, warmup: int = 5, reps: int = 20) -> float:
-    for _ in range(warmup):
-        fn()
-    torch.cuda.synchronize()
-    samples = []
-    for _ in range(reps):
-        start = torch.cuda.Event(enable_timing=True)
-        end = torch.cuda.Event(enable_timing=True)
-        start.record()
-        fn()
-        end.record()
-        torch.cuda.synchronize()
-        samples.append(start.elapsed_time(end))
-    return statistics.median(samples)
+REGRET_TARGET_PCT = 10.0
+OVERHEAD_GATE_PCT = 5.0
 
 
 def main() -> None:
@@ -62,20 +64,19 @@ def main() -> None:
         raise SystemExit("CUDA required: this benchmark measures GPU schedules")
 
     import epilogue_schedules as sched
+    from measurement import measure_schedules_interleaved, summarize_samples
     from provenance import provenance, utc_now, write_artifact
 
-    from urm.compiler.diagnostics import CompilerError  # noqa: F401 - parity with tests
+    from urm.compiler.anchors.routed_reduction_epilogue import (
+        RoutedEpilogueLaunchConfig,
+    )
     from urm.compiler.kernel_plan import (
-        apply_compile_feedback,
         decode_schedule_point,
         exhaustive_schedule_sweep,
+        schedule_point_to_assignment,
         verify_schedule_assignment,
     )
-    from urm.compiler.planner import (
-        CompilationIntent,
-        ScheduleParams,
-        UrmCompiler,
-    )
+    from urm.compiler.planner import CompilationIntent, ScheduleParams, UrmCompiler
     from urm.compiler.schedule_space import (
         SUPPORTED_BLOCKS,
         SUPPORTED_STAGES,
@@ -85,7 +86,7 @@ def main() -> None:
         heuristic_schedule,
         legal_schedules,
     )
-    from urm.compiler.semantic import row_scaled_routed_reduction_program
+    from urm.compiler.semantic import DType, row_scaled_routed_reduction_program
     from urm.compiler.solver import FeasibilityPass, OptimizationPass, z3_version
 
     intent = CompilationIntent.TRAINING
@@ -94,9 +95,7 @@ def main() -> None:
         route_width=PROBLEM["route_width"],
         sources=PROBLEM["sources"],
         value_dim=PROBLEM["value_dim"],
-        value_dtype=__import__(
-            "urm.compiler.semantic", fromlist=["DType"]
-        ).DType.BFLOAT16,
+        value_dtype=DType.BFLOAT16,
     )
     compiler = UrmCompiler()
     candidates = compiler.enumerate_candidates(program, intent)
@@ -105,28 +104,41 @@ def main() -> None:
         program, fused.candidate_id, intent, schedule_params=ScheduleParams()
     )
 
-    # -- feasibility pass ----------------------------------------------------
+    # -- explicit feasibility pass -------------------------------------------
     started = time.perf_counter()
     feasibility = FeasibilityPass().run(model)
     feasibility_ms = (time.perf_counter() - started) * 1000.0
     assert feasibility.status.value == "sat", feasibility.diagnostics
 
-    # -- optimization pass ----------------------------------------------------
+    # -- explicit optimization pass ------------------------------------------
     started = time.perf_counter()
     optimized = OptimizationPass().run(model)
     optimization_ms = (time.perf_counter() - started) * 1000.0
     assert optimized.status.value == "sat"
 
-    # -- independent verification ----------------------------------------------
+    # -- END-TO-END compile(): the selected schedule enters the real path ------
+    compiled_result = compiler.compile(program, intent=intent)
+    decision = compiled_result.schedule_decision
+    assert decision is not None, "compile() must carry a schedule decision"
+    assert all(attempt.verified for attempt in decision.attempts)
+    z3_point = decode_schedule_point(model, optimized.assignment)
+
+    # -- independent verification of the explicit optimum -----------------------
     report = verify_schedule_assignment(model, optimized.assignment)
     assert report.ok, report.failures[:3]
-    z3_point = decode_schedule_point(model, optimized.assignment)
 
     # -- exhaustive agreement over the decoded point space ----------------------
     legal_assignments, ranked, total_points = exhaustive_schedule_sweep(model)
     agree_optima = ranked[0][0] == optimized.assignment
     reference_problem = model_to_problem(model)
-    reference_legal = legal_schedules(reference_problem)
+    # Like-for-like legality: the committed model is CANDIDATE-BOUND, so the
+    # reference enumeration must be restricted to the same allowed plans.
+    allowed_plans = set(model.metadata.get("allowed_plans", "base,fused").split(","))
+    reference_legal = [
+        point
+        for point in legal_schedules(reference_problem)
+        if point.plan in allowed_plans
+    ]
 
     notes = [
         (
@@ -134,8 +146,18 @@ def main() -> None:
             "every named constraint imperatively; it is the legality oracle"
         ),
         (
-            "empirical numbers are measured medians on the committed GPU host; "
-            "analytical objective values are never presented as measurements"
+            "reference legality is restricted to the selected candidate's "
+            "allowed plans so the comparison is like-for-like against the "
+            "candidate-bound model"
+        ),
+        (
+            "empirical numbers are computed from RAW CUDA-event samples with a "
+            "tested type-7 percentile; analytical objective values are never "
+            "presented as measurements"
+        ),
+        (
+            "schedules are deduplicated by stable key before measurement and "
+            "measured in seeded, shuffled interleaved rounds"
         ),
     ]
 
@@ -160,7 +182,7 @@ def main() -> None:
         }
 
     artifact: dict[str, object] = {
-        "schema_version": 1,
+        "schema_version": 2,
         "generated_utc": utc_now(),
         "provenance": {
             **provenance("python benchmarks/routed_epilogue_selection.py", PROBLEM),
@@ -195,6 +217,9 @@ def main() -> None:
         "z3_selection": {
             "status": optimized.status.value,
             "selected_schedule": z3_point.as_dict(),
+            "matches_compiled_decision": (
+                decision.schedule_point.stable_key == z3_point.stable_key
+            ),
             "solve_ms": round(feasibility_ms + optimization_ms, 3),
             "feasibility_solve_ms": round(feasibility_ms, 3),
             "optimization_solve_ms": round(optimization_ms, 3),
@@ -204,9 +229,15 @@ def main() -> None:
             "solver_version": z3_version(),
             "model_hash": model.summary_hash(),
         },
+        "schedule_decision": decision.to_dict(),
+        "measurement": {
+            **MEASUREMENT,
+            "deduplicated_before_measurement": True,
+        },
         "heuristic_schedule": heuristic_schedule(reference_problem).as_dict(),
         "compile_feedback": [],
         "empirical": None,
+        "dispatch_overhead": None,
         "notes": notes,
     }
 
@@ -217,7 +248,7 @@ def main() -> None:
         )
         return
 
-    # -- empirical measurement of the fused schedule grid -----------------------
+    # -- empirical measurement of the deduplicated fused grid -------------------
     indices, weights, values, row_scale = sched.make_inputs(
         PROBLEM["queries"],
         PROBLEM["route_width"],
@@ -226,35 +257,15 @@ def main() -> None:
         PROBLEM["dtype"],
     )
 
-    def measure(point: SchedulePoint) -> tuple[float, float, dict[str, int | None]]:
-        def run() -> None:
-            output, _handle = sched.forward_launch(
-                point, indices, weights, values, row_scale
-            )
-            sched.backward_launch(point, indices, weights, values, row_scale, output)
-
-        median_ms = cuda_median_ms(run)
-
-        # Compile feedback from the most recent forward launch handle.
-        _output, handle = sched.forward_launch(
-            point, indices, weights, values, row_scale
-        )
-        feedback = sched.compile_feedback_for(handle)
-        return median_ms, median_ms, feedback
-
-    # Stratified grid: full (block, warps, stages) space at the chosen dtype
-    # and traversal; then decomposition/traversal variants at the chosen tile.
     dtype_name = PROBLEM["dtype"]
-    samples: list[dict[str, object]] = []
-    compile_failures_avoided = 0
-    feedback_records: list[dict[str, object]] = []
-    legal_keys = {point.stable_key for point in legal_schedules(reference_problem)}
-    for plan in (PlanKind.FUSED.value,):
-        for block in SUPPORTED_BLOCKS:
-            for warps in SUPPORTED_WARPS:
-                for stage in SUPPORTED_STAGES:
-                    point = SchedulePoint(
-                        plan=plan,
+    grid_points: list[SchedulePoint] = []
+    # Full (block, warps, stages) space at per-query/segmented traversal ...
+    for block in SUPPORTED_BLOCKS:
+        for warps in SUPPORTED_WARPS:
+            for stage in SUPPORTED_STAGES:
+                grid_points.append(
+                    SchedulePoint(
+                        plan=PlanKind.FUSED.value,
                         block_d=block,
                         num_warps=warps,
                         num_stages=stage,
@@ -262,76 +273,91 @@ def main() -> None:
                         grad_values_schedule="segmented",
                         dtype=dtype_name,
                     )
-                    if point.stable_key not in legal_keys:
-                        continue
-                    try:
-                        median, p95, fb = measure(point)
-                    except Exception as error:  # noqa: BLE001 - recorded nogood path
-                        record = apply_compile_feedback(
-                            model,
-                            optimized.assignment,
-                            success=False,
-                            reason=str(error)[:200],
-                        )
-                        feedback_records.append(record)
-                        if not record.get("nogood_added"):
-                            compile_failures_avoided += 1
-                        continue
-                    samples.append(
-                        {
-                            "schedule": point.as_dict(),
-                            "median_ms": round(median, 4),
-                            "p95_ms": round(p95, 4),
-                            "registers_per_thread": fb["registers_per_thread"],
-                            "shared_mem_bytes": fb["shared_mem_bytes"],
-                        }
-                    )
+                )
+    # ... plus decomposition/traversal variants at the selected tile.
     for decomp in ("per_query", "per_route"):
         for traversal in ("full_row", "segmented"):
-            point = SchedulePoint(
-                plan=z3_point.plan,
-                block_d=z3_point.block_d,
-                num_warps=z3_point.num_warps,
-                num_stages=z3_point.num_stages,
-                grad_values_decomposition=decomp,
-                grad_values_schedule=traversal,
-                dtype=dtype_name,
-            )
-            if point.stable_key in legal_keys:
-                median, p95, _fb = measure(point)
-                samples.append(
-                    {
-                        "schedule": point.as_dict(),
-                        "median_ms": round(median, 4),
-                        "p95_ms": round(p95, 4),
-                        "registers_per_thread": None,
-                        "shared_mem_bytes": None,
-                    }
+            grid_points.append(
+                SchedulePoint(
+                    plan=z3_point.plan,
+                    block_d=z3_point.block_d,
+                    num_warps=z3_point.num_warps,
+                    num_stages=z3_point.num_stages,
+                    grad_values_decomposition=decomp,
+                    grad_values_schedule=traversal,
+                    dtype=dtype_name,
                 )
+            )
+
+    legal_keys = {point.stable_key for point in reference_legal}
+    unique_points = []
+    seen_keys: set[str] = set()
+    for point in grid_points:
+        if point.stable_key not in legal_keys or point.stable_key in seen_keys:
+            continue
+        seen_keys.add(point.stable_key)
+        unique_points.append(point)
+
+    def workload(point: SchedulePoint):
+        def run() -> None:
+            output, _info = sched.forward_launch(
+                point, indices, weights, values, row_scale
+            )
+            sched.backward_launch(point, indices, weights, values, row_scale, output)
+
+        return run
+
+    # Priming pass doubles as compile-feedback capture per point.
+    feedback_records: list[dict[str, object]] = []
+    failed_keys: set[str] = set()
+    workloads: dict[str, Callable[[], None]] = {}
+    for point in unique_points:
+        try:
+            workload(point)()
+        except Exception as error:  # noqa: BLE001 - recorded nogood path
+            failed_keys.add(point.stable_key)
+            record = compile_feedback_record(
+                model,
+                schedule_point_to_assignment(model, point),
+                reason=str(error)[:200],
+            )
+            feedback_records.append(record)
+            continue
+        workloads[point.stable_key] = workload(point)
+
+    measured = measure_schedules_interleaved(
+        workloads,
+        warmup_runs=MEASUREMENT["warmup_runs"],
+        rounds=MEASUREMENT["rounds"],
+        samples_per_round=MEASUREMENT["samples_per_round"],
+        seed=MEASUREMENT["seed"],
+    )
+
+    samples: list[dict[str, object]] = []
+    key_to_point = {p.stable_key: p for p in unique_points}
+    for stable_key, raw in measured.items():
+        stats = summarize_samples(raw)
+        point = key_to_point[stable_key]
+        samples.append(
+            {
+                "schedule": point.as_dict(),
+                "median_ms": round(stats["median_ms"], 4),
+                "p95_ms": round(stats["p95_ms"], 4),
+                "min_ms": round(stats["min_ms"], 4),
+                "sample_count": stats["sample_count"],
+                "registers_per_thread": None,
+                "shared_mem_bytes": None,
+            }
+        )
+    samples.sort(key=lambda s: json.dumps(s["schedule"], sort_keys=True))
 
     best = min(samples, key=lambda s: s["median_ms"])
-    z3_sample = next(
-        (
-            s
-            for s in samples
-            if all(
-                s["schedule"][key] == value for key, value in z3_point.as_dict().items()
-            )
-        ),
-        None,
-    )
-    heuristic_point = heuristic_schedule(reference_problem)
-    heuristic_sample = next(
-        (
-            s
-            for s in samples
-            if all(
-                s["schedule"][key] == value
-                for key, value in heuristic_point.as_dict().items()
-            )
-        ),
-        None,
-    )
+
+    def sample_for(point: SchedulePoint):
+        return next(
+            (s for s in samples if s["schedule"] == point.as_dict()),
+            None,
+        )
 
     def regret(sample) -> float:
         if sample is None or not best["median_ms"]:
@@ -341,36 +367,122 @@ def main() -> None:
             2,
         )
 
+    solver_regret = regret(sample_for(z3_point))
+    heuristic_point = heuristic_schedule(reference_problem)
+    heuristic_sample = sample_for(SchedulePoint(**heuristic_point.as_dict()))
+    heuristic_regret = regret(heuristic_sample)
+
     properties = torch.cuda.get_device_properties(torch.cuda.current_device())
+    compile_failures_observed = len(failed_keys)
+    compile_failures_avoided = (
+        compile_failures_observed if len(samples) > 0 and failed_keys else 0
+    )
+    artifact["compile_feedback"] = feedback_records
     artifact["empirical"] = {
         "gpu": properties.name,
         "measured_points": len(samples),
+        "compile_failures_observed": compile_failures_observed,
+        "nogoods_added": sum(
+            1 for record in feedback_records if record.get("nogood_added")
+        ),
         "compile_failures_avoided": compile_failures_avoided,
         "best_point": best["schedule"],
         "best_median_ms": best["median_ms"],
+        "solver_selected": z3_point.as_dict(),
+        "heuristic_selected": heuristic_point.as_dict(),
         "regret": {
-            "z3_vs_best_pct": regret(z3_sample),
-            "heuristic_vs_best_pct": regret(heuristic_sample),
+            "z3_vs_best_pct": solver_regret,
+            "heuristic_vs_best_pct": heuristic_regret,
+            "target_pct": REGRET_TARGET_PCT,
+            "within_target": bool(
+                not math.isnan(solver_regret) and solver_regret <= REGRET_TARGET_PCT
+            ),
             "note": (
-                "regret is computed within the measured fused grid; the base "
-                "(unfused) plan was already compared in "
-                "results/compiler/routed-scale-epilogue/benchmark.json"
+                "regret is computed within the measured fused grid against the "
+                "genuine median; the base (unfused) plan was already compared "
+                "in results/compiler/routed-scale-epilogue/benchmark.json"
             ),
         },
         "samples": samples,
     }
-    artifact["compile_feedback"] = feedback_records
+
+    # -- compiler-driven execution vs direct execution --------------------------
+    plan_payload = compiled_result.plan.to_dict()
+    step_config = next(
+        (
+            step["launch_config"]
+            for step in plan_payload["steps"]
+            if step["kind"] == "anchor_dispatch" and step["launch_config"]
+        ),
+        None,
+    )
+    if step_config is not None:
+        direct_config = RoutedEpilogueLaunchConfig.from_point(z3_point)
+
+        def direct_forward() -> None:
+            sched.forward_launch(direct_config, indices, weights, values, row_scale)
+
+        # Decoding the serialized plan into an executable configuration is
+        # COMPILATION: it happens once, outside every timed region. The timed
+        # region compares steady-state dispatch through the prepared plan
+        # against a direct production launch.
+        prepared_config = sched.prepare_plan_step(step_config)
+
+        def compiler_driven_forward() -> None:
+            sched.launch_prepared_step(
+                prepared_config, indices, weights, values, row_scale
+            )
+
+        overhead_samples = measure_schedules_interleaved(
+            {"direct": direct_forward, "compiler_driven": compiler_driven_forward},
+            warmup_runs=MEASUREMENT["warmup_runs"],
+            rounds=MEASUREMENT["rounds"],
+            samples_per_round=MEASUREMENT["samples_per_round"],
+            seed=MEASUREMENT["seed"] + 1,
+        )
+        direct_stats = summarize_samples(overhead_samples["direct"])
+        driven_stats = summarize_samples(overhead_samples["compiler_driven"])
+        overhead_pct = round(
+            100.0
+            * (driven_stats["median_ms"] - direct_stats["median_ms"])
+            / direct_stats["median_ms"],
+            3,
+        )
+        artifact["dispatch_overhead"] = {
+            "direct_median_ms": round(direct_stats["median_ms"], 4),
+            "compiler_driven_median_ms": round(driven_stats["median_ms"], 4),
+            "overhead_pct": overhead_pct,
+            "gate_pct": OVERHEAD_GATE_PCT,
+            "gate_pass": bool(overhead_pct <= OVERHEAD_GATE_PCT),
+            "note": (
+                "compiler-driven dispatch executes through the launch "
+                "configuration decoded from the SERIALIZED executable plan; "
+                "decoding/compilation stays outside the timed region"
+            ),
+        }
 
     write_artifact(args.output, artifact)
-    print(
-        json.dumps(
-            {
-                "legality": artifact["legality"],
-                "selected": z3_point.as_dict(),
-                "regret": artifact["empirical"]["regret"],
-            },
-            indent=2,
-        )
+    summary = {
+        "legality": artifact["legality"],
+        "selected": z3_point.as_dict(),
+        "regret": artifact["empirical"]["regret"],
+        "dispatch_overhead": artifact["dispatch_overhead"],
+    }
+    print(json.dumps(summary, indent=2))
+
+
+def compile_feedback_record(
+    model, assignment, *, reason: str | None
+) -> dict[str, object]:
+    """Record compile feedback for THIS failed assignment (exact nogood)."""
+    from urm.compiler.kernel_plan import apply_compile_feedback
+
+    return apply_compile_feedback(
+        model,
+        assignment,
+        success=False,
+        reason=reason,
+        max_nogoods=64,
     )
 
 

@@ -165,7 +165,9 @@ def main() -> None:
         "solver_time_ms": 0.0,
         "candidates_rejected_by_z3": 0,
         "verified_models": 0,
+        "schedule_models_verified": 0,
         "unsat_categories": [],
+        "unsat_codes": set(),
     }
     compile_failures = 0
 
@@ -196,6 +198,7 @@ def main() -> None:
         traces: list[dict[str, object]] = []
         selected_ids: list[str] = []
         policies: list[str] = []
+        schedule_decisions: list[dict[str, object] | None] = []
         for program in built:
             summaries = compiler.enumerate_candidates(program, intent)
             candidates_total += len(summaries)
@@ -214,6 +217,11 @@ def main() -> None:
             except CompilerError as error:
                 rejected_by_intent += 1
                 compile_failures += 1
+                for diagnostic in error.diagnostics:
+                    solver_totals["unsat_codes"].add(diagnostic.code.value)
+                if any(d.code.value == "unsat_constraints" for d in error.diagnostics):
+                    # Z3 proved this candidate's schedule model infeasible.
+                    solver_totals["candidates_rejected_by_z3"] += 1
                 traces.append({"program": program.name, "error": str(error)})
                 continue
             compiled_programs += 1
@@ -223,6 +231,29 @@ def main() -> None:
             traces.append(result.trace.to_dict())
             selected_ids.append(result.selected_candidate_id)
             policies.append(result.selection_policy.value)
+            schedule_decisions.append(
+                result.schedule_decision.to_dict()
+                if result.schedule_decision is not None
+                else None
+            )
+            decision = result.schedule_decision
+            if decision is not None:
+                solver_totals["solver_time_ms"] += float(
+                    decision.solver_statistics.get("wall_ms", 0.0)
+                )
+                all_verified = bool(decision.attempts) and all(
+                    a.verified for a in decision.attempts
+                )
+                if all_verified:
+                    solver_totals["verified_models"] += 1
+                    solver_totals["schedule_models_verified"] += 1
+            # Candidates the Z3 objective ranked out during auto-selection.
+            if result.selection_policy.value == "solver_guided":
+                solver_totals["candidates_rejected_by_z3"] += sum(
+                    1
+                    for r in result.rejected_alternatives
+                    if r.reason_code == "rejected_by_solver_objective"
+                )
             if result.solver_statistics:
                 solver_totals["solver_time_ms"] += float(
                     result.solver_statistics.get("wall_ms", 0.0)
@@ -250,6 +281,7 @@ def main() -> None:
                 ],
                 "selected_candidate_ids": selected_ids,
                 "selection_policies": policies,
+                "schedule_decisions": schedule_decisions,
                 "rewrite_accepted": accepted,
                 "rewrite_rejected": rejected_by_preconditions,
                 "rejected_by_training_intent": rejected_by_intent,
@@ -270,6 +302,16 @@ def main() -> None:
 
     presets = len(rows)
     valid_programs = sum(row["valid_semantic_programs"] for row in rows)
+    # Constraint-model hashes come from the verified schedule decisions
+    # themselves (ScheduleDecision.model_hash = model.summary_hash()).
+    model_hashes = sorted(
+        {
+            str(row_decision["model_hash"])
+            for row in rows
+            for row_decision in row.get("schedule_decisions", [])
+            if row_decision
+        }
+    )
     total_candidates = sum(
         row["rewrite_accepted"]
         + row["rewrite_rejected"]
@@ -309,7 +351,10 @@ def main() -> None:
                     "intent": intent.value,
                 }
             ),
-            "constraint_model_hash": "not_applicable_static_analysis",
+            "constraint_model_hash": (
+                model_hashes[0] if model_hashes else "not_applicable_static_analysis"
+            ),
+            "constraint_model_hashes": model_hashes,
             "solver_version": z3_version() if z3_available() else None,
         },
         "summary": {
@@ -323,7 +368,8 @@ def main() -> None:
             ),
             "candidates_rejected_by_z3": solver_totals["candidates_rejected_by_z3"],
             "verified_models": solver_totals["verified_models"],
-            "unsat_categories": sorted(solver_totals["unsat_categories"]),
+            "schedule_models_verified": solver_totals["schedule_models_verified"],
+            "unsat_categories": sorted(solver_totals["unsat_codes"]),
             "solver_time_ms": round(solver_totals["solver_time_ms"], 3),
             "compile_failures": compile_failures,
             # Renamed, honestly-scoped metrics:
