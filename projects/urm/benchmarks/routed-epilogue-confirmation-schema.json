@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Paired adaptive confirmation artifact for routed-epilogue schedule selection",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "generated_utc",
+    "provenance",
+    "problem",
+    "confirmation_config",
+    "runs",
+    "deployment_decision",
+    "evaluated_shortlist"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "generated_utc": { "type": "string" },
+    "provenance": { "$ref": "#/$defs/provenance" },
+    "problem": {
+      "type": "object",
+      "required": ["queries", "sources", "route_width", "value_dim", "training", "deterministic"],
+      "properties": {
+        "queries": { "type": "integer" },
+        "sources": { "type": "integer" },
+        "route_width": { "type": "integer" },
+        "value_dim": { "type": "integer" },
+        "dtype": { "type": "string" },
+        "training": { "type": "boolean" },
+        "deterministic": { "type": "boolean" }
+      }
+    },
+    "confirmation_config": {
+      "type": "object",
+      "required": [
+        "runs",
+        "base_seed",
+        "seeds",
+        "shortlist_size",
+        "shortlist_hash",
+        "discovery_reference_schedule",
+        "min_blocks_per_run",
+        "max_blocks_per_run",
+        "samples_per_pair",
+        "warmup_runs",
+        "practical_equivalence_margin_pct",
+        "sentinel_drift_threshold_pct",
+        "bootstrap_resamples",
+        "bootstrap_seed"
+      ],
+      "properties": {
+        "runs": { "type": "integer", "minimum": 1 },
+        "base_seed": { "type": "integer" },
+        "seeds": { "type": "array", "items": { "type": "integer" } },
+        "shortlist_size": { "type": "integer" },
+        "shortlist_hash": { "type": "string" },
+        "discovery_reference_schedule": { "$ref": "#/$defs/schedulePoint" },
+        "min_blocks_per_run": { "type": "integer" },
+        "max_blocks_per_run": { "type": "integer" },
+        "samples_per_pair": { "type": "integer" },
+        "warmup_runs": { "type": "integer" },
+        "practical_equivalence_margin_pct": { "type": "number" },
+        "sentinel_drift_threshold_pct": { "type": "number" },
+        "bootstrap_resamples": { "type": "integer" },
+        "bootstrap_seed": { "type": "integer" }
+      }
+    },
+    "runs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "run_id",
+          "seed",
+          "total_blocks_executed",
+          "sentinel_drift",
+          "operating_conditions_before",
+          "operating_conditions_after"
+        ],
+        "properties": {
+          "run_id": { "type": "integer" },
+          "seed": { "type": "integer" },
+          "total_blocks_executed": { "type": "integer" },
+          "sentinel_drift": {
+            "type": "object",
+            "required": ["start_median_ms", "end_median_ms", "drift_pct", "threshold_pct", "passed"],
+            "properties": {
+              "start_median_ms": { "type": "number" },
+              "end_median_ms": { "type": "number" },
+              "drift_pct": { "type": "number" },
+              "threshold_pct": { "type": "number" },
+              "passed": { "type": "boolean" }
+            }
+          },
+          "operating_conditions_before": { "type": ["object", "null"] },
+          "operating_conditions_after": { "type": ["object", "null"] }
+        }
+      }
+    },
+    "deployment_decision": {
+      "type": "object",
+      "required": [
+        "status",
+        "practical_equivalence_margin_pct",
+        "representative_schedule",
+        "conservative_fallback_schedule",
+        "equivalent_set_count",
+        "shortlist_count",
+        "solver_selected_schedule",
+        "solver_is_in_equivalent_set"
+      ],
+      "properties": {
+        "status": {
+          "enum": ["confirmed_equivalent", "conservative_fallback_measurement_limited"]
+        },
+        "practical_equivalence_margin_pct": { "type": "number" },
+        "representative_schedule": { "$ref": "#/$defs/schedulePoint" },
+        "conservative_fallback_schedule": { "$ref": "#/$defs/schedulePoint" },
+        "equivalent_set_count": { "type": "integer" },
+        "shortlist_count": { "type": "integer" },
+        "solver_selected_schedule": { "$ref": "#/$defs/schedulePoint" },
+        "solver_is_in_equivalent_set": { "type": "boolean" },
+        "solver_paired_slowdown_pct": { "type": ["number", "null"] },
+        "solver_ci95_upper_slowdown_pct": { "type": ["number", "null"] }
+      }
+    },
+    "evaluated_shortlist": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "candidate_index",
+          "schedule",
+          "is_discovery_reference",
+          "median_paired_slowdown_pct",
+          "ci95_lower_slowdown_pct",
+          "ci95_upper_slowdown_pct",
+          "is_practically_equivalent",
+          "per_run_medians_ms",
+          "paired_blocks_measured_total",
+          "confirmation_rank"
+        ],
+        "properties": {
+          "candidate_index": { "type": "integer" },
+          "schedule": { "$ref": "#/$defs/schedulePoint" },
+          "is_discovery_reference": { "type": "boolean" },
+          "median_paired_slowdown_pct": { "type": "number" },
+          "ci95_lower_slowdown_pct": { "type": "number" },
+          "ci95_upper_slowdown_pct": { "type": "number" },
+          "is_practically_equivalent": { "type": "boolean" },
+          "per_run_medians_ms": {
+            "type": "array",
+            "items": { "type": "number" }
+          },
+          "paired_blocks_measured_total": { "type": "integer" },
+          "confirmation_rank": { "type": "integer" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "provenance": {
+      "type": "object",
+      "required": [
+        "git_revision",
+        "dirty_tree",
+        "benchmark_command",
+        "config_hash",
+        "solver_version",
+        "shortlist_hash"
+      ],
+      "properties": {
+        "git_revision": { "type": ["string", "null"], "minLength": 40 },
+        "dirty_tree": { "type": "boolean" },
+        "benchmark_command": { "type": "string" },
+        "config_hash": { "type": "string" },
+        "solver_version": { "type": ["string", "null"] },
+        "constraint_model_hash": { "type": "string" },
+        "shortlist_hash": { "type": "string" },
+        "python": { "type": "string" },
+        "platform": { "type": "string" },
+        "pytorch": { "type": ["string", "null"] },
+        "triton": { "type": ["string", "null"] },
+        "cuda": { "type": ["string", "null"] },
+        "driver": { "type": ["string", "null"] },
+        "gpu": { "type": ["string", "null"] }
+      }
+    },
+    "schedulePoint": {
+      "type": "object",
+      "required": [
+        "plan",
+        "block_d",
+        "num_warps",
+        "num_stages",
+        "grad_values_decomposition",
+        "grad_values_schedule",
+        "dtype"
+      ],
+      "properties": {
+        "plan": { "enum": ["base", "fused"] },
+        "block_d": { "enum": [32, 64, 128, 256] },
+        "num_warps": { "enum": [1, 2, 4, 8] },
+        "num_stages": { "enum": [1, 2, 4] },
+        "grad_values_decomposition": { "enum": ["per_query", "per_route"] },
+        "grad_values_schedule": { "enum": ["full_row", "segmented"] },
+        "dtype": { "type": "string" }
+      }
+    }
+  }
+}

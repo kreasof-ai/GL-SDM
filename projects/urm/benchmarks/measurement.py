@@ -117,6 +117,49 @@ def bootstrap_ci(
     return lower, upper
 
 
+def hierarchical_bootstrap_paired_slowdown(
+    paired_log_ratios_by_run: Sequence[Sequence[float]],
+    num_resamples: int = 1000,
+    confidence: float = 0.95,
+    seed: int = 42,
+) -> tuple[float, float, float]:
+    """Two-level hierarchical bootstrap over runs and paired blocks.
+
+    Level 1: resample runs with replacement.
+    Level 2: resample paired blocks within each selected run with replacement.
+    Returns (median_slowdown_pct, ci95_lower_pct, ci95_upper_pct).
+    """
+    num_runs = len(paired_log_ratios_by_run)
+    if num_runs == 0:
+        raise ValueError("hierarchical_bootstrap requires at least one run")
+    rng = random.Random(seed)
+    boot_slowdowns: list[float] = []
+    for _ in range(num_resamples):
+        resampled_runs = [
+            paired_log_ratios_by_run[rng.randrange(num_runs)] for _ in range(num_runs)
+        ]
+        resampled_log_ratios: list[float] = []
+        for run_blocks in resampled_runs:
+            num_blocks = len(run_blocks)
+            if num_blocks > 0:
+                resampled_log_ratios.extend(
+                    run_blocks[rng.randrange(num_blocks)] for _ in range(num_blocks)
+                )
+        if not resampled_log_ratios:
+            continue
+        mean_log = sum(resampled_log_ratios) / len(resampled_log_ratios)
+        slowdown_pct = (math.exp(mean_log) - 1.0) * 100.0
+        boot_slowdowns.append(slowdown_pct)
+    if not boot_slowdowns:
+        return 0.0, 0.0, 0.0
+    boot_slowdowns.sort()
+    alpha = (1.0 - confidence) / 2.0
+    med = quantile(boot_slowdowns, 0.5)
+    lo = quantile(boot_slowdowns, alpha)
+    hi = quantile(boot_slowdowns, 1.0 - alpha)
+    return med, lo, hi
+
+
 def _is_number(v: str) -> bool:
     try:
         float(v)
@@ -125,8 +168,12 @@ def _is_number(v: str) -> bool:
         return False
 
 
-def capture_gpu_operating_conditions() -> dict[str, object]:
+def capture_gpu_operating_conditions(
+    own_pids: Sequence[int] | None = None,
+) -> dict[str, object]:
     """Capture read-only operating conditions of the GPU via nvidia-smi."""
+    import os
+
     query_cmd = [
         "nvidia-smi",
         "--query-gpu=name,uuid,driver_version,clocks.current.sm,clocks.current.memory,power.draw,power.limit,temperature.gpu,utilization.gpu,utilization.memory,persistence_mode,compute_mode",
@@ -161,11 +208,40 @@ def capture_gpu_operating_conditions() -> dict[str, object]:
                 text=True,
                 check=False,
             )
-            compute_apps = [
-                line.strip()
-                for line in proc_res.stdout.strip().splitlines()
-                if line.strip()
-            ]
+            all_compute_apps: list[dict[str, object]] = []
+            external_compute_apps: list[dict[str, object]] = []
+            known_pids = {os.getpid(), os.getppid()}
+            if own_pids:
+                known_pids.update(own_pids)
+
+            for line in proc_res.stdout.strip().splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                app_parts = [p.strip() for p in line.split(",")]
+                pid = int(app_parts[0]) if app_parts[0].isdigit() else -1
+                pname = app_parts[1] if len(app_parts) > 1 else "unknown"
+                pmem = app_parts[2] if len(app_parts) > 2 else "unknown"
+                entry = {"pid": pid, "process_name": pname, "used_memory": pmem}
+                all_compute_apps.append(entry)
+                if pid not in known_pids:
+                    external_compute_apps.append(entry)
+
+            # Check application clocks
+            app_clock_query = subprocess.run(
+                [
+                    "nvidia-smi",
+                    "--query-gpu=clocks.applications.graphics,clocks.applications.memory",
+                    "--format=csv,noheader,nounits",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            app_clocks_supported = (
+                "deprecated" not in app_clock_query.stdout.lower()
+                and app_clock_query.returncode == 0
+            )
 
             return {
                 "gpu_name": name,
@@ -182,9 +258,19 @@ def capture_gpu_operating_conditions() -> dict[str, object]:
                 ),
                 "persistence_mode": persist,
                 "compute_mode": comp_mode,
-                "application_clocks_fixed": False,
+                "application_clocks_fixed": None,
+                "application_clocks_status": (
+                    "supported" if app_clocks_supported else "deprecated_or_unsupported"
+                ),
+                "clock_locking": {
+                    "requested": False,
+                    "applied": False,
+                    "verified": False,
+                    "restored": False,
+                },
                 "exclusive_process_mode": comp_mode.lower() == "exclusive_process",
-                "other_compute_processes": compute_apps,
+                "all_compute_processes": all_compute_apps,
+                "external_compute_processes": external_compute_apps,
                 "unavailable_reason": None,
             }
         return {
@@ -201,8 +287,15 @@ def capture_gpu_operating_conditions() -> dict[str, object]:
             "persistence_mode": None,
             "compute_mode": None,
             "application_clocks_fixed": None,
+            "clock_locking": {
+                "requested": False,
+                "applied": False,
+                "verified": False,
+                "restored": False,
+            },
             "exclusive_process_mode": None,
-            "other_compute_processes": None,
+            "all_compute_processes": None,
+            "external_compute_processes": None,
             "unavailable_reason": f"unexpected query format: {res.stdout[:100]}",
         }
     except Exception as exc:  # noqa: BLE001
@@ -220,8 +313,15 @@ def capture_gpu_operating_conditions() -> dict[str, object]:
             "persistence_mode": None,
             "compute_mode": None,
             "application_clocks_fixed": None,
+            "clock_locking": {
+                "requested": False,
+                "applied": False,
+                "verified": False,
+                "restored": False,
+            },
             "exclusive_process_mode": None,
-            "other_compute_processes": None,
+            "all_compute_processes": None,
+            "external_compute_processes": None,
             "unavailable_reason": str(exc),
         }
 
@@ -333,6 +433,7 @@ __all__ = [
     "collect_cuda_samples",
     "compute_ranks",
     "dedupe",
+    "hierarchical_bootstrap_paired_slowdown",
     "interleave_round_order",
     "measure_schedules_interleaved",
     "quantile",

@@ -28,6 +28,43 @@ DEFAULT_BOOTSTRAP_SEED = 42
 REGRET_TARGET_PCT = 10.0
 
 
+def validate_child_provenance_invariants(
+    child_artifacts: Sequence[dict[str, object]],
+) -> None:
+    """Fail closed if any child run disagrees on fundamental environmental invariants."""
+    if len(child_artifacts) < 2:
+        return
+    invariant_keys = (
+        "git_revision",
+        "dirty_tree",
+        "gpu",
+        "driver",
+        "cuda",
+        "pytorch",
+        "triton",
+        "constraint_model_hash",
+    )
+    for i in range(len(child_artifacts)):
+        for j in range(i + 1, len(child_artifacts)):
+            prov_i = child_artifacts[i]["provenance"]
+            prov_j = child_artifacts[j]["provenance"]
+            for key in invariant_keys:
+                val_i = prov_i.get(key)
+                val_j = prov_j.get(key)
+                if val_i != val_j:
+                    raise RuntimeError(
+                        f"Child provenance invariant violation for '{key}': "
+                        f"run {i} has {val_i!r} but run {j} has {val_j!r}"
+                    )
+            prob_i = child_artifacts[i]["problem"]
+            prob_j = child_artifacts[j]["problem"]
+            if prob_i != prob_j:
+                raise RuntimeError(
+                    f"Child problem configuration mismatch between run {i} and run {j}: "
+                    f"{prob_i} != {prob_j}"
+                )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
@@ -58,6 +95,7 @@ def main() -> None:
     selection_script = project_root / "benchmarks" / "routed_epilogue_selection.py"
 
     run_records: list[dict[str, object]] = []
+    child_artifacts: list[dict[str, object]] = []
     seeds = [args.base_seed + i * 100 for i in range(args.runs)]
 
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -93,6 +131,7 @@ def main() -> None:
                     f"Child run {run_idx} did not write expected artifact at {temp_output}"
                 )
             child_artifact = json.loads(temp_output.read_text(encoding="utf-8"))
+            child_artifacts.append(child_artifact)
             emp = child_artifact["empirical"]
             regret_info = emp["regret"]
 
@@ -136,10 +175,11 @@ def main() -> None:
                 }
             )
 
-    # First child artifact provides problem and common provenance facts
-    first_child = child_artifact
-    problem = first_child["problem"]
-    model_hash = first_child["provenance"]["constraint_model_hash"]
+    # Validate provenance invariants across all child runs
+    validate_child_provenance_invariants(child_artifacts)
+
+    problem = child_artifacts[0]["problem"]
+    model_hash = child_artifacts[0]["provenance"]["constraint_model_hash"]
 
     # All unique schedule keys present across runs
     common_keys = set(run_records[0]["samples_by_key"].keys())
