@@ -9,11 +9,11 @@ lowering to competitive specialized kernels.
 
 ## Current milestone
 
-The first URM implementation and validation campaign is complete and paused at
-a documented phase boundary. Milestone zero (semantics, oracle, benchmark
-discipline), the routed-reduction Triton vertical slice, the first two upstream
-adapter comparisons, and compiler-to-kernel schedule integration have all been
-validated on an NVIDIA A10G CUDA host:
+The routed-reduction/compiler-validation tranche remains complete and frozen.
+Phase 3 is now active with one bounded family-expansion result: an external
+baseline integration of the original authors' Sparse Delta Memory repository.
+The prior milestone plus this adapter have been validated on an NVIDIA A10G
+CUDA host:
 
 - a typed `MixerSpec` contract;
 - a dependency-light NumPy correctness oracle;
@@ -34,6 +34,12 @@ validated on an NVIDIA A10G CUDA host:
   recurrence, pinned flash-linear-attention 0.5.2 direct, and the same calls
   behind a typed URM adapter) with separate prefill and token-by-token
   decode regimes and the frozen contract in docs/fla-gated-delta-rule.md; and
+- a four-level original Sparse Delta Memory comparison using pinned commit
+  `183e7df809131b80ad4393741029d0f20fc3640b`: exact product-key traces, sparse
+  reads, ordered gated updates, persistent decode state, direct upstream calls,
+  and the identical methods behind a typed URM adapter. This is an **SDM
+  baseline integration**, not a native/page-local URM kernel; see
+  [the frozen SDM contract](docs/sparse-delta-memory.md); and
 - a layered compiler (docs/compiler-charter.md): typed semantic IR over logical
   domains with explicit locality/effect models, two verified reparameterization
   rules with deterministic traces, a simulated routing-to-communication
@@ -59,10 +65,10 @@ validated on an NVIDIA A10G CUDA host:
   and correctly excludes the solver-selected schedule (6.42% confidence upper
   bound).
 
-This closes the routed-reduction/compiler-validation tranche. It does **not**
-claim that the deferred MoE, SDM, Mamba, FlexAttention, or distributed-runtime
-adapters and lowerings already exist; those are explicit future expansion
-work, not unfinished work inside the closed tranche.
+The routed-reduction/compiler-validation tranche is still closed and was not
+reopened. The new SDM slice does **not** claim that deferred MoE, Mamba,
+FlexAttention, distributed-runtime, transactional GL-SDM, or native page-local
+SDM lowerings exist.
 
 See [the compiler charter](docs/compiler-charter.md), the
 [CODA retrospective](docs/coda-retrospective.md),
@@ -108,9 +114,11 @@ projects/urm/
 |   |-- measure_device_limits.py # measured HBM bandwidth and compute peaks
 |   |-- profile_roofline.py      # MFU/MBU and per-kernel roofline profiling
 |   |-- dense_attention.py       # four-level dense causal attention comparator
+|   |-- sparse_delta_memory.py   # original-SDM direct/adapter comparison
 |   |-- result-schema.json       # benchmark result schema (+ optional profiling)
 |   |-- profiling-schema.json    # roofline artifact schema
 |   |-- attention-result-schema.json  # attention comparator schema
+|   |-- sparse-delta-memory-result-schema.json # SDM comparator schema
 |   |-- compiler-epilogue-schema.json # fused-epilogue comparison schema
 |   |-- compilation-matrix-schema.json # NAS compilation matrix schema
 |   |-- routed-epilogue-selection-schema.json # schedule selection schema
@@ -130,19 +138,21 @@ projects/urm/
 |   |-- coda-retrospective.md    # CODA strategy mapping and adoption decisions
 |   |-- triton-backend.md        # routed-reduction v1 contract and workflows
 |   |-- triton-optimization-report.md # optimization, profiling, comparator report
-|   `-- fla-gated-delta-rule.md  # frozen FLA gated delta-rule contract (v1)
+|   |-- fla-gated-delta-rule.md  # frozen FLA gated delta-rule contract (v1)
+|   `-- sparse-delta-memory.md   # frozen original-SDM adapter contract (v1)
 |-- results/
 |   |-- baseline/ ... final/     # before/after benchmark matrices per change
 |   |-- profiling/               # committed roofline summaries
 |   |-- device-limits.json       # measured bandwidth / FP32 / BF16 peaks
 |   |-- attention/               # dense causal attention comparison artifacts
 |   |-- fla-gated-delta-rule/    # gated delta-rule comparison artifacts
+|   |-- sparse-delta-memory/     # original-SDM comparison artifact
 |   `-- compiler/                # epilogue prototype, compilation matrix,
 |                                #   solver selection/stability/confirmation
 |-- src/urm/
 |   |-- backend.py               # explicit backend protocol and registry
 |   |-- adapters/                # pinned upstream adapters (dense attention,
-|   |                            #   gated delta rule) and shared references
+|   |                            #   gated delta rule, original SDM) + references
 |   |-- backends/                # reference and optimized routed-reduction backends
 |   |-- compiler/                # semantic IR, locality/effects, verified
 |   |                            #   rewrites, anchors, planner, cost model,
@@ -234,8 +244,10 @@ model.
   committed artifact is affected. Multi-owner replication decoding and byte
   accounting require a separate systems-path change.
 
-### Phase 3 - systems and family-expansion path (deferred; not started)
+### Phase 3 - systems and family-expansion path (active)
 
+- Complete: external original-SDM baseline adapter, frozen typed contract,
+  compiler capability selection, differential tests, and dedicated benchmark.
 - Fuse overlay composition and reduction.
 - Add page grouping, prefetch, recurrent address reuse, and distributed sharding.
 - Evaluate GL-SDM traces without making GL-SDM's architectural success a URM

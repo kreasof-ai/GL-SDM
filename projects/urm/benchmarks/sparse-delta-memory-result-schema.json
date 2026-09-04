@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "URM original Sparse Delta Memory comparison",
+  "type": "object",
+  "required": ["schema_version", "generated_utc", "provenance", "cold_start", "methodology", "semantics", "unsupported_cases", "cases"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "generated_utc": {"type": "string"},
+    "provenance": {
+      "type": "object",
+      "required": ["git_revision", "dirty_tree", "benchmark_command", "python", "pytorch", "triton", "cuda", "driver", "gpu", "upstream"],
+      "properties": {
+        "git_revision": {"type": "string", "minLength": 40},
+        "dirty_tree": {"const": false},
+        "benchmark_command": {"type": "string"},
+        "python": {"type": "string"},
+        "pytorch": {"type": "string"},
+        "triton": {"type": "string"},
+        "cuda": {"type": "string"},
+        "driver": {"type": "string"},
+        "gpu": {"type": "string"},
+        "upstream": {
+          "type": "object",
+          "required": ["repository", "expected_commit", "installed_commit", "revision_compatible", "checkout_dirty", "license", "installation", "entry_points", "runtime_versions", "runtime_requirements", "source_usage"],
+          "properties": {
+            "expected_commit": {"const": "183e7df809131b80ad4393741029d0f20fc3640b"},
+            "installed_commit": {"const": "183e7df809131b80ad4393741029d0f20fc3640b"},
+            "revision_compatible": {"const": true},
+            "checkout_dirty": {"const": false},
+            "license": {"const": "CC-BY-NC-4.0"}
+          }
+        }
+      }
+    },
+    "cold_start": {
+      "type": "object",
+      "required": ["runtime_import_ms", "upstream_import_ms", "first_address_and_adapter_build_ms", "first_read_call_ms", "first_training_update_build_and_call_ms", "cache_paths", "classification"]
+    },
+    "methodology": {"type": "object"},
+    "semantics": {
+      "type": "object",
+      "required": ["contract", "address_layout", "mutation_order", "collision_semantics", "cache", "native_urm_lowering"],
+      "properties": {"native_urm_lowering": {"const": false}}
+    },
+    "unsupported_cases": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["status", "reason"],
+        "properties": {
+          "status": {"const": "not_applicable"},
+          "reason": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "cases": {
+      "type": "object",
+      "minProperties": 7,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["case", "input_preparation_ms", "correctness", "route_distribution", "traffic_estimate", "cache_persistence", "memory", "call_identity", "paired_performance"],
+        "properties": {
+          "case": {"type": "object", "required": ["name", "path", "parallel", "sequence", "slots", "dim", "writes", "reads"]},
+          "correctness": {"type": "object", "required": ["addresses_exact", "direct_adapter_output_max_abs"]},
+          "route_distribution": {"type": "object", "required": ["writes", "reads"]},
+          "traffic_estimate": {
+            "type": "object",
+            "required": ["kind", "measured", "read_bytes", "write_bytes", "notes"],
+            "properties": {
+              "measured": {"const": false},
+              "read_bytes": {"type": "integer", "minimum": 1},
+              "write_bytes": {
+                "oneOf": [
+                  {"type": "integer", "minimum": 1},
+                  {
+                    "type": "object",
+                    "required": ["status", "reason"],
+                    "properties": {
+                      "status": {"const": "not_applicable"},
+                      "reason": {"type": "string", "minLength": 1}
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "cache_persistence": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": ["status", "upstream_invocations", "adapter_sequence_length", "storage_pointer_preserved"],
+                "properties": {
+                  "status": {"const": "measured"},
+                  "upstream_invocations": {"type": "integer", "minimum": 1},
+                  "adapter_sequence_length": {"type": "integer", "minimum": 1},
+                  "storage_pointer_preserved": {"const": true}
+                }
+              },
+              {
+                "type": "object",
+                "required": ["status", "reason"],
+                "properties": {
+                  "status": {"const": "not_applicable"},
+                  "reason": {"type": "string", "minLength": 1}
+                }
+              }
+            ]
+          },
+          "memory": {
+            "type": "object",
+            "required": ["direct", "adapter"],
+            "properties": {
+              "direct": {"$ref": "#/$defs/memory"},
+              "adapter": {"$ref": "#/$defs/memory"}
+            }
+          },
+          "call_identity": {
+            "type": "object",
+            "required": ["address_direct", "address_adapter_below_dispatch", "direct", "adapter_below_dispatch", "identical"],
+            "properties": {"identical": {"const": true}}
+          },
+          "paired_performance": {
+            "type": "object",
+            "required": ["sampling", "pairs", "direct_wall", "adapter_wall", "direct_device", "adapter_device", "paired_wall_overhead_ms", "paired_device_overhead_ms", "paired_wall_overhead_fraction", "paired_device_overhead_fraction", "pair_order", "direct_queries_per_second", "adapter_queries_per_second"],
+            "properties": {
+              "sampling": {"const": "alternating paired AB/BA"},
+              "pairs": {"type": "integer", "minimum": 3},
+              "direct_wall": {"$ref": "#/$defs/samples"},
+              "adapter_wall": {"$ref": "#/$defs/samples"},
+              "direct_device": {"$ref": "#/$defs/samples"},
+              "adapter_device": {"$ref": "#/$defs/samples"},
+              "paired_wall_overhead_ms": {"$ref": "#/$defs/samples"},
+              "paired_device_overhead_ms": {"$ref": "#/$defs/samples"},
+              "paired_wall_overhead_fraction": {"$ref": "#/$defs/fractions"},
+              "paired_device_overhead_fraction": {"$ref": "#/$defs/fractions"},
+              "pair_order": {"type": "array", "items": {"enum": ["AB", "BA"]}}
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "samples": {
+      "type": "object",
+      "required": ["sample_count", "median_ms", "p95_ms", "min_ms", "raw_samples_ms"],
+      "properties": {
+        "sample_count": {"type": "integer", "minimum": 3},
+        "median_ms": {"type": "number"},
+        "p95_ms": {"type": "number"},
+        "min_ms": {"type": "number"},
+        "raw_samples_ms": {"type": "array", "minItems": 3, "items": {"type": "number"}}
+      }
+    },
+    "memory": {
+      "type": "object",
+      "required": ["allocated_before_bytes", "peak_allocated_bytes", "temporary_peak_bytes", "output_bytes"],
+      "properties": {
+        "allocated_before_bytes": {"type": "integer", "minimum": 0},
+        "peak_allocated_bytes": {"type": "integer", "minimum": 0},
+        "temporary_peak_bytes": {"type": "integer", "minimum": 0},
+        "output_bytes": {"type": "integer", "minimum": 1}
+      }
+    },
+    "fractions": {
+      "type": "object",
+      "required": ["sample_count", "median", "p95", "min", "raw_samples"],
+      "properties": {
+        "sample_count": {"type": "integer", "minimum": 3},
+        "median": {"type": "number"},
+        "p95": {"type": "number"},
+        "min": {"type": "number"},
+        "raw_samples": {"type": "array", "minItems": 3, "items": {"type": "number"}}
+      }
+    }
+  }
+}

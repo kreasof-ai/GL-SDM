@@ -79,7 +79,7 @@ infrastructure.
 | MoE | Top-k expert route, gate, gather/scatter | Expert MLP and grouped GEMM |
 | Parameter-token mixer | Route parameter blocks and reduce values | Parameter layout and adapter/update rules |
 | Linear recurrence / SSM | Typed recurrent state and mutation contract | Ordered scan equation and state transition |
-| SDM / GL-SDM | Top-k page route, gather, reduce, buffered write | Original SDM product-key/sparse kernels; GL-SDM overlay composition and commit |
+| SDM / GL-SDM | Product-key trace and explicit ordered or transactional state effects | Pinned original SDM external adapter; future GL-SDM overlay composition and commit |
 
 Linear recurrence is intentionally represented by a dedicated routing kind. The
 reference evaluator raises `NotImplementedError` for it instead of disguising an
@@ -139,7 +139,7 @@ URM reports five coverage axes separately; conflating them hides real gaps.
 | Semantic coverage | Dense/block-sparse/top-k/threshold/product-key routes over sequence/expert/parameter-block/recurrent-state/memory-page domains; ordered recurrence represented as a typed barrier op; transactional commits with version boundaries; collective intent (`all_reduce`, `all_to_all`, ...) as first-class effects |
 | Compiler/reparameterization coverage | Two verified rules: routed-reduction row-scale epilogue folding (backward certified for fp32/fp16/bf16 via tile recomputation) and delayed row scaling through linear maps (floating-point equivalence with dtype envelopes); explicit compilation intents; immutable candidate enumeration with stable IDs; deterministic traces; structured rejections (non-row-wise scales, nonlinear intervening transforms, effect barriers, multi-consumer intermediates, training-vs-forward-only conflicts) |
 | Solver-guided decision coverage | Backend-independent constraint IR; optional pinned Z3 (`4.15.3.0`) feasibility + bounded lexicographic optimization passes; UNSAT-core diagnostics for nine representative impossible problems; independent non-Z3 model verification; exhaustive-sweep agreement on bounded spaces; solver-guided epilogue schedule selection, exploratory cross-run stability, paired confirmatory schedule selection, and simulated expert/page placement with baselines |
-| Upstream adapter coverage | FlashAttention 2.8.3 dense causal; FLA 0.5.2 gated delta-rule (prefill + decode) |
+| Upstream adapter coverage | FlashAttention 2.8.3 dense causal; FLA 0.5.2 gated delta-rule (prefill + decode); original Facebook SDM commit `183e7df` for product-key traces, sparse reads, and ordered gated updates |
 | Native backend coverage | One Triton lowering family: routed-reduction v1 forward/backward; plus the compiler-generated row-scale epilogue anchor with certified backward and solver-selected launch schedules |
 | Distributed planning coverage | Simulated mesh only: typed route protocols (pull gather vs push dispatch+return) with conservation/return/collision/capacity contracts; deterministic executable plans with grouped exchanges, byte estimates, send/receive counts, commit steps; solver-guided placement prototype; no multi-device host validation yet |
 
@@ -167,12 +167,16 @@ indices. Its tensor contract, PyTorch baseline, Triton forward/backward kernels,
 capability checks, and benchmark harness are described in
 [Triton backend preparation](triton-backend.md).
 
-Deferred family-expansion slices are:
+The first Phase 3 family-expansion slice is the external original-SDM adapter,
+represented by `SparseDeltaMemoryAccess` and the
+`facebook_sparse_delta_memory_183e7df_external_adapter` execution anchor. Its
+ordered mutation prevents lowering through routed-reduction. Remaining slices
+are:
 
 1. Dense and masked sequence reduction against the NumPy oracle.
 2. Stable Top-k and threshold route generation.
-3. Product-key-style memory routing plus deterministic transactional write
-   merging.
+3. Transactional GL-SDM routing and write merging beyond the external ordered
+   SDM baseline.
 4. PyTorch adapters for SDPA math/flash dispatch and transparent MoE.
 5. External adapters to maintained upstream kernels and trace formats.
 6. Family-specific recurrent and state-mutation lowerings.

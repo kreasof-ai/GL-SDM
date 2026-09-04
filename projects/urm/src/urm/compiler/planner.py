@@ -69,6 +69,7 @@ from urm.compiler.semantic import (
     RouteSpec,
     Score,
     Select,
+    SparseDeltaMemoryAccess,
     StateUpdate,
     Transform,
     WeightedReduce,
@@ -1080,16 +1081,27 @@ class UrmCompiler:
                 AnchorRequest(
                     kind=request_kind,
                     visitors=visitors,
+                    semantic_op=op,
                 )
             )
-            if override is not None:
+            if (
+                override is not None
+                and request_kind is not AnchorKind.SPARSE_DELTA_MEMORY
+                and not (
+                    decision.anchor is not None and decision.anchor.name == override
+                )
+            ):
                 decision = self._apply_override(request_kind, visitors, override, op)
             if not decision.ok:
                 decline = decision.decline
                 assert decline is not None
                 collector = DiagnosticsCollector()
                 collector.error(
-                    DiagnosticCode.NO_ANCHOR_AVAILABLE,
+                    (
+                        decline.reason_code
+                        if request_kind is AnchorKind.SPARSE_DELTA_MEMORY
+                        else DiagnosticCode.NO_ANCHOR_AVAILABLE
+                    ),
                     f"{op.name}: {decline.message}",
                     subject=op.name,
                 )
@@ -1370,6 +1382,8 @@ class UrmCompiler:
             return AnchorKind.ROUTED_REDUCTION, ()
         if isinstance(op, OrderedRecurrence):
             return AnchorKind.RECURRENT_SCAN, ()
+        if isinstance(op, SparseDeltaMemoryAccess):
+            return AnchorKind.SPARSE_DELTA_MEMORY, ()
         if isinstance(op, Score | Select | Transform):
             return None, ()  # folded into producers by construction here
         if isinstance(op, CollectiveExchange):
@@ -1381,7 +1395,11 @@ class UrmCompiler:
         op: SemanticNode, anchor_name: str, placement: PlacementMap | None
     ) -> CostEstimate:
         from urm.compiler import cost as cost_mod
-        from urm.compiler.semantic import Matmul, WeightedReduce
+        from urm.compiler.semantic import (
+            Matmul,
+            SparseDeltaMemoryAccess,
+            WeightedReduce,
+        )
 
         shape = op.shape_hint if isinstance(op, WeightedReduce | Matmul) else None
         if isinstance(op, WeightedReduce) and shape is not None:
@@ -1422,6 +1440,30 @@ class UrmCompiler:
                 launch_count=1,
                 temporary_bytes=m * n * 2,
                 notes=(f"anchor={anchor_name}",),
+            )
+        if isinstance(op, SparseDeltaMemoryAccess):
+            spec = op.spec
+            dtype_bytes = 4 if spec.dtype.value == "float32" else 2
+            queries = spec.parallel * spec.sequence
+            selected = queries * (spec.writes + spec.reads)
+            route_bytes = selected * (8 + dtype_bytes)
+            memory_read_bytes = selected * spec.value_dim * dtype_bytes
+            memory_write_bytes = queries * spec.writes * spec.value_dim * dtype_bytes
+            output_bytes = queries * spec.value_dim * dtype_bytes
+            logical_bytes = (
+                route_bytes + memory_read_bytes + memory_write_bytes + output_bytes
+            )
+            useful_flops = 2 * selected * spec.value_dim
+            return CostEstimate(
+                useful_flops=useful_flops,
+                logical_bytes=logical_bytes,
+                physical_bytes_estimate=logical_bytes,
+                launch_count=1,
+                temporary_bytes=output_bytes,
+                notes=(
+                    f"anchor={anchor_name}",
+                    "analytical SDM sparse route/state traffic; not measured",
+                ),
             )
         return CostEstimate(
             useful_flops=0,

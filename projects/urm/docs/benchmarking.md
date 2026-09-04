@@ -15,6 +15,11 @@
   separate fields, and an incompatible installed version is rejected at
   dispatch time instead of being relabeled as the pin
   (tests/test_upstream_version_contract.py).
+- Original Sparse Delta Memory is an external Git checkout pinned to
+  `183e7df809131b80ad4393741029d0f20fc3640b`, because upstream has no Python
+  package manifest. The adapter verifies the checkout revision and cleanliness
+  plus Torch 2.8.0, Triton 3.4.0, CUDA, and SM80+ before dispatch. Its CC-BY-NC
+  4.0 source is never vendored; see `docs/sparse-delta-memory.md`.
 - z3-solver is pinned to exactly `4.15.3.0` in the optional `solver` extra.
   It is never a core dependency: the full suite passes without the extra
   (solver-dependent tests skip; the compiler falls back to its documented
@@ -156,6 +161,14 @@ cold compilation separately, and emits JSON conforming to
   attention is fully compiled), `full_architecture_compile_rate` (complete
   family detail lowered today), `native_lowering_rate`,
   `upstream_adapter_rate`.
+- `benchmarks/sparse_delta_memory.py`: compares NumPy and transparent PyTorch
+  semantics with the pinned original SDM calls both directly and behind the
+  typed URM adapter. It covers read-only, prefill, decode/cache, writes,
+  cross-token collision stress, training, and A10G-sized capacity cases;
+  retains exact routes, final-state checks, raw AB/BA wall/device samples,
+  throughput, allocator peaks, analytical traffic, cold timing, call identity,
+  and complete upstream provenance. Its schema is
+  `benchmarks/sparse-delta-memory-result-schema.json`.
 - `benchmarks/routed_epilogue_selection.py`: solver-guided schedule selection
   for the routed-scale epilogue. Runs the full documented pipeline -
   candidates, constraint model, Z3 feasibility + bounded lexicographic

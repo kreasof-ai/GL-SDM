@@ -15,7 +15,7 @@ result rather than treated as permanent defaults.
 | Top-k MoE | NumPy stable top-k gate | PyTorch per-expert eager | MegaBlocks; SonicMoE on supported hardware | Expert grouped-GEMM lowering | Semantics represented; family adapter deferred |
 | Advanced MoE routing | Per-family routing/dispatch oracle | PyTorch explicit dispatch | Original model implementation plus grouped-GEMM backend | Typed score/select/balance lowering | Detail specs represented; family adapters deferred |
 | Parameter-token mixer | NumPy dense/top-k reduce | PyTorch SDPA formulation | Attention-compatible fused path | Parameter-block lowering | Semantics represented; comparator deferred |
-| Sparse Delta Memory | NumPy top-k gather-reduce | PyTorch `topk` + gather | Original SDM Triton/CUDA kernels | HBM memory-page lowering | Semantics represented; external adapter deferred |
+| Sparse Delta Memory | NumPy product-key/read/ordered-update oracle | Transparent PyTorch product-key/read/recurrence | Original SDM Triton/CUDA kernels at `183e7df809131b80ad4393741029d0f20fc3640b` | Typed external SDM adapter (not native) | Validated SDM baseline integration; native page-local lowering deferred |
 | Transactional GL-SDM write | NumPy sort/merge/commit | PyTorch sort + segment reduction | Original SDM sparse update plus URM transaction wrapper | Buffered transactional lowering | Oracle/contract present; optimized path deferred |
 | Learned token sparse attention | Dense attention plus selected-index trace | PyTorch gather + SDPA | DeepSeek FlashMLA / DeepGEMM | Token-index lowering | Detail spec represented; comparator deferred |
 | Learned block sparse attention | Dense attention plus selected-block trace | PyTorch block gather + SDPA | MiniMax MSA kernels | GQA-group block lowering | Detail spec represented; comparator deferred |
@@ -70,15 +70,18 @@ result rather than treated as permanent defaults.
   kernels come from the official Mamba repository, and KDA/GDN-family kernels
   come from FLA or their authors' repositories as applicable.
 
-## SDM integration rule
+## SDM integration result
 
-The first SDM adapter should call a pinned revision of the original repository
-and treat its outputs and address traces as the optimized baseline. Only after
-semantic equivalence is established should URM isolate or rewrite its routing,
-gather, and update kernels.
+The first SDM adapter calls commit
+`183e7df809131b80ad4393741029d0f20fc3640b` of the original repository and
+treats its outputs, address traces, and mutated memory as the optimized
+baseline. Direct and adapted paths share the exact upstream bound methods.
+See [the frozen contract](sparse-delta-memory.md). No upstream kernel source is
+copied, no FLA kernel is substituted, and no native URM SDM kernel exists yet.
 
-The upstream implementation currently requires PyTorch 2.8 or newer, Triton 3.4
-or newer, a CUDA toolkit and host compiler at runtime, and an SM80-or-newer GPU.
+The upstream implementation requires PyTorch 2.8 or newer, Triton 3.4 or newer,
+a CUDA toolkit and host compiler at runtime, and an SM80-or-newer GPU. This
+adapter freezes the validated PyTorch 2.8.0 / Triton 3.4.0 pair.
 It is licensed CC-BY-NC 4.0, so copying or redistributing kernel source requires
 a separate license review; an external adapter avoids silently mixing that code
 into URM's eventual license.

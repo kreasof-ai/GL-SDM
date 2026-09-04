@@ -39,6 +39,61 @@ def test_committed_gated_delta_rule_artifact_validates_against_schema() -> None:
     validate(_artifact("fla-gated-delta-rule/benchmark.json"), schema)
 
 
+def test_committed_sparse_delta_memory_artifact_validates_against_schema() -> None:
+    schema = _load(
+        PROJECT_ROOT / "benchmarks" / "sparse-delta-memory-result-schema.json"
+    )
+    artifact = _artifact("sparse-delta-memory/benchmark.json")
+    validate(artifact, schema)
+    assert set(artifact["cases"]) >= {
+        "smoke_read_only",
+        "prefill_batched",
+        "decode_cached",
+        "write_update",
+        "collision_heavy",
+        "training_prefill",
+        "memory_capacity",
+    }
+    output_atol = artifact["methodology"]["tolerances"]["output_atol"]
+    state_atol = artifact["methodology"]["tolerances"]["state_atol"]
+    decode_cache = artifact["cases"]["decode_cached"]["cache_persistence"]
+    assert decode_cache["status"] == "measured"
+    assert decode_cache["storage_pointer_preserved"] is True
+    assert (
+        decode_cache["adapter_sequence_length"] == decode_cache["upstream_invocations"]
+    )
+    for case in artifact["cases"].values():
+        assert case["correctness"]["addresses_exact"] is True
+        assert case["correctness"]["direct_adapter_output_max_abs"] <= output_atol
+        if "direct_adapter_state_max_abs" in case["correctness"]:
+            assert case["correctness"]["direct_adapter_state_max_abs"] <= state_atol
+        assert case["call_identity"]["identical"] is True
+        assert (
+            case["call_identity"]["address_direct"]
+            == case["call_identity"]["address_adapter_below_dispatch"]
+        )
+        assert (
+            case["call_identity"]["direct"]
+            == case["call_identity"]["adapter_below_dispatch"]
+        )
+        paired = case["paired_performance"]
+        assert len(paired["pair_order"]) == paired["pairs"]
+        for name in (
+            "direct_wall",
+            "adapter_wall",
+            "direct_device",
+            "adapter_device",
+            "paired_wall_overhead_ms",
+            "paired_device_overhead_ms",
+        ):
+            assert len(paired[name]["raw_samples_ms"]) == paired[name]["sample_count"]
+        for name in (
+            "paired_wall_overhead_fraction",
+            "paired_device_overhead_fraction",
+        ):
+            assert len(paired[name]["raw_samples"]) == paired[name]["sample_count"]
+
+
 def _steady_state_overhead_rows(artifact: dict) -> list[dict]:
     """Flatten paired adapter-overhead statistics from the attention artifact."""
     min_seq = artifact["methodology"]["steady_state_min_seq"]

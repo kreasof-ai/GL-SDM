@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 
 from urm.compiler.diagnostics import DiagnosticCode
-from urm.compiler.effects import PURE, EffectSignature
+from urm.compiler.effects import ORDERED_STATE, PURE, EffectSignature
 from urm.compiler.locality import Locality, LocalityConstraint
 
 
@@ -31,6 +31,7 @@ class AnchorKind(StrEnum):
     GROUPED_GEMM = "grouped_gemm"
     ROUTED_REDUCTION = "routed_reduction"
     PAGE_GATHER_UPDATE = "page_gather_update"
+    SPARSE_DELTA_MEMORY = "sparse_delta_memory"
     COLLECTIVE_EXCHANGE = "collective_exchange"
 
 
@@ -202,6 +203,7 @@ class AnchorRequest:
     kind: AnchorKind
     visitors: tuple[VisitorDescriptor, ...] = ()
     schedule_params: dict[str, str | int | float | bool] | None = None
+    semantic_op: object | None = None
 
 
 AnchorSelector = Callable[[AnchorRequest], "AnchorDecision | None"]
@@ -369,6 +371,15 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
         supported_schedules=("segmented", "full_row"),
     ),
     ExecutionAnchor(
+        kind=AnchorKind.SPARSE_DELTA_MEMORY,
+        name="facebook_sparse_delta_memory_183e7df_external_adapter",
+        effect=ORDERED_STATE,
+        backward_verified_dtypes=frozenset({"float32", "bfloat16"}),
+        deterministic_accumulation=False,
+        commit_capable=True,
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
         kind=AnchorKind.PAGE_GATHER_UPDATE,
         name="page_gather_update_reserved",
         trusted=False,  # reserved for the SDM/GL-SDM slice
@@ -382,7 +393,75 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
 )
 
 
+def make_sdm_selector(anchor: ExecutionAnchor) -> AnchorSelector:
+    """Runtime/revision-aware selector for the external original-SDM adapter."""
+
+    def _select(request: AnchorRequest) -> AnchorDecision | None:
+        if request.kind is not AnchorKind.SPARSE_DELTA_MEMORY:
+            return None
+        try:
+            from urm.adapters.sparse_delta_memory import probe_sdm_support
+            from urm.compiler.semantic import SparseDeltaMemoryAccess
+        except Exception as error:  # noqa: BLE001 - optional runtime must decline
+            return AnchorDecision(
+                anchor=None,
+                decline=Decline(
+                    DiagnosticCode.DEPENDENCY_MISSING,
+                    f"original SDM adapter dependencies unavailable: {error!r}",
+                ),
+            )
+        if not isinstance(request.semantic_op, SparseDeltaMemoryAccess):
+            return AnchorDecision(
+                anchor=None,
+                decline=Decline(
+                    DiagnosticCode.UNSUPPORTED_SEMANTICS,
+                    "SDM anchor requires a typed SparseDeltaMemoryAccess operation",
+                ),
+            )
+        spec = request.semantic_op.spec
+        exact = (
+            spec.address_generation == "product_key_topk_sorted"
+            and spec.normalization.value == "softmax"
+            and spec.mutation_order == "decay_retrieve_delta_scatter_then_read"
+            and spec.collision_semantics == "ordered_across_tokens_unique_within_token"
+            and spec.cache_semantics
+            == "persistent_in_place_memory_and_post_call_length_commit"
+            and spec.page_size == 1
+            and not spec.key_weighted_decay
+        )
+        if not exact:
+            return AnchorDecision(
+                anchor=None,
+                decline=Decline(
+                    DiagnosticCode.UNSUPPORTED_SEMANTICS,
+                    "SDM semantics do not match the frozen upstream contract",
+                ),
+            )
+        support = probe_sdm_support()
+        if not support.supported:
+            code = {
+                "missing_dependency": DiagnosticCode.DEPENDENCY_MISSING,
+                "incompatible_revision": DiagnosticCode.UPSTREAM_REVISION_MISMATCH,
+                "modified_upstream_checkout": DiagnosticCode.UPSTREAM_REVISION_MISMATCH,
+                "unsupported_hardware": DiagnosticCode.UNSUPPORTED_HARDWARE,
+                "incompatible_runtime": DiagnosticCode.DEPENDENCY_MISSING,
+            }.get(support.code, DiagnosticCode.ANCHOR_DECLINED)
+            return AnchorDecision(
+                anchor=None,
+                decline=Decline(code, support.reason or support.code),
+            )
+        return AnchorDecision(anchor=anchor, decline=None)
+
+    return _select
+
+
 def default_registry() -> AnchorRegistry:
     registry = AnchorRegistry()
+    sdm_anchor = next(
+        anchor
+        for anchor in TRUSTED_ANCHORS
+        if anchor.kind is AnchorKind.SPARSE_DELTA_MEMORY
+    )
+    registry.register(make_sdm_selector(sdm_anchor))
     registry.register(make_selector(TRUSTED_ANCHORS))
     return registry

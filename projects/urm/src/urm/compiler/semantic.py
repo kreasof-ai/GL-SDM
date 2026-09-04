@@ -158,6 +158,62 @@ class RouteSpec:
         return self.selection is SelectionKind.THRESHOLD
 
 
+class SDMExecutionMode(StrEnum):
+    """Execution modes exposed by the frozen original-SDM adapter."""
+
+    INFERENCE = "inference"
+    TRAINING = "training"
+
+
+@dataclass(frozen=True, slots=True)
+class SparseDeltaMemorySpec:
+    """Exact semantic subset implemented by the pinned Facebook SDM checkout."""
+
+    parallel: int
+    sequence: int
+    slots_per_partition: int
+    value_dim: int
+    writes: int
+    reads: int
+    dtype: DType = DType.BFLOAT16
+    mode: SDMExecutionMode = SDMExecutionMode.INFERENCE
+    address_generation: str = "product_key_topk_sorted"
+    normalization: ScoreNormalization = ScoreNormalization.SOFTMAX
+    mutation_order: str = "decay_retrieve_delta_scatter_then_read"
+    collision_semantics: str = "ordered_across_tokens_unique_within_token"
+    cache_semantics: str = "persistent_in_place_memory_and_post_call_length_commit"
+    page_size: int = 1
+    key_weighted_decay: bool = False
+
+    def __post_init__(self) -> None:
+        dimensions = (
+            "parallel",
+            "sequence",
+            "slots_per_partition",
+            "value_dim",
+            "writes",
+            "reads",
+        )
+        for name in dimensions:
+            if getattr(self, name) <= 0:
+                raise ValueError(f"SDM {name} must be positive")
+        root = round(self.slots_per_partition**0.5)
+        if root * root != self.slots_per_partition:
+            raise ValueError("SDM slots_per_partition must be a perfect square")
+        if self.slots_per_partition % 8:
+            raise ValueError("SDM slots_per_partition must be divisible by 8")
+        max_width = min(128, self.slots_per_partition)
+        if self.writes > max_width or self.reads > max_width:
+            raise ValueError("SDM read/write widths exceed the frozen upstream subset")
+        if self.dtype not in (DType.FLOAT32, DType.BFLOAT16):
+            raise ValueError("SDM adapter supports float32 and bfloat16")
+        if self.mode is SDMExecutionMode.TRAINING and self.sequence < 16:
+            raise ValueError(
+                "SDM upstream training kernel on the frozen runtime requires "
+                "sequence >= 16"
+            )
+
+
 @dataclass(frozen=True, slots=True)
 class EpilogueSpec:
     """Typed, constrained epilogue attached to a reduction anchor.
@@ -304,6 +360,17 @@ class StateUpdate(SemanticOp):
 
 
 @dataclass(frozen=True, slots=True)
+class SparseDeltaMemoryAccess(SemanticOp):
+    """Product-key addressing plus ordered sparse state mutation/read."""
+
+    spec: SparseDeltaMemorySpec
+
+    @property
+    def effect(self) -> EffectSignature:
+        return ORDERED_STATE
+
+
+@dataclass(frozen=True, slots=True)
 class CollectiveExchange(SemanticOp):
     """Collective semantic intent over a named mesh axis."""
 
@@ -325,6 +392,7 @@ SemanticNode = (
     | OrderedRecurrence
     | StateRead
     | StateUpdate
+    | SparseDeltaMemoryAccess
     | CollectiveExchange
 )
 
@@ -487,6 +555,73 @@ def routed_reduction_program(
             ),
         ),
         outputs=("base",),
+    )
+
+
+def sparse_delta_memory_program(
+    *,
+    name: str = "sparse_delta_memory",
+    parallel: int = 1,
+    sequence: int = 128,
+    slots_per_partition: int = 4096,
+    value_dim: int = 256,
+    writes: int = 64,
+    reads: int = 64,
+    dtype: DType = DType.BFLOAT16,
+    mode: SDMExecutionMode = SDMExecutionMode.INFERENCE,
+) -> SemanticProgram:
+    """Typed end-to-end program for the pinned external SDM baseline."""
+    spec = SparseDeltaMemorySpec(
+        parallel=parallel,
+        sequence=sequence,
+        slots_per_partition=slots_per_partition,
+        value_dim=value_dim,
+        writes=writes,
+        reads=reads,
+        dtype=dtype,
+        mode=mode,
+    )
+    root = round(slots_per_partition**0.5)
+    return SemanticProgram.build(
+        name=name,
+        inputs=(
+            TensorHandle("write_scores", dtype, (parallel, sequence, 2 * root)),
+            TensorHandle("read_scores", dtype, (parallel, sequence, 2 * root)),
+            TensorHandle("values", dtype, (parallel, sequence, value_dim)),
+            TensorHandle("beta", dtype, (parallel, sequence, 1)),
+            TensorHandle("log_decay", dtype, (parallel, sequence, 1)),
+            TensorHandle("memory", dtype, (parallel * slots_per_partition, value_dim)),
+        ),
+        ops=(
+            SparseDeltaMemoryAccess(
+                name="sdm_access",
+                inputs=(
+                    "write_scores",
+                    "read_scores",
+                    "values",
+                    "beta",
+                    "log_decay",
+                    "memory",
+                ),
+                outputs=(
+                    "readings",
+                    "updated_memory",
+                    "write_addresses",
+                    "write_weights",
+                    "read_addresses",
+                    "read_weights",
+                ),
+                spec=spec,
+            ),
+        ),
+        outputs=(
+            "readings",
+            "updated_memory",
+            "write_addresses",
+            "write_weights",
+            "read_addresses",
+            "read_weights",
+        ),
     )
 
 

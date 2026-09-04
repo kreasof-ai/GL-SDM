@@ -43,6 +43,10 @@ class DiagnosticCode(StrEnum):
     MODEL_VERIFICATION_FAILED = "model_verification_failed"
     NOGOOD_RETRY_LIMIT = "nogood_retry_limit"
     PROTOCOL_VIOLATION = "protocol_violation"
+    DEPENDENCY_MISSING = "dependency_missing"
+    UPSTREAM_REVISION_MISMATCH = "upstream_revision_mismatch"
+    UNSUPPORTED_HARDWARE = "unsupported_hardware"
+    UNSUPPORTED_SEMANTICS = "unsupported_semantics"
 
 
 class Severity(StrEnum):

@@ -17,7 +17,7 @@ Metrics are named for what they actually measure:
   lowerings in this repository. Expected to be far smaller than the skeleton
   rate until family adapters land.
 - ``native_lowering_rate`` / ``upstream_adapter_rate`` - where executed work
-  goes: compiler-generated anchors versus upstream kernels (FA/FLA).
+  goes: compiler-generated anchors versus upstream kernels (FA/FLA/original SDM).
 """
 
 from __future__ import annotations
@@ -59,7 +59,10 @@ def domain_for(spec):
 
 # Presets whose FULL architecture detail is lowered by trusted code in this
 # repository today. The coarse routing skeleton compiling does NOT imply this.
-FULLY_LOWERED_FAMILIES = {"routed_top_k"}  # routed reduction v1 end-to-end
+FULLY_LOWERED_FAMILIES = {
+    "routed_top_k",
+    "sparse_delta_memory",
+}  # native routed reduction or pinned external family adapter end-to-end
 
 
 def build_program(spec):
@@ -87,7 +90,29 @@ def build_program(spec):
         "collision_policy": spec.collision_policy.value,
         # Honest coverage labels per preset:
         "family_detail_lowered": spec.name in FULLY_LOWERED_FAMILIES,
+        "requires_external_gpu_probe": spec.name == "sparse_delta_memory",
     }
+
+    if spec.name == "sparse_delta_memory":
+        from urm.compiler.semantic import SDMExecutionMode, sparse_delta_memory_program
+
+        return (
+            (
+                sparse_delta_memory_program(
+                    name=spec.name,
+                    parallel=1,
+                    sequence=128,
+                    slots_per_partition=4096,
+                    value_dim=256,
+                    writes=64,
+                    reads=64,
+                    dtype=DType.BFLOAT16,
+                    mode=SDMExecutionMode.TRAINING,
+                ),
+            ),
+            architecture,
+            None,
+        )
 
     if selection_for(spec) == "kernelized_recurrence":
         return (
@@ -238,6 +263,26 @@ def main() -> None:
                 }
             )
             continue
+        if architecture.get("requires_external_gpu_probe") and probe_mode == "off":
+            rows.append(
+                {
+                    "architecture_params": architecture,
+                    "schedule_params": {},
+                    "valid_semantic_programs": len(built),
+                    "compiled_programs": 0,
+                    "candidates": [],
+                    "rewrite_accepted": 0,
+                    "rewrite_rejected": 0,
+                    "rejected_by_training_intent": 0,
+                    "compiled": False,
+                    "decline_reason": (
+                        "original SDM adapter capability probe is disabled in "
+                        "CPU-safe --probe off mode"
+                    ),
+                    "escape_hatch_count": 0,
+                }
+            )
+            continue
         candidates_total = 0
         accepted = 0
         rejected_by_preconditions = 0
@@ -347,11 +392,15 @@ def main() -> None:
                 "traces": traces,
                 "escape_hatch_count": 0,
                 "measured_performance_pointer": (
-                    "results/final/*-forward.json (routed-reduction v1 is the "
-                    "only family with a runnable native lowering on this host)"
-                    if selection_for(preset)
-                    in {"top_k", "dense", "block_sparse", "threshold"}
-                    else None
+                    "results/sparse-delta-memory/benchmark.json"
+                    if preset.name == "sparse_delta_memory"
+                    else (
+                        "results/final/*-forward.json (routed-reduction v1 is the "
+                        "only native family lowering on this host)"
+                        if selection_for(preset)
+                        in {"top_k", "dense", "block_sparse", "threshold"}
+                        else None
+                    )
                 ),
             }
         )
@@ -376,11 +425,17 @@ def main() -> None:
     )
     compiled_rows = sum(1 for row in rows if row["compiled"])
     fully_lowered = sum(
-        1 for row in rows if row["architecture_params"].get("family_detail_lowered")
+        1
+        for row in rows
+        if row["compiled"] and row["architecture_params"].get("family_detail_lowered")
     )
     # Where executed work goes for the compiled programs.
     NATIVE_PREFIXES = ("routed_reduction",)
-    UPSTREAM_ANCHORS = {"flash_attention_adapter", "fla_gated_delta_rule_adapter"}
+    UPSTREAM_ANCHORS = {
+        "flash_attention_adapter",
+        "fla_gated_delta_rule_adapter",
+        "facebook_sparse_delta_memory_183e7df_external_adapter",
+    }
     compiled_programs_total = sum(row.get("compiled_programs", 0) for row in rows)
     native_programs = sum(
         row.get("compiled_programs", 0)

@@ -13,10 +13,20 @@ from .gated_delta_rule import (
     GatedDeltaRuleSpec,
     UrmGatedDeltaRuleAdapter,
 )
+from .sparse_delta_memory import (
+    SDMAddressTrace,
+    SDMOperationSpec,
+    SDMState,
+    UrmSparseDeltaMemoryAdapter,
+)
 
 __all__ = [
     "DenseAttentionSpec",
     "GatedDeltaRuleSpec",
+    "SDMAddressTrace",
+    "SDMOperationSpec",
+    "SDMState",
     "UrmDenseCausalAttentionAdapter",
     "UrmGatedDeltaRuleAdapter",
+    "UrmSparseDeltaMemoryAdapter",
 ]
