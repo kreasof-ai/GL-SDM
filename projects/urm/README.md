@@ -7,6 +7,11 @@ whether attention, expert routing, parameter-token mixing, linear recurrence,
 and sparse memory access can share a constrained execution contract while still
 lowering to competitive specialized kernels.
 
+**Design rule.** Upstream production kernels define comparison points and may
+serve as temporary external anchors. Native URM lowerings are generated from
+URM-owned, typed mixer skeletons and must not depend semantically on
+FA/FLA/SDM/Mamba library APIs.
+
 ## Current milestone
 
 The routed-reduction/compiler-validation tranche remains complete and frozen.
@@ -37,7 +42,8 @@ CUDA host:
 - a four-level original Sparse Delta Memory comparison using pinned commit
   `183e7df809131b80ad4393741029d0f20fc3640b`: exact product-key traces, sparse
   reads, ordered gated updates, persistent decode state, direct upstream calls,
-  and the identical methods behind a typed URM adapter. This is an **SDM
+  differential fp32/bf16 backward gates, intent-safe compiler selection, and
+  the identical methods behind a typed URM adapter. This is an **SDM
   baseline integration**, not a native/page-local URM kernel; see
   [the frozen SDM contract](docs/sparse-delta-memory.md); and
 - a layered compiler (docs/compiler-charter.md): typed semantic IR over logical
@@ -247,7 +253,8 @@ model.
 ### Phase 3 - systems and family-expansion path (active)
 
 - Complete: external original-SDM baseline adapter, frozen typed contract,
-  compiler capability selection, differential tests, and dedicated benchmark.
+  compiler capability selection, differential forward/backward tests, sealed
+  runtime traces, factual callable-identity checks, and dedicated benchmark.
 - Fuse overlay composition and reduction.
 - Add page grouping, prefetch, recurrent address reuse, and distributed sharding.
 - Evaluate GL-SDM traces without making GL-SDM's architectural success a URM

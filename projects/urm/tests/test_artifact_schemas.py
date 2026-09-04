@@ -51,11 +51,27 @@ def test_committed_sparse_delta_memory_artifact_validates_against_schema() -> No
         "decode_cached",
         "write_update",
         "collision_heavy",
-        "training_prefill",
+        "training_prefill_forward_only",
         "memory_capacity",
     }
     output_atol = artifact["methodology"]["tolerances"]["output_atol"]
     state_atol = artifact["methodology"]["tolerances"]["state_atol"]
+    assert artifact["methodology"]["training_timing"].startswith("forward-only")
+    backward = artifact["backward_correctness"]
+    assert backward["passed"] is True
+    assert backward["measurement_scope"] == "untimed_correctness_only"
+    assert set(backward["dtypes"]) == {"float32", "bfloat16"}
+    for dtype, report in backward["dtypes"].items():
+        assert report["dtype"] == dtype
+        assert report["passed"] is True
+        assert set(report["gradients"]) == {
+            "initial_memory",
+            "write_weights",
+            "values",
+            "beta",
+            "log_decay",
+            "read_weights",
+        }
     decode_cache = artifact["cases"]["decode_cached"]["cache_persistence"]
     assert decode_cache["status"] == "measured"
     assert decode_cache["storage_pointer_preserved"] is True

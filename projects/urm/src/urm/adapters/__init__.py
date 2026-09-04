@@ -14,18 +14,24 @@ from .gated_delta_rule import (
     UrmGatedDeltaRuleAdapter,
 )
 from .sparse_delta_memory import (
+    SDMAdapterConfig,
+    SDMAdapterMode,
     SDMAddressTrace,
     SDMOperationSpec,
     SDMState,
+    SDMTraceOrigin,
     UrmSparseDeltaMemoryAdapter,
 )
 
 __all__ = [
     "DenseAttentionSpec",
     "GatedDeltaRuleSpec",
+    "SDMAdapterConfig",
+    "SDMAdapterMode",
     "SDMAddressTrace",
     "SDMOperationSpec",
     "SDMState",
+    "SDMTraceOrigin",
     "UrmDenseCausalAttentionAdapter",
     "UrmGatedDeltaRuleAdapter",
     "UrmSparseDeltaMemoryAdapter",

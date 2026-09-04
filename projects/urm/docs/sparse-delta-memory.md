@@ -40,6 +40,20 @@ the pin and compatibility contract; a revision changing it is rejected.
 
 ## Typed boundary
 
+The compiler-side `SparseMemoryMixerSpec` is a URM-owned restricted algebra:
+product-key top-k addressing, Softmax route weights, decayed delta update,
+ordered cross-token collisions, rejection of within-token collisions,
+post-update reads, and persistent in-place state. It deliberately contains no
+Facebook module name, callable, physical tensor layout, or kernel option. The
+public `SparseDeltaMemorySpec` name is a compatibility alias for this generic
+skeleton. Only execution selection maps that skeleton to the pinned external
+anchor.
+
+Upstream production kernels define comparison points and may serve as temporary
+external anchors. Native URM lowerings are generated from URM-owned, typed
+mixer skeletons and must not depend semantically on FA/FLA/SDM/Mamba library
+APIs.
+
 `SDMAddressTrace` contains four contiguous CUDA tensors:
 
 | Field | Layout | Dtype | Meaning |
@@ -61,6 +75,15 @@ then applies Softmax to the carried scores. Product-key ties are rejected from
 the equivalence envelope because upstream `torch.topk` does not specify a
 portable tie order.
 
+Trace construction is sealed. Product-key generation creates a
+`product_key_generated` certificate; token slicing and equal-value autograd
+clones create `product_key_derived` certificates. Certification occurs once,
+outside timed dispatch, and checks shapes, dtype/device/contiguity, partition
+bounds, strict address ordering, finiteness, nonnegativity, and Softmax sums
+(fp32 absolute tolerance `2e-5`, bf16 `2e-3`). Dispatch then performs cheap
+shape/scalar checks and tensor mutation-version checks only. There is no public
+arbitrary-route or unchecked product semantics path.
+
 `SDMState` contains a contiguous CUDA memory tensor
 `[P*slots_per_partition,D]` and a host sequence length. `float32` and
 `bfloat16` state/value/weight/gate tensors are supported. `D` may be
@@ -68,6 +91,11 @@ non-power-of-two where upstream kernels support it; slots must be a perfect
 square and divisible by eight. The adapter is deliberately not the existing
 routed-reduction signature because state mutation and token order are
 observable.
+
+Every dispatch is also bound to immutable adapter configuration: slots per
+partition, value dimension, read/write widths, chunk size, mode, device, and
+dtype must agree with the certified trace and state. A drift in any field is a
+pre-dispatch error.
 
 ## Mutation and collision semantics
 
@@ -106,6 +134,33 @@ length. Repeated decode calls reuse the same tensor object and preserve state.
 - Scalar per-token decay `g[P,T,1]`, delta-rule updates, Softmax read/write
   weights, local single-device memory, and persistent cache state.
 
+Compiler intent is exact and fail closed:
+
+| Semantic mode | Permitted compilation intent |
+| --- | --- |
+| `inference` | `inference`, `forward_only_analysis` |
+| `training` | `training` only |
+
+Inference semantics with training intent and training semantics with inference
+or forward-only-analysis intent produce `intent_conflict` before runtime
+selection. Training additionally requires that the selected anchor advertise a
+committed backward gate for the semantic dtype. The exact canonical anchor
+override still passes through revision/runtime selection; any incompatible
+known operation or wildcard override is `anchor_declined`, and an unknown
+anchor is `schedule_hint_invalid`, all attributed to `sdm_access`.
+
+### Backward certification
+
+Both advertised dtypes have committed differential gates. Separate cloned
+leaves are evaluated through transparent PyTorch, the direct pinned upstream
+bound method, and the URM adapter. The loss exercises weighted readings and
+final memory; upstream final-state cotangents use its explicit
+`grad_final_memory` argument. Gradients for initial memory, write weights,
+values, beta, log-decay, and read weights must be finite and pairwise close.
+Frozen tolerances are fp32 `atol=2.5e-5, rtol=2e-4` and bf16
+`atol=5e-5, rtol=2e-2`. Thus `backward_verified_dtypes` remains exactly
+`{float32, bfloat16}`.
+
 ## Explicitly rejected
 
 - Missing checkout, a checkout not at the pinned commit, a dirty checkout,
@@ -142,3 +197,9 @@ and complete upstream/runtime provenance are retained in
 `results/sparse-delta-memory/benchmark.json`. Decode samples preserve their
 preallocated states across invocations; unsupported cases and read-only write
 traffic are recorded as `not_applicable`, never as zero.
+
+The case formerly called `training_prefill` is named
+`training_prefill_forward_only`: its performance region measures forward only.
+Backward certification is a separate untimed correctness section. Artifact
+generation compares stored object identity, bound instance, and function for
+the direct and adapter-below-dispatch callables and aborts if they differ.

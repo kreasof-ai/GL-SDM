@@ -13,7 +13,8 @@ import os
 import shutil
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -22,10 +23,28 @@ import torch
 EXPECTED_SDM_COMMIT = "183e7df809131b80ad4393741029d0f20fc3640b"
 SDM_REPOSITORY = "https://github.com/facebookresearch/sparse-delta-memory"
 SDM_LICENSE = "CC-BY-NC-4.0"
-MODE_READ_ONLY = "read_only"
-MODE_INFERENCE = "inference"
-MODE_TRAINING = "training"
 SUPPORTED_DTYPES = (torch.float32, torch.bfloat16)
+_TRACE_CERTIFICATE = object()
+
+
+class SDMAdapterMode(StrEnum):
+    """Execution paths exposed by the external adapter boundary."""
+
+    READ_ONLY = "read_only"
+    INFERENCE = "inference"
+    TRAINING = "training"
+
+
+MODE_READ_ONLY = SDMAdapterMode.READ_ONLY
+MODE_INFERENCE = SDMAdapterMode.INFERENCE
+MODE_TRAINING = SDMAdapterMode.TRAINING
+
+
+class SDMTraceOrigin(StrEnum):
+    """How a certified trace was obtained without admitting arbitrary routes."""
+
+    PRODUCT_KEY_GENERATED = "product_key_generated"
+    PRODUCT_KEY_DERIVED = "product_key_derived"
 
 
 @dataclass(frozen=True, slots=True)
@@ -211,9 +230,16 @@ class SDMAddressTrace:
     read_indices: torch.Tensor
     read_weights: torch.Tensor
     slots_per_partition: int
+    origin: SDMTraceOrigin
+    _tensor_versions: tuple[int, int, int, int] = field(repr=False, compare=False)
+    _certificate: object = field(repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if self._certificate is not _TRACE_CERTIFICATE:
+            raise ValueError("SDMAddressTrace must be created by a certification path")
 
     @classmethod
-    def from_tensors(
+    def _certify(
         cls,
         write_indices: torch.Tensor,
         write_weights: torch.Tensor,
@@ -221,7 +247,7 @@ class SDMAddressTrace:
         read_weights: torch.Tensor,
         *,
         slots_per_partition: int,
-        validate_values: bool = True,
+        origin: SDMTraceOrigin,
     ) -> SDMAddressTrace:
         if write_indices.ndim != 3 or read_indices.ndim != 3:
             raise ValueError("SDM traces require rank-3 [P,T,K] indices")
@@ -250,34 +276,122 @@ class SDMAddressTrace:
             )
         if slots_per_partition < 8 or slots_per_partition % 8:
             raise ValueError("slots_per_partition must be >=8 and divisible by 8")
-        if validate_values:
-            for name, indices in (
-                ("write", write_indices),
-                ("read", read_indices),
-            ):
-                local = (
-                    indices
-                    - torch.arange(p, device=indices.device, dtype=torch.int64).view(
-                        p, 1, 1
-                    )
-                    * slots_per_partition
+        for name, indices in (
+            ("write", write_indices),
+            ("read", read_indices),
+        ):
+            local = (
+                indices
+                - torch.arange(p, device=indices.device, dtype=torch.int64).view(
+                    p, 1, 1
                 )
-                if bool(((local < 0) | (local >= slots_per_partition)).any().item()):
-                    raise ValueError(f"{name} addresses cross partition bounds")
-                if indices.shape[-1] > 1 and bool(
-                    (indices[..., 1:] <= indices[..., :-1]).any().item()
-                ):
-                    raise ValueError(
-                        f"{name} addresses must be strictly increasing; "
-                        "within-token duplicates/ties are unsupported"
-                    )
+                * slots_per_partition
+            )
+            if bool(((local < 0) | (local >= slots_per_partition)).any().item()):
+                raise ValueError(f"{name} addresses cross partition bounds")
+            if indices.shape[-1] > 1 and bool(
+                (indices[..., 1:] <= indices[..., :-1]).any().item()
+            ):
+                raise ValueError(
+                    f"{name} addresses must be strictly increasing; "
+                    "within-token duplicates/ties are unsupported"
+                )
+        normalization_atol = 2e-5 if write_weights.dtype == torch.float32 else 2e-3
+        for name, weights in (
+            ("write", write_weights),
+            ("read", read_weights),
+        ):
+            if not bool(torch.isfinite(weights).all().item()):
+                raise ValueError(f"{name} weights must be finite")
+            if bool((weights < 0).any().item()):
+                raise ValueError(f"{name} weights must be nonnegative")
+            sums = weights.float().sum(dim=-1)
+            if not torch.allclose(
+                sums,
+                torch.ones_like(sums),
+                atol=normalization_atol,
+                rtol=0,
+            ):
+                raise ValueError(
+                    f"{name} weights must satisfy the frozen Softmax normalization"
+                )
+        tensor_versions = tuple(tensor._version for tensor in tensors)
         return cls(
             write_indices,
             write_weights,
             read_indices,
             read_weights,
             slots_per_partition,
+            origin,
+            tensor_versions,
+            _TRACE_CERTIFICATE,
         )
+
+    @classmethod
+    def _from_product_key(
+        cls,
+        write_indices: torch.Tensor,
+        write_weights: torch.Tensor,
+        read_indices: torch.Tensor,
+        read_weights: torch.Tensor,
+        *,
+        slots_per_partition: int,
+    ) -> SDMAddressTrace:
+        return cls._certify(
+            write_indices,
+            write_weights,
+            read_indices,
+            read_weights,
+            slots_per_partition=slots_per_partition,
+            origin=SDMTraceOrigin.PRODUCT_KEY_GENERATED,
+        )
+
+    def token_slice(self, start: int, stop: int) -> SDMAddressTrace:
+        """Create a certified contiguous token view derived from this trace."""
+        if not 0 <= start < stop <= self.sequence:
+            raise ValueError("token slice must satisfy 0 <= start < stop <= sequence")
+        self._require_intact()
+        return self._certify(
+            self.write_indices[:, start:stop].contiguous(),
+            self.write_weights[:, start:stop].contiguous(),
+            self.read_indices[:, start:stop].contiguous(),
+            self.read_weights[:, start:stop].contiguous(),
+            slots_per_partition=self.slots_per_partition,
+            origin=SDMTraceOrigin.PRODUCT_KEY_DERIVED,
+        )
+
+    def with_differentiable_weights(
+        self, write_weights: torch.Tensor, read_weights: torch.Tensor
+    ) -> SDMAddressTrace:
+        """Attach cloned autograd leaves without changing certified route values."""
+        self._require_intact()
+        if not torch.equal(write_weights.detach(), self.write_weights.detach()):
+            raise ValueError("replacement write weights must equal the certified trace")
+        if not torch.equal(read_weights.detach(), self.read_weights.detach()):
+            raise ValueError("replacement read weights must equal the certified trace")
+        return self._certify(
+            self.write_indices,
+            write_weights,
+            self.read_indices,
+            read_weights,
+            slots_per_partition=self.slots_per_partition,
+            origin=SDMTraceOrigin.PRODUCT_KEY_DERIVED,
+        )
+
+    def _require_intact(self) -> None:
+        tensors = (
+            self.write_indices,
+            self.write_weights,
+            self.read_indices,
+            self.read_weights,
+        )
+        if (
+            self._certificate is not _TRACE_CERTIFICATE
+            or tuple(tensor._version for tensor in tensors) != self._tensor_versions
+        ):
+            raise ValueError(
+                "certified SDM trace tensors were mutated after construction"
+            )
 
     @property
     def parallel(self) -> int:
@@ -297,6 +411,20 @@ class SDMState:
 
 
 @dataclass(frozen=True, slots=True)
+class SDMAdapterConfig:
+    """Static runtime configuration against which every trace is checked."""
+
+    slots_per_partition: int
+    value_dim: int
+    num_writes: int
+    num_reads: int
+    chunk_size: int
+    mode: SDMAdapterMode
+    device: torch.device
+    dtype: torch.dtype
+
+
+@dataclass(frozen=True, slots=True)
 class SDMOperationSpec:
     parallel: int
     sequence: int
@@ -305,7 +433,7 @@ class SDMOperationSpec:
     slots_per_partition: int
     value_dim: int
     dtype: torch.dtype
-    mode: str
+    mode: SDMAdapterMode
     mutation_order: str = "decay_retrieve_delta_scatter_then_read"
     collision_semantics: str = "ordered_across_tokens_unique_within_token"
 
@@ -317,22 +445,38 @@ class SDMOperationSpec:
         values: torch.Tensor | None = None,
         beta: torch.Tensor | None = None,
         log_decay: torch.Tensor | None = None,
+        grad_final_memory: torch.Tensor | None = None,
         *,
-        mode: str,
+        mode: SDMAdapterMode,
+        config: SDMAdapterConfig,
     ) -> SDMOperationSpec:
         if mode not in (MODE_READ_ONLY, MODE_INFERENCE, MODE_TRAINING):
             raise ValueError(f"unknown SDM mode {mode!r}")
         p, sequence, writes = trace.write_indices.shape
         reads = trace.read_indices.shape[-1]
         memory = state.memory
+        trace._require_intact()
+        if mode != config.mode:
+            raise ValueError(
+                f"operation mode {mode!r} does not match adapter mode {config.mode!r}"
+            )
+        if trace.slots_per_partition != config.slots_per_partition:
+            raise ValueError("trace slots_per_partition does not match adapter config")
+        if writes != config.num_writes or reads != config.num_reads:
+            raise ValueError("trace read/write widths do not match adapter config")
         if not isinstance(state.sequence_length, int) or state.sequence_length < 0:
             raise ValueError("state sequence_length must be a non-negative integer")
-        if memory.ndim != 2 or memory.shape[0] != p * trace.slots_per_partition:
-            raise ValueError("memory must have shape [P*slots_per_partition,D]")
+        expected_memory = (p * config.slots_per_partition, config.value_dim)
+        if memory.ndim != 2 or memory.shape != expected_memory:
+            raise ValueError(
+                f"memory must match configured [P*slots_per_partition,D]={expected_memory}"
+            )
         if memory.dtype not in SUPPORTED_DTYPES:
             raise ValueError(f"SDM baseline supports {SUPPORTED_DTYPES}")
         if not memory.is_cuda:
             raise ValueError("original SDM kernels require CUDA memory")
+        if memory.device != config.device or memory.dtype != config.dtype:
+            raise ValueError("state device/dtype does not match adapter config")
         if not memory.is_contiguous():
             raise ValueError("memory must be contiguous")
         for tensor in (
@@ -362,11 +506,27 @@ class SDMOperationSpec:
                     raise ValueError(
                         "values/beta/log_decay must be contiguous and match state device/dtype"
                     )
-            if mode == MODE_TRAINING and sequence < 16:
+            if mode == MODE_TRAINING and min(sequence, config.chunk_size) < 16:
                 raise ValueError(
                     "upstream training kernel on the frozen runtime requires "
-                    "sequence >= 16"
+                    "effective sequence/chunk >= 16"
                 )
+            if grad_final_memory is not None:
+                if mode != MODE_TRAINING:
+                    raise ValueError(
+                        "grad_final_memory is supported only by training mode"
+                    )
+                if (
+                    grad_final_memory.shape != memory.shape
+                    or grad_final_memory.device != memory.device
+                    or grad_final_memory.dtype != memory.dtype
+                    or not grad_final_memory.is_contiguous()
+                ):
+                    raise ValueError(
+                        "grad_final_memory must be contiguous and match state shape/device/dtype"
+                    )
+        elif grad_final_memory is not None:
+            raise ValueError("grad_final_memory is supported only by training mode")
         return cls(
             p,
             sequence,
@@ -392,10 +552,14 @@ class UrmSparseDeltaMemoryAdapter:
         num_writes: int,
         num_reads: int,
         chunk_size: int = 64,
-        mode: str = MODE_INFERENCE,
+        mode: SDMAdapterMode = MODE_INFERENCE,
+        device: torch.device | str = "cuda",
+        dtype: torch.dtype = torch.float32,
     ) -> None:
         if mode not in (MODE_READ_ONLY, MODE_INFERENCE, MODE_TRAINING):
             raise ValueError(f"unknown SDM mode {mode!r}")
+        if slots_per_partition < 8 or slots_per_partition % 8:
+            raise ValueError("slots_per_partition must be >=8 and divisible by 8")
         root = round(slots_per_partition**0.5)
         if root * root != slots_per_partition:
             raise ValueError("upstream product-key slots must be a perfect square")
@@ -403,6 +567,8 @@ class UrmSparseDeltaMemoryAdapter:
             raise ValueError("num_writes must be in [1,min(128,slots)]")
         if not 0 < num_reads <= min(128, slots_per_partition):
             raise ValueError("num_reads must be in [1,min(128,slots)]")
+        if value_dim < 1:
+            raise ValueError("value_dim must be positive")
         if chunk_size < 16:
             raise ValueError(
                 "chunk_size must be >= 16 for upstream tensor-core kernels"
@@ -412,6 +578,23 @@ class UrmSparseDeltaMemoryAdapter:
             raise RuntimeError(
                 f"{self.name} unavailable [{support.code}]: {support.reason}"
             )
+        configured_device = torch.device(device)
+        if configured_device.type != "cuda":
+            raise ValueError("original SDM kernels require a CUDA adapter device")
+        if configured_device.index is None:
+            configured_device = torch.device("cuda", torch.cuda.current_device())
+        if dtype not in SUPPORTED_DTYPES:
+            raise ValueError(f"SDM adapter dtype must be one of {SUPPORTED_DTYPES}")
+        self.config = SDMAdapterConfig(
+            slots_per_partition=slots_per_partition,
+            value_dim=value_dim,
+            num_writes=num_writes,
+            num_reads=num_reads,
+            chunk_size=chunk_size,
+            mode=mode,
+            device=configured_device,
+            dtype=dtype,
+        )
         from lingua.sparse_delta_memory import SparseDeltaMemory, SparseDeltaMemoryArgs
 
         args = SparseDeltaMemoryArgs(
@@ -454,24 +637,21 @@ class UrmSparseDeltaMemoryAdapter:
             raise ValueError("write/read scores must share [P,T]")
         if (
             not write_scores.is_cuda
+            or write_scores.device != self.config.device
+            or write_scores.dtype != self.config.dtype
             or read_scores.device != write_scores.device
             or not write_scores.is_contiguous()
             or not read_scores.is_contiguous()
         ):
-            raise ValueError(
-                "address scores must be contiguous CUDA tensors on one device"
-            )
+            raise ValueError("address scores must match configured CUDA device/dtype")
         expected_key_dim = 2 * round(self.layer.slots_per_head**0.5)
         if (
             write_scores.shape[-1] != expected_key_dim
             or read_scores.shape[-1] != expected_key_dim
         ):
             raise ValueError(f"score width must be {expected_key_dim}")
-        if (
-            write_scores.dtype not in SUPPORTED_DTYPES
-            or read_scores.dtype != write_scores.dtype
-        ):
-            raise ValueError("address scores must share a supported dtype")
+        if read_scores.dtype != write_scores.dtype:
+            raise ValueError("address scores must share the configured dtype")
         write_values, write_indices = self._address_fn(
             write_scores, self.layer.args.num_writes, expected_key_dim // 2
         )
@@ -487,7 +667,7 @@ class UrmSparseDeltaMemoryAdapter:
             )
             * self.layer.slots_per_head
         )
-        return SDMAddressTrace.from_tensors(
+        return SDMAddressTrace._from_product_key(
             (write_indices + offsets).contiguous(),
             write_weights.contiguous(),
             (read_indices + offsets).contiguous(),
@@ -496,7 +676,9 @@ class UrmSparseDeltaMemoryAdapter:
         )
 
     def read(self, state: SDMState, trace: SDMAddressTrace, *, return_info=False):
-        spec = SDMOperationSpec.from_call(trace, state, mode=MODE_READ_ONLY)
+        spec = SDMOperationSpec.from_call(
+            trace, state, mode=MODE_READ_ONLY, config=self.config
+        )
         output = self._read_fn(state.memory, trace.read_weights, trace.read_indices)
         if return_info:
             return output, self._info(spec)
@@ -510,23 +692,44 @@ class UrmSparseDeltaMemoryAdapter:
         beta: torch.Tensor,
         log_decay: torch.Tensor,
         *,
+        grad_final_memory: torch.Tensor | None = None,
         return_info: bool = False,
     ):
         spec = SDMOperationSpec.from_call(
-            trace, state, values, beta, log_decay, mode=self.mode
-        )
-        if self.mode == MODE_READ_ONLY:
-            raise ValueError("read-only adapter uses read(), not execute()")
-        readings, memory = self._update_fn(
-            state.memory,
-            trace.write_indices,
-            trace.write_weights,
+            trace,
+            state,
             values,
             beta,
             log_decay,
-            trace.read_indices,
-            trace.read_weights,
+            grad_final_memory,
+            mode=self.mode,
+            config=self.config,
         )
+        if self.mode == MODE_READ_ONLY:
+            raise ValueError("read-only adapter uses read(), not execute()")
+        if grad_final_memory is None:
+            readings, memory = self._update_fn(
+                state.memory,
+                trace.write_indices,
+                trace.write_weights,
+                values,
+                beta,
+                log_decay,
+                trace.read_indices,
+                trace.read_weights,
+            )
+        else:
+            readings, memory = self._update_fn(
+                state.memory,
+                trace.write_indices,
+                trace.write_weights,
+                values,
+                beta,
+                log_decay,
+                trace.read_indices,
+                trace.read_weights,
+                grad_final_memory=grad_final_memory,
+            )
         # Upstream mutates memory during the call.  The sequence count becomes
         # visible only after that call returns, matching SDMLayerState.update_.
         state.memory = memory
@@ -561,10 +764,13 @@ __all__ = [
     "MODE_INFERENCE",
     "MODE_READ_ONLY",
     "MODE_TRAINING",
+    "SDMAdapterConfig",
+    "SDMAdapterMode",
     "SDMAddressTrace",
     "SDMOperationSpec",
     "SDMState",
     "SDMSupportStatus",
+    "SDMTraceOrigin",
     "UrmSparseDeltaMemoryAdapter",
     "probe_sdm_support",
     "sdm_upstream_identity",

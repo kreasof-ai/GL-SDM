@@ -78,7 +78,7 @@ CASES = (
         "collision_heavy": True,
     },
     {
-        "name": "training_prefill",
+        "name": "training_prefill_forward_only",
         "path": "training",
         "parallel": 1,
         "sequence": 64,
@@ -156,6 +156,15 @@ def _function_identity(bound_method) -> dict[str, object]:
         "qualname": function.__qualname__,
         "python_bytecode_sha256": hashlib.sha256(code).hexdigest(),
     }
+
+
+def _same_bound_callable(direct, adapted) -> bool:
+    """Factual identity check for one stored upstream bound method."""
+    return (
+        direct is adapted
+        and direct.__self__ is adapted.__self__
+        and direct.__func__ is adapted.__func__
+    )
 
 
 def _direct_trace(adapter, write_scores, read_scores, torch):
@@ -324,7 +333,6 @@ def _make_case(case: dict[str, object], torch):
         MODE_INFERENCE,
         MODE_READ_ONLY,
         MODE_TRAINING,
-        SDMAddressTrace,
         UrmSparseDeltaMemoryAdapter,
     )
 
@@ -334,6 +342,10 @@ def _make_case(case: dict[str, object], torch):
         "inference": MODE_INFERENCE,
         "training": MODE_TRAINING,
     }[path]
+    dtype = {
+        "float32": torch.float32,
+        "bfloat16": torch.bfloat16,
+    }[str(case.get("dtype", "bfloat16"))]
     adapter = UrmSparseDeltaMemoryAdapter(
         slots_per_partition=int(case["slots"]),
         value_dim=int(case["dim"]),
@@ -341,6 +353,8 @@ def _make_case(case: dict[str, object], torch):
         num_reads=int(case["reads"]),
         chunk_size=int(case["chunk"]),
         mode=mode,
+        device="cuda",
+        dtype=dtype,
     )
     generator = torch.Generator(device="cuda").manual_seed(
         20260904 + sum(map(ord, str(case["name"])))
@@ -352,31 +366,17 @@ def _make_case(case: dict[str, object], torch):
         int(case["dim"]),
     )
     key_dim = 2 * round(math.sqrt(slots))
-    dtype = torch.bfloat16
     write_scores = torch.randn(
         (p, t, key_dim), device="cuda", dtype=dtype, generator=generator
     )
     read_scores = torch.randn(
         (p, t, key_dim), device="cuda", dtype=dtype, generator=generator
     )
+    if case.get("collision_heavy"):
+        write_scores = write_scores[:, :1].expand(-1, t, -1).contiguous()
+        read_scores = read_scores[:, :1].expand(-1, t, -1).contiguous()
     direct_trace = _direct_trace(adapter, write_scores, read_scores, torch)
     trace = adapter.generate_trace(write_scores, read_scores)
-    if case.get("collision_heavy"):
-        write_indices = trace.write_indices[:, :1].expand(-1, t, -1).contiguous()
-        read_indices = trace.read_indices[:, :1].expand(-1, t, -1).contiguous()
-        trace = SDMAddressTrace.from_tensors(
-            write_indices,
-            trace.write_weights,
-            read_indices,
-            trace.read_weights,
-            slots_per_partition=slots,
-        )
-        direct_trace = (
-            trace.write_indices,
-            trace.write_weights,
-            trace.read_indices,
-            trace.read_weights,
-        )
     for actual, expected in zip(
         (
             trace.write_indices,
@@ -422,6 +422,11 @@ def _correctness(case, adapter, trace, initial, values, beta, log_decay, torch):
             trace.read_indices.cpu().numpy(),
             trace.read_weights.float().cpu().numpy(),
         )
+        torch.testing.assert_close(direct, adapted, atol=0, rtol=0)
+        torch.testing.assert_close(direct.float(), eager.float(), atol=0.02, rtol=0.02)
+        torch.testing.assert_close(
+            direct.float().cpu(), torch.from_numpy(oracle), atol=0.02, rtol=0.02
+        )
         return {
             "addresses_exact": True,
             "direct_adapter_output_max_abs": float(
@@ -460,6 +465,14 @@ def _correctness(case, adapter, trace, initial, values, beta, log_decay, torch):
         trace.read_indices,
         trace.read_weights,
     )
+    torch.testing.assert_close(direct.float(), adapted.float(), atol=0.02, rtol=0.02)
+    torch.testing.assert_close(
+        direct_memory.float(), adapted_state.memory.float(), atol=0.02, rtol=0.02
+    )
+    torch.testing.assert_close(direct.float(), eager.float(), atol=0.02, rtol=0.02)
+    torch.testing.assert_close(
+        direct_memory.float(), eager_state.float(), atol=0.02, rtol=0.02
+    )
     result = {
         "addresses_exact": True,
         "direct_adapter_output_max_abs": float(
@@ -488,6 +501,15 @@ def _correctness(case, adapter, trace, initial, values, beta, log_decay, torch):
             log_decay.float().cpu().numpy(),
             trace.read_indices.cpu().numpy(),
             trace.read_weights.float().cpu().numpy(),
+        )
+        torch.testing.assert_close(
+            direct.float().cpu(), torch.from_numpy(oracle_out), atol=0.02, rtol=0.02
+        )
+        torch.testing.assert_close(
+            direct_memory.float().cpu(),
+            torch.from_numpy(oracle_state),
+            atol=0.02,
+            rtol=0.02,
         )
         result["oracle_output_max_abs"] = float(
             (direct.float().cpu() - torch.from_numpy(oracle_out)).abs().max().item()
@@ -520,15 +542,18 @@ def _benchmark_case(case, *, samples: int, warmup: int, torch):
     adapter_state = SDMState(initial.clone())
     adapter_storage_pointer = adapter_state.memory.data_ptr()
     persistent_decode = case["name"] == "decode_cached"
+    direct_operation = adapter.direct_calls[
+        "read" if case["path"] == "read_only" else "update"
+    ]
     if case["path"] == "read_only":
-        direct_call = lambda: adapter.direct_calls["read"](
+        direct_call = lambda: direct_operation(
             direct_memory, trace.read_weights, trace.read_indices
         )
         adapter_call = lambda: adapter.read(adapter_state, trace)
         reset_direct = lambda: None
         reset_adapter = lambda: None
     else:
-        direct_call = lambda: adapter.direct_calls["update"](
+        direct_call = lambda: direct_operation(
             direct_memory,
             trace.write_indices,
             trace.write_weights,
@@ -578,6 +603,18 @@ def _benchmark_case(case, *, samples: int, warmup: int, torch):
     paired["adapter_queries_per_second"] = queries / (
         paired["adapter_device"]["median_ms"] / 1000.0
     )
+    address_direct = adapter.direct_calls["address"]
+    operation_direct = direct_operation
+    operation_adapter = (
+        adapter._read_fn if case["path"] == "read_only" else adapter._update_fn
+    )
+    identical = _same_bound_callable(
+        address_direct, adapter._address_fn
+    ) and _same_bound_callable(operation_direct, operation_adapter)
+    if not identical:
+        raise RuntimeError(
+            f"{case['name']}: direct and adapter paths do not share bound upstream callables"
+        )
     return {
         "case": case,
         "input_preparation_ms": prep_ms,
@@ -610,19 +647,61 @@ def _benchmark_case(case, *, samples: int, warmup: int, torch):
             "adapter": adapter_memory_report,
         },
         "call_identity": {
-            "address_direct": _function_identity(adapter.direct_calls["address"]),
+            "address_direct": _function_identity(address_direct),
             "address_adapter_below_dispatch": _function_identity(adapter._address_fn),
-            "direct": _function_identity(
-                adapter.direct_calls[
-                    "read" if case["path"] == "read_only" else "update"
-                ]
-            ),
-            "adapter_below_dispatch": _function_identity(
-                adapter._read_fn if case["path"] == "read_only" else adapter._update_fn
-            ),
-            "identical": True,
+            "direct": _function_identity(operation_direct),
+            "adapter_below_dispatch": _function_identity(operation_adapter),
+            "identity_basis": "same stored object, bound instance, and function",
+            "identical": identical,
         },
         "paired_performance": paired,
+    }
+
+
+def _backward_correctness(torch) -> dict[str, object]:
+    from urm.adapters.sparse_delta_memory_reference import (
+        differential_backward_report,
+    )
+
+    tolerances = {
+        "float32": {"atol": 2.5e-5, "rtol": 2.0e-4},
+        "bfloat16": {"atol": 5.0e-5, "rtol": 2.0e-2},
+    }
+    reports = {}
+    for dtype_name, tolerance in tolerances.items():
+        case = {
+            "name": f"backward_{dtype_name}",
+            "path": "training",
+            "parallel": 1,
+            "sequence": 16,
+            "slots": 256,
+            "dim": 32,
+            "writes": 4,
+            "reads": 4,
+            "chunk": 16,
+            "dtype": dtype_name,
+        }
+        adapter, trace, memory, values, beta, log_decay = _make_case(case, torch)
+        report = differential_backward_report(
+            adapter,
+            trace,
+            memory,
+            values,
+            beta,
+            log_decay,
+            **tolerance,
+        )
+        if not report["passed"]:
+            raise RuntimeError(
+                f"SDM {dtype_name} backward differential certification failed: {report}"
+            )
+        reports[dtype_name] = report
+    return {
+        "measurement_scope": "untimed_correctness_only",
+        "logical_loss": "weighted_mean(readings) + weighted_mean(final_memory)",
+        "upstream_final_state_gradient": "grad_final_memory callable argument",
+        "passed": True,
+        "dtypes": reports,
     }
 
 
@@ -655,19 +734,24 @@ def main() -> None:
 
     # First-call timings use a bounded instance.  They are honest process-first
     # calls; cache directory pre-state is recorded rather than assumed cold.
-    cold_case = CASES[5]
+    cold_read_case = CASES[0]
     first_start = time.perf_counter()
-    cold_adapter, cold_trace, cold_memory, cold_values, cold_beta, cold_decay = (
-        _make_case(cold_case, torch)
-    )
+    read_adapter, read_trace, read_memory, *_ = _make_case(cold_read_case, torch)
     torch.cuda.synchronize()
     first_address_ms = (time.perf_counter() - first_start) * 1000
     from urm.adapters.sparse_delta_memory import SDMState
 
     first_read_start = time.perf_counter()
-    cold_adapter.read(SDMState(cold_memory), cold_trace)
+    read_adapter.read(SDMState(read_memory), read_trace)
     torch.cuda.synchronize()
     first_read_ms = (time.perf_counter() - first_read_start) * 1000
+    del read_adapter, read_trace, read_memory
+
+    cold_training_case = CASES[5]
+    cold_adapter, cold_trace, cold_memory, cold_values, cold_beta, cold_decay = (
+        _make_case(cold_training_case, torch)
+    )
+    torch.cuda.synchronize()
     first_update_start = time.perf_counter()
     cold_adapter.execute(
         SDMState(cold_memory),
@@ -680,6 +764,8 @@ def main() -> None:
     first_update_ms = (time.perf_counter() - first_update_start) * 1000
     del cold_adapter, cold_trace, cold_memory, cold_values, cold_beta, cold_decay
     torch.cuda.empty_cache()
+
+    backward_correctness = _backward_correctness(torch)
 
     selected_cases = CASES[:3] if args.quick else CASES
     rows = {}
@@ -711,7 +797,7 @@ def main() -> None:
             "upstream_import_ms": upstream_import_ms,
             "first_address_and_adapter_build_ms": first_address_ms,
             "first_read_call_ms": first_read_ms,
-            "first_training_update_build_and_call_ms": first_update_ms,
+            "first_training_forward_build_and_call_ms": first_update_ms,
             "cache_paths": cache_paths,
             "classification": "process-first; cold only when supplied cache directories were empty",
         },
@@ -720,6 +806,7 @@ def main() -> None:
             "excluded": "allocation/reset, tensor generation, cloning, address generation, cache initialization, and synchronization before start; decode_cached intentionally preserves its preallocated state across calls",
             "intrinsic_allocations": "upstream output/workspace allocation remains inside because it is intrinsic to the frozen callable API",
             "sampling": "paired alternating AB/BA with raw wall and CUDA-event samples",
+            "training_timing": "forward-only; backward certification is untimed and reported separately",
             "dtype": "torch.bfloat16",
             "tolerances": {
                 "output_atol": 0.02,
@@ -738,6 +825,7 @@ def main() -> None:
             "cache": "memory mutated in place; sequence length committed after upstream return",
             "native_urm_lowering": False,
         },
+        "backward_correctness": backward_correctness,
         "unsupported_cases": {
             "cpu_execution": {
                 "status": "not_applicable",

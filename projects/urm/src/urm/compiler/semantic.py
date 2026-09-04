@@ -159,15 +159,35 @@ class RouteSpec:
 
 
 class SDMExecutionMode(StrEnum):
-    """Execution modes exposed by the frozen original-SDM adapter."""
+    """Autograd intent of the restricted sparse-memory mixer skeleton."""
 
     INFERENCE = "inference"
     TRAINING = "training"
 
 
+class SparseAddressingKind(StrEnum):
+    PRODUCT_KEY_TOP_K = "product_key_top_k"
+
+
+class SparseUpdateRule(StrEnum):
+    DECAYED_DELTA = "decayed_delta"
+
+
+class SparseReadTiming(StrEnum):
+    AFTER_UPDATE = "after_update"
+
+
+class SparseStatePolicy(StrEnum):
+    PERSISTENT_IN_PLACE = "persistent_in_place"
+
+
 @dataclass(frozen=True, slots=True)
-class SparseDeltaMemorySpec:
-    """Exact semantic subset implemented by the pinned Facebook SDM checkout."""
+class SparseMemoryMixerSpec:
+    """URM-owned restricted algebra for ordered sparse-memory access.
+
+    This describes mathematical choices only. It contains no upstream module,
+    callable, tensor-layout convention, or kernel implementation identity.
+    """
 
     parallel: int
     sequence: int
@@ -177,13 +197,14 @@ class SparseDeltaMemorySpec:
     reads: int
     dtype: DType = DType.BFLOAT16
     mode: SDMExecutionMode = SDMExecutionMode.INFERENCE
-    address_generation: str = "product_key_topk_sorted"
+    addressing: SparseAddressingKind = SparseAddressingKind.PRODUCT_KEY_TOP_K
     normalization: ScoreNormalization = ScoreNormalization.SOFTMAX
-    mutation_order: str = "decay_retrieve_delta_scatter_then_read"
-    collision_semantics: str = "ordered_across_tokens_unique_within_token"
-    cache_semantics: str = "persistent_in_place_memory_and_post_call_length_commit"
+    update_rule: SparseUpdateRule = SparseUpdateRule.DECAYED_DELTA
+    collision_policy: MergePolicy = MergePolicy.ORDERED
+    within_token_collision_policy: MergePolicy = MergePolicy.REJECT
+    read_timing: SparseReadTiming = SparseReadTiming.AFTER_UPDATE
+    state_policy: SparseStatePolicy = SparseStatePolicy.PERSISTENT_IN_PLACE
     page_size: int = 1
-    key_weighted_decay: bool = False
 
     def __post_init__(self) -> None:
         dimensions = (
@@ -212,6 +233,11 @@ class SparseDeltaMemorySpec:
                 "SDM upstream training kernel on the frozen runtime requires "
                 "sequence >= 16"
             )
+
+
+# Compatibility name for the external baseline slice. Native lowering work
+# consumes SparseMemoryMixerSpec and must not depend on the upstream adapter.
+SparseDeltaMemorySpec = SparseMemoryMixerSpec
 
 
 @dataclass(frozen=True, slots=True)
@@ -360,14 +386,19 @@ class StateUpdate(SemanticOp):
 
 
 @dataclass(frozen=True, slots=True)
-class SparseDeltaMemoryAccess(SemanticOp):
-    """Product-key addressing plus ordered sparse state mutation/read."""
+class SparseMemoryAccess(SemanticOp):
+    """Restricted sparse-memory skeleton; external SDM is one temporary anchor."""
 
-    spec: SparseDeltaMemorySpec
+    spec: SparseMemoryMixerSpec
 
     @property
     def effect(self) -> EffectSignature:
         return ORDERED_STATE
+
+
+# Compatibility name for users of the external-baseline constructor. The
+# semantic node itself is the URM-owned sparse-memory skeleton above.
+SparseDeltaMemoryAccess = SparseMemoryAccess
 
 
 @dataclass(frozen=True, slots=True)
@@ -392,7 +423,7 @@ SemanticNode = (
     | OrderedRecurrence
     | StateRead
     | StateUpdate
-    | SparseDeltaMemoryAccess
+    | SparseMemoryAccess
     | CollectiveExchange
 )
 
@@ -570,8 +601,8 @@ def sparse_delta_memory_program(
     dtype: DType = DType.BFLOAT16,
     mode: SDMExecutionMode = SDMExecutionMode.INFERENCE,
 ) -> SemanticProgram:
-    """Typed end-to-end program for the pinned external SDM baseline."""
-    spec = SparseDeltaMemorySpec(
+    """Compatibility builder for the typed sparse-memory mixer skeleton."""
+    spec = SparseMemoryMixerSpec(
         parallel=parallel,
         sequence=sequence,
         slots_per_partition=slots_per_partition,
@@ -590,10 +621,14 @@ def sparse_delta_memory_program(
             TensorHandle("values", dtype, (parallel, sequence, value_dim)),
             TensorHandle("beta", dtype, (parallel, sequence, 1)),
             TensorHandle("log_decay", dtype, (parallel, sequence, 1)),
-            TensorHandle("memory", dtype, (parallel * slots_per_partition, value_dim)),
+            TensorHandle(
+                "memory",
+                dtype,
+                (parallel, slots_per_partition, value_dim),
+            ),
         ),
         ops=(
-            SparseDeltaMemoryAccess(
+            SparseMemoryAccess(
                 name="sdm_access",
                 inputs=(
                     "write_scores",

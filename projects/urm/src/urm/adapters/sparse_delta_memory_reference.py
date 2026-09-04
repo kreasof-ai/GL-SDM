@@ -132,9 +132,12 @@ def torch_write_read(
             delta = beta[parallel, token, 0].float() * (
                 values[parallel, token].float() - retrieved
             )
-            state[addresses] = (
+            updated = (
                 decayed + write_weights[parallel, token].float().unsqueeze(-1) * delta
             )
+            # Functional replacement preserves the explicit recurrence while
+            # keeping every prior state version available to autograd.
+            state = state.index_copy(0, addresses, updated)
             q_addresses = read_indices[parallel, token]
             parallel_outputs.append(
                 (
@@ -146,7 +149,167 @@ def torch_write_read(
     return torch.stack(outputs).to(memory.dtype), state.to(memory.dtype)
 
 
+def differential_backward_report(
+    adapter,
+    trace,
+    memory,
+    values,
+    beta,
+    log_decay,
+    *,
+    atol: float,
+    rtol: float,
+) -> dict[str, object]:
+    """Compare transparent, direct-upstream, and adapted SDM gradients.
+
+    Every path receives independent cloned leaves. The shared scalar loss has
+    nonzero weighted terms for both readings and returned final memory.
+    """
+    import torch
+
+    names = (
+        "initial_memory",
+        "write_weights",
+        "values",
+        "beta",
+        "log_decay",
+        "read_weights",
+    )
+    generator = torch.Generator(device=memory.device).manual_seed(20260905)
+    reading_cotangent = torch.randn(
+        values.shape, device=memory.device, dtype=torch.float32, generator=generator
+    )
+    memory_cotangent = torch.randn(
+        memory.shape, device=memory.device, dtype=torch.float32, generator=generator
+    )
+    grad_final_memory = (
+        memory_cotangent.to(memory.dtype) / memory.numel()
+    ).contiguous()
+
+    def run(path: str):
+        leaves = tuple(
+            tensor.detach().clone().requires_grad_(True)
+            for tensor in (
+                memory,
+                trace.write_weights,
+                values,
+                beta,
+                log_decay,
+                trace.read_weights,
+            )
+        )
+        path_trace = trace.with_differentiable_weights(leaves[1], leaves[5])
+        if path == "torch_reference":
+            readings, final_memory = torch_write_read(
+                leaves[0],
+                path_trace.write_indices,
+                path_trace.write_weights,
+                leaves[2],
+                leaves[3],
+                leaves[4],
+                path_trace.read_indices,
+                path_trace.read_weights,
+            )
+        elif path == "direct_upstream":
+            readings, final_memory = adapter.direct_calls["update"](
+                leaves[0] + 0,
+                path_trace.write_indices,
+                path_trace.write_weights,
+                leaves[2],
+                leaves[3],
+                leaves[4],
+                path_trace.read_indices,
+                path_trace.read_weights,
+                grad_final_memory=grad_final_memory,
+            )
+        elif path == "urm_adapter":
+            from urm.adapters.sparse_delta_memory import SDMState
+
+            readings, final_state = adapter.execute(
+                SDMState(leaves[0] + 0),
+                path_trace,
+                leaves[2],
+                leaves[3],
+                leaves[4],
+                grad_final_memory=grad_final_memory,
+            )
+            final_memory = final_state.memory
+        else:  # pragma: no cover - closed internal vocabulary
+            raise ValueError(path)
+        reading_term = (readings.float() * reading_cotangent).mean()
+        memory_term = (final_memory.float() * memory_cotangent).mean()
+        # Upstream exposes final-state differentiation through the explicit
+        # grad_final_memory argument because returned memory is mutated state,
+        # not a differentiable result edge. The transparent path differentiates
+        # the same logical loss normally.
+        backward_loss = (
+            reading_term + memory_term if path == "torch_reference" else reading_term
+        )
+        gradients = torch.autograd.grad(backward_loss, leaves)
+        return gradients, float(reading_term.detach()), float(memory_term.detach())
+
+    paths = {}
+    loss_terms = {}
+    for path in ("torch_reference", "direct_upstream", "urm_adapter"):
+        gradients, reading_term, memory_term = run(path)
+        paths[path] = gradients
+        loss_terms[path] = {
+            "readings_weighted_mean": reading_term,
+            "final_memory_weighted_mean": memory_term,
+        }
+
+    comparisons = {}
+    passed = True
+    for index, name in enumerate(names):
+        reference = paths["torch_reference"][index].float()
+        direct = paths["direct_upstream"][index].float()
+        adapted = paths["urm_adapter"][index].float()
+
+        def compare(actual, expected):
+            difference = (actual - expected).abs()
+            close = torch.allclose(actual, expected, atol=atol, rtol=rtol)
+            return {
+                "max_abs": float(difference.max().item()),
+                "max_scaled_error": float(
+                    (difference / (atol + rtol * expected.abs())).max().item()
+                ),
+                "close": bool(close),
+            }
+
+        finite = {
+            path: bool(torch.isfinite(gradients[index]).all().item())
+            for path, gradients in paths.items()
+        }
+        direct_reference = compare(direct, reference)
+        adapter_reference = compare(adapted, reference)
+        adapter_direct = compare(adapted, direct)
+        item_passed = (
+            all(finite.values())
+            and direct_reference["close"]
+            and adapter_reference["close"]
+            and adapter_direct["close"]
+        )
+        passed = passed and item_passed
+        comparisons[name] = {
+            "finite": finite,
+            "direct_vs_torch": direct_reference,
+            "adapter_vs_torch": adapter_reference,
+            "adapter_vs_direct": adapter_direct,
+            "passed": item_passed,
+        }
+    return {
+        "dtype": str(memory.dtype).removeprefix("torch."),
+        "atol": atol,
+        "rtol": rtol,
+        "loss": "weighted_mean(readings) + weighted_mean(final_memory)",
+        "loss_terms": loss_terms,
+        "gradients": comparisons,
+        "passed": passed,
+    }
+
+
 __all__ = [
+    "differential_backward_report",
     "oracle_product_key",
     "oracle_sparse_read",
     "oracle_write_read",

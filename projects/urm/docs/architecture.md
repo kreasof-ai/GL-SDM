@@ -167,8 +167,10 @@ indices. Its tensor contract, PyTorch baseline, Triton forward/backward kernels,
 capability checks, and benchmark harness are described in
 [Triton backend preparation](triton-backend.md).
 
-The first Phase 3 family-expansion slice is the external original-SDM adapter,
-represented by `SparseDeltaMemoryAccess` and the
+The first Phase 3 family-expansion slice is the external original-SDM adapter.
+Its compiler semantic is the URM-owned `SparseMemoryAccess` /
+`SparseMemoryMixerSpec` skeleton (with compatibility aliases for the earlier
+SDM names), selected by the
 `facebook_sparse_delta_memory_183e7df_external_adapter` execution anchor. Its
 ordered mutation prevents lowering through routed-reduction. Remaining slices
 are:

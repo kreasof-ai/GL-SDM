@@ -9,13 +9,14 @@ torch = pytest.importorskip("torch")
 
 from urm.adapters.sparse_delta_memory import (
     MODE_INFERENCE,
+    MODE_READ_ONLY,
     MODE_TRAINING,
-    SDMAddressTrace,
     SDMState,
     UrmSparseDeltaMemoryAdapter,
     probe_sdm_support,
 )
 from urm.adapters.sparse_delta_memory_reference import (
+    differential_backward_report,
     oracle_product_key,
     oracle_sparse_read,
     oracle_write_read,
@@ -23,6 +24,12 @@ from urm.adapters.sparse_delta_memory_reference import (
     torch_sparse_read,
     torch_write_read,
 )
+from urm.compiler.execution import SDM_EXTERNAL_ANCHOR_NAME, TRUSTED_ANCHORS
+
+BACKWARD_TOLERANCES = {
+    torch.float32: {"atol": 2.5e-5, "rtol": 2.0e-4},
+    torch.bfloat16: {"atol": 5.0e-5, "rtol": 2.0e-2},
+}
 
 SUPPORT = probe_sdm_support()
 if not SUPPORT.supported:
@@ -32,7 +39,15 @@ if not SUPPORT.supported:
     )
 
 
-def _adapter(*, mode=MODE_INFERENCE, dim=37, writes=4, reads=4, chunk=16):
+def _adapter(
+    *,
+    mode=MODE_INFERENCE,
+    dim=37,
+    writes=4,
+    reads=4,
+    chunk=16,
+    dtype=torch.float32,
+):
     return UrmSparseDeltaMemoryAdapter(
         slots_per_partition=256,
         value_dim=dim,
@@ -40,6 +55,8 @@ def _adapter(*, mode=MODE_INFERENCE, dim=37, writes=4, reads=4, chunk=16):
         num_reads=reads,
         chunk_size=chunk,
         mode=mode,
+        device="cuda",
+        dtype=dtype,
     )
 
 
@@ -94,7 +111,7 @@ def test_exact_addresses_and_trace_layout_match_both_references() -> None:
 
 
 def test_sparse_read_matches_oracle_torch_and_direct_upstream() -> None:
-    adapter = _adapter()
+    adapter = _adapter(mode=MODE_READ_ONLY)
     *_, trace, memory, _values, _beta, _decay = _inputs(adapter)
     direct = adapter.direct_calls["read"](
         memory, trace.read_weights, trace.read_indices
@@ -117,7 +134,7 @@ def test_sparse_read_matches_oracle_torch_and_direct_upstream() -> None:
 
 @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
 def test_update_direct_adapter_oracle_and_state_equivalence(dtype) -> None:
-    adapter = _adapter()
+    adapter = _adapter(dtype=dtype)
     *_, trace, memory, values, beta, decay = _inputs(adapter, dtype=dtype)
     direct_memory = memory.clone()
     direct, returned = adapter.direct_calls["update"](
@@ -173,15 +190,23 @@ def test_update_direct_adapter_oracle_and_state_equivalence(dtype) -> None:
 
 def test_collision_heavy_ordering_minimal_width_and_non_power_dim() -> None:
     adapter = _adapter(writes=1, reads=1, dim=37)
-    _, _, generated, memory, values, beta, decay = _inputs(adapter, p=1, t=9, dim=37)
-    # Reuse one valid address at every token: collision across time is legal
-    # and must retain token ordering. Within-token duplication remains absent.
-    wi = generated.write_indices[:, :1].expand(1, 9, 1).contiguous()
-    ri = wi.clone()
-    one = torch.ones((1, 9, 1), device="cuda")
-    trace = SDMAddressTrace.from_tensors(wi, one, ri, one, slots_per_partition=256)
+    write_scores, read_scores, _, memory, values, beta, decay = _inputs(
+        adapter, p=1, t=9, dim=37
+    )
+    # Repeated product-key scores produce a genuine generated trace with heavy
+    # cross-token collisions; no arbitrary/manual trace enters adapter dispatch.
+    write_scores = write_scores[:, :1].expand(-1, 9, -1).contiguous()
+    read_scores = read_scores[:, :1].expand(-1, 9, -1).contiguous()
+    trace = adapter.generate_trace(write_scores, read_scores)
     expected, expected_state = torch_write_read(
-        memory, wi, one, values, beta, decay, ri, one
+        memory,
+        trace.write_indices,
+        trace.write_weights,
+        values,
+        beta,
+        decay,
+        trace.read_indices,
+        trace.read_weights,
     )
     actual, state = adapter.execute(
         SDMState(memory.clone()), trace, values, beta, decay
@@ -197,13 +222,7 @@ def test_repeated_incremental_invocation_persists_cache() -> None:
     state = SDMState(memory.clone(), sequence_length=3)
     pieces = []
     for token in range(6):
-        token_trace = SDMAddressTrace.from_tensors(
-            trace.write_indices[:, token : token + 1].contiguous(),
-            trace.write_weights[:, token : token + 1].contiguous(),
-            trace.read_indices[:, token : token + 1].contiguous(),
-            trace.read_weights[:, token : token + 1].contiguous(),
-            slots_per_partition=256,
-        )
+        token_trace = trace.token_slice(token, token + 1)
         out, state = adapter.execute(
             state,
             token_trace,
@@ -227,38 +246,43 @@ def test_repeated_incremental_invocation_persists_cache() -> None:
     assert state.sequence_length == 9
 
 
-def test_training_path_forward_state_and_backward() -> None:
-    adapter = _adapter(mode=MODE_TRAINING, dim=32, chunk=16)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+def test_training_backward_is_differentially_certified(dtype) -> None:
+    adapter = _adapter(mode=MODE_TRAINING, dim=32, chunk=16, dtype=dtype)
     *_, trace, memory, values, beta, decay = _inputs(
-        adapter, p=1, t=16, dim=32, dtype=torch.float32
+        adapter, p=1, t=16, dim=32, dtype=dtype
     )
-    leaves = [
-        tensor.detach().clone().requires_grad_(True)
-        for tensor in (
-            memory,
-            trace.write_weights,
-            values,
-            beta,
-            decay,
-            trace.read_weights,
-        )
-    ]
-    train_trace = SDMAddressTrace.from_tensors(
-        trace.write_indices,
-        leaves[1],
-        trace.read_indices,
-        leaves[5],
-        slots_per_partition=256,
-        validate_values=False,
+    report = differential_backward_report(
+        adapter,
+        trace,
+        memory,
+        values,
+        beta,
+        decay,
+        **BACKWARD_TOLERANCES[dtype],
     )
-    out, state = adapter.execute(
-        SDMState(leaves[0] + 0), train_trace, leaves[2], leaves[3], leaves[4]
+    assert report["passed"] is True, report
+    assert set(report["gradients"]) == {
+        "initial_memory",
+        "write_weights",
+        "values",
+        "beta",
+        "log_decay",
+        "read_weights",
+    }
+    for gradient in report["gradients"].values():
+        assert all(gradient["finite"].values())
+        assert gradient["direct_vs_torch"]["close"] is True
+        assert gradient["adapter_vs_torch"]["close"] is True
+        assert gradient["adapter_vs_direct"]["close"] is True
+
+
+def test_advertised_backward_dtypes_equal_differential_gate_coverage() -> None:
+    anchor = next(
+        item for item in TRUSTED_ANCHORS if item.name == SDM_EXTERNAL_ANCHOR_NAME
     )
-    assert out.requires_grad
-    out.float().sum().backward()
-    assert all(tensor.grad is not None for tensor in leaves)
-    assert all(torch.isfinite(tensor.grad).all() for tensor in leaves)
-    assert state.sequence_length == 16
+    advertised = {str(dtype).removeprefix("torch.") for dtype in BACKWARD_TOLERANCES}
+    assert anchor.backward_verified_dtypes == advertised
 
 
 def test_same_upstream_callable_is_below_direct_and_adapter_dispatch() -> None:
@@ -268,13 +292,20 @@ def test_same_upstream_callable_is_below_direct_and_adapter_dispatch() -> None:
     assert direct.__module__ == "lingua.sparse_delta_memory.layer"
 
 
+def test_dispatch_binds_state_dtype_to_adapter_configuration() -> None:
+    adapter = _adapter(mode=MODE_READ_ONLY, dtype=torch.float32)
+    *_, trace, memory, _values, _beta, _decay = _inputs(adapter)
+    with pytest.raises(ValueError, match="state device/dtype"):
+        adapter.read(SDMState(memory.bfloat16()), trace)
+
+
 def test_unsupported_runtime_and_address_inputs_fail_closed(monkeypatch) -> None:
     adapter = _adapter()
     scores = torch.randn((1, 1, 32), dtype=torch.float32)
-    with pytest.raises(ValueError, match="contiguous CUDA"):
+    with pytest.raises(ValueError, match="configured CUDA device/dtype"):
         adapter.generate_trace(scores, scores)
     half_scores = scores.cuda().half()
-    with pytest.raises(ValueError, match="supported dtype"):
+    with pytest.raises(ValueError, match="configured CUDA device/dtype"):
         adapter.generate_trace(half_scores, half_scores)
 
     monkeypatch.delenv("LIBRARY_PATH", raising=False)

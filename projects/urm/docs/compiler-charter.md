@@ -57,9 +57,12 @@ such and retained; a semantic that cannot be expressed at all is a URM failure.
    `ScheduleParams` may pick among legal lowerings; it may never change
    routing results, merge policies, or commit boundaries. Hints are validated;
    invalid hints produce structured diagnostics, never silent reinterpretation.
-7. **Existing production kernels remain valid lowering targets.** FlashAttention
-   and FLA adapters are first-class anchors; wrapping upstream beats replacing
-   upstream whenever overhead is measured to be low.
+7. **Upstream anchors do not define semantic IR.** Upstream production kernels
+   define comparison points and may serve as temporary external anchors. Native
+   URM lowerings are generated from URM-owned, typed mixer skeletons and must
+   not depend semantically on FA/FLA/SDM/Mamba library APIs. Upstream Python
+   callables, physical layouts, and implementation flags stay in adapters and
+   execution capabilities, never in `SemanticProgram`.
 8. **No arbitrary tensor callback or untyped escape hatch enters the core IR.**
    Visitors and epilogues are typed descriptors interpreted by registered
    anchors - never Python callables over tensors. Serialized artifacts report
@@ -75,6 +78,10 @@ such and retained; a semantic that cannot be expressed at all is a URM failure.
     forward-only anchors, rewrites without certified backward, missing
     gradient coverage for operand dtypes, and unresolved recomputation or
     forward-only obligations.
+    For the sparse-memory skeleton, training semantic mode requires training
+    intent, while inference semantic mode permits inference or explicit
+    forward-only-analysis intent; every contradictory combination is an
+    `intent_conflict` before anchor selection.
 12. **Candidate selection never mutates the program implicitly.** The base
     plan is always a candidate; every rewrite occurrence has a stable ID;
     callers may select explicitly; automatic selection runs through the
@@ -104,7 +111,7 @@ A successful compilation produces:
 
 ## Non-goals
 
-- Replacing upstream kernel families that already meet their gates.
+- Copying or adapting upstream kernel source into native URM lowerings.
 - Arbitrary kernel synthesis from tensor programs (no autotuned search over
   unchecked code).
 - Hiding distributed execution inside ordinary tensor ops: remote exchange is

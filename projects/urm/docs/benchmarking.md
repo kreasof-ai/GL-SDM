@@ -52,6 +52,12 @@ Every covered operation is measured at four levels when available:
    pinned primary implementation.
 4. **URM lowering:** generated or selected specialized backend from `MixerSpec`.
 
+An upstream adapter at level 4 is labeled an external anchor, not a native
+lowering. Upstream production kernels define comparison points and may serve as
+temporary external anchors. Native URM lowerings are generated from URM-owned,
+typed mixer skeletons and must not depend semantically on FA/FLA/SDM/Mamba
+library APIs.
+
 ## Correctness gates
 
 - Route indices and tie behavior match the oracle for deterministic cases.
@@ -81,6 +87,9 @@ scans, and atomic reductions have different error envelopes.
 - Include routing density, token/expert balance, page hit rate, collision count,
   and bytes moved for sparse operations.
 - Run forward, backward, prefill, and decode regimes separately.
+- A label containing `training` does not imply backward timing. Forward-only
+  training-mode cases must say `forward_only`; differential backward evidence
+  is reported separately unless a backward region is actually measured.
 
 ## Initial shape grid
 
@@ -167,7 +176,10 @@ cold compilation separately, and emits JSON conforming to
   cross-token collision stress, training, and A10G-sized capacity cases;
   retains exact routes, final-state checks, raw AB/BA wall/device samples,
   throughput, allocator peaks, analytical traffic, cold timing, call identity,
-  and complete upstream provenance. Its schema is
+  and complete upstream provenance. Callable identity is computed from the
+  stored bound object, instance, and function and artifact generation aborts on
+  mismatch. Untimed fp32/bf16 differential backward evidence covers all six
+  differentiable inputs plus final memory. Its schema is
   `benchmarks/sparse-delta-memory-result-schema.json`.
 - `benchmarks/routed_epilogue_selection.py`: solver-guided schedule selection
   for the routed-scale epilogue. Runs the full documented pipeline -

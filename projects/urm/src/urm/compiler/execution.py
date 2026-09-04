@@ -207,6 +207,7 @@ class AnchorRequest:
 
 
 AnchorSelector = Callable[[AnchorRequest], "AnchorDecision | None"]
+SDMSupportProbe = Callable[[], object]
 
 
 @dataclass(frozen=True, slots=True)
@@ -305,6 +306,9 @@ class AnchorRegistry:
 # Descriptors of the production families URM lowers onto. These carry no code;
 # concrete kernels remain in urm.backends / urm.adapters / upstream packages.
 
+SDM_EXTERNAL_ANCHOR_NAME = "facebook_sparse_delta_memory_183e7df_external_adapter"
+
+
 TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
     ExecutionAnchor(
         kind=AnchorKind.GEMM,
@@ -372,7 +376,7 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
     ),
     ExecutionAnchor(
         kind=AnchorKind.SPARSE_DELTA_MEMORY,
-        name="facebook_sparse_delta_memory_183e7df_external_adapter",
+        name=SDM_EXTERNAL_ANCHOR_NAME,
         effect=ORDERED_STATE,
         backward_verified_dtypes=frozenset({"float32", "bfloat16"}),
         deterministic_accumulation=False,
@@ -393,23 +397,24 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
 )
 
 
-def make_sdm_selector(anchor: ExecutionAnchor) -> AnchorSelector:
+def make_sdm_selector(
+    anchor: ExecutionAnchor, support_probe: SDMSupportProbe | None = None
+) -> AnchorSelector:
     """Runtime/revision-aware selector for the external original-SDM adapter."""
 
     def _select(request: AnchorRequest) -> AnchorDecision | None:
         if request.kind is not AnchorKind.SPARSE_DELTA_MEMORY:
             return None
-        try:
-            from urm.adapters.sparse_delta_memory import probe_sdm_support
-            from urm.compiler.semantic import SparseDeltaMemoryAccess
-        except Exception as error:  # noqa: BLE001 - optional runtime must decline
-            return AnchorDecision(
-                anchor=None,
-                decline=Decline(
-                    DiagnosticCode.DEPENDENCY_MISSING,
-                    f"original SDM adapter dependencies unavailable: {error!r}",
-                ),
-            )
+        from urm.compiler.semantic import (
+            MergePolicy,
+            ScoreNormalization,
+            SparseAddressingKind,
+            SparseDeltaMemoryAccess,
+            SparseReadTiming,
+            SparseStatePolicy,
+            SparseUpdateRule,
+        )
+
         if not isinstance(request.semantic_op, SparseDeltaMemoryAccess):
             return AnchorDecision(
                 anchor=None,
@@ -420,14 +425,14 @@ def make_sdm_selector(anchor: ExecutionAnchor) -> AnchorSelector:
             )
         spec = request.semantic_op.spec
         exact = (
-            spec.address_generation == "product_key_topk_sorted"
-            and spec.normalization.value == "softmax"
-            and spec.mutation_order == "decay_retrieve_delta_scatter_then_read"
-            and spec.collision_semantics == "ordered_across_tokens_unique_within_token"
-            and spec.cache_semantics
-            == "persistent_in_place_memory_and_post_call_length_commit"
+            spec.addressing is SparseAddressingKind.PRODUCT_KEY_TOP_K
+            and spec.normalization is ScoreNormalization.SOFTMAX
+            and spec.update_rule is SparseUpdateRule.DECAYED_DELTA
+            and spec.collision_policy is MergePolicy.ORDERED
+            and spec.within_token_collision_policy is MergePolicy.REJECT
+            and spec.read_timing is SparseReadTiming.AFTER_UPDATE
+            and spec.state_policy is SparseStatePolicy.PERSISTENT_IN_PLACE
             and spec.page_size == 1
-            and not spec.key_weighted_decay
         )
         if not exact:
             return AnchorDecision(
@@ -437,7 +442,21 @@ def make_sdm_selector(anchor: ExecutionAnchor) -> AnchorSelector:
                     "SDM semantics do not match the frozen upstream contract",
                 ),
             )
-        support = probe_sdm_support()
+        probe = support_probe
+        if probe is None:
+            try:
+                from urm.adapters.sparse_delta_memory import probe_sdm_support
+
+                probe = probe_sdm_support
+            except Exception as error:  # noqa: BLE001 - optional runtime must decline
+                return AnchorDecision(
+                    anchor=None,
+                    decline=Decline(
+                        DiagnosticCode.DEPENDENCY_MISSING,
+                        f"original SDM adapter dependencies unavailable: {error!r}",
+                    ),
+                )
+        support = probe()
         if not support.supported:
             code = {
                 "missing_dependency": DiagnosticCode.DEPENDENCY_MISSING,

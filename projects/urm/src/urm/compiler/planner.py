@@ -68,6 +68,7 @@ from urm.compiler.semantic import (
     OrderedRecurrence,
     RouteSpec,
     Score,
+    SDMExecutionMode,
     Select,
     SparseDeltaMemoryAccess,
     StateUpdate,
@@ -525,7 +526,38 @@ class UrmCompiler:
     ) -> tuple[Diagnostic, ...]:
         """Semantic validation plus intent-specific structural checks."""
         diagnostics = list(program.validate())
-        del intent  # structural intent checks live in candidate enumeration
+        diagnostics.extend(self._intent_diagnostics(program, intent))
+        return tuple(diagnostics)
+
+    @staticmethod
+    def _intent_diagnostics(
+        program: SemanticProgram, intent: CompilationIntent
+    ) -> tuple[Diagnostic, ...]:
+        diagnostics: list[Diagnostic] = []
+        for op in program.ops:
+            if not isinstance(op, SparseDeltaMemoryAccess):
+                continue
+            if op.spec.mode is SDMExecutionMode.TRAINING:
+                compatible = intent is CompilationIntent.TRAINING
+                expected = CompilationIntent.TRAINING
+            else:
+                compatible = intent in (
+                    CompilationIntent.INFERENCE,
+                    CompilationIntent.FORWARD_ONLY_ANALYSIS,
+                )
+                expected = CompilationIntent.INFERENCE
+            if not compatible:
+                diagnostics.append(
+                    Diagnostic(
+                        code=DiagnosticCode.INTENT_CONFLICT,
+                        message=(
+                            f"{op.name}: SDM semantic mode {op.spec.mode.value!r} "
+                            f"is incompatible with compilation intent {intent.value!r}; "
+                            f"use intent {expected.value!r}"
+                        ),
+                        subject=op.name,
+                    )
+                )
         return tuple(diagnostics)
 
     # -- candidate enumeration ----------------------------------------------
@@ -664,7 +696,7 @@ class UrmCompiler:
         if any(d.severity.value == "error" for d in hint_diagnostics):
             raise CompilerError(hint_diagnostics)
 
-        diagnostics = program.validate()
+        diagnostics = self.validate(program, intent)
         if diagnostics and any(d.severity.value == "error" for d in diagnostics):
             raise CompilerError(diagnostics)
 
@@ -1084,14 +1116,30 @@ class UrmCompiler:
                     semantic_op=op,
                 )
             )
-            if (
-                override is not None
-                and request_kind is not AnchorKind.SPARSE_DELTA_MEMORY
-                and not (
+            if override is not None:
+                if request_kind is AnchorKind.SPARSE_DELTA_MEMORY:
+                    from urm.compiler.execution import SDM_EXTERNAL_ANCHOR_NAME
+
+                    if override != SDM_EXTERNAL_ANCHOR_NAME:
+                        decision = AnchorDecision(
+                            anchor=None,
+                            decline=Decline(
+                                reason_code=DiagnosticCode.ANCHOR_DECLINED,
+                                message=(
+                                    f"override {override!r} is incompatible with "
+                                    f"the canonical SDM external anchor "
+                                    f"{SDM_EXTERNAL_ANCHOR_NAME!r}"
+                                ),
+                            ),
+                        )
+                    # The exact canonical override deliberately keeps the
+                    # runtime/revision-aware selector's decision.
+                elif not (
                     decision.anchor is not None and decision.anchor.name == override
-                )
-            ):
-                decision = self._apply_override(request_kind, visitors, override, op)
+                ):
+                    decision = self._apply_override(
+                        request_kind, visitors, override, op
+                    )
             if not decision.ok:
                 decline = decision.decline
                 assert decline is not None
