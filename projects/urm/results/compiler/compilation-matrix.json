@@ -1,20 +1,20 @@
 {
   "schema_version": 2,
-  "generated_utc": "2026-08-26T17:35:08.234261+00:00",
+  "generated_utc": "2026-09-04T15:43:14.560194+00:00",
   "provenance": {
-    "git_revision": "0a3b587ca465a940788a19c8ea1d006bd110ae19",
+    "git_revision": "93696dd6d3da8d9408ad64e90cdab0b9ddac61ce",
     "dirty_tree": false,
     "benchmark_command": "python benchmarks/compilation_matrix.py --probe required",
     "config_hash": "4e799c64c838665e073cb26d3498a9b51d4bc978c0ed4671b4fc8fa411d0a5a8",
     "solver_version": "4.15.3",
     "python": "3.12.13",
-    "platform": "Linux-6.12.95-124.187.amzn2023.x86_64-x86_64-with-glibc2.39",
+    "platform": "Linux-6.12.100-125.179.amzn2023.x86_64-x86_64-with-glibc2.39",
     "pytorch": "2.8.0",
     "triton": "3.4.0",
     "cuda": "12.9",
     "driver": "595.91.07",
     "gpu": "NVIDIA A10G",
-    "gpu_uuid": "GPU-3a9a2742-3da6-fc42-6c69-3a7de91f1bca",
+    "gpu_uuid": "GPU-a2c961bc-6e65-f876-5f9d-2900ae525b4e",
     "probe_mode": "required",
     "probing_active": true,
     "constraint_model_hash": "2512950288539515fa3eab2419c7529d06ed909ca291c8ba3ca01464e99064f4",
@@ -33,7 +33,7 @@
   },
   "summary": {
     "presets_evaluated": 19,
-    "valid_semantic_programs": 20,
+    "valid_semantic_programs": 21,
     "generated_candidates": 10,
     "rewrite_accepted": 10,
     "rewrite_rejected": 0,
@@ -45,12 +45,12 @@
     "verified_models": 10,
     "schedule_models_verified": 10,
     "unsat_categories": [],
-    "solver_time_ms": 728.639,
+    "solver_time_ms": 664.698,
     "compile_failures": 0,
-    "routing_skeleton_compile_rate": 0.5263,
-    "full_architecture_compile_rate": 0.0,
-    "native_lowering_rate": 1.0,
-    "upstream_adapter_rate": 0.0,
+    "routing_skeleton_compile_rate": 0.5789,
+    "full_architecture_compile_rate": 0.0526,
+    "native_lowering_rate": 0.9524,
+    "upstream_adapter_rate": 0.0476,
     "escape_hatch_count": 0,
     "metric_notes": {
       "routing_skeleton_compile_rate": "fraction of presets whose coarse ROUTING SKELETON maps to compiled routed reduction; dense attention, MoE expert GEMMs and sparse attention are NOT fully compiled merely because their skeleton routes map",
@@ -68,7 +68,8 @@
         "mutation": "none",
         "residency": "device",
         "collision_policy": "not_applicable",
-        "family_detail_lowered": false
+        "family_detail_lowered": false,
+        "requires_external_gpu_probe": false
       },
       "schedule_params": {
         "anchor_overrides": {},
@@ -137,7 +138,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 75.615,
+            "wall_ms": 67.52,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -337,7 +338,7 @@
         }
       ],
       "escape_hatch_count": 0,
-      "measured_performance_pointer": "results/final/*-forward.json (routed-reduction v1 is the only family with a runnable native lowering on this host)"
+      "measured_performance_pointer": "results/final/*-forward.json (routed-reduction v1 is the only native family lowering on this host)"
     },
     {
       "architecture_params": {
@@ -349,7 +350,8 @@
         "mutation": "none",
         "residency": "device",
         "collision_policy": "not_applicable",
-        "family_detail_lowered": false
+        "family_detail_lowered": false,
+        "requires_external_gpu_probe": false
       },
       "schedule_params": {
         "anchor_overrides": {},
@@ -418,7 +420,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 63.389,
+            "wall_ms": 59.384,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -618,7 +620,7 @@
         }
       ],
       "escape_hatch_count": 0,
-      "measured_performance_pointer": "results/final/*-forward.json (routed-reduction v1 is the only family with a runnable native lowering on this host)"
+      "measured_performance_pointer": "results/final/*-forward.json (routed-reduction v1 is the only native family lowering on this host)"
     },
     {
       "architecture_params": {
@@ -630,7 +632,8 @@
         "mutation": "none",
         "residency": "device",
         "collision_policy": "not_applicable",
-        "family_detail_lowered": false
+        "family_detail_lowered": false,
+        "requires_external_gpu_probe": false
       },
       "schedule_params": {
         "anchor_overrides": {},
@@ -699,7 +702,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 78.111,
+            "wall_ms": 66.667,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -899,7 +902,7 @@
         }
       ],
       "escape_hatch_count": 0,
-      "measured_performance_pointer": "results/final/*-forward.json (routed-reduction v1 is the only family with a runnable native lowering on this host)"
+      "measured_performance_pointer": "results/final/*-forward.json (routed-reduction v1 is the only native family lowering on this host)"
     },
     {
       "architecture_params": {
@@ -911,7 +914,8 @@
         "mutation": "none",
         "residency": "device",
         "collision_policy": "not_applicable",
-        "family_detail_lowered": false
+        "family_detail_lowered": false,
+        "requires_external_gpu_probe": false
       },
       "schedule_params": {
         "anchor_overrides": {},
@@ -980,7 +984,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 71.374,
+            "wall_ms": 65.967,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -1180,7 +1184,7 @@
         }
       ],
       "escape_hatch_count": 0,
-      "measured_performance_pointer": "results/final/*-forward.json (routed-reduction v1 is the only family with a runnable native lowering on this host)"
+      "measured_performance_pointer": "results/final/*-forward.json (routed-reduction v1 is the only native family lowering on this host)"
     },
     {
       "architecture_params": {
@@ -1192,7 +1196,8 @@
         "mutation": "none",
         "residency": "device",
         "collision_policy": "not_applicable",
-        "family_detail_lowered": false
+        "family_detail_lowered": false,
+        "requires_external_gpu_probe": false
       },
       "schedule_params": {
         "anchor_overrides": {},
@@ -1261,7 +1266,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 64.939,
+            "wall_ms": 59.022,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -1461,7 +1466,7 @@
         }
       ],
       "escape_hatch_count": 0,
-      "measured_performance_pointer": "results/final/*-forward.json (routed-reduction v1 is the only family with a runnable native lowering on this host)"
+      "measured_performance_pointer": "results/final/*-forward.json (routed-reduction v1 is the only native family lowering on this host)"
     },
     {
       "architecture_params": {
@@ -1473,7 +1478,8 @@
         "mutation": "none",
         "residency": "device",
         "collision_policy": "not_applicable",
-        "family_detail_lowered": false
+        "family_detail_lowered": false,
+        "requires_external_gpu_probe": false
       },
       "schedule_params": {
         "anchor_overrides": {},
@@ -1542,7 +1548,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 67.753,
+            "wall_ms": 63.73,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -1742,7 +1748,7 @@
         }
       ],
       "escape_hatch_count": 0,
-      "measured_performance_pointer": "results/final/*-forward.json (routed-reduction v1 is the only family with a runnable native lowering on this host)"
+      "measured_performance_pointer": "results/final/*-forward.json (routed-reduction v1 is the only native family lowering on this host)"
     },
     {
       "architecture_params": {
@@ -1754,7 +1760,8 @@
         "mutation": "none",
         "residency": "sharded",
         "collision_policy": "not_applicable",
-        "family_detail_lowered": false
+        "family_detail_lowered": false,
+        "requires_external_gpu_probe": false
       },
       "schedule_params": {
         "anchor_overrides": {},
@@ -1823,7 +1830,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 71.0,
+            "wall_ms": 64.523,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -2023,7 +2030,7 @@
         }
       ],
       "escape_hatch_count": 0,
-      "measured_performance_pointer": "results/final/*-forward.json (routed-reduction v1 is the only family with a runnable native lowering on this host)"
+      "measured_performance_pointer": "results/final/*-forward.json (routed-reduction v1 is the only native family lowering on this host)"
     },
     {
       "architecture_params": {
@@ -2035,7 +2042,8 @@
         "mutation": "none",
         "residency": "device",
         "collision_policy": "not_applicable",
-        "family_detail_lowered": false
+        "family_detail_lowered": false,
+        "requires_external_gpu_probe": false
       },
       "schedule_params": {
         "anchor_overrides": {},
@@ -2104,7 +2112,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 71.414,
+            "wall_ms": 67.763,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -2304,7 +2312,7 @@
         }
       ],
       "escape_hatch_count": 0,
-      "measured_performance_pointer": "results/final/*-forward.json (routed-reduction v1 is the only family with a runnable native lowering on this host)"
+      "measured_performance_pointer": "results/final/*-forward.json (routed-reduction v1 is the only native family lowering on this host)"
     },
     {
       "architecture_params": {
@@ -2316,7 +2324,8 @@
         "mutation": "none",
         "residency": "sharded",
         "collision_policy": "not_applicable",
-        "family_detail_lowered": false
+        "family_detail_lowered": false,
+        "requires_external_gpu_probe": false
       },
       "schedule_params": {
         "anchor_overrides": {},
@@ -2385,7 +2394,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 69.346,
+            "wall_ms": 65.22,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -2585,7 +2594,7 @@
         }
       ],
       "escape_hatch_count": 0,
-      "measured_performance_pointer": "results/final/*-forward.json (routed-reduction v1 is the only family with a runnable native lowering on this host)"
+      "measured_performance_pointer": "results/final/*-forward.json (routed-reduction v1 is the only native family lowering on this host)"
     },
     {
       "architecture_params": {
@@ -2597,7 +2606,8 @@
         "mutation": "none",
         "residency": "device",
         "collision_policy": "not_applicable",
-        "family_detail_lowered": false
+        "family_detail_lowered": false,
+        "requires_external_gpu_probe": false
       },
       "schedule_params": {
         "anchor_overrides": {},
@@ -2666,7 +2676,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 80.155,
+            "wall_ms": 72.608,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -2866,7 +2876,7 @@
         }
       ],
       "escape_hatch_count": 0,
-      "measured_performance_pointer": "results/final/*-forward.json (routed-reduction v1 is the only family with a runnable native lowering on this host)"
+      "measured_performance_pointer": "results/final/*-forward.json (routed-reduction v1 is the only native family lowering on this host)"
     },
     {
       "architecture_params": {
@@ -2878,7 +2888,8 @@
         "mutation": "in_place_recurrent",
         "residency": "device",
         "collision_policy": "not_applicable",
-        "family_detail_lowered": false
+        "family_detail_lowered": false,
+        "requires_external_gpu_probe": false
       },
       "schedule_params": {},
       "valid_semantic_programs": 0,
@@ -2899,7 +2910,8 @@
         "mutation": "in_place_recurrent",
         "residency": "device",
         "collision_policy": "not_applicable",
-        "family_detail_lowered": false
+        "family_detail_lowered": false,
+        "requires_external_gpu_probe": false
       },
       "schedule_params": {},
       "valid_semantic_programs": 0,
@@ -2920,7 +2932,8 @@
         "mutation": "in_place_recurrent",
         "residency": "device",
         "collision_policy": "not_applicable",
-        "family_detail_lowered": false
+        "family_detail_lowered": false,
+        "requires_external_gpu_probe": false
       },
       "schedule_params": {},
       "valid_semantic_programs": 0,
@@ -2941,7 +2954,8 @@
         "mutation": "in_place_recurrent",
         "residency": "device",
         "collision_policy": "not_applicable",
-        "family_detail_lowered": false
+        "family_detail_lowered": false,
+        "requires_external_gpu_probe": false
       },
       "schedule_params": {},
       "valid_semantic_programs": 0,
@@ -2962,7 +2976,8 @@
         "mutation": "in_place_recurrent",
         "residency": "device",
         "collision_policy": "not_applicable",
-        "family_detail_lowered": false
+        "family_detail_lowered": false,
+        "requires_external_gpu_probe": false
       },
       "schedule_params": {},
       "valid_semantic_programs": 0,
@@ -2983,7 +2998,8 @@
         "mutation": "in_place_recurrent",
         "residency": "device",
         "collision_policy": "not_applicable",
-        "family_detail_lowered": false
+        "family_detail_lowered": false,
+        "requires_external_gpu_probe": false
       },
       "schedule_params": {},
       "valid_semantic_programs": 0,
@@ -3004,7 +3020,8 @@
         "mutation": "in_place_recurrent",
         "residency": "device",
         "collision_policy": "not_applicable",
-        "family_detail_lowered": false
+        "family_detail_lowered": false,
+        "requires_external_gpu_probe": false
       },
       "schedule_params": {},
       "valid_semantic_programs": 0,
@@ -3025,16 +3042,79 @@
         "mutation": "in_place_recurrent",
         "residency": "hbm",
         "collision_policy": "ordered",
-        "family_detail_lowered": false
+        "family_detail_lowered": true,
+        "requires_external_gpu_probe": true
       },
-      "schedule_params": {},
-      "valid_semantic_programs": 0,
-      "candidates": [],
+      "schedule_params": {
+        "anchor_overrides": {},
+        "block_hints": {},
+        "deterministic": false
+      },
+      "valid_semantic_programs": 1,
+      "compiled_programs": 1,
+      "candidates": [
+        {
+          "candidate_id": "base",
+          "kind": "base",
+          "legal": true,
+          "reason_code": null,
+          "backward_verified": true,
+          "equivalence_class": "identity"
+        }
+      ],
+      "selected_candidate_ids": [
+        "base"
+      ],
+      "selection_policies": [
+        "cost_heuristic"
+      ],
+      "schedule_decisions": [
+        null
+      ],
       "rewrite_accepted": 0,
       "rewrite_rejected": 0,
-      "compiled": false,
-      "decline_reason": "stateful presets require the state-planning slice (transactional commit planning lands with the SDM adapter)",
-      "escape_hatch_count": 0
+      "rejected_by_training_intent": 0,
+      "compiled": true,
+      "anchors_selected": [
+        "facebook_sparse_delta_memory_183e7df_external_adapter"
+      ],
+      "estimated_costs": [
+        {
+          "useful_flops": 8388608,
+          "logical_bytes": 12812288,
+          "physical_bytes_estimate": 12812288,
+          "launch_count": 1,
+          "temporary_bytes": 65536,
+          "route_imbalance": 0.0,
+          "atomic_contention_indicator": 0.0,
+          "communication_bytes": 0,
+          "collective_startup_us": 0.0,
+          "critical_path_us": 0.0,
+          "recompute_bytes": 0,
+          "saved_state_bytes": 0,
+          "provenance": "analytical_estimate",
+          "notes": [
+            "anchor=facebook_sparse_delta_memory_183e7df_external_adapter",
+            "analytical SDM sparse route/state traffic; not measured"
+          ]
+        }
+      ],
+      "traces": [
+        {
+          "attempts": [],
+          "obligations": [],
+          "chosen_anchors": [
+            "facebook_sparse_delta_memory_183e7df_external_adapter"
+          ],
+          "estimated_costs": {
+            "useful_flops": 8388608,
+            "physical_bytes_estimate": 12812288,
+            "launch_count": 1
+          }
+        }
+      ],
+      "escape_hatch_count": 0,
+      "measured_performance_pointer": "results/sparse-delta-memory/benchmark.json"
     },
     {
       "architecture_params": {
@@ -3046,7 +3126,8 @@
         "mutation": "transactional",
         "residency": "hbm",
         "collision_policy": "sum",
-        "family_detail_lowered": false
+        "family_detail_lowered": false,
+        "requires_external_gpu_probe": false
       },
       "schedule_params": {},
       "valid_semantic_programs": 0,
