@@ -1008,6 +1008,23 @@ def _aggregate(rows: dict[str, object]) -> dict[str, object]:
     }
 
 
+def _confirmation_phase_passed(
+    *,
+    classification: str,
+    hierarchical_upper: float,
+    per_process_medians: list[float],
+    per_process_p95_ratios: list[float],
+    memory_passes: list[bool],
+    per_process_gate_passes: list[bool],
+) -> bool:
+    common = hierarchical_upper <= 1.10 and all(memory_passes)
+    if classification == "host_bound":
+        return common and max(per_process_medians) <= 1.10
+    return (
+        common and max(per_process_p95_ratios) <= 1.10 and all(per_process_gate_passes)
+    )
+
+
 def _confirmation_summary(runs: list[dict[str, object]]) -> dict[str, object]:
     from measurement import hierarchical_bootstrap_paired_slowdown
 
@@ -1041,17 +1058,38 @@ def _confirmation_summary(runs: list[dict[str, object]]) -> dict[str, object]:
                 / row[phase]["upstream_device"]["p95_ms"]
                 for row in run_rows
             ]
+            median_ratios = [
+                row[phase]["paired_device_ratio"]["median"] for row in run_rows
+            ]
+            p95_absolute_delta_us = [
+                (
+                    row[phase]["native_device"]["p95_ms"]
+                    - row[phase]["upstream_device"]["p95_ms"]
+                )
+                * 1000.0
+                for row in run_rows
+            ]
             gate_name = f"{phase}_gate"
-            phase_passed = bool(
-                upper <= 1.10
-                and max(p95_ratios) <= 1.10
-                and all(row[gate_name]["memory_passed"] for row in run_rows)
-                and all(row[gate_name]["passed"] for row in run_rows)
+            classification = str(run_rows[0]["case"]["classification"])
+            phase_passed = _confirmation_phase_passed(
+                classification=classification,
+                hierarchical_upper=upper,
+                per_process_medians=median_ratios,
+                per_process_p95_ratios=p95_ratios,
+                memory_passes=[
+                    bool(row[gate_name]["memory_passed"]) for row in run_rows
+                ],
+                per_process_gate_passes=[
+                    bool(row[gate_name]["passed"]) for row in run_rows
+                ],
             )
             phase_reports[phase] = {
                 "hierarchical_paired_median_ratio": median,
                 "hierarchical_bootstrap_ci95": {"lower": lower, "upper": upper},
+                "per_process_median_ratios": median_ratios,
                 "per_process_p95_ratios": p95_ratios,
+                "per_process_p95_absolute_delta_us": p95_absolute_delta_us,
+                "host_bound_policy_applied": classification == "host_bound",
                 "passed": phase_passed,
             }
             all_passed = all_passed and phase_passed

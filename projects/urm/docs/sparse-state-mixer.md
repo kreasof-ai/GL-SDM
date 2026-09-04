@@ -93,7 +93,11 @@ processes and embeds every single-process artifact with raw samples. Each
 process uses fresh Triton, Torch-extension, and Inductor caches, so import,
 construction, specialization build/load, and first-call time remain separate
 from steady state. Decode and the minimal read are predeclared host-bound cases
-and are reported in microseconds with host-dispatch share. Traffic and achieved
+and are reported in microseconds with host-dispatch share. Their confirmation
+requires every process median and the hierarchical CI upper ratio within 1.10;
+p95 is retained as an absolute microsecond delta rather than used as a
+percentage gate. The paired-CI/p95 percentage and memory gates stay strict for
+every substantial case. Traffic and achieved
 logical bandwidth are explicitly analytical; MFU and MBU are not acceptance
 metrics without hardware counters. Static cubin inspection records registers,
 local/spill bytes, shared storage, and a register-bound occupancy ceiling. The

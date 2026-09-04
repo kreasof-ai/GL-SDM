@@ -206,6 +206,12 @@ cloning, graph construction, certification, and loss construction are outside
 the region. The strict schema is
 `benchmarks/sparse-state-mixer-result-schema.json`.
 
+The minimal read and decode cases were frozen as host-bound. They require every
+process median and the hierarchical CI upper ratio within 1.10, while retaining
+p95 as an absolute microsecond delta and host-dispatch share rather than a
+percentage acceptance metric. Every substantial case keeps the strict
+paired-CI upper, p95 percentage, and memory gates.
+
 Per-case throughput is reported as queries/second. Route, state-read,
 state-write, input, and output bytes—and bandwidth derived from them—are labeled
 analytical. Random page reuse makes an HBM utilization denominator ambiguous,

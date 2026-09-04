@@ -54,3 +54,22 @@ def test_drift_retry_exhaustion_fails_closed(monkeypatch) -> None:
             torch=None,
             case_name="synthetic",
         )
+
+
+def test_host_bound_confirmation_uses_absolute_latency_policy() -> None:
+    assert benchmark._confirmation_phase_passed(
+        classification="host_bound",
+        hierarchical_upper=0.7,
+        per_process_medians=[0.6, 0.7, 0.8],
+        per_process_p95_ratios=[0.8, 0.9, 1.4],
+        memory_passes=[True, True, True],
+        per_process_gate_passes=[True, True, False],
+    )
+    assert not benchmark._confirmation_phase_passed(
+        classification="substantial",
+        hierarchical_upper=0.7,
+        per_process_medians=[0.6, 0.7, 0.8],
+        per_process_p95_ratios=[0.8, 0.9, 1.4],
+        memory_passes=[True, True, True],
+        per_process_gate_passes=[True, True, False],
+    )

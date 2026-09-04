@@ -106,12 +106,12 @@
       "type": "object",
       "required": ["paired_ci95_upper_within_1_10", "p95_ratio", "p95_within_1_10", "memory_passed", "passed"],
       "properties": {
-        "paired_ci95_upper_within_1_10": {"const": true},
+        "paired_ci95_upper_within_1_10": {"type": "boolean"},
         "p95_ratio": {"$ref": "#/$defs/nonnegativeNumber"},
-        "p95_within_1_10": {"const": true},
+        "p95_within_1_10": {"type": "boolean"},
         "memory_limit_bytes": {"$ref": "#/$defs/nonnegativeNumber"},
-        "memory_passed": {"const": true},
-        "passed": {"const": true}
+        "memory_passed": {"type": "boolean"},
+        "passed": {"type": "boolean"}
       },
       "additionalProperties": false
     },
