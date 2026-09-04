@@ -1,8 +1,8 @@
 {
   "schema_version": 2,
-  "generated_utc": "2026-09-04T19:38:22.168274+00:00",
+  "generated_utc": "2026-09-04T20:10:59.319677+00:00",
   "provenance": {
-    "git_revision": "6ee9a1c5c66a949b46e196c669c94a911c3accb4",
+    "git_revision": "b1a1483624f6cb67cfac8fbae8175c6466965cba",
     "dirty_tree": false,
     "benchmark_command": "python benchmarks/compilation_matrix.py --probe required",
     "config_hash": "4e799c64c838665e073cb26d3498a9b51d4bc978c0ed4671b4fc8fa411d0a5a8",
@@ -45,7 +45,7 @@
     "verified_models": 10,
     "schedule_models_verified": 10,
     "unsat_categories": [],
-    "solver_time_ms": 655.776,
+    "solver_time_ms": 663.078,
     "compile_failures": 0,
     "routing_skeleton_compile_rate": 0.5789,
     "full_architecture_compile_rate": 0.0526,
@@ -138,7 +138,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 68.073,
+            "wall_ms": 67.542,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -424,7 +424,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 58.351,
+            "wall_ms": 59.332,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -710,7 +710,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 64.926,
+            "wall_ms": 65.338,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -996,7 +996,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 65.407,
+            "wall_ms": 65.863,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -1282,7 +1282,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 58.093,
+            "wall_ms": 58.058,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -1568,7 +1568,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 62.777,
+            "wall_ms": 67.138,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -1854,7 +1854,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 64.605,
+            "wall_ms": 64.131,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -2140,7 +2140,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 65.915,
+            "wall_ms": 66.387,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -2426,7 +2426,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 64.014,
+            "wall_ms": 65.15,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -2712,7 +2712,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 71.426,
+            "wall_ms": 71.903,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
