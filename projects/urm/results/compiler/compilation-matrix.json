@@ -1,10 +1,10 @@
 {
   "schema_version": 2,
-  "generated_utc": "2026-09-04T20:10:59.319677+00:00",
+  "generated_utc": "2026-09-04T21:47:29.489193+00:00",
   "provenance": {
-    "git_revision": "b1a1483624f6cb67cfac8fbae8175c6466965cba",
+    "git_revision": "dd2e39b4ef5553a8b813dd194083d41bb65ebb8d",
     "dirty_tree": false,
-    "benchmark_command": "python benchmarks/compilation_matrix.py --probe required",
+    "benchmark_command": "python benchmarks/compilation_matrix.py --probe required --output /tmp/urm-compilation-matrix.json",
     "config_hash": "4e799c64c838665e073cb26d3498a9b51d4bc978c0ed4671b4fc8fa411d0a5a8",
     "solver_version": "4.15.3",
     "python": "3.12.13",
@@ -33,7 +33,7 @@
   },
   "summary": {
     "presets_evaluated": 19,
-    "valid_semantic_programs": 22,
+    "valid_semantic_programs": 23,
     "generated_candidates": 10,
     "rewrite_accepted": 10,
     "rewrite_rejected": 0,
@@ -45,12 +45,12 @@
     "verified_models": 10,
     "schedule_models_verified": 10,
     "unsat_categories": [],
-    "solver_time_ms": 663.078,
+    "solver_time_ms": 667.489,
     "compile_failures": 0,
     "routing_skeleton_compile_rate": 0.5789,
     "full_architecture_compile_rate": 0.0526,
-    "native_lowering_rate": 0.9545,
-    "upstream_adapter_rate": 0.0455,
+    "native_lowering_rate": 1.0,
+    "upstream_adapter_rate": 0.0,
     "escape_hatch_count": 0,
     "metric_notes": {
       "routing_skeleton_compile_rate": "fraction of presets whose coarse ROUTING SKELETON maps to compiled routed reduction; dense attention, MoE expert GEMMs and sparse attention are NOT fully compiled merely because their skeleton routes map",
@@ -69,7 +69,7 @@
         "residency": "device",
         "collision_policy": "not_applicable",
         "family_detail_lowered": false,
-        "requires_external_gpu_probe": false
+        "requires_native_gpu_probe": false
       },
       "schedule_params": {
         "anchor_overrides": {},
@@ -138,7 +138,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 67.542,
+            "wall_ms": 67.348,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -355,7 +355,7 @@
         "residency": "device",
         "collision_policy": "not_applicable",
         "family_detail_lowered": false,
-        "requires_external_gpu_probe": false
+        "requires_native_gpu_probe": false
       },
       "schedule_params": {
         "anchor_overrides": {},
@@ -424,7 +424,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 59.332,
+            "wall_ms": 58.73,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -641,7 +641,7 @@
         "residency": "device",
         "collision_policy": "not_applicable",
         "family_detail_lowered": false,
-        "requires_external_gpu_probe": false
+        "requires_native_gpu_probe": false
       },
       "schedule_params": {
         "anchor_overrides": {},
@@ -710,7 +710,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 65.338,
+            "wall_ms": 65.561,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -927,7 +927,7 @@
         "residency": "device",
         "collision_policy": "not_applicable",
         "family_detail_lowered": false,
-        "requires_external_gpu_probe": false
+        "requires_native_gpu_probe": false
       },
       "schedule_params": {
         "anchor_overrides": {},
@@ -996,7 +996,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 65.863,
+            "wall_ms": 66.458,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -1213,7 +1213,7 @@
         "residency": "device",
         "collision_policy": "not_applicable",
         "family_detail_lowered": false,
-        "requires_external_gpu_probe": false
+        "requires_native_gpu_probe": false
       },
       "schedule_params": {
         "anchor_overrides": {},
@@ -1282,7 +1282,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 58.058,
+            "wall_ms": 57.976,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -1499,7 +1499,7 @@
         "residency": "device",
         "collision_policy": "not_applicable",
         "family_detail_lowered": false,
-        "requires_external_gpu_probe": false
+        "requires_native_gpu_probe": false
       },
       "schedule_params": {
         "anchor_overrides": {},
@@ -1568,7 +1568,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 67.138,
+            "wall_ms": 64.373,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -1785,7 +1785,7 @@
         "residency": "sharded",
         "collision_policy": "not_applicable",
         "family_detail_lowered": false,
-        "requires_external_gpu_probe": false
+        "requires_native_gpu_probe": false
       },
       "schedule_params": {
         "anchor_overrides": {},
@@ -1854,7 +1854,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 64.131,
+            "wall_ms": 64.449,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -2071,7 +2071,7 @@
         "residency": "device",
         "collision_policy": "not_applicable",
         "family_detail_lowered": false,
-        "requires_external_gpu_probe": false
+        "requires_native_gpu_probe": false
       },
       "schedule_params": {
         "anchor_overrides": {},
@@ -2140,7 +2140,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 66.387,
+            "wall_ms": 72.68,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -2357,7 +2357,7 @@
         "residency": "sharded",
         "collision_policy": "not_applicable",
         "family_detail_lowered": false,
-        "requires_external_gpu_probe": false
+        "requires_native_gpu_probe": false
       },
       "schedule_params": {
         "anchor_overrides": {},
@@ -2426,7 +2426,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 65.15,
+            "wall_ms": 65.722,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -2643,7 +2643,7 @@
         "residency": "device",
         "collision_policy": "not_applicable",
         "family_detail_lowered": false,
-        "requires_external_gpu_probe": false
+        "requires_native_gpu_probe": false
       },
       "schedule_params": {
         "anchor_overrides": {},
@@ -2712,7 +2712,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 71.903,
+            "wall_ms": 72.037,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -2929,7 +2929,7 @@
         "residency": "device",
         "collision_policy": "not_applicable",
         "family_detail_lowered": false,
-        "requires_external_gpu_probe": false
+        "requires_native_gpu_probe": false
       },
       "schedule_params": {},
       "valid_semantic_programs": 0,
@@ -2951,7 +2951,7 @@
         "residency": "device",
         "collision_policy": "not_applicable",
         "family_detail_lowered": false,
-        "requires_external_gpu_probe": false
+        "requires_native_gpu_probe": false
       },
       "schedule_params": {},
       "valid_semantic_programs": 0,
@@ -2973,7 +2973,7 @@
         "residency": "device",
         "collision_policy": "not_applicable",
         "family_detail_lowered": false,
-        "requires_external_gpu_probe": false
+        "requires_native_gpu_probe": false
       },
       "schedule_params": {},
       "valid_semantic_programs": 0,
@@ -2995,7 +2995,7 @@
         "residency": "device",
         "collision_policy": "not_applicable",
         "family_detail_lowered": false,
-        "requires_external_gpu_probe": false
+        "requires_native_gpu_probe": false
       },
       "schedule_params": {},
       "valid_semantic_programs": 0,
@@ -3017,7 +3017,7 @@
         "residency": "device",
         "collision_policy": "not_applicable",
         "family_detail_lowered": false,
-        "requires_external_gpu_probe": false
+        "requires_native_gpu_probe": false
       },
       "schedule_params": {},
       "valid_semantic_programs": 0,
@@ -3039,7 +3039,7 @@
         "residency": "device",
         "collision_policy": "not_applicable",
         "family_detail_lowered": false,
-        "requires_external_gpu_probe": false
+        "requires_native_gpu_probe": false
       },
       "schedule_params": {},
       "valid_semantic_programs": 0,
@@ -3061,7 +3061,7 @@
         "residency": "device",
         "collision_policy": "not_applicable",
         "family_detail_lowered": false,
-        "requires_external_gpu_probe": false
+        "requires_native_gpu_probe": false
       },
       "schedule_params": {},
       "valid_semantic_programs": 0,
@@ -3083,15 +3083,15 @@
         "residency": "hbm",
         "collision_policy": "ordered",
         "family_detail_lowered": true,
-        "requires_external_gpu_probe": true
+        "requires_native_gpu_probe": true
       },
       "schedule_params": {
         "anchor_overrides": {},
         "block_hints": {},
         "deterministic": false
       },
-      "valid_semantic_programs": 2,
-      "compiled_programs": 2,
+      "valid_semantic_programs": 3,
+      "compiled_programs": 3,
       "candidates": [
         {
           "candidate_id": "base",
@@ -3104,13 +3104,16 @@
       ],
       "selected_candidate_ids": [
         "base",
+        "base",
         "base"
       ],
       "selection_policies": [
         "cost_heuristic",
+        "cost_heuristic",
         "cost_heuristic"
       ],
       "schedule_decisions": [
+        null,
         null,
         null
       ],
@@ -3119,11 +3122,13 @@
       "rejected_by_training_intent": 0,
       "compiled": true,
       "anchors_selected": [
-        "facebook_sparse_delta_memory_183e7df_external_adapter",
+        "urm_native_sparse_memory_e2e_v0",
+        "urm_native_sparse_route_selection_v0",
         "urm_native_sparse_state_mixer_v0"
       ],
       "anchor_dispatch_counts": {
-        "facebook_sparse_delta_memory_183e7df_external_adapter": 1,
+        "urm_native_sparse_memory_e2e_v0": 1,
+        "urm_native_sparse_route_selection_v0": 1,
         "urm_native_sparse_state_mixer_v0": 1
       },
       "estimated_costs": [
@@ -3142,7 +3147,7 @@
           "saved_state_bytes": 0,
           "provenance": "analytical_estimate",
           "notes": [
-            "anchor=facebook_sparse_delta_memory_183e7df_external_adapter",
+            "anchor=urm_native_sparse_memory_e2e_v0",
             "analytical sparse route/state traffic; not measured"
           ]
         },
@@ -3164,6 +3169,25 @@
             "anchor=urm_native_sparse_state_mixer_v0",
             "analytical sparse route/state traffic; not measured"
           ]
+        },
+        {
+          "useful_flops": 8192,
+          "logical_bytes": 81920,
+          "physical_bytes_estimate": 81920,
+          "launch_count": 1,
+          "temporary_bytes": 49152,
+          "route_imbalance": 0.0,
+          "atomic_contention_indicator": 0.0,
+          "communication_bytes": 0,
+          "collective_startup_us": 0.0,
+          "critical_path_us": 0.0,
+          "recompute_bytes": 0,
+          "saved_state_bytes": 0,
+          "provenance": "analytical_estimate",
+          "notes": [
+            "anchor=urm_native_sparse_route_selection_v0",
+            "analytical route traffic"
+          ]
         }
       ],
       "traces": [
@@ -3171,7 +3195,7 @@
           "attempts": [],
           "obligations": [],
           "chosen_anchors": [
-            "facebook_sparse_delta_memory_183e7df_external_adapter"
+            "urm_native_sparse_memory_e2e_v0"
           ],
           "estimated_costs": {
             "useful_flops": 8388608,
@@ -3190,10 +3214,22 @@
             "physical_bytes_estimate": 12812288,
             "launch_count": 1
           }
+        },
+        {
+          "attempts": [],
+          "obligations": [],
+          "chosen_anchors": [
+            "urm_native_sparse_route_selection_v0"
+          ],
+          "estimated_costs": {
+            "useful_flops": 8192,
+            "physical_bytes_estimate": 81920,
+            "launch_count": 1
+          }
         }
       ],
       "escape_hatch_count": 0,
-      "measured_performance_pointer": "results/sparse-delta-memory/benchmark.json; results/sparse-state-mixer/confirmation.json"
+      "measured_performance_pointer": "results/sparse-delta-memory/benchmark.json; results/sparse-state-mixer/confirmation.json; results/sparse-memory-e2e/confirmation.json"
     },
     {
       "architecture_params": {
@@ -3206,7 +3242,7 @@
         "residency": "hbm",
         "collision_policy": "sum",
         "family_detail_lowered": false,
-        "requires_external_gpu_probe": false
+        "requires_native_gpu_probe": false
       },
       "schedule_params": {},
       "valid_semantic_programs": 0,
