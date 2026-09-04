@@ -1,0 +1,252 @@
+schema_version = 0
+freeze_status = "pre_tuning"
+scope = "write_read_scores_through_routes_and_persistent_state"
+authoritative_comparison = "pinned_upstream_vs_fully_native"
+diagnostic_hybrid = "upstream_routes_then_native_state"
+
+[[case]]
+name = "read_only_fp32"
+operation = "read_only"
+classification = "substantial"
+parallel = 1
+sequence = 128
+slots = 4096
+dim = 64
+writes = 0
+reads = 4
+dtype = "float32"
+collision = "low"
+
+[[case]]
+name = "read_only_nonpower_bf16"
+operation = "read_only"
+classification = "substantial"
+parallel = 2
+sequence = 128
+slots = 4096
+dim = 95
+writes = 0
+reads = 4
+dtype = "bfloat16"
+collision = "low"
+
+[[case]]
+name = "decode_fp32"
+operation = "update"
+classification = "host_bound"
+parallel = 1
+sequence = 1
+slots = 4096
+dim = 256
+writes = 4
+reads = 4
+dtype = "float32"
+collision = "recurrent"
+
+[[case]]
+name = "decode_bf16"
+operation = "update"
+classification = "host_bound"
+parallel = 1
+sequence = 1
+slots = 4096
+dim = 256
+writes = 4
+reads = 4
+dtype = "bfloat16"
+collision = "recurrent"
+
+[[case]]
+name = "short_min_fp32"
+operation = "update"
+classification = "substantial"
+parallel = 1
+sequence = 16
+slots = 256
+dim = 37
+writes = 1
+reads = 1
+dtype = "float32"
+collision = "low"
+
+[[case]]
+name = "short_nonpower_bf16"
+operation = "update"
+classification = "substantial"
+parallel = 1
+sequence = 16
+slots = 256
+dim = 95
+writes = 4
+reads = 4
+dtype = "bfloat16"
+collision = "low"
+
+[[case]]
+name = "short_collision_bf16"
+operation = "update"
+classification = "substantial"
+parallel = 1
+sequence = 16
+slots = 256
+dim = 95
+writes = 4
+reads = 4
+dtype = "bfloat16"
+collision = "high"
+
+[[case]]
+name = "long_prefill_fp32"
+operation = "update"
+classification = "substantial"
+parallel = 1
+sequence = 128
+slots = 4096
+dim = 64
+writes = 4
+reads = 4
+dtype = "float32"
+collision = "low"
+
+[[case]]
+name = "long_nonpower_bf16"
+operation = "update"
+classification = "substantial"
+parallel = 1
+sequence = 128
+slots = 4096
+dim = 95
+writes = 4
+reads = 4
+dtype = "bfloat16"
+collision = "low"
+
+[[case]]
+name = "long_collision_bf16"
+operation = "update"
+classification = "substantial"
+parallel = 1
+sequence = 128
+slots = 4096
+dim = 256
+writes = 4
+reads = 4
+dtype = "bfloat16"
+collision = "high"
+
+[[case]]
+name = "long_512_bf16"
+operation = "update"
+classification = "substantial"
+parallel = 1
+sequence = 512
+slots = 4096
+dim = 128
+writes = 4
+reads = 4
+dtype = "bfloat16"
+collision = "low"
+
+[[case]]
+name = "representative_width_bf16"
+operation = "update"
+classification = "substantial"
+parallel = 1
+sequence = 64
+slots = 4096
+dim = 256
+writes = 16
+reads = 16
+dtype = "bfloat16"
+collision = "low"
+
+[[case]]
+name = "maximum_width_fp32"
+operation = "update"
+classification = "substantial"
+parallel = 1
+sequence = 64
+slots = 4096
+dim = 256
+writes = 64
+reads = 64
+dtype = "float32"
+collision = "low"
+
+[[case]]
+name = "maximum_width_bf16"
+operation = "update"
+classification = "substantial"
+parallel = 1
+sequence = 64
+slots = 4096
+dim = 256
+writes = 64
+reads = 64
+dtype = "bfloat16"
+collision = "low"
+
+[[case]]
+name = "capacity_bf16"
+operation = "update"
+classification = "substantial"
+parallel = 1
+sequence = 128
+slots = 65536
+dim = 95
+writes = 4
+reads = 4
+dtype = "bfloat16"
+collision = "recurrent"
+
+[[case]]
+name = "training_short_fp32"
+operation = "training"
+classification = "substantial"
+parallel = 1
+sequence = 16
+slots = 256
+dim = 257
+writes = 4
+reads = 4
+dtype = "float32"
+collision = "high"
+
+[[case]]
+name = "training_short_bf16"
+operation = "training"
+classification = "substantial"
+parallel = 1
+sequence = 16
+slots = 256
+dim = 95
+writes = 4
+reads = 4
+dtype = "bfloat16"
+collision = "high"
+
+[[case]]
+name = "training_maximum_fp32"
+operation = "training"
+classification = "substantial"
+parallel = 1
+sequence = 16
+slots = 4096
+dim = 1024
+writes = 64
+reads = 64
+dtype = "float32"
+collision = "low"
+
+[[case]]
+name = "training_long_bf16"
+operation = "training"
+classification = "substantial"
+parallel = 1
+sequence = 128
+slots = 4096
+dim = 128
+writes = 4
+reads = 4
+dtype = "bfloat16"
+collision = "low"

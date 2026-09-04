@@ -71,6 +71,7 @@ from urm.compiler.semantic import (
     SDMExecutionMode,
     Select,
     SparseDeltaMemoryAccess,
+    SparseRouteGeneration,
     SparseStateExecutionMode,
     SparseStateMixerAccess,
     StateUpdate,
@@ -1132,22 +1133,45 @@ class UrmCompiler:
             )
             if override is not None:
                 if request_kind is AnchorKind.SPARSE_DELTA_MEMORY:
-                    from urm.compiler.execution import SDM_EXTERNAL_ANCHOR_NAME
+                    from urm.compiler.execution import (
+                        NATIVE_SPARSE_MEMORY_ANCHOR_NAME,
+                        SDM_EXTERNAL_ANCHOR_NAME,
+                    )
 
-                    if override != SDM_EXTERNAL_ANCHOR_NAME:
+                    if override not in {
+                        SDM_EXTERNAL_ANCHOR_NAME,
+                        NATIVE_SPARSE_MEMORY_ANCHOR_NAME,
+                    }:
                         decision = AnchorDecision(
                             anchor=None,
                             decline=Decline(
                                 reason_code=DiagnosticCode.ANCHOR_DECLINED,
                                 message=(
                                     f"override {override!r} is incompatible with "
-                                    f"the canonical SDM external anchor "
+                                    "the canonical SDM external anchor or native "
+                                    "sparse memory anchor "
+                                    f"{NATIVE_SPARSE_MEMORY_ANCHOR_NAME!r} and "
                                     f"{SDM_EXTERNAL_ANCHOR_NAME!r}"
                                 ),
                             ),
                         )
                     # The exact canonical override deliberately keeps the
                     # runtime/revision-aware selector's decision.
+                elif request_kind is AnchorKind.SPARSE_ROUTE_SELECTION:
+                    from urm.compiler.execution import NATIVE_SPARSE_ROUTE_ANCHOR_NAME
+
+                    if override != NATIVE_SPARSE_ROUTE_ANCHOR_NAME:
+                        decision = AnchorDecision(
+                            anchor=None,
+                            decline=Decline(
+                                reason_code=DiagnosticCode.ANCHOR_DECLINED,
+                                message=(
+                                    f"override {override!r} is incompatible with "
+                                    f"the native sparse route anchor "
+                                    f"{NATIVE_SPARSE_ROUTE_ANCHOR_NAME!r}"
+                                ),
+                            ),
+                        )
                 elif request_kind is AnchorKind.SPARSE_STATE_MIXER:
                     from urm.compiler.execution import (
                         NATIVE_SPARSE_STATE_MIXER_ANCHOR_NAME,
@@ -1188,6 +1212,7 @@ class UrmCompiler:
                         if request_kind
                         in {
                             AnchorKind.SPARSE_DELTA_MEMORY,
+                            AnchorKind.SPARSE_ROUTE_SELECTION,
                             AnchorKind.SPARSE_STATE_MIXER,
                         }
                         else DiagnosticCode.NO_ANCHOR_AVAILABLE
@@ -1275,6 +1300,42 @@ class UrmCompiler:
 
                 assert isinstance(op, SparseStateMixerAccess)
                 step_launch_config = sparse_state_launch_schedule(op.spec)
+            if anchor.kind is AnchorKind.SPARSE_ROUTE_SELECTION:
+                assert isinstance(op, SparseRouteGeneration)
+                block_half = 1 << (op.spec.factor_extent - 1).bit_length()
+                block_route = max(2, 1 << (op.spec.route_width - 1).bit_length())
+                step_launch_config = {
+                    "schedule_family": "row_owned_factor_topk_canonical_softmax",
+                    "block_half": block_half,
+                    "block_route": block_route,
+                    "block_pair": block_route * block_route,
+                    "num_warps": 8 if block_route * block_route >= 1024 else 4,
+                    "num_stages": 2,
+                }
+            if (
+                anchor.kind is AnchorKind.SPARSE_DELTA_MEMORY
+                and anchor.name == "urm_native_sparse_memory_e2e_v0"
+            ):
+                assert isinstance(op, SparseDeltaMemoryAccess)
+                half = round(op.spec.slots_per_partition**0.5)
+                read_block = max(2, 1 << (op.spec.reads - 1).bit_length())
+                write_block = (
+                    max(2, 1 << (op.spec.writes - 1).bit_length())
+                    if op.spec.writes
+                    else 0
+                )
+                state_block = max(
+                    16, 1 << (min(op.spec.value_dim, 256) - 1).bit_length()
+                )
+                step_launch_config = {
+                    "schedule_family": "native_route_then_partition_scan",
+                    "route_block_half": 1 << (half - 1).bit_length(),
+                    "read_route_block": read_block,
+                    "write_route_block": write_block,
+                    "state_block_d": state_block,
+                    "route_materialization": "explicit_logical_outputs",
+                    "fusion": "none",
+                }
             steps.append(
                 PlanStep(
                     step_id=step_id,
@@ -1482,6 +1543,8 @@ class UrmCompiler:
             return AnchorKind.RECURRENT_SCAN, ()
         if isinstance(op, SparseDeltaMemoryAccess):
             return AnchorKind.SPARSE_DELTA_MEMORY, ()
+        if isinstance(op, SparseRouteGeneration):
+            return AnchorKind.SPARSE_ROUTE_SELECTION, ()
         if isinstance(op, SparseStateMixerAccess):
             return AnchorKind.SPARSE_STATE_MIXER, ()
         if isinstance(op, Score | Select | Transform):
@@ -1541,6 +1604,20 @@ class UrmCompiler:
                 launch_count=1,
                 temporary_bytes=m * n * 2,
                 notes=(f"anchor={anchor_name}",),
+            )
+        if isinstance(op, SparseRouteGeneration):
+            spec = op.spec
+            dtype_bytes = 4 if spec.dtype.value == "float32" else 2
+            rows = spec.parallel * spec.sequence
+            score_bytes = rows * spec.score_width * dtype_bytes
+            route_bytes = rows * spec.route_width * (4 + dtype_bytes)
+            return CostEstimate(
+                useful_flops=rows * spec.route_width,
+                logical_bytes=score_bytes + route_bytes,
+                physical_bytes_estimate=score_bytes + route_bytes,
+                launch_count=1,
+                temporary_bytes=route_bytes,
+                notes=(f"anchor={anchor_name}", "analytical route traffic"),
             )
         if isinstance(op, SparseDeltaMemoryAccess | SparseStateMixerAccess):
             spec = op.spec

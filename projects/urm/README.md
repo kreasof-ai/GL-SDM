@@ -15,9 +15,10 @@ FA/FLA/SDM/Mamba library APIs.
 ## Current milestone
 
 The routed-reduction/compiler-validation tranche remains complete and frozen.
-Phase 3 now includes both the closed external Sparse Delta Memory baseline and
-the URM-native certified-route `SparseStateMixer` v0. The prior milestone and
-these state-mixer slices have been validated on an NVIDIA A10G CUDA host:
+Phase 3 now includes the closed external Sparse Delta Memory baseline, the
+URM-native certified-route `SparseStateMixer` v0, and a compiler-visible native
+score-to-route-to-state Sparse Memory v0 path. These slices have been validated
+on an NVIDIA A10G CUDA host:
 
 - a typed `MixerSpec` contract;
 - a dependency-light NumPy correctness oracle;
@@ -51,6 +52,13 @@ these state-mixer slices have been validated on an NVIDIA A10G CUDA host:
   serialized schedules, a revision-aware external fallback, and a strict
   three-process benchmark confirmation; see
   [the native SparseStateMixer contract](docs/sparse-state-mixer.md); and
+- an independent typed sparse-route operation and URM-owned Triton lowering for
+  factorized additive score composition, top-k selection, ascending address
+  canonicalization, and Softmax weights. Composed with `SparseStateMixer`, it
+  forms a fully native compiler-visible score-to-persistent-state path; the
+  four-level E2E protocol keeps transparent PyTorch, pinned upstream, diagnostic
+  hybrid, and fully native results distinct. See
+  [the E2E Sparse Memory contract](docs/sparse-memory-e2e.md); and
 - a layered compiler (docs/compiler-charter.md): typed semantic IR over logical
   domains with explicit locality/effect models, two verified reparameterization
   rules with deterministic traces, a simulated routing-to-communication
@@ -77,9 +85,8 @@ these state-mixer slices have been validated on an NVIDIA A10G CUDA host:
   bound).
 
 The routed-reduction/compiler-validation tranche is still closed and was not
-reopened. Native route production, distributed page ownership, transactional
-GL-SDM, MoE, Mamba, and FlexAttention remain deferred; the native state mixer
-does not claim those pipeline capabilities.
+reopened. Alternative route compositions, distributed page ownership,
+transactional GL-SDM, MoE, Mamba, and FlexAttention remain deferred.
 
 See [the compiler charter](docs/compiler-charter.md), the
 [CODA retrospective](docs/coda-retrospective.md),
@@ -263,9 +270,11 @@ model.
 - Complete: native certified-route SparseStateMixer v0 forward/backward
   lowering, persistent ordered state, strict capability declines, serialized
   schedule, executable pinned fallback, and frozen A10G confirmation protocol.
-- Deferred: native product-key or other route-selection lowering; pipeline
-  comparison remains `not_applicable` until that separate semantic operation
-  exists.
+- Complete: independent native factorized-additive top-k route selection and
+  the fully native Sparse Memory E2E composition from scores through persistent
+  state, with the diagnostic hybrid explicitly excluded from native claims.
+- Deferred: physical route/state fusion and route compositions beyond the
+  frozen factorized-additive specialization.
 - Fuse overlay composition and reduction.
 - Add page grouping, prefetch, recurrent address reuse, and distributed sharding.
 - Evaluate GL-SDM traces without making GL-SDM's architectural success a URM

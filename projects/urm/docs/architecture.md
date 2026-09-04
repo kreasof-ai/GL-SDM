@@ -183,6 +183,16 @@ external product-key implementation. This separation preserves the composite
 score-to-state front end while allowing native route-to-state evolution and an
 external fallback to coexist.
 
+Route production is now independently represented by `SparseRouteGeneration`.
+Its frozen v0 specialization composes two factor-score vectors additively,
+selects the stable top-k set, canonicalizes selected addresses in ascending
+order, and applies Softmax only to selected scores. The native anchor
+`urm_native_sparse_route_selection_v0` emits certified partition-local routes.
+The compiler can compose that anchor with `urm_native_sparse_state_mixer_v0`
+under `urm_native_sparse_memory_e2e_v0`; the explicit logical route boundary is
+retained even though both physical stages are native. Product-key factorization
+is one specialization, not a universal assumption in state semantics.
+
 The native plan serializes its `partition_owned_ordered_token_scan` schedule;
 execution assigns one partition/value fragment to a Triton program and keeps
 cross-token mutation order structural. Capability decisions are runtime-aware.
@@ -196,7 +206,7 @@ semantic operation. Pre-update or otherwise incompatible programs decline.
 Remaining slices are:
 
 1. Dense and masked sequence reduction against the NumPy oracle.
-2. Stable Top-k and threshold route generation.
+2. Additional stable Top-k, threshold, and non-factorized route generation.
 3. Transactional GL-SDM routing and write merging beyond the external ordered
    SDM baseline.
 4. PyTorch adapters for SDPA math/flash dispatch and transparent MoE.

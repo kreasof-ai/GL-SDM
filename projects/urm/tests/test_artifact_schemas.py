@@ -194,6 +194,81 @@ def test_committed_sparse_state_mixer_confirmation_validates() -> None:
                 }
 
 
+def test_committed_sparse_memory_e2e_confirmation_validates() -> None:
+    schema = _load(PROJECT_ROOT / "benchmarks" / "sparse-memory-e2e-result-schema.json")
+    artifact = _artifact("sparse-memory-e2e/confirmation.json")
+    validate(artifact, schema)
+    assert artifact["schema_version"] == 1
+    assert artifact["confirmation"]["passed"] is True
+    assert len(artifact["runs"]) == 3
+
+    import tomllib
+
+    grid = tomllib.loads(
+        (PROJECT_ROOT / "benchmarks" / "sparse_memory_e2e_cases.toml").read_text(
+            encoding="utf-8"
+        )
+    )["case"]
+    expected = {case["name"] for case in grid}
+    assert set(artifact["confirmation"]["cases"]) == expected
+    assert all(set(run["cases"]) == expected for run in artifact["runs"])
+    assert all(run["provenance"]["dirty_tree"] is False for run in artifact["runs"])
+    assert all(
+        run["provenance"]["upstream"]["installed_commit"]
+        == "183e7df809131b80ad4393741029d0f20fc3640b"
+        and run["provenance"]["upstream"]["checkout_dirty"] is False
+        for run in artifact["runs"]
+    )
+    for run in artifact["runs"]:
+        assert set(run["methodology"]["levels"]) == {
+            "reference",
+            "upstream",
+            "hybrid",
+            "native",
+        }
+        for row in run["cases"].values():
+            assert row["correctness"]["addresses_exact"] is True
+            assert row["correctness"]["passed"] is True
+            if row["case"]["operation"] == "training":
+                assert row["backward_correctness"]["passed"] is True
+                assert set(row["backward_correctness"]["gradients"]) == {
+                    "write_scores",
+                    "read_scores",
+                    "initial_memory",
+                    "values",
+                    "beta",
+                    "log_decay",
+                }
+
+
+def test_committed_sparse_memory_e2e_initial_attribution_validates() -> None:
+    schema = _load(PROJECT_ROOT / "benchmarks" / "sparse-memory-e2e-result-schema.json")
+    artifact = _artifact("sparse-memory-e2e/attribution-initial.json")
+    validate(artifact, schema)
+    assert artifact["artifact_kind"] == "single_process_attribution"
+    assert artifact["provenance"]["dirty_tree"] is False
+    assert all(row["correctness"]["passed"] for row in artifact["cases"].values())
+
+
+def test_committed_sparse_memory_e2e_profile_validates() -> None:
+    schema = _load(
+        PROJECT_ROOT / "benchmarks" / "sparse-memory-e2e-profile-schema.json"
+    )
+    artifact = _artifact("sparse-memory-e2e/profile.json")
+    validate(artifact, schema)
+    assert artifact["provenance"]["dirty_tree"] is False
+    assert artifact["provenance"]["upstream"]["installed_commit"] == (
+        "183e7df809131b80ad4393741029d0f20fc3640b"
+    )
+    ranges = set(artifact["profiler"]["nvtx_ranges"])
+    assert {
+        "sparse_memory_e2e::upstream::route_production",
+        "sparse_memory_e2e::native::route_production",
+        "sparse_memory_e2e::upstream::state_mixer",
+        "sparse_memory_e2e::native::state_mixer",
+    } <= ranges
+
+
 def _steady_state_overhead_rows(artifact: dict) -> list[dict]:
     """Flatten paired adapter-overhead statistics from the attention artifact."""
     min_seq = artifact["methodology"]["steady_state_min_seq"]
@@ -252,13 +327,15 @@ def test_committed_compilation_matrix_validates_against_schema() -> None:
         for row in artifact["rows"]
         if row["architecture_params"]["preset"] == "sparse_delta_memory"
     )
-    assert sparse["valid_semantic_programs"] == 2
+    assert sparse["valid_semantic_programs"] == 3
     assert {
-        "facebook_sparse_delta_memory_183e7df_external_adapter",
+        "urm_native_sparse_memory_e2e_v0",
+        "urm_native_sparse_route_selection_v0",
         "urm_native_sparse_state_mixer_v0",
-    } <= set(sparse["anchors_selected"])
+    } == set(sparse["anchors_selected"])
     assert sparse["anchor_dispatch_counts"] == {
-        "facebook_sparse_delta_memory_183e7df_external_adapter": 1,
+        "urm_native_sparse_memory_e2e_v0": 1,
+        "urm_native_sparse_route_selection_v0": 1,
         "urm_native_sparse_state_mixer_v0": 1,
     }
     assert summary["native_lowering_rate"] + summary["upstream_adapter_rate"] <= 1

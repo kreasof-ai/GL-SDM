@@ -90,7 +90,7 @@ def build_program(spec):
         "collision_policy": spec.collision_policy.value,
         # Honest coverage labels per preset:
         "family_detail_lowered": spec.name in FULLY_LOWERED_FAMILIES,
-        "requires_external_gpu_probe": spec.name == "sparse_delta_memory",
+        "requires_native_gpu_probe": spec.name == "sparse_delta_memory",
     }
 
     if spec.name == "sparse_delta_memory":
@@ -98,6 +98,7 @@ def build_program(spec):
             SDMExecutionMode,
             SparseStateExecutionMode,
             sparse_delta_memory_program,
+            sparse_route_selection_program,
             sparse_state_mixer_program,
         )
 
@@ -124,6 +125,14 @@ def build_program(spec):
                     reads=64,
                     dtype=DType.BFLOAT16,
                     mode=SparseStateExecutionMode.TRAINING,
+                ),
+                sparse_route_selection_program(
+                    name="sparse_route_selection",
+                    parallel=1,
+                    sequence=128,
+                    source_extent=4096,
+                    route_width=64,
+                    dtype=DType.BFLOAT16,
                 ),
             ),
             architecture,
@@ -279,7 +288,7 @@ def main() -> None:
                 }
             )
             continue
-        if architecture.get("requires_external_gpu_probe") and probe_mode == "off":
+        if architecture.get("requires_native_gpu_probe") and probe_mode == "off":
             rows.append(
                 {
                     "architecture_params": architecture,
@@ -292,7 +301,7 @@ def main() -> None:
                     "rejected_by_training_intent": 0,
                     "compiled": False,
                     "decline_reason": (
-                        "original SDM adapter capability probe is disabled in "
+                        "native sparse-memory capability probe is disabled in "
                         "CPU-safe --probe off mode"
                     ),
                     "escape_hatch_count": 0,
@@ -412,7 +421,8 @@ def main() -> None:
                 "escape_hatch_count": 0,
                 "measured_performance_pointer": (
                     "results/sparse-delta-memory/benchmark.json; "
-                    "results/sparse-state-mixer/confirmation.json"
+                    "results/sparse-state-mixer/confirmation.json; "
+                    "results/sparse-memory-e2e/confirmation.json"
                     if preset.name == "sparse_delta_memory"
                     else (
                         "results/final/*-forward.json (routed-reduction v1 is the "
@@ -450,7 +460,12 @@ def main() -> None:
         if row["compiled"] and row["architecture_params"].get("family_detail_lowered")
     )
     # Where executed work goes for the compiled programs.
-    NATIVE_PREFIXES = ("routed_reduction", "urm_native_sparse_state_mixer")
+    NATIVE_PREFIXES = (
+        "routed_reduction",
+        "urm_native_sparse_state_mixer",
+        "urm_native_sparse_route_selection",
+        "urm_native_sparse_memory_e2e",
+    )
     UPSTREAM_ANCHORS = {
         "flash_attention_adapter",
         "fla_gated_delta_rule_adapter",

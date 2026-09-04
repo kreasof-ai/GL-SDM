@@ -1,0 +1,322 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "URM Sparse Memory end-to-end result",
+  "oneOf": [
+    {"$ref": "#/$defs/singleRun"},
+    {"$ref": "#/$defs/confirmation"}
+  ],
+  "$defs": {
+    "number": {"type": "number"},
+    "nonnegative": {"type": "number", "minimum": 0},
+    "stats": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["count", "median_ms", "p95_ms", "minimum_ms", "raw_ms"],
+      "properties": {
+        "count": {"type": "integer", "minimum": 1},
+        "median_ms": {"$ref": "#/$defs/nonnegative"},
+        "p95_ms": {"$ref": "#/$defs/nonnegative"},
+        "minimum_ms": {"$ref": "#/$defs/nonnegative"},
+        "raw_ms": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/nonnegative"}}
+      }
+    },
+    "ratioStats": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["count", "median", "p95", "minimum", "raw", "bootstrap_ci95_median"],
+      "properties": {
+        "count": {"type": "integer", "minimum": 1},
+        "median": {"$ref": "#/$defs/nonnegative"},
+        "p95": {"$ref": "#/$defs/nonnegative"},
+        "minimum": {"$ref": "#/$defs/nonnegative"},
+        "raw": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/nonnegative"}},
+        "bootstrap_ci95_median": {"$ref": "#/$defs/ci"}
+      }
+    },
+    "ci": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lower", "upper"],
+      "properties": {"lower": {"$ref": "#/$defs/nonnegative"}, "upper": {"$ref": "#/$defs/nonnegative"}}
+    },
+    "singleTiming": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["device", "wall"],
+      "properties": {"device": {"$ref": "#/$defs/stats"}, "wall": {"$ref": "#/$defs/stats"}}
+    },
+    "paired": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sampling", "orders", "upstream_device", "native_device", "upstream_wall", "native_wall", "paired_device_ratio"],
+      "properties": {
+        "sampling": {"const": "seeded randomized paired AB/BA"},
+        "orders": {"type": "array", "items": {"enum": ["AB", "BA"]}},
+        "upstream_device": {"$ref": "#/$defs/stats"},
+        "native_device": {"$ref": "#/$defs/stats"},
+        "upstream_wall": {"$ref": "#/$defs/stats"},
+        "native_wall": {"$ref": "#/$defs/stats"},
+        "paired_device_ratio": {"$ref": "#/$defs/ratioStats"}
+      }
+    },
+    "drift": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attempt", "upstream_sentinel_before_ms", "upstream_sentinel_after_ms", "absolute_fraction", "threshold", "passed", "performance"],
+      "properties": {
+        "attempt": {"type": "integer", "minimum": 1, "maximum": 3},
+        "upstream_sentinel_before_ms": {"$ref": "#/$defs/nonnegative"},
+        "upstream_sentinel_after_ms": {"$ref": "#/$defs/nonnegative"},
+        "absolute_fraction": {"$ref": "#/$defs/nonnegative"},
+        "threshold": {"const": 0.15},
+        "passed": {"type": "boolean"},
+        "performance": {"$ref": "#/$defs/paired"}
+      }
+    },
+    "memory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allocated_before_bytes", "peak_allocated_bytes", "temporary_peak_bytes"],
+      "properties": {
+        "allocated_before_bytes": {"type": "integer", "minimum": 0},
+        "peak_allocated_bytes": {"type": "integer", "minimum": 0},
+        "temporary_peak_bytes": {"type": "integer", "minimum": 0}
+      }
+    },
+    "caseSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "operation", "classification", "parallel", "sequence", "slots", "dim", "writes", "reads", "dtype", "collision"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "operation": {"enum": ["read_only", "update", "training"]},
+        "classification": {"enum": ["substantial", "host_bound"]},
+        "parallel": {"type": "integer", "minimum": 1},
+        "sequence": {"type": "integer", "minimum": 1},
+        "slots": {"type": "integer", "minimum": 8},
+        "dim": {"type": "integer", "minimum": 1},
+        "writes": {"type": "integer", "minimum": 0},
+        "reads": {"type": "integer", "minimum": 1},
+        "dtype": {"enum": ["float32", "bfloat16"]},
+        "collision": {"enum": ["low", "high", "recurrent"]}
+      }
+    },
+    "correctness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passed", "addresses_exact", "finite", "native_reference_atol", "native_upstream_atol", "rtol", "raw_max_abs"],
+      "properties": {
+        "passed": {"type": "boolean"},
+        "addresses_exact": {"type": "boolean"},
+        "finite": {"type": "boolean"},
+        "native_reference_atol": {"$ref": "#/$defs/nonnegative"},
+        "native_upstream_atol": {"$ref": "#/$defs/nonnegative"},
+        "rtol": {"$ref": "#/$defs/nonnegative"},
+        "raw_max_abs": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["native_vs_reference_readings", "native_vs_reference_state", "native_vs_upstream_readings", "native_vs_upstream_state"],
+          "properties": {
+            "native_vs_reference_readings": {"$ref": "#/$defs/nonnegative"},
+            "native_vs_reference_state": {"$ref": "#/$defs/nonnegative"},
+            "native_vs_upstream_readings": {"$ref": "#/$defs/nonnegative"},
+            "native_vs_upstream_state": {"$ref": "#/$defs/nonnegative"}
+          }
+        }
+      }
+    },
+    "gradient": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["finite", "native_vs_reference_max_abs", "native_vs_upstream_max_abs", "passed"],
+      "properties": {
+        "finite": {"type": "boolean"},
+        "native_vs_reference_max_abs": {"$ref": "#/$defs/nonnegative"},
+        "native_vs_upstream_max_abs": {"$ref": "#/$defs/nonnegative"},
+        "passed": {"type": "boolean"}
+      }
+    },
+    "backwardCorrectness": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["status", "reason"],
+          "properties": {"status": {"const": "not_applicable"}, "reason": {"type": "string"}}
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["passed", "atol", "rtol", "gradients"],
+          "properties": {
+            "passed": {"type": "boolean"}, "atol": {"$ref": "#/$defs/nonnegative"}, "rtol": {"$ref": "#/$defs/nonnegative"},
+            "gradients": {
+              "type": "object", "additionalProperties": false,
+              "required": ["write_scores", "read_scores", "initial_memory", "values", "beta", "log_decay"],
+              "properties": {
+                "write_scores": {"$ref": "#/$defs/gradient"}, "read_scores": {"$ref": "#/$defs/gradient"},
+                "initial_memory": {"$ref": "#/$defs/gradient"}, "values": {"$ref": "#/$defs/gradient"},
+                "beta": {"$ref": "#/$defs/gradient"}, "log_decay": {"$ref": "#/$defs/gradient"}
+              }
+            }
+          }
+        }
+      ]
+    },
+    "fractions": {
+      "type": "object", "additionalProperties": false,
+      "required": ["route", "state", "remaining"],
+      "properties": {"route": {"$ref": "#/$defs/nonnegative"}, "state": {"$ref": "#/$defs/nonnegative"}, "remaining": {"$ref": "#/$defs/nonnegative"}}
+    },
+    "forwardAttributionPath": {
+      "type": "object", "additionalProperties": false,
+      "required": ["whole_pipeline", "route_production", "state_mixer", "remaining_orchestration_materialization_ms", "signed_independent_median_residual_ms", "fractions"],
+      "properties": {
+        "whole_pipeline": {"$ref": "#/$defs/singleTiming"}, "route_production": {"$ref": "#/$defs/singleTiming"}, "state_mixer": {"$ref": "#/$defs/singleTiming"},
+        "remaining_orchestration_materialization_ms": {"$ref": "#/$defs/nonnegative"}, "signed_independent_median_residual_ms": {"$ref": "#/$defs/number"}, "fractions": {"$ref": "#/$defs/fractions"}
+      }
+    },
+    "backwardAttributionPath": {
+      "type": "object", "additionalProperties": false,
+      "required": ["whole_backward", "route_backward", "state_backward", "remaining_orchestration_materialization_ms", "signed_independent_median_residual_ms", "fractions"],
+      "properties": {
+        "whole_backward": {"$ref": "#/$defs/stats"}, "route_backward": {"$ref": "#/$defs/singleTiming"}, "state_backward": {"$ref": "#/$defs/singleTiming"},
+        "remaining_orchestration_materialization_ms": {"$ref": "#/$defs/nonnegative"}, "signed_independent_median_residual_ms": {"$ref": "#/$defs/number"}, "fractions": {"$ref": "#/$defs/fractions"}
+      }
+    },
+    "forwardAttribution": {
+      "type": "object", "additionalProperties": false,
+      "required": ["upstream", "native", "amdahl"],
+      "properties": {
+        "upstream": {"$ref": "#/$defs/forwardAttributionPath"}, "native": {"$ref": "#/$defs/forwardAttributionPath"},
+        "amdahl": {
+          "type": "object", "additionalProperties": false,
+          "required": ["upstream_state_fraction", "native_state_speedup", "state_only_maximum_pipeline_speedup", "measured_native_pipeline_speedup"],
+          "properties": {
+            "upstream_state_fraction": {"$ref": "#/$defs/nonnegative"}, "native_state_speedup": {"$ref": "#/$defs/nonnegative"},
+            "state_only_maximum_pipeline_speedup": {"$ref": "#/$defs/nonnegative"}, "measured_native_pipeline_speedup": {"$ref": "#/$defs/nonnegative"}
+          }
+        }
+      }
+    },
+    "forward": {
+      "type": "object", "additionalProperties": false,
+      "required": ["authoritative", "drift_attempts", "reference", "hybrid"],
+      "properties": {
+        "authoritative": {"$ref": "#/$defs/paired"}, "drift_attempts": {"type": "array", "minItems": 1, "maxItems": 3, "items": {"$ref": "#/$defs/drift"}},
+        "reference": {"$ref": "#/$defs/singleTiming"}, "hybrid": {"$ref": "#/$defs/singleTiming"}
+      }
+    },
+    "backward": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["status", "reason"], "properties": {"status": {"const": "not_applicable"}, "reason": {"type": "string"}}},
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["authoritative", "drift_attempts", "reference", "hybrid", "attribution"],
+          "properties": {
+            "authoritative": {"$ref": "#/$defs/paired"}, "drift_attempts": {"type": "array", "minItems": 1, "maxItems": 3, "items": {"$ref": "#/$defs/drift"}},
+            "reference": {"$ref": "#/$defs/singleTiming"}, "hybrid": {"$ref": "#/$defs/singleTiming"},
+            "attribution": {
+              "type": "object", "additionalProperties": false, "required": ["upstream", "native"],
+              "properties": {"upstream": {"$ref": "#/$defs/backwardAttributionPath"}, "native": {"$ref": "#/$defs/backwardAttributionPath"}}
+            }
+          }
+        }
+      ]
+    },
+    "coldBreakdown": {
+      "type": "object", "additionalProperties": false,
+      "required": ["construction_before_dispatch_ms", "native_route_compile_plus_first_call_ms", "native_route_first_warm_call_ms", "native_route_derived_compile_ms", "native_state_compile_plus_first_call_ms", "native_state_first_warm_call_ms", "native_state_derived_compile_ms", "upstream_route_compile_plus_first_call_ms", "upstream_route_first_warm_call_ms", "upstream_route_derived_compile_ms", "upstream_state_compile_plus_first_call_ms", "upstream_state_first_warm_call_ms", "upstream_state_derived_compile_ms", "compile_measurement"],
+      "properties": {
+        "construction_before_dispatch_ms": {"$ref": "#/$defs/nonnegative"}, "native_route_compile_plus_first_call_ms": {"$ref": "#/$defs/nonnegative"}, "native_route_first_warm_call_ms": {"$ref": "#/$defs/nonnegative"}, "native_route_derived_compile_ms": {"$ref": "#/$defs/nonnegative"},
+        "native_state_compile_plus_first_call_ms": {"$ref": "#/$defs/nonnegative"}, "native_state_first_warm_call_ms": {"$ref": "#/$defs/nonnegative"}, "native_state_derived_compile_ms": {"$ref": "#/$defs/nonnegative"},
+        "upstream_route_compile_plus_first_call_ms": {"$ref": "#/$defs/nonnegative"}, "upstream_route_first_warm_call_ms": {"$ref": "#/$defs/nonnegative"}, "upstream_route_derived_compile_ms": {"$ref": "#/$defs/nonnegative"},
+        "upstream_state_compile_plus_first_call_ms": {"$ref": "#/$defs/nonnegative"}, "upstream_state_first_warm_call_ms": {"$ref": "#/$defs/nonnegative"}, "upstream_state_derived_compile_ms": {"$ref": "#/$defs/nonnegative"}, "compile_measurement": {"type": "string"}
+      }
+    },
+    "caseResult": {
+      "type": "object", "additionalProperties": false,
+      "required": ["case", "construction_ms", "cold_breakdown", "score_generation_attempts", "correctness", "backward_correctness", "forward", "backward", "attribution", "memory", "gate"],
+      "properties": {
+        "case": {"$ref": "#/$defs/caseSpec"}, "construction_ms": {"$ref": "#/$defs/nonnegative"}, "cold_breakdown": {"$ref": "#/$defs/coldBreakdown"},
+        "score_generation_attempts": {"type": "object", "additionalProperties": false, "required": ["read", "write"], "properties": {"read": {"type": "integer", "minimum": 1}, "write": {"type": "integer", "minimum": 0}}},
+        "correctness": {"$ref": "#/$defs/correctness"}, "backward_correctness": {"$ref": "#/$defs/backwardCorrectness"}, "forward": {"$ref": "#/$defs/forward"}, "backward": {"$ref": "#/$defs/backward"}, "attribution": {"$ref": "#/$defs/forwardAttribution"},
+        "memory": {
+          "type": "object", "additionalProperties": false, "required": ["upstream", "native", "hybrid", "reference"],
+          "properties": {"upstream": {"$ref": "#/$defs/memory"}, "native": {"$ref": "#/$defs/memory"}, "hybrid": {"$ref": "#/$defs/memory"}, "reference": {"$ref": "#/$defs/memory"}, "backward_upstream": {"$ref": "#/$defs/memory"}, "backward_native": {"$ref": "#/$defs/memory"}}
+        },
+        "gate": {
+          "type": "object", "additionalProperties": false, "required": ["classification", "latency_passed", "memory_passed", "correctness_passed", "passed"],
+          "properties": {"classification": {"enum": ["substantial", "host_bound"]}, "latency_passed": {"type": "boolean"}, "memory_passed": {"type": "boolean"}, "correctness_passed": {"type": "boolean"}, "passed": {"type": "boolean"}}
+        }
+      }
+    },
+    "upstream": {
+      "type": "object", "additionalProperties": false,
+      "required": ["repository", "expected_commit", "installed_commit", "checkout_root", "module_file", "checkout_dirty", "license", "installation", "source_usage", "runtime_versions"],
+      "properties": {
+        "repository": {"const": "https://github.com/facebookresearch/sparse-delta-memory"}, "expected_commit": {"const": "183e7df809131b80ad4393741029d0f20fc3640b"}, "installed_commit": {"const": "183e7df809131b80ad4393741029d0f20fc3640b"},
+        "checkout_root": {"type": "string"}, "module_file": {"type": "string"}, "checkout_dirty": {"const": false}, "license": {"const": "CC-BY-NC-4.0"}, "installation": {"type": "string"}, "source_usage": {"type": "string"},
+        "runtime_versions": {"type": "object", "additionalProperties": false, "required": ["torch", "triton", "einops", "ninja"], "properties": {"torch": {"type": "string"}, "triton": {"type": "string"}, "einops": {"type": "string"}, "ninja": {"type": "string"}}}
+      }
+    },
+    "provenance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["git_revision", "dirty_tree", "benchmark_command", "config_hash", "solver_version", "python", "platform", "pytorch", "triton", "cuda", "driver", "gpu", "gpu_uuid"],
+      "properties": {
+        "git_revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"}, "dirty_tree": {"type": "boolean"}, "benchmark_command": {"type": "string"}, "config_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "solver_version": {"type": "string"}, "python": {"type": "string"}, "platform": {"type": "string"},
+        "pytorch": {"type": "string"}, "triton": {"type": "string"}, "cuda": {"type": "string"}, "driver": {"type": "string"}, "gpu": {"type": "string"}, "gpu_uuid": {"type": "string"}, "upstream": {"$ref": "#/$defs/upstream"}
+      }
+    },
+    "coldStart": {
+      "type": "object", "additionalProperties": false, "required": ["process_start_to_dependency_probe_ms", "fresh_cache_environment"],
+      "properties": {
+        "process_start_to_dependency_probe_ms": {"$ref": "#/$defs/nonnegative"},
+        "fresh_cache_environment": {"type": "object", "additionalProperties": false, "required": ["TRITON_CACHE_DIR", "TORCH_EXTENSIONS_DIR", "TORCHINDUCTOR_CACHE_DIR"], "properties": {"TRITON_CACHE_DIR": {"type": ["string", "null"]}, "TORCH_EXTENSIONS_DIR": {"type": ["string", "null"]}, "TORCHINDUCTOR_CACHE_DIR": {"type": ["string", "null"]}}}
+      }
+    },
+    "methodology": {
+      "type": "object", "additionalProperties": false,
+      "required": ["scope", "levels", "hybrid_certification", "authoritative_sampling", "attribution_sampling", "nvtx", "profiler", "host_absolute_allowance_us", "mfu_mbu", "optimization_history", "comparator_boundary"],
+      "properties": {
+        "scope": {"type": "string"}, "levels": {"type": "object", "additionalProperties": false, "required": ["reference", "upstream", "hybrid", "native"], "properties": {"reference": {"type": "string"}, "upstream": {"type": "string"}, "hybrid": {"type": "string"}, "native": {"type": "string"}}},
+        "hybrid_certification": {"type": "string"}, "authoritative_sampling": {"type": "string"}, "attribution_sampling": {"type": "string"}, "nvtx": {"type": "string"}, "profiler": {"type": "string"}, "host_absolute_allowance_us": {"const": 25.0},
+        "mfu_mbu": {"type": "object", "additionalProperties": false, "required": ["status", "reason"], "properties": {"status": {"const": "not_applicable"}, "reason": {"type": "string"}}},
+        "optimization_history": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["id", "hypothesis", "result", "status"], "properties": {"id": {"type": "string"}, "hypothesis": {"type": "string"}, "result": {"type": "string"}, "status": {"enum": ["accepted", "rejected", "deferred"]}}}},
+        "comparator_boundary": {"type": "string"}
+      }
+    },
+    "singleRun": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "artifact_kind", "generated_utc", "provenance", "cold_start", "methodology", "cases"],
+      "properties": {
+        "schema_version": {"const": 1}, "artifact_kind": {"const": "single_process_attribution"}, "generated_utc": {"type": "string"}, "provenance": {"$ref": "#/$defs/provenance"}, "cold_start": {"$ref": "#/$defs/coldStart"}, "methodology": {"$ref": "#/$defs/methodology"},
+        "cases": {"type": "object", "minProperties": 1, "additionalProperties": {"$ref": "#/$defs/caseResult"}}
+      }
+    },
+    "confirmationCase": {
+      "type": "object", "additionalProperties": false,
+      "required": ["classification", "hierarchical_forward_ratio_ci95", "per_process_forward_median_ratios", "per_process_forward_p95_ratios", "per_process_backward_median_ratios", "passed"],
+      "properties": {
+        "classification": {"enum": ["substantial", "host_bound"]}, "hierarchical_forward_ratio_ci95": {"$ref": "#/$defs/ci"},
+        "per_process_forward_median_ratios": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"$ref": "#/$defs/nonnegative"}}, "per_process_forward_p95_ratios": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"$ref": "#/$defs/nonnegative"}},
+        "per_process_backward_median_ratios": {"type": "array", "maxItems": 3, "items": {"$ref": "#/$defs/nonnegative"}}, "passed": {"type": "boolean"}
+      }
+    },
+    "confirmation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "artifact_kind", "generated_utc", "provenance", "methodology", "runs", "confirmation"],
+      "properties": {
+        "schema_version": {"const": 1}, "artifact_kind": {"const": "three_process_confirmation"}, "generated_utc": {"type": "string"}, "provenance": {"$ref": "#/$defs/provenance"},
+        "methodology": {"type": "object", "additionalProperties": false, "required": ["fresh_processes", "fresh_caches", "process_wall_ms", "scope"], "properties": {"fresh_processes": {"const": 3}, "fresh_caches": {"const": true}, "process_wall_ms": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"$ref": "#/$defs/nonnegative"}}, "scope": {"type": "string"}}},
+        "runs": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"$ref": "#/$defs/singleRun"}},
+        "confirmation": {
+          "type": "object", "additionalProperties": false,
+          "required": ["process_count", "cases", "substantial_geometric_mean_native_over_upstream", "geometric_mean_passed", "passed"],
+          "properties": {
+            "process_count": {"const": 3}, "cases": {"type": "object", "minProperties": 1, "additionalProperties": {"$ref": "#/$defs/confirmationCase"}},
+            "substantial_geometric_mean_native_over_upstream": {"$ref": "#/$defs/nonnegative"}, "geometric_mean_passed": {"type": "boolean"}, "passed": {"type": "boolean"}
+          }
+        }
+      }
+    }
+  }
+}

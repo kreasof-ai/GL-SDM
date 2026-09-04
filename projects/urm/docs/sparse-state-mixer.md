@@ -8,6 +8,10 @@ certified routes and never assumes how they were generated. Product-key
 selection belongs to the existing composite `SparseMemoryAccess` front end and
 is not part of the kernel-only native lowering.
 
+The independent `SparseRouteGeneration` lowering can now feed this operation in
+the fully native compiler-visible E2E path. That later composition does not
+change this contract or make the precomputed-route confirmation end-to-end.
+
 ## Frozen semantics and capability
 
 State is logically contiguous `[partition, slot, value]`; route addresses are
@@ -32,6 +36,12 @@ not observed benchmark outcomes. Other dtypes, devices, layouts, merge rules,
 page sizes, and dimensions receive structured declines. BF16 route
 normalization uses absolute certification tolerance `0.004`, covering one
 stored BF16 probability quantum for narrow Softmax rows.
+
+An optional output is validated before dispatch: it must have exact shape
+`[P,T,D]`, the state CUDA device and dtype, contiguous layout, and no storage
+overlap with state, routes, values, beta, or log-decay. Runtime compute
+capability is queried from the state tensor's device rather than the current
+default device.
 
 For each partition/value tile, the update kernel traverses tokens sequentially:
 

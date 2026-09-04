@@ -87,6 +87,12 @@ such and retained; a semantic that cannot be expressed at all is a URM failure.
     pinned SDM execution fallback may be selected only after native decline and
     only when a separate revision/runtime/semantic probe proves the exact
     overlap; its physical address translation remains outside semantic IR.
+    `SparseRouteGeneration` is an independent pure operation. Its typed score
+    composition, selection, canonicalization, and normalization choices remain
+    architecture parameters; block sizes and warps remain schedule parameters.
+    The native composite Sparse Memory anchor serializes both exact schedules
+    and an explicit route materialization boundary rather than hiding an
+    upstream API or an untyped fused callback.
 12. **Candidate selection never mutates the program implicitly.** The base
     plan is always a candidate; every rewrite occurrence has a stable ID;
     callers may select explicitly; automatic selection runs through the

@@ -141,6 +141,72 @@ class CertifiedSparseStateRoutes:
             _ROUTE_CERTIFICATE,
         )
 
+    @classmethod
+    def from_native_generation(
+        cls,
+        spec: SparseStateMixerSpec,
+        read_output: object,
+        *,
+        write_output: object | None = None,
+    ) -> CertifiedSparseStateRoutes:
+        """Bridge only trusted URM route-kernel results without GPU value scans."""
+        from urm.backends.sparse_route import NativeSparseRouteOutput
+
+        if not isinstance(read_output, NativeSparseRouteOutput):
+            raise TypeError("read routes are not certified native route output")
+        read_output.require_intact()
+        expected_read = (
+            spec.parallel,
+            spec.sequence,
+            spec.slots_per_partition,
+            spec.reads,
+            spec.dtype,
+        )
+        actual_read = (
+            read_output.spec.parallel,
+            read_output.spec.sequence,
+            read_output.spec.source_extent,
+            read_output.spec.route_width,
+            read_output.spec.dtype,
+        )
+        if actual_read != expected_read:
+            raise ValueError("native read routes do not match state semantics")
+        write_indices = write_weights = None
+        if spec.operation is SparseStateOperation.UPDATE:
+            if not isinstance(write_output, NativeSparseRouteOutput):
+                raise ValueError("update requires certified native write routes")
+            write_output.require_intact()
+            expected_write = (*expected_read[:3], spec.writes, spec.dtype)
+            actual_write = (
+                write_output.spec.parallel,
+                write_output.spec.sequence,
+                write_output.spec.source_extent,
+                write_output.spec.route_width,
+                write_output.spec.dtype,
+            )
+            if actual_write != expected_write:
+                raise ValueError("native write routes do not match state semantics")
+            write_indices = write_output.addresses
+            write_weights = write_output.weights
+        elif write_output is not None:
+            raise ValueError("read-only state must not receive write routes")
+        tensors = [
+            read_output.addresses,
+            write_indices,
+            read_output.weights,
+            write_weights,
+        ]
+        concrete = tuple(tensor for tensor in tensors if tensor is not None)
+        return cls(
+            spec,
+            read_output.addresses,
+            read_output.weights,
+            write_indices,
+            write_weights,
+            tuple(tensor._version for tensor in concrete),
+            _ROUTE_CERTIFICATE,
+        )
+
     def require_intact(self) -> None:
         tensors = tuple(
             item
@@ -259,6 +325,31 @@ class TritonSparseStateMixerBackend:
                 )
             if not all(bool(torch.isfinite(tensor).all().item()) for tensor in tensors):
                 raise ValueError("update operands must be finite")
+        return CertifiedSparseStateOperands(
+            self.spec,
+            routes,
+            values,
+            beta,
+            log_decay,
+            tuple(tensor._version for tensor in tensors),
+            _OPERAND_CERTIFICATE,
+        )
+
+    def _prepare_generated_routes(
+        self,
+        routes: CertifiedSparseStateRoutes,
+        *,
+        values: object | None = None,
+        beta: object | None = None,
+        log_decay: object | None = None,
+    ) -> CertifiedSparseStateOperands:
+        """Internal cheap bridge for operands certified by a native pipeline."""
+        if routes.spec != self.spec:
+            raise ValueError("generated routes do not match backend semantics")
+        routes.require_intact()
+        tensors = tuple(
+            tensor for tensor in (values, beta, log_decay) if tensor is not None
+        )
         return CertifiedSparseStateOperands(
             self.spec,
             routes,

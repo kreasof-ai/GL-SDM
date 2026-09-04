@@ -189,8 +189,8 @@ cold compilation separately, and emits JSON conforming to
   `benchmarks/sparse-delta-memory-result-schema.json`.
 The native SparseStateMixer grid is frozen in
 `benchmarks/sparse_state_mixer_cases.toml`. It compares identical precomputed,
-certified routes at kernel-only scope; pipeline route-production timing remains
-explicitly not applicable until a native selector exists. Confirmation uses
+certified routes at kernel-only scope. Those results remain isolated-kernel
+evidence and are never described as end-to-end. Confirmation uses
 three fresh processes, randomized paired AB/BA samples, bootstrap upper bounds,
 drift sentinels, raw samples, and clean provenance. A whole measurement may be
 retried at most twice after its first attempt when the unchanged 15% sentinel
@@ -205,6 +205,28 @@ receives preallocated reading and final-state cotangents directly on both paths;
 cloning, graph construction, certification, and loss construction are outside
 the region. The strict schema is
 `benchmarks/sparse-state-mixer-result-schema.json`.
+
+The compiler-visible Sparse Memory E2E grid is independently frozen in
+`benchmarks/sparse_memory_e2e_cases.toml`. Its boundary starts at write/read
+factor scores and ends at readings plus persistent final state. The strict
+`benchmarks/sparse-memory-e2e-result-schema.json` keeps four levels separate:
+transparent PyTorch, pinned original SDM, diagnostic upstream-route/native-state
+hybrid, and fully native URM route plus state. The hybrid is attribution
+evidence only. Authoritative upstream/native timings cover the whole pipeline
+with CUDA events and wall clocks; route, state, and remaining fractions come
+from separate diagnostic passes so their event instrumentation cannot perturb
+the authoritative measurement. Forward and backward have separate raw paired
+AB/BA samples and confidence intervals.
+
+Completion requires exactly three fresh processes, fresh compiler caches,
+exact frozen-grid case keys, clean URM and upstream revisions, and strict schema
+validation. Case filtering is exploratory only and is rejected in confirmation
+mode. The benchmark records cold construction, compilation/load, and first-call
+costs separately; steady-state regions contain no allocation, cloning,
+certification, or input generation. NVTX ranges and the Torch CUDA profiler
+validate stage attribution on the frozen host where Nsight Systems is absent.
+The state-stage fraction and native state speedup produce a measured Amdahl
+limit, which is reported beside actual native pipeline speedup.
 
 The minimal read and decode cases were frozen as host-bound. They require every
 process median and the hierarchical CI upper ratio within 1.10, while retaining
