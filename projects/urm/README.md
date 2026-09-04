@@ -47,6 +47,10 @@ CUDA host:
   the identical methods behind a typed URM adapter. This is an **SDM
   baseline integration**, not a native/page-local URM kernel; see
   [the frozen SDM contract](docs/sparse-delta-memory.md); and
+- a frozen URM-native `SparseStateMixer` v0 route-to-state contract with
+  independent Triton forward/backward kernels, certified logical routes, and a
+  pre-tuning benchmark grid; see
+  [the native SparseStateMixer contract](docs/sparse-state-mixer.md); and
 - a layered compiler (docs/compiler-charter.md): typed semantic IR over logical
   domains with explicit locality/effect models, two verified reparameterization
   rules with deterministic traces, a simulated routing-to-communication

@@ -174,7 +174,16 @@ SDM names), selected by the
 `facebook_sparse_delta_memory_183e7df_external_adapter` execution anchor. Its
 training capability is certified from write/read scores through product-key
 top-k and Softmax into the ordered state transition; its ordered mutation
-prevents lowering through routed-reduction. Remaining slices are:
+prevents lowering through routed-reduction.
+
+The kernel-only state transition is separately represented by
+`SparseStateMixerAccess`. It consumes certified partition-local routes and can
+select `urm_native_sparse_state_mixer_v0` without importing or encoding the
+external product-key implementation. This separation preserves the composite
+score-to-state front end while allowing native route-to-state evolution and an
+external fallback to coexist.
+
+Remaining slices are:
 
 1. Dense and masked sequence reduction against the NumPy oracle.
 2. Stable Top-k and threshold route generation.

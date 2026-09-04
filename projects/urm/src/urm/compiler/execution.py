@@ -32,6 +32,7 @@ class AnchorKind(StrEnum):
     ROUTED_REDUCTION = "routed_reduction"
     PAGE_GATHER_UPDATE = "page_gather_update"
     SPARSE_DELTA_MEMORY = "sparse_delta_memory"
+    SPARSE_STATE_MIXER = "sparse_state_mixer"
     COLLECTIVE_EXCHANGE = "collective_exchange"
 
 
@@ -307,6 +308,7 @@ class AnchorRegistry:
 # concrete kernels remain in urm.backends / urm.adapters / upstream packages.
 
 SDM_EXTERNAL_ANCHOR_NAME = "facebook_sparse_delta_memory_183e7df_external_adapter"
+NATIVE_SPARSE_STATE_MIXER_ANCHOR_NAME = "urm_native_sparse_state_mixer_v0"
 
 
 TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
@@ -378,6 +380,16 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
         kind=AnchorKind.SPARSE_DELTA_MEMORY,
         name=SDM_EXTERNAL_ANCHOR_NAME,
         effect=ORDERED_STATE,
+        backward_verified_dtypes=frozenset({"float32", "bfloat16"}),
+        deterministic_accumulation=False,
+        commit_capable=True,
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.SPARSE_STATE_MIXER,
+        name=NATIVE_SPARSE_STATE_MIXER_ANCHOR_NAME,
+        effect=ORDERED_STATE,
+        experimental=True,
         backward_verified_dtypes=frozenset({"float32", "bfloat16"}),
         deterministic_accumulation=False,
         commit_capable=True,
@@ -474,6 +486,61 @@ def make_sdm_selector(
     return _select
 
 
+def make_sparse_state_mixer_selector(
+    anchor: ExecutionAnchor,
+    support_probe: Callable[[object], object] | None = None,
+) -> AnchorSelector:
+    """Select only the verified URM-native route-to-state capability."""
+
+    def _select(request: AnchorRequest) -> AnchorDecision | None:
+        if request.kind is not AnchorKind.SPARSE_STATE_MIXER:
+            return None
+        from urm.compiler.semantic import SparseStateMixerAccess
+
+        if not isinstance(request.semantic_op, SparseStateMixerAccess):
+            return AnchorDecision(
+                anchor=None,
+                decline=Decline(
+                    DiagnosticCode.UNSUPPORTED_SEMANTICS,
+                    "native SparseStateMixer requires a typed SparseStateMixerAccess",
+                ),
+            )
+        probe = support_probe
+        if probe is None:
+            try:
+                from urm.backends.sparse_state_mixer import (
+                    TritonSparseStateMixerBackend,
+                )
+
+                probe = TritonSparseStateMixerBackend.support_status
+            except Exception as error:  # noqa: BLE001 - optional GPU runtime
+                return AnchorDecision(
+                    anchor=None,
+                    decline=Decline(
+                        DiagnosticCode.DEPENDENCY_MISSING,
+                        f"native SparseStateMixer dependencies unavailable: {error!r}",
+                    ),
+                )
+        status = probe(request.semantic_op.spec)
+        if not status.supported:
+            code = {
+                "missing_dependency": DiagnosticCode.DEPENDENCY_MISSING,
+                "unsupported_hardware": DiagnosticCode.UNSUPPORTED_HARDWARE,
+                "unsupported_device": DiagnosticCode.UNSUPPORTED_HARDWARE,
+                "unsupported_semantics": DiagnosticCode.UNSUPPORTED_SEMANTICS,
+                "unsupported_dtype": DiagnosticCode.UNSUPPORTED_SEMANTICS,
+                "unsupported_layout": DiagnosticCode.UNSUPPORTED_SEMANTICS,
+                "unsupported_shape": DiagnosticCode.ANCHOR_DECLINED,
+            }.get(status.code, DiagnosticCode.ANCHOR_DECLINED)
+            return AnchorDecision(
+                anchor=None,
+                decline=Decline(code, status.reason or status.code),
+            )
+        return AnchorDecision(anchor=anchor, decline=None)
+
+    return _select
+
+
 def default_registry() -> AnchorRegistry:
     registry = AnchorRegistry()
     sdm_anchor = next(
@@ -482,5 +549,11 @@ def default_registry() -> AnchorRegistry:
         if anchor.kind is AnchorKind.SPARSE_DELTA_MEMORY
     )
     registry.register(make_sdm_selector(sdm_anchor))
+    sparse_state_anchor = next(
+        anchor
+        for anchor in TRUSTED_ANCHORS
+        if anchor.kind is AnchorKind.SPARSE_STATE_MIXER
+    )
+    registry.register(make_sparse_state_mixer_selector(sparse_state_anchor))
     registry.register(make_selector(TRUSTED_ANCHORS))
     return registry

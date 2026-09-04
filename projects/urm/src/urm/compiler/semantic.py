@@ -174,11 +174,31 @@ class SparseUpdateRule(StrEnum):
 
 
 class SparseReadTiming(StrEnum):
+    CURRENT_STATE = "current_state"
+    BEFORE_UPDATE = "before_update"
     AFTER_UPDATE = "after_update"
 
 
 class SparseStatePolicy(StrEnum):
     PERSISTENT_IN_PLACE = "persistent_in_place"
+
+
+class SparseStateOperation(StrEnum):
+    """Closed execution vocabulary for the route-to-state mixer."""
+
+    READ_ONLY = "read_only"
+    UPDATE = "update"
+
+
+class SparseStateLayout(StrEnum):
+    """Logical state layout; physical tiling remains a lowering choice."""
+
+    PARTITION_SLOT_VALUE = "partition_slot_value"
+
+
+class SparseStateExecutionMode(StrEnum):
+    INFERENCE = "inference"
+    TRAINING = "training"
 
 
 @dataclass(frozen=True, slots=True)
@@ -238,6 +258,78 @@ class SparseMemoryMixerSpec:
 # Compatibility name for the external baseline slice. Native lowering work
 # consumes SparseMemoryMixerSpec and must not depend on the upstream adapter.
 SparseDeltaMemorySpec = SparseMemoryMixerSpec
+
+
+@dataclass(frozen=True, slots=True)
+class SparseStateMixerSpec:
+    """Restricted URM-owned route-to-state algebra.
+
+    Routes are already certified logical addresses and normalized weights.
+    The spec does not describe how they were produced and contains no external
+    library API, physical kernel layout, or unchecked tensor expression.
+    """
+
+    parallel: int
+    sequence: int
+    slots_per_partition: int
+    value_dim: int
+    writes: int
+    reads: int
+    dtype: DType
+    operation: SparseStateOperation
+    read_timing: SparseReadTiming
+    mode: SparseStateExecutionMode = SparseStateExecutionMode.INFERENCE
+    update_rule: SparseUpdateRule = SparseUpdateRule.DECAYED_DELTA
+    collision_policy: MergePolicy = MergePolicy.ORDERED
+    within_token_collision_policy: MergePolicy = MergePolicy.REJECT
+    state_policy: SparseStatePolicy = SparseStatePolicy.PERSISTENT_IN_PLACE
+    accumulation_dtype: DType = DType.FLOAT32
+    state_layout: SparseStateLayout = SparseStateLayout.PARTITION_SLOT_VALUE
+    page_size: int = 1
+
+    def __post_init__(self) -> None:
+        for name in (
+            "parallel",
+            "sequence",
+            "slots_per_partition",
+            "value_dim",
+            "reads",
+        ):
+            if getattr(self, name) <= 0:
+                raise ValueError(f"SparseStateMixer {name} must be positive")
+        if self.writes < 0:
+            raise ValueError("SparseStateMixer writes must be non-negative")
+        if self.reads > self.slots_per_partition:
+            raise ValueError("read width must not exceed slots per partition")
+        if self.operation is SparseStateOperation.READ_ONLY:
+            if self.writes != 0:
+                raise ValueError("read-only SparseStateMixer requires writes=0")
+            if self.read_timing is not SparseReadTiming.CURRENT_STATE:
+                raise ValueError("read-only SparseStateMixer reads current state")
+        else:
+            if self.writes <= 0:
+                raise ValueError("updating SparseStateMixer requires writes > 0")
+            if self.writes > self.slots_per_partition:
+                raise ValueError("write width must not exceed slots per partition")
+            if self.read_timing not in {
+                SparseReadTiming.BEFORE_UPDATE,
+                SparseReadTiming.AFTER_UPDATE,
+            }:
+                raise ValueError("updates require pre-update or post-update reads")
+        if self.dtype not in {DType.FLOAT32, DType.BFLOAT16}:
+            raise ValueError("SparseStateMixer v0 supports float32 and bfloat16")
+        if self.accumulation_dtype is not DType.FLOAT32:
+            raise ValueError("SparseStateMixer v0 requires float32 accumulation")
+        if self.collision_policy is not MergePolicy.ORDERED:
+            raise ValueError("SparseStateMixer requires ordered cross-token collisions")
+        if self.within_token_collision_policy is not MergePolicy.REJECT:
+            raise ValueError("SparseStateMixer rejects within-token collisions")
+        if self.state_policy is not SparseStatePolicy.PERSISTENT_IN_PLACE:
+            raise ValueError("SparseStateMixer v0 requires persistent state")
+        if self.state_layout is not SparseStateLayout.PARTITION_SLOT_VALUE:
+            raise ValueError("SparseStateMixer v0 requires partition-slot-value state")
+        if self.page_size != 1:
+            raise ValueError("SparseStateMixer v0 uses one logical slot per page")
 
 
 @dataclass(frozen=True, slots=True)
@@ -396,6 +488,19 @@ class SparseMemoryAccess(SemanticOp):
         return ORDERED_STATE
 
 
+@dataclass(frozen=True, slots=True)
+class SparseStateMixerAccess(SemanticOp):
+    """Stateful route-to-memory skeleton lowered by URM-native kernels."""
+
+    spec: SparseStateMixerSpec
+
+    @property
+    def effect(self) -> EffectSignature:
+        if self.spec.operation is SparseStateOperation.READ_ONLY:
+            return STATE_READ_EFFECT
+        return ORDERED_STATE
+
+
 # Compatibility name for users of the external-baseline constructor. The
 # semantic node itself is the URM-owned sparse-memory skeleton above.
 SparseDeltaMemoryAccess = SparseMemoryAccess
@@ -424,6 +529,7 @@ SemanticNode = (
     | StateRead
     | StateUpdate
     | SparseMemoryAccess
+    | SparseStateMixerAccess
     | CollectiveExchange
 )
 
@@ -657,6 +763,71 @@ def sparse_delta_memory_program(
             "read_addresses",
             "read_weights",
         ),
+    )
+
+
+def sparse_state_mixer_program(
+    *,
+    name: str = "sparse_state_mixer",
+    parallel: int = 1,
+    sequence: int = 128,
+    slots_per_partition: int = 4096,
+    value_dim: int = 256,
+    writes: int = 4,
+    reads: int = 4,
+    dtype: DType = DType.BFLOAT16,
+    operation: SparseStateOperation = SparseStateOperation.UPDATE,
+    read_timing: SparseReadTiming = SparseReadTiming.AFTER_UPDATE,
+    mode: SparseStateExecutionMode = SparseStateExecutionMode.INFERENCE,
+) -> SemanticProgram:
+    """Build the native kernel-only operation over certified logical routes."""
+    spec = SparseStateMixerSpec(
+        parallel=parallel,
+        sequence=sequence,
+        slots_per_partition=slots_per_partition,
+        value_dim=value_dim,
+        writes=writes,
+        reads=reads,
+        dtype=dtype,
+        operation=operation,
+        read_timing=read_timing,
+        mode=mode,
+    )
+    inputs = [
+        TensorHandle("read_addresses", DType.INT64, (parallel, sequence, reads)),
+        TensorHandle("read_weights", dtype, (parallel, sequence, reads)),
+        TensorHandle("memory", dtype, (parallel, slots_per_partition, value_dim)),
+    ]
+    op_inputs = ["read_addresses", "read_weights", "memory"]
+    if operation is SparseStateOperation.UPDATE:
+        inputs = [
+            TensorHandle("write_addresses", DType.INT64, (parallel, sequence, writes)),
+            TensorHandle("write_weights", dtype, (parallel, sequence, writes)),
+            TensorHandle("values", dtype, (parallel, sequence, value_dim)),
+            TensorHandle("beta", dtype, (parallel, sequence, 1)),
+            TensorHandle("log_decay", dtype, (parallel, sequence, 1)),
+            *inputs,
+        ]
+        op_inputs = [
+            "write_addresses",
+            "write_weights",
+            "values",
+            "beta",
+            "log_decay",
+            *op_inputs,
+        ]
+    return SemanticProgram.build(
+        name=name,
+        inputs=tuple(inputs),
+        ops=(
+            SparseStateMixerAccess(
+                name="sparse_state_mixer",
+                inputs=tuple(op_inputs),
+                outputs=("readings", "updated_memory"),
+                spec=spec,
+            ),
+        ),
+        outputs=("readings", "updated_memory"),
     )
 
 

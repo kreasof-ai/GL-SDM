@@ -71,6 +71,8 @@ from urm.compiler.semantic import (
     SDMExecutionMode,
     Select,
     SparseDeltaMemoryAccess,
+    SparseStateExecutionMode,
+    SparseStateMixerAccess,
     StateUpdate,
     Transform,
     WeightedReduce,
@@ -535,9 +537,14 @@ class UrmCompiler:
     ) -> tuple[Diagnostic, ...]:
         diagnostics: list[Diagnostic] = []
         for op in program.ops:
-            if not isinstance(op, SparseDeltaMemoryAccess):
+            if not isinstance(op, SparseDeltaMemoryAccess | SparseStateMixerAccess):
                 continue
-            if op.spec.mode is SDMExecutionMode.TRAINING:
+            training_mode = (
+                op.spec.mode is SDMExecutionMode.TRAINING
+                if isinstance(op, SparseDeltaMemoryAccess)
+                else op.spec.mode is SparseStateExecutionMode.TRAINING
+            )
+            if training_mode:
                 compatible = intent is CompilationIntent.TRAINING
                 expected = CompilationIntent.TRAINING
             else:
@@ -551,7 +558,7 @@ class UrmCompiler:
                     Diagnostic(
                         code=DiagnosticCode.INTENT_CONFLICT,
                         message=(
-                            f"{op.name}: SDM semantic mode {op.spec.mode.value!r} "
+                            f"{op.name}: sparse-state semantic mode {op.spec.mode.value!r} "
                             f"is incompatible with compilation intent {intent.value!r}; "
                             f"use intent {expected.value!r}"
                         ),
@@ -1064,7 +1071,11 @@ class UrmCompiler:
         found: list[DType] = []
         for tensor in op.inputs:
             dtype = handles.get(tensor)
-            if dtype is not None:
+            if dtype is not None and dtype in {
+                DType.FLOAT16,
+                DType.BFLOAT16,
+                DType.FLOAT32,
+            }:
                 found.append(dtype)
         return tuple(found)
 
@@ -1134,6 +1145,25 @@ class UrmCompiler:
                         )
                     # The exact canonical override deliberately keeps the
                     # runtime/revision-aware selector's decision.
+                elif request_kind is AnchorKind.SPARSE_STATE_MIXER:
+                    from urm.compiler.execution import (
+                        NATIVE_SPARSE_STATE_MIXER_ANCHOR_NAME,
+                    )
+
+                    if override != NATIVE_SPARSE_STATE_MIXER_ANCHOR_NAME:
+                        decision = AnchorDecision(
+                            anchor=None,
+                            decline=Decline(
+                                reason_code=DiagnosticCode.ANCHOR_DECLINED,
+                                message=(
+                                    f"override {override!r} is incompatible with "
+                                    "the native SparseStateMixer v0 anchor "
+                                    f"{NATIVE_SPARSE_STATE_MIXER_ANCHOR_NAME!r}"
+                                ),
+                            ),
+                        )
+                    # The exact native override cannot bypass the capability
+                    # and hardware-aware selector's decision.
                 elif not (
                     decision.anchor is not None and decision.anchor.name == override
                 ):
@@ -1147,7 +1177,11 @@ class UrmCompiler:
                 collector.error(
                     (
                         decline.reason_code
-                        if request_kind is AnchorKind.SPARSE_DELTA_MEMORY
+                        if request_kind
+                        in {
+                            AnchorKind.SPARSE_DELTA_MEMORY,
+                            AnchorKind.SPARSE_STATE_MIXER,
+                        }
                         else DiagnosticCode.NO_ANCHOR_AVAILABLE
                     ),
                     f"{op.name}: {decline.message}",
@@ -1432,6 +1466,8 @@ class UrmCompiler:
             return AnchorKind.RECURRENT_SCAN, ()
         if isinstance(op, SparseDeltaMemoryAccess):
             return AnchorKind.SPARSE_DELTA_MEMORY, ()
+        if isinstance(op, SparseStateMixerAccess):
+            return AnchorKind.SPARSE_STATE_MIXER, ()
         if isinstance(op, Score | Select | Transform):
             return None, ()  # folded into producers by construction here
         if isinstance(op, CollectiveExchange):
@@ -1446,6 +1482,7 @@ class UrmCompiler:
         from urm.compiler.semantic import (
             Matmul,
             SparseDeltaMemoryAccess,
+            SparseStateMixerAccess,
             WeightedReduce,
         )
 
@@ -1489,7 +1526,7 @@ class UrmCompiler:
                 temporary_bytes=m * n * 2,
                 notes=(f"anchor={anchor_name}",),
             )
-        if isinstance(op, SparseDeltaMemoryAccess):
+        if isinstance(op, SparseDeltaMemoryAccess | SparseStateMixerAccess):
             spec = op.spec
             dtype_bytes = 4 if spec.dtype.value == "float32" else 2
             queries = spec.parallel * spec.sequence
@@ -1510,7 +1547,7 @@ class UrmCompiler:
                 temporary_bytes=output_bytes,
                 notes=(
                     f"anchor={anchor_name}",
-                    "analytical SDM sparse route/state traffic; not measured",
+                    "analytical sparse route/state traffic; not measured",
                 ),
             )
         return CostEstimate(

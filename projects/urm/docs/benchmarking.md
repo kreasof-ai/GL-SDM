@@ -187,6 +187,14 @@ cold compilation separately, and emits JSON conforming to
   and explicitly makes no mature-kernel gate claim without a predeclared
   eligibility decision. Its schema is
   `benchmarks/sparse-delta-memory-result-schema.json`.
+The native SparseStateMixer grid is frozen in
+`benchmarks/sparse_state_mixer_cases.toml`. It compares identical precomputed,
+certified routes at kernel-only scope; pipeline route-production timing remains
+explicitly not applicable until a native selector exists. Confirmation uses
+three fresh processes, randomized paired AB/BA samples, bootstrap upper bounds,
+drift sentinels, raw samples, and clean provenance. See
+`docs/sparse-state-mixer.md` for fixed semantic/numerical envelopes.
+
 - `benchmarks/routed_epilogue_selection.py`: solver-guided schedule selection
   for the routed-scale epilogue. Runs the full documented pipeline -
   candidates, constraint model, Z3 feasibility + bounded lexicographic
