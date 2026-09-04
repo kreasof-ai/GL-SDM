@@ -60,7 +60,11 @@ def torch_sparse_state_mixer(
                     values[partition, token].to(accumulation_dtype) - retrieved
                 )
                 updated = (decayed + weights * delta).to(memory.dtype)
-                partition_state = state[partition].index_copy(0, addresses, updated)
+                # PyTorch's index_copy requires int64 even though the semantic
+                # and native contracts support both int32 and int64 routes.
+                partition_state = state[partition].index_copy(
+                    0, addresses.to(torch.int64), updated
+                )
                 state = torch.cat(
                     (
                         state[:partition],

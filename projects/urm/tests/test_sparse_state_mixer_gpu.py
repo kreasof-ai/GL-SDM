@@ -49,6 +49,7 @@ def _case(
     reads=2,
     timing=SparseReadTiming.AFTER_UPDATE,
     collision_heavy=False,
+    index_dtype=torch.int64,
 ):
     dtype_spec = DType.FLOAT32 if dtype is torch.float32 else DType.BFLOAT16
     operation = (
@@ -81,7 +82,7 @@ def _case(
                     )
                 )
             rows.append(torch.stack(tokens))
-        result = torch.stack(rows).to(device="cuda", dtype=torch.int64)
+        result = torch.stack(rows).to(device="cuda", dtype=index_dtype)
         if result.shape[-1] != width:
             raise AssertionError("test route generator produced a collision")
         return result.contiguous()
@@ -211,6 +212,46 @@ def test_native_forward_matches_torch_and_numpy(dtype, kwargs) -> None:
         native_state.memory.float().cpu(),
         torch.from_numpy(oracle_state).float(),
         **TOLERANCES[dtype],
+    )
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+def test_native_int32_routes_match_reference(dtype) -> None:
+    backend, prepared, memory, values, beta, log_decay = _case(
+        dtype=dtype,
+        sequence=9,
+        slots=257,
+        dim=73,
+        writes=7,
+        reads=5,
+        index_dtype=torch.int32,
+    )
+    expected, expected_state = _reference(prepared, memory, values, beta, log_decay)
+    actual, state = backend.execute(SparseState(memory.clone()), prepared)
+    assert prepared.routes.read_indices.dtype is torch.int32
+    assert prepared.routes.write_indices.dtype is torch.int32
+    torch.testing.assert_close(actual.float(), expected.float(), **TOLERANCES[dtype])
+    torch.testing.assert_close(
+        state.memory.float(), expected_state.float(), **TOLERANCES[dtype]
+    )
+
+
+def test_long_recurrence_near_frozen_sequence_limit() -> None:
+    backend, prepared, memory, values, beta, log_decay = _case(
+        dtype=torch.float32,
+        sequence=1984,
+        slots=257,
+        dim=17,
+        writes=2,
+        reads=2,
+        collision_heavy=True,
+        index_dtype=torch.int32,
+    )
+    expected, expected_state = _reference(prepared, memory, values, beta, log_decay)
+    actual, state = backend.execute(SparseState(memory.clone()), prepared)
+    torch.testing.assert_close(actual, expected, **TOLERANCES[torch.float32])
+    torch.testing.assert_close(
+        state.memory, expected_state, **TOLERANCES[torch.float32]
     )
 
 
@@ -348,6 +389,144 @@ def test_update_backward_covers_every_differentiable_input(dtype, timing) -> Non
             msg=lambda message, name=name: f"{name}: {message}",
             **BACKWARD_TOLERANCES[dtype],
         )
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+@pytest.mark.parametrize("dim,width", [(257, 7), (1024, 64)])
+def test_tiled_training_boundaries_match_reference(dtype, dim, width) -> None:
+    backend, prepared, memory, values, beta, log_decay = _case(
+        dtype=dtype,
+        sequence=16,
+        slots=256,
+        dim=dim,
+        writes=width,
+        reads=width,
+        collision_heavy=True,
+        index_dtype=torch.int32,
+    )
+    reading_cotangent = torch.randn_like(memory[:, :16])
+    memory_cotangent = torch.randn_like(memory)
+
+    def run(native):
+        leaves = [
+            tensor.detach().clone().requires_grad_(True)
+            for tensor in (
+                memory,
+                prepared.routes.write_weights,
+                values,
+                beta,
+                log_decay,
+                prepared.routes.read_weights,
+            )
+        ]
+        if native:
+            routes = CertifiedSparseStateRoutes.certify(
+                prepared.spec,
+                prepared.routes.read_indices,
+                leaves[5],
+                write_indices=prepared.routes.write_indices,
+                write_weights=leaves[1],
+            )
+            readings, state = backend.execute(
+                SparseState(leaves[0]),
+                backend.prepare(
+                    routes, values=leaves[2], beta=leaves[3], log_decay=leaves[4]
+                ),
+            )
+            final_memory = state.memory
+        else:
+            readings, final_memory = torch_sparse_state_mixer(
+                leaves[0],
+                prepared.routes.read_indices,
+                leaves[5],
+                write_indices=prepared.routes.write_indices,
+                write_weights=leaves[1],
+                values=leaves[2],
+                beta=leaves[3],
+                log_decay=leaves[4],
+                read_timing=prepared.spec.read_timing,
+            )
+        loss = (readings.float() * reading_cotangent.float()).mean() + (
+            final_memory.float() * memory_cotangent.float()
+        ).mean()
+        return readings, final_memory, torch.autograd.grad(loss, leaves)
+
+    native_readings, native_state, native_gradients = run(True)
+    reference_readings, reference_state, reference_gradients = run(False)
+    torch.testing.assert_close(
+        native_readings.float(), reference_readings.float(), **TOLERANCES[dtype]
+    )
+    torch.testing.assert_close(
+        native_state.float(), reference_state.float(), **TOLERANCES[dtype]
+    )
+    for actual, expected in zip(native_gradients, reference_gradients, strict=True):
+        assert torch.isfinite(actual).all()
+        torch.testing.assert_close(
+            actual.float(), expected.float(), **BACKWARD_TOLERANCES[dtype]
+        )
+
+
+def test_preallocated_output_is_validated_before_dispatch(monkeypatch) -> None:
+    backend, prepared, memory, values, *_ = _case(
+        sequence=3, slots=31, dim=7, writes=2, reads=2
+    )
+    state = SparseState(memory.clone())
+    valid = torch.empty((1, 3, 7), device="cuda", dtype=torch.float32)
+    actual, _ = backend.execute(state, prepared, out=valid)
+    assert actual.data_ptr() == valid.data_ptr()
+
+    invalid_outputs = [
+        torch.empty((1, 3, 8), device="cuda"),
+        torch.empty((1, 3, 7), device="cuda", dtype=torch.bfloat16),
+        torch.empty((1, 3, 7)),
+        torch.empty((1, 7, 3), device="cuda").transpose(1, 2),
+        values,
+    ]
+    import urm.triton_kernels.sparse_state_mixer as kernels
+
+    launches = 0
+
+    def forbidden(*args, **kwargs):
+        nonlocal launches
+        launches += 1
+        raise AssertionError("invalid output reached kernel dispatch")
+
+    monkeypatch.setattr(kernels, "sparse_state_update", forbidden)
+    for out in invalid_outputs:
+        with pytest.raises(ValueError):
+            backend.execute(SparseState(memory.clone()), prepared, out=out)
+    overlapping_state = SparseState(memory.clone())
+    state_out = overlapping_state.memory.view(-1)[:21].view(1, 3, 7)
+    with pytest.raises(ValueError, match="must not overlap"):
+        backend.execute(overlapping_state, prepared, out=state_out)
+    assert launches == 0
+
+    route_backend, route_prepared, route_memory, *_ = _case(
+        sequence=3, slots=31, dim=2, writes=0, reads=2
+    )
+    with pytest.raises(ValueError, match="must not overlap"):
+        route_backend.execute(
+            SparseState(route_memory),
+            route_prepared,
+            out=route_prepared.routes.read_weights,
+        )
+
+
+def test_runtime_capability_uses_state_device(monkeypatch) -> None:
+    backend, prepared, memory, *_ = _case(sequence=1, slots=8, dim=7, writes=0, reads=1)
+    seen = []
+    real = torch.cuda.get_device_capability
+
+    def capability(device=None):
+        seen.append(device)
+        if device == memory.device:
+            return (7, 5)
+        return real(device)
+
+    monkeypatch.setattr(torch.cuda, "get_device_capability", capability)
+    with pytest.raises(ValueError, match="unsupported_hardware"):
+        backend.execute(SparseState(memory), prepared)
+    assert seen == [memory.device]
 
 
 def test_read_only_backward_covers_memory_and_weights() -> None:

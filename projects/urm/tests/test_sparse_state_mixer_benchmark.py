@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from argparse import Namespace
 from pathlib import Path
 
 import pytest
@@ -73,3 +74,28 @@ def test_host_bound_confirmation_uses_absolute_latency_policy() -> None:
         memory_passes=[True, True, True],
         per_process_gate_passes=[True, True, False],
     )
+
+
+@pytest.mark.parametrize("processes", [1, 2, 4])
+def test_completion_confirmation_requires_exactly_three_processes(processes) -> None:
+    args = Namespace(
+        confirmation_processes=processes,
+        case=[],
+        samples=3,
+        warmup=1,
+        output=Path("unused.json"),
+    )
+    with pytest.raises(ValueError, match="exactly three"):
+        benchmark._run_confirmation(args)
+
+
+def test_completion_confirmation_rejects_case_filtering() -> None:
+    args = Namespace(
+        confirmation_processes=3,
+        case=["decode_fp32"],
+        samples=3,
+        warmup=1,
+        output=Path("unused.json"),
+    )
+    with pytest.raises(ValueError, match="cannot filter"):
+        benchmark._run_confirmation(args)

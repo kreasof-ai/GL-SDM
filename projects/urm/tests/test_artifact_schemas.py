@@ -149,6 +149,15 @@ def test_committed_sparse_state_mixer_confirmation_validates() -> None:
     assert artifact["schema_version"] == 1
     assert artifact["confirmation"]["passed"] is True
     assert len(artifact["runs"]) == 3
+    import tomllib
+
+    grid = tomllib.loads(
+        (PROJECT_ROOT / "benchmarks" / "sparse_state_mixer_cases.toml").read_text(
+            encoding="utf-8"
+        )
+    )["case"]
+    expected_case_names = {case["name"] for case in grid}
+    assert all(set(run["cases"]) == expected_case_names for run in artifact["runs"])
     assert {run["provenance"]["git_revision"] for run in artifact["runs"]} == {
         artifact["provenance"]["git_revision"]
     }

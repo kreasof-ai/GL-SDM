@@ -1131,6 +1131,13 @@ def _confirmation_summary(runs: list[dict[str, object]]) -> dict[str, object]:
 def _run_confirmation(args) -> None:
     from provenance import provenance, utc_now, write_artifact
 
+    if args.confirmation_processes != 3:
+        raise ValueError(
+            "completion confirmation requires exactly three fresh processes"
+        )
+    if args.case:
+        raise ValueError("completion confirmation cannot filter the frozen case grid")
+
     command = [
         sys.executable,
         str(Path(__file__).resolve()),
@@ -1140,8 +1147,6 @@ def _run_confirmation(args) -> None:
         "--warmup",
         str(args.warmup),
     ]
-    for name in args.case:
-        command.extend(("--case", name))
     runs = []
     process_wall_ms = []
     with tempfile.TemporaryDirectory(prefix="urm-sparse-state-confirm-") as root:
@@ -1170,11 +1175,19 @@ def _run_confirmation(args) -> None:
     if upstream_commits != {UPSTREAM_COMMIT} or upstream_dirty != {False}:
         raise RuntimeError("confirmation requires the clean pinned upstream checkout")
     grid = load_cases()
+    expected_case_names = {str(case["name"]) for case in grid}
+    for index, run in enumerate(runs):
+        actual_case_names = set(run["cases"])
+        if actual_case_names != expected_case_names:
+            missing = sorted(expected_case_names - actual_case_names)
+            extra = sorted(actual_case_names - expected_case_names)
+            raise RuntimeError(
+                "confirmation child case keys differ from frozen grid: "
+                f"process={index}, missing={missing}, extra={extra}"
+            )
     configuration = {
         "grid": grid,
-        "selected": [
-            case["name"] for case in grid if not args.case or case["name"] in args.case
-        ],
+        "selected": [case["name"] for case in grid],
         "samples_per_process": args.samples,
         "warmup": args.warmup,
         "processes": args.confirmation_processes,

@@ -270,6 +270,8 @@ class TritonSparseStateMixerBackend:
         )
 
     def _validate_state(self, state: SparseState) -> None:
+        import torch
+
         memory = state.memory
         expected = (
             self.spec.parallel,
@@ -282,8 +284,50 @@ class TritonSparseStateMixerBackend:
             raise ValueError("state memory must be contiguous CUDA storage")
         if _dtype_name(memory) != self.spec.dtype.value:
             raise ValueError("state memory dtype does not match semantics")
+        runtime_status = sparse_state_spec_status(
+            self.spec,
+            device_type=memory.device.type,
+            compute_capability=torch.cuda.get_device_capability(memory.device),
+        )
+        runtime_status.require()
         if not isinstance(state.sequence_length, int) or state.sequence_length < 0:
             raise ValueError("state sequence length must be a non-negative integer")
+
+    def _validate_out(
+        self,
+        out: object | None,
+        state: SparseState,
+        prepared: CertifiedSparseStateOperands,
+    ) -> None:
+        """Reject unsafe preallocated outputs before importing a kernel wrapper."""
+        if out is None:
+            return
+        import torch
+
+        expected = (self.spec.parallel, self.spec.sequence, self.spec.value_dim)
+        if not isinstance(out, torch.Tensor) or tuple(out.shape) != expected:
+            raise ValueError(f"out must be a tensor with shape {expected}")
+        if not out.is_cuda or out.device != state.memory.device:
+            raise ValueError("out must be on the state CUDA device")
+        if out.dtype != state.memory.dtype:
+            raise ValueError("out dtype must match state dtype")
+        if not out.is_contiguous():
+            raise ValueError("out must be contiguous")
+        operands = (
+            state.memory,
+            prepared.routes.read_indices,
+            prepared.routes.read_weights,
+            prepared.routes.write_indices,
+            prepared.routes.write_weights,
+            prepared.values,
+            prepared.beta,
+            prepared.log_decay,
+        )
+        for operand in operands:
+            if operand is not None and torch._C._overlaps(out, operand):
+                raise ValueError(
+                    "out storage must not overlap state, routes, or operands"
+                )
 
     def execute(
         self,
@@ -298,6 +342,7 @@ class TritonSparseStateMixerBackend:
         self._validate_state(state)
         if state.memory.device != prepared.routes.read_indices.device:
             raise ValueError("state and routes must share one CUDA device")
+        self._validate_out(out, state, prepared)
         from urm.triton_kernels.sparse_state_mixer import (
             sparse_state_read,
             sparse_state_update,
