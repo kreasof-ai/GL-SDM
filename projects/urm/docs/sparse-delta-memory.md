@@ -155,11 +155,23 @@ Both advertised dtypes have committed differential gates. Separate cloned
 leaves are evaluated through transparent PyTorch, the direct pinned upstream
 bound method, and the URM adapter. The loss exercises weighted readings and
 final memory; upstream final-state cotangents use its explicit
-`grad_final_memory` argument. Gradients for initial memory, write weights,
-values, beta, log-decay, and read weights must be finite and pairwise close.
-Frozen tolerances are fp32 `atol=2.5e-5, rtol=2e-4` and bf16
-`atol=5e-5, rtol=2e-2`. Thus `backward_verified_dtypes` remains exactly
-`{float32, bfloat16}`.
+`grad_final_memory` argument. Each path starts from independent cloned
+`write_scores`, `read_scores`, initial memory, values, beta, and log-decay.
+The transparent path performs product-key combination/top-k, deterministic
+address sorting, Softmax, and the ordered recurrence; the direct path uses the
+exact upstream address method, activations, and update method; the adapter path
+uses only `generate_trace` followed by `execute`. It never constructs or
+replaces route weights.
+
+Inputs are deterministic random samples rejected and regenerated whenever any
+half-key or selected product-key decision contains a tie. Write and read
+addresses must agree exactly across all three paths. Gradients for both score
+tensors, initial memory, values, beta, and log-decay must be finite and pairwise
+close. Frozen gradient tolerances are fp32 `atol=2.5e-5, rtol=2e-4` and bf16
+`atol=5e-5, rtol=2e-2`; separately recorded training-forward envelopes are
+fp32 `atol=2.5e-3, rtol=2e-3` and bf16 `atol=5e-3, rtol=2e-2`. Thus
+`backward_verified_dtypes` remains exactly `{float32, bfloat16}` and now covers
+the complete compiler-visible composite operation.
 
 ## Explicitly rejected
 
@@ -194,7 +206,8 @@ Raw alternating AB/BA wall/CUDA-event samples, median, p95, throughput,
 separate direct/adapter allocator peaks, analytical traffic estimates, route
 distributions, call identity, cold process/import/address/read/update timings,
 and complete upstream/runtime provenance are retained in
-`results/sparse-delta-memory/benchmark.json`. Decode samples preserve their
+`results/sparse-delta-memory/benchmark.json`, whose breaking addition of
+required score-gradient evidence is schema version 2. Decode samples preserve their
 preallocated states across invocations; unsupported cases and read-only write
 traffic are recorded as `not_applicable`, never as zero.
 
@@ -203,3 +216,12 @@ The case formerly called `training_prefill` is named
 Backward certification is a separate untimed correctness section. Artifact
 generation compares stored object identity, bound instance, and function for
 the direct and adapter-below-dispatch callables and aborts if they differ.
+
+The artifact reports five substantial workloads separately from read-only
+smoke and cached decode. For the two tiny host-bound cases it reports paired
+device-median overhead in both absolute microseconds and percentage; percentage
+alone is not used to characterize integration cost. The substantial group has
+per-case percentages plus median and maximum across cases. These are
+descriptive external-anchor observations, not a native-kernel result, and the
+artifact explicitly declines a mature-kernel gate claim because this slice has
+no predeclared artifact eligibility decision for that gate.

@@ -45,6 +45,7 @@ def test_committed_sparse_delta_memory_artifact_validates_against_schema() -> No
     )
     artifact = _artifact("sparse-delta-memory/benchmark.json")
     validate(artifact, schema)
+    assert artifact["schema_version"] == 2
     assert set(artifact["cases"]) >= {
         "smoke_read_only",
         "prefill_batched",
@@ -59,18 +60,23 @@ def test_committed_sparse_delta_memory_artifact_validates_against_schema() -> No
     assert artifact["methodology"]["training_timing"].startswith("forward-only")
     backward = artifact["backward_correctness"]
     assert backward["passed"] is True
+    assert backward["scope"].startswith("compiler-visible write_scores/read_scores")
     assert backward["measurement_scope"] == "untimed_correctness_only"
     assert set(backward["dtypes"]) == {"float32", "bfloat16"}
     for dtype, report in backward["dtypes"].items():
         assert report["dtype"] == dtype
         assert report["passed"] is True
+        assert report["product_key_tie_free"] is True
+        assert report["input_generation"]["path_inputs"] == "independent clones"
+        assert report["addresses"]["passed"] is True
+        assert report["route_weights"]["passed"] is True
         assert set(report["gradients"]) == {
+            "write_scores",
+            "read_scores",
             "initial_memory",
-            "write_weights",
             "values",
             "beta",
             "log_decay",
-            "read_weights",
         }
     decode_cache = artifact["cases"]["decode_cached"]["cache_persistence"]
     assert decode_cache["status"] == "measured"
@@ -94,7 +100,7 @@ def test_committed_sparse_delta_memory_artifact_validates_against_schema() -> No
         )
         paired = case["paired_performance"]
         assert len(paired["pair_order"]) == paired["pairs"]
-        for name in (
+        for sample_name in (
             "direct_wall",
             "adapter_wall",
             "direct_device",
@@ -102,12 +108,36 @@ def test_committed_sparse_delta_memory_artifact_validates_against_schema() -> No
             "paired_wall_overhead_ms",
             "paired_device_overhead_ms",
         ):
-            assert len(paired[name]["raw_samples_ms"]) == paired[name]["sample_count"]
-        for name in (
+            assert (
+                len(paired[sample_name]["raw_samples_ms"])
+                == paired[sample_name]["sample_count"]
+            )
+        for sample_name in (
             "paired_wall_overhead_fraction",
             "paired_device_overhead_fraction",
         ):
-            assert len(paired[name]["raw_samples"]) == paired[name]["sample_count"]
+            assert (
+                len(paired[sample_name]["raw_samples"])
+                == paired[sample_name]["sample_count"]
+            )
+    interpretation = artifact["performance_interpretation"]
+    assert interpretation["mature_kernel_gate"]["claimed"] is False
+    assert set(interpretation["substantial_workloads"]["cases"]) == {
+        "prefill_batched",
+        "write_update",
+        "collision_heavy",
+        "training_prefill_forward_only",
+        "memory_capacity",
+    }
+    for name in ("smoke_read_only", "decode_cached"):
+        observation = interpretation["tiny_host_bound_workloads"][name]
+        paired = artifact["cases"][name]["paired_performance"]
+        assert observation["absolute_microseconds"] == pytest.approx(
+            paired["paired_device_overhead_ms"]["median_ms"] * 1000
+        )
+        assert observation["percent"] == pytest.approx(
+            paired["paired_device_overhead_fraction"]["median"] * 100
+        )
 
 
 def _steady_state_overhead_rows(artifact: dict) -> list[dict]:

@@ -42,7 +42,8 @@ CUDA host:
 - a four-level original Sparse Delta Memory comparison using pinned commit
   `183e7df809131b80ad4393741029d0f20fc3640b`: exact product-key traces, sparse
   reads, ordered gated updates, persistent decode state, direct upstream calls,
-  differential fp32/bf16 backward gates, intent-safe compiler selection, and
+  end-to-end fp32/bf16 score-to-address/Softmax/state backward gates,
+  intent-safe compiler selection, and
   the identical methods behind a typed URM adapter. This is an **SDM
   baseline integration**, not a native/page-local URM kernel; see
   [the frozen SDM contract](docs/sparse-delta-memory.md); and

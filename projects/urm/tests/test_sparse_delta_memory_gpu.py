@@ -16,7 +16,8 @@ from urm.adapters.sparse_delta_memory import (
     probe_sdm_support,
 )
 from urm.adapters.sparse_delta_memory_reference import (
-    differential_backward_report,
+    deterministic_tie_free_product_key_scores,
+    end_to_end_differential_backward_report,
     oracle_product_key,
     oracle_sparse_read,
     oracle_write_read,
@@ -27,8 +28,18 @@ from urm.adapters.sparse_delta_memory_reference import (
 from urm.compiler.execution import SDM_EXTERNAL_ANCHOR_NAME, TRUSTED_ANCHORS
 
 BACKWARD_TOLERANCES = {
-    torch.float32: {"atol": 2.5e-5, "rtol": 2.0e-4},
-    torch.bfloat16: {"atol": 5.0e-5, "rtol": 2.0e-2},
+    torch.float32: {
+        "gradient_atol": 2.5e-5,
+        "gradient_rtol": 2.0e-4,
+        "forward_atol": 2.5e-3,
+        "forward_rtol": 2.0e-3,
+    },
+    torch.bfloat16: {
+        "gradient_atol": 5.0e-5,
+        "gradient_rtol": 2.0e-2,
+        "forward_atol": 5.0e-3,
+        "forward_rtol": 2.0e-2,
+    },
 }
 
 SUPPORT = probe_sdm_support()
@@ -249,12 +260,31 @@ def test_repeated_incremental_invocation_persists_cache() -> None:
 @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
 def test_training_backward_is_differentially_certified(dtype) -> None:
     adapter = _adapter(mode=MODE_TRAINING, dim=32, chunk=16, dtype=dtype)
-    *_, trace, memory, values, beta, decay = _inputs(
+    *_, _trace, memory, values, beta, decay = _inputs(
         adapter, p=1, t=16, dim=32, dtype=dtype
     )
-    report = differential_backward_report(
+    write_scores = deterministic_tie_free_product_key_scores(
+        parallel=1,
+        sequence=16,
+        half_key=16,
+        num_keys=4,
+        device="cuda",
+        dtype=dtype,
+        seed=20260905,
+    )
+    read_scores = deterministic_tie_free_product_key_scores(
+        parallel=1,
+        sequence=16,
+        half_key=16,
+        num_keys=4,
+        device="cuda",
+        dtype=dtype,
+        seed=20260906,
+    )
+    report = end_to_end_differential_backward_report(
         adapter,
-        trace,
+        write_scores,
+        read_scores,
         memory,
         values,
         beta,
@@ -262,13 +292,20 @@ def test_training_backward_is_differentially_certified(dtype) -> None:
         **BACKWARD_TOLERANCES[dtype],
     )
     assert report["passed"] is True, report
+    assert report["product_key_tie_free"] is True
+    assert report["addresses"]["passed"] is True
+    for kind in ("write", "read"):
+        assert all(report["addresses"][kind].values())
+    assert report["route_weights"]["passed"] is True
+    for kind in ("write", "read"):
+        assert all(report["route_weights"][kind].values())
     assert set(report["gradients"]) == {
+        "write_scores",
+        "read_scores",
         "initial_memory",
-        "write_weights",
         "values",
         "beta",
         "log_decay",
-        "read_weights",
     }
     for gradient in report["gradients"].values():
         assert all(gradient["finite"].values())

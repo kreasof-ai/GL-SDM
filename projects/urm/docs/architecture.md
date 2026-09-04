@@ -172,8 +172,9 @@ Its compiler semantic is the URM-owned `SparseMemoryAccess` /
 `SparseMemoryMixerSpec` skeleton (with compatibility aliases for the earlier
 SDM names), selected by the
 `facebook_sparse_delta_memory_183e7df_external_adapter` execution anchor. Its
-ordered mutation prevents lowering through routed-reduction. Remaining slices
-are:
+training capability is certified from write/read scores through product-key
+top-k and Softmax into the ordered state transition; its ordered mutation
+prevents lowering through routed-reduction. Remaining slices are:
 
 1. Dense and masked sequence reduction against the NumPy oracle.
 2. Stable Top-k and threshold route generation.

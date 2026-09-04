@@ -178,8 +178,14 @@ cold compilation separately, and emits JSON conforming to
   throughput, allocator peaks, analytical traffic, cold timing, call identity,
   and complete upstream provenance. Callable identity is computed from the
   stored bound object, instance, and function and artifact generation aborts on
-  mismatch. Untimed fp32/bf16 differential backward evidence covers all six
-  differentiable inputs plus final memory. Its schema is
+  mismatch. Untimed fp32/bf16 differential backward evidence starts from the
+  compiler-visible write/read scores and covers exact product-key addresses,
+  Softmax, ordered state evolution, and gradients for both scores, initial
+  memory, values, beta, and log-decay. Schema version 2 requires these fields.
+  The artifact partitions substantial workloads from tiny host-bound
+  read/decode cases, reports the latter in absolute microseconds and percentage,
+  and explicitly makes no mature-kernel gate claim without a predeclared
+  eligibility decision. Its schema is
   `benchmarks/sparse-delta-memory-result-schema.json`.
 - `benchmarks/routed_epilogue_selection.py`: solver-guided schedule selection
   for the routed-scale epilogue. Runs the full documented pipeline -

@@ -13,6 +13,7 @@ import importlib
 import json
 import math
 import os
+import statistics
 import subprocess
 import sys
 import time
@@ -658,14 +659,64 @@ def _benchmark_case(case, *, samples: int, warmup: int, torch):
     }
 
 
+def _require_end_to_end_backward(report: dict[str, object], dtype_name: str) -> None:
+    addresses = report.get("addresses", {})
+    address_ok = (
+        set(addresses) == {"write", "read", "passed"}
+        and bool(addresses.get("passed", False))
+        and all(
+            all(bool(value) for value in addresses.get(kind, {}).values())
+            for kind in ("write", "read")
+        )
+    )
+    route_weights = report.get("route_weights", {})
+    route_weight_ok = (
+        set(route_weights) == {"write", "read", "passed"}
+        and bool(route_weights.get("passed", False))
+        and all(
+            all(bool(value) for value in route_weights.get(kind, {}).values())
+            for kind in ("write", "read")
+        )
+    )
+    gradients = report.get("gradients", {})
+    required_gradients = {
+        "write_scores",
+        "read_scores",
+        "initial_memory",
+        "values",
+        "beta",
+        "log_decay",
+    }
+    gradient_ok = set(gradients) == required_gradients and all(
+        bool(gradient.get("passed", False)) for gradient in gradients.values()
+    )
+    if not (
+        address_ok and route_weight_ok and gradient_ok and report.get("passed") is True
+    ):
+        raise RuntimeError(
+            f"SDM {dtype_name} end-to-end backward certification failed: {report}"
+        )
+
+
 def _backward_correctness(torch) -> dict[str, object]:
     from urm.adapters.sparse_delta_memory_reference import (
-        differential_backward_report,
+        deterministic_tie_free_product_key_scores,
+        end_to_end_differential_backward_report,
     )
 
     tolerances = {
-        "float32": {"atol": 2.5e-5, "rtol": 2.0e-4},
-        "bfloat16": {"atol": 5.0e-5, "rtol": 2.0e-2},
+        "float32": {
+            "gradient_atol": 2.5e-5,
+            "gradient_rtol": 2.0e-4,
+            "forward_atol": 2.5e-3,
+            "forward_rtol": 2.0e-3,
+        },
+        "bfloat16": {
+            "gradient_atol": 5.0e-5,
+            "gradient_rtol": 2.0e-2,
+            "forward_atol": 5.0e-3,
+            "forward_rtol": 2.0e-2,
+        },
     }
     reports = {}
     for dtype_name, tolerance in tolerances.items():
@@ -681,27 +732,95 @@ def _backward_correctness(torch) -> dict[str, object]:
             "chunk": 16,
             "dtype": dtype_name,
         }
-        adapter, trace, memory, values, beta, log_decay = _make_case(case, torch)
-        report = differential_backward_report(
+        adapter, _trace, memory, values, beta, log_decay = _make_case(case, torch)
+        write_scores = deterministic_tie_free_product_key_scores(
+            parallel=1,
+            sequence=16,
+            half_key=16,
+            num_keys=4,
+            device="cuda",
+            dtype=memory.dtype,
+            seed=20260905,
+        )
+        read_scores = deterministic_tie_free_product_key_scores(
+            parallel=1,
+            sequence=16,
+            half_key=16,
+            num_keys=4,
+            device="cuda",
+            dtype=memory.dtype,
+            seed=20260906,
+        )
+        report = end_to_end_differential_backward_report(
             adapter,
-            trace,
+            write_scores,
+            read_scores,
             memory,
             values,
             beta,
             log_decay,
             **tolerance,
         )
-        if not report["passed"]:
-            raise RuntimeError(
-                f"SDM {dtype_name} backward differential certification failed: {report}"
-            )
+        report["input_generation"] = {
+            "kind": "deterministic random with rejection of product-key ties",
+            "write_score_seed": 20260905,
+            "read_score_seed": 20260906,
+            "non_score_seed": 20260904 + sum(map(ord, str(case["name"]))),
+            "loss_cotangent_seed": 20260907,
+            "path_inputs": "independent clones",
+        }
+        _require_end_to_end_backward(report, dtype_name)
         reports[dtype_name] = report
     return {
         "measurement_scope": "untimed_correctness_only",
         "logical_loss": "weighted_mean(readings) + weighted_mean(final_memory)",
         "upstream_final_state_gradient": "grad_final_memory callable argument",
+        "scope": "compiler-visible write_scores/read_scores through product-key top-k, Softmax, and ordered state",
         "passed": True,
         "dtypes": reports,
+    }
+
+
+def _performance_interpretation(rows: dict[str, object]) -> dict[str, object]:
+    substantial_names = (
+        "prefill_batched",
+        "write_update",
+        "collision_heavy",
+        "training_prefill_forward_only",
+        "memory_capacity",
+    )
+    tiny_names = ("smoke_read_only", "decode_cached")
+
+    def device_overhead(name: str) -> dict[str, float]:
+        paired = rows[name]["paired_performance"]
+        return {
+            "absolute_microseconds": paired["paired_device_overhead_ms"]["median_ms"]
+            * 1000.0,
+            "percent": paired["paired_device_overhead_fraction"]["median"] * 100.0,
+        }
+
+    substantial = {name: device_overhead(name) for name in substantial_names}
+    tiny = {name: device_overhead(name) for name in tiny_names}
+    substantial_percentages = [item["percent"] for item in substantial.values()]
+    return {
+        "classification": {
+            "substantial_workloads": list(substantial_names),
+            "tiny_host_bound_workloads": list(tiny_names),
+            "basis": "fixed case classification; percentages are paired device-median overhead",
+        },
+        "substantial_workloads": {
+            "cases": substantial,
+            "median_percent_across_cases": statistics.median(substantial_percentages),
+            "maximum_percent_across_cases": max(substantial_percentages),
+        },
+        "tiny_host_bound_workloads": tiny,
+        "mature_kernel_gate": {
+            "claimed": False,
+            "reason": (
+                "descriptive external-anchor measurements; this SDM slice has no "
+                "predeclared artifact eligibility decision for the mature-kernel gate"
+            ),
+        },
     }
 
 
@@ -789,7 +908,7 @@ def main() -> None:
         "torch_extensions": os.environ.get("TORCH_EXTENSIONS_DIR"),
     }
     artifact = {
-        "schema_version": 1,
+        "schema_version": 2,
         "generated_utc": utc_now(),
         "provenance": prov,
         "cold_start": {
@@ -826,6 +945,7 @@ def main() -> None:
             "native_urm_lowering": False,
         },
         "backward_correctness": backward_correctness,
+        "performance_interpretation": _performance_interpretation(rows),
         "unsupported_cases": {
             "cpu_execution": {
                 "status": "not_applicable",

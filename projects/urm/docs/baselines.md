@@ -76,6 +76,10 @@ The first SDM adapter calls commit
 `183e7df809131b80ad4393741029d0f20fc3640b` of the original repository and
 treats its outputs, address traces, and mutated memory as the optimized
 baseline. Direct and adapted paths share the exact upstream bound methods.
+FP32/BF16 training certification starts from compiler-visible write/read scores
+and covers product-key top-k, Softmax, ordered state evolution, and all six
+semantic input gradients; route-weight-only gradients are not the capability
+claim.
 See [the frozen contract](sparse-delta-memory.md). No upstream kernel source is
 copied, no FLA kernel is substituted, and no native URM SDM kernel exists yet.
 

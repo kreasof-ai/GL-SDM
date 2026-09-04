@@ -32,6 +32,60 @@ def test_sparse_delta_callable_identity_is_measured_not_assumed() -> None:
     # not the exact callable stored below direct and adapter dispatch.
     assert same_bound_callable(stored, instance.call) is False
 
+    valid = {
+        "addresses": {
+            "write": {
+                "direct_vs_torch": True,
+                "adapter_vs_torch": True,
+                "adapter_vs_direct": True,
+            },
+            "read": {
+                "direct_vs_torch": True,
+                "adapter_vs_torch": True,
+                "adapter_vs_direct": True,
+            },
+            "passed": True,
+        },
+        "route_weights": {
+            "write": {
+                "direct_vs_torch": True,
+                "adapter_vs_torch": True,
+                "adapter_vs_direct": True,
+            },
+            "read": {
+                "direct_vs_torch": True,
+                "adapter_vs_torch": True,
+                "adapter_vs_direct": True,
+            },
+            "passed": True,
+        },
+        "gradients": {
+            name: {"passed": True}
+            for name in (
+                "write_scores",
+                "read_scores",
+                "initial_memory",
+                "values",
+                "beta",
+                "log_decay",
+            )
+        },
+        "passed": True,
+    }
+    module._require_end_to_end_backward(valid, "float32")
+    for invalid in (
+        {**valid, "addresses": {"passed": False}},
+        {
+            **valid,
+            "gradients": {
+                **valid["gradients"],
+                "write_scores": {"passed": False},
+            },
+        },
+    ):
+        with pytest.raises(RuntimeError, match="end-to-end backward"):
+            module._require_end_to_end_backward(invalid, "float32")
+
 
 def test_routed_reduction_cases_are_named_and_within_v1_contract() -> None:
     with (PROJECT_ROOT / "benchmarks" / "cases.toml").open("rb") as handle:
@@ -53,6 +107,23 @@ def test_result_schema_is_valid_json_and_versioned() -> None:
     )
     assert schema["properties"]["schema_version"]["const"] == 1
     assert "measurements" in schema["required"]
+
+
+def test_sparse_delta_result_schema_v2_requires_score_gradients() -> None:
+    schema = json.loads(
+        (
+            PROJECT_ROOT / "benchmarks" / "sparse-delta-memory-result-schema.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert schema["properties"]["schema_version"]["const"] == 2
+    backward_dtype = schema["$defs"]["backward_dtype"]
+    assert {"addresses", "input_generation", "gradients"} <= set(
+        backward_dtype["required"]
+    )
+    assert "route_weights" in backward_dtype["required"]
+    assert {"write_scores", "read_scores"} <= set(
+        backward_dtype["properties"]["gradients"]["required"]
+    )
 
 
 def test_compilation_matrix_probe_off_does_not_import_torch_or_triton(

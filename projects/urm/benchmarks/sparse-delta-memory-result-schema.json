@@ -10,12 +10,13 @@
     "methodology",
     "semantics",
     "backward_correctness",
+    "performance_interpretation",
     "unsupported_cases",
     "cases"
   ],
   "properties": {
     "schema_version": {
-      "const": 1
+      "const": 2
     },
     "generated_utc": {
       "type": "string"
@@ -135,6 +136,7 @@
         "measurement_scope",
         "logical_loss",
         "upstream_final_state_gradient",
+        "scope",
         "passed",
         "dtypes"
       ],
@@ -157,6 +159,80 @@
             },
             "bfloat16": {
               "$ref": "#/$defs/backward_dtype"
+            }
+          }
+        }
+      }
+    },
+    "performance_interpretation": {
+      "type": "object",
+      "required": [
+        "classification",
+        "substantial_workloads",
+        "tiny_host_bound_workloads",
+        "mature_kernel_gate"
+      ],
+      "properties": {
+        "classification": {
+          "type": "object",
+          "required": [
+            "substantial_workloads",
+            "tiny_host_bound_workloads",
+            "basis"
+          ]
+        },
+        "substantial_workloads": {
+          "type": "object",
+          "required": [
+            "cases",
+            "median_percent_across_cases",
+            "maximum_percent_across_cases"
+          ],
+          "properties": {
+            "cases": {
+              "type": "object",
+              "required": [
+                "prefill_batched",
+                "write_update",
+                "collision_heavy",
+                "training_prefill_forward_only",
+                "memory_capacity"
+              ],
+              "additionalProperties": {
+                "$ref": "#/$defs/overhead_observation"
+              }
+            },
+            "median_percent_across_cases": {
+              "type": "number"
+            },
+            "maximum_percent_across_cases": {
+              "type": "number"
+            }
+          }
+        },
+        "tiny_host_bound_workloads": {
+          "type": "object",
+          "required": [
+            "smoke_read_only",
+            "decode_cached"
+          ],
+          "additionalProperties": {
+            "$ref": "#/$defs/overhead_observation"
+          }
+        },
+        "mature_kernel_gate": {
+          "type": "object",
+          "required": [
+            "claimed",
+            "reason"
+          ],
+          "properties": {
+            "claimed": {
+              "const": false
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
             }
           }
         }
@@ -508,10 +584,18 @@
       "type": "object",
       "required": [
         "dtype",
-        "atol",
-        "rtol",
+        "scope",
+        "product_key_tie_free",
+        "input_generation",
+        "gradient_atol",
+        "gradient_rtol",
+        "forward_atol",
+        "forward_rtol",
         "loss",
         "loss_terms",
+        "addresses",
+        "route_weights",
+        "forward",
         "gradients",
         "passed"
       ],
@@ -522,11 +606,56 @@
             "bfloat16"
           ]
         },
-        "atol": {
+        "scope": {
+          "const": "write/read scores through product-key top-k, Softmax, and ordered state"
+        },
+        "product_key_tie_free": {
+          "const": true
+        },
+        "input_generation": {
+          "type": "object",
+          "required": [
+            "kind",
+            "write_score_seed",
+            "read_score_seed",
+            "non_score_seed",
+            "loss_cotangent_seed",
+            "path_inputs"
+          ],
+          "properties": {
+            "kind": {
+              "const": "deterministic random with rejection of product-key ties"
+            },
+            "write_score_seed": {
+              "type": "integer"
+            },
+            "read_score_seed": {
+              "type": "integer"
+            },
+            "non_score_seed": {
+              "type": "integer"
+            },
+            "loss_cotangent_seed": {
+              "type": "integer"
+            },
+            "path_inputs": {
+              "const": "independent clones"
+            }
+          }
+        },
+        "gradient_atol": {
           "type": "number",
           "exclusiveMinimum": 0
         },
-        "rtol": {
+        "gradient_rtol": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "forward_atol": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "forward_rtol": {
           "type": "number",
           "exclusiveMinimum": 0
         },
@@ -536,16 +665,113 @@
         "gradients": {
           "type": "object",
           "required": [
+            "write_scores",
+            "read_scores",
             "initial_memory",
-            "write_weights",
             "values",
             "beta",
-            "log_decay",
-            "read_weights"
+            "log_decay"
           ],
           "additionalProperties": {
             "$ref": "#/$defs/backward_gradient"
           }
+        },
+        "addresses": {
+          "$ref": "#/$defs/address_equality"
+        },
+        "route_weights": {
+          "$ref": "#/$defs/address_equality"
+        },
+        "forward": {
+          "type": "object",
+          "required": [
+            "readings",
+            "final_memory"
+          ],
+          "properties": {
+            "readings": {
+              "$ref": "#/$defs/comparison_group"
+            },
+            "final_memory": {
+              "$ref": "#/$defs/comparison_group"
+            }
+          }
+        }
+      }
+    },
+    "overhead_observation": {
+      "type": "object",
+      "required": [
+        "absolute_microseconds",
+        "percent"
+      ],
+      "properties": {
+        "absolute_microseconds": {
+          "type": "number"
+        },
+        "percent": {
+          "type": "number"
+        }
+      }
+    },
+    "address_equality": {
+      "type": "object",
+      "required": [
+        "write",
+        "read",
+        "passed"
+      ],
+      "properties": {
+        "write": {
+          "$ref": "#/$defs/exact_three_way"
+        },
+        "read": {
+          "$ref": "#/$defs/exact_three_way"
+        },
+        "passed": {
+          "const": true
+        }
+      }
+    },
+    "exact_three_way": {
+      "type": "object",
+      "required": [
+        "direct_vs_torch",
+        "adapter_vs_torch",
+        "adapter_vs_direct"
+      ],
+      "properties": {
+        "direct_vs_torch": {
+          "const": true
+        },
+        "adapter_vs_torch": {
+          "const": true
+        },
+        "adapter_vs_direct": {
+          "const": true
+        }
+      }
+    },
+    "comparison_group": {
+      "type": "object",
+      "required": [
+        "direct_vs_torch",
+        "adapter_vs_torch",
+        "adapter_vs_direct",
+        "passed"
+      ],
+      "properties": {
+        "direct_vs_torch": {
+          "$ref": "#/$defs/backward_comparison"
+        },
+        "adapter_vs_torch": {
+          "$ref": "#/$defs/backward_comparison"
+        },
+        "adapter_vs_direct": {
+          "$ref": "#/$defs/backward_comparison"
+        },
+        "passed": {
+          "const": true
         }
       }
     },
