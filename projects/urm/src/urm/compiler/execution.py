@@ -392,7 +392,6 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
         kind=AnchorKind.SPARSE_STATE_MIXER,
         name=NATIVE_SPARSE_STATE_MIXER_ANCHOR_NAME,
         effect=ORDERED_STATE,
-        experimental=True,
         backward_verified_dtypes=frozenset({"float32", "bfloat16"}),
         deterministic_accumulation=False,
         commit_capable=True,

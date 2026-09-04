@@ -1,7 +1,7 @@
 # Native SparseStateMixer v0 contract
 
-**Status:** native v0 implemented; the confirmation protocol and frozen grid
-are the completion authority.
+**Status:** production-capable inside the frozen native v0 envelope; the
+confirmation protocol and frozen grid are the completion authority.
 
 `SparseStateMixerAccess` is URM's route-to-state operation. It consumes
 certified routes and never assumes how they were generated. Product-key

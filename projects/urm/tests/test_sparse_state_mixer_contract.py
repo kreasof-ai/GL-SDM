@@ -237,6 +237,8 @@ def test_compiler_selects_native_for_valid_inference_and_training() -> None:
         if item.name == NATIVE_SPARSE_STATE_MIXER_ANCHOR_NAME
     )
     assert anchor.kind is AnchorKind.SPARSE_STATE_MIXER
+    assert anchor.trusted is True
+    assert anchor.experimental is False
     schedule = inference.plan.steps[0].launch_config
     assert schedule == {
         "schedule_family": "partition_owned_ordered_token_scan",
