@@ -164,6 +164,22 @@ def sparse_state_spec_status(
     return SparseStateSupportStatus.yes()
 
 
+def sparse_state_launch_schedule(spec: SparseStateMixerSpec) -> dict[str, str | int]:
+    """Serialize the deterministic v0 schedule without importing a GPU runtime."""
+    bounded = min(spec.value_dim, 256)
+    block_d = max(16, 1 << (bounded - 1).bit_length())
+    warps = 8 if block_d >= 256 else 4 if block_d >= 64 else 2
+    return {
+        "schedule_family": "partition_owned_ordered_token_scan",
+        "block_d": block_d,
+        "num_warps": warps,
+        "num_stages": 3,
+        "tokens_per_program": -1,
+        "read_timing": spec.read_timing.value,
+        "state_layout": spec.state_layout.value,
+    }
+
+
 def numpy_sparse_state_mixer(
     memory: npt.ArrayLike,
     read_indices: npt.ArrayLike,
@@ -233,5 +249,6 @@ __all__ = [
     "SparseStateCapabilityEnvelope",
     "SparseStateSupportStatus",
     "numpy_sparse_state_mixer",
+    "sparse_state_launch_schedule",
     "sparse_state_spec_status",
 ]

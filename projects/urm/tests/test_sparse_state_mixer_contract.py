@@ -11,6 +11,7 @@ import pytest
 from urm.compiler.diagnostics import CompilerError, DiagnosticCode
 from urm.compiler.execution import (
     NATIVE_SPARSE_STATE_MIXER_ANCHOR_NAME,
+    SDM_SPARSE_STATE_FALLBACK_ANCHOR_NAME,
     TRUSTED_ANCHORS,
     AnchorKind,
     AnchorRegistry,
@@ -178,6 +179,39 @@ def _compiler(*, supported=True, code="supported", reason=None) -> UrmCompiler:
     return UrmCompiler(anchors=registry)
 
 
+def _compiler_with_fallback(*, native_supported: bool, upstream_supported: bool):
+    from types import SimpleNamespace
+
+    native = next(
+        item
+        for item in TRUSTED_ANCHORS
+        if item.name == NATIVE_SPARSE_STATE_MIXER_ANCHOR_NAME
+    )
+    fallback = next(
+        item
+        for item in TRUSTED_ANCHORS
+        if item.name == SDM_SPARSE_STATE_FALLBACK_ANCHOR_NAME
+    )
+    registry = AnchorRegistry()
+    registry.register(
+        make_sparse_state_mixer_selector(
+            native,
+            lambda _spec: SimpleNamespace(
+                supported=native_supported,
+                code="supported" if native_supported else "unsupported_shape",
+                reason=None if native_supported else "outside native v0",
+            ),
+            fallback_anchor=fallback,
+            fallback_support_probe=lambda: SimpleNamespace(
+                supported=upstream_supported,
+                code="supported" if upstream_supported else "missing_dependency",
+                reason=None if upstream_supported else "pinned checkout absent",
+            ),
+        )
+    )
+    return UrmCompiler(anchors=registry)
+
+
 def _training_program():
     return sparse_state_mixer_program(
         parallel=1,
@@ -203,6 +237,51 @@ def test_compiler_selects_native_for_valid_inference_and_training() -> None:
         if item.name == NATIVE_SPARSE_STATE_MIXER_ANCHOR_NAME
     )
     assert anchor.kind is AnchorKind.SPARSE_STATE_MIXER
+    schedule = inference.plan.steps[0].launch_config
+    assert schedule == {
+        "schedule_family": "partition_owned_ordered_token_scan",
+        "block_d": 256,
+        "num_warps": 8,
+        "num_stages": 3,
+        "tokens_per_program": -1,
+        "read_timing": "after_update",
+        "state_layout": "partition_slot_value",
+    }
+
+
+def test_compiler_retains_pinned_external_fallback_after_native_decline() -> None:
+    result = _compiler_with_fallback(
+        native_supported=False, upstream_supported=True
+    ).compile(sparse_state_mixer_program())
+    assert result.trace.anchors == (SDM_SPARSE_STATE_FALLBACK_ANCHOR_NAME,)
+    assert result.plan.steps[0].launch_config is None
+
+
+def test_exact_external_override_uses_revision_aware_fallback_selector() -> None:
+    params = ScheduleParams(
+        anchor_overrides={"sparse_state_mixer": SDM_SPARSE_STATE_FALLBACK_ANCHOR_NAME}
+    )
+    result = _compiler_with_fallback(
+        native_supported=True, upstream_supported=True
+    ).compile(sparse_state_mixer_program(), schedule_params=params)
+    assert result.trace.anchors == (SDM_SPARSE_STATE_FALLBACK_ANCHOR_NAME,)
+    with pytest.raises(CompilerError) as caught:
+        _compiler_with_fallback(
+            native_supported=True, upstream_supported=False
+        ).compile(sparse_state_mixer_program(), schedule_params=params)
+    assert caught.value.diagnostics[0].code is DiagnosticCode.DEPENDENCY_MISSING
+
+
+def test_external_fallback_does_not_reinterpret_preupdate_semantics() -> None:
+    with pytest.raises(CompilerError) as caught:
+        _compiler_with_fallback(
+            native_supported=False, upstream_supported=True
+        ).compile(
+            sparse_state_mixer_program(read_timing=SparseReadTiming.BEFORE_UPDATE)
+        )
+    diagnostic = caught.value.diagnostics[0]
+    assert diagnostic.code is DiagnosticCode.ANCHOR_DECLINED
+    assert "cannot represent" in diagnostic.message
 
 
 @pytest.mark.parametrize(

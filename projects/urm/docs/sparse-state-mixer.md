@@ -1,6 +1,7 @@
 # Native SparseStateMixer v0 contract
 
-**Status:** capability and benchmark grid frozen before performance tuning.
+**Status:** native v0 implemented; the confirmation protocol and frozen grid
+are the completion authority.
 
 `SparseStateMixerAccess` is URM's route-to-state operation. It consumes
 certified routes and never assumes how they were generated. Product-key
@@ -21,7 +22,8 @@ The v0 choices are:
 - explicit pre-update or post-update reads for updates;
 - ordered cross-token collisions and rejected within-token collisions;
 - persistent inference state and one logical slot per page;
-- FP32 accumulation with FP32 or BF16 stored state;
+- FP32 arithmetic/reductions with FP32 or BF16 stored state and same-dtype
+  persistent state cotangents;
 - contiguous CUDA tensors on SM80 or newer;
 - `P<=16`, `T<=2048`, `S<=1,048,576`, `D<=1024`, and route widths `<=64`.
 
@@ -48,6 +50,16 @@ returns gradients for initial state, write weights, values, beta, log-decay,
 and read weights. Relaxed atomics currently combine value-tile partials for
 scalar/weight gradients, so deterministic-training requests decline.
 
+The deterministic schedule is serialized into every native compiler plan as
+`partition_owned_ordered_token_scan`, including value tile, warp count, stage
+count, read timing, and logical layout. The native selector wins only inside
+the frozen envelope. Outside it, the compiler may select
+`facebook_sparse_delta_memory_183e7df_precomputed_route_adapter` only when the
+pinned implementation can represent the exact same post-update/current-read
+semantics and its runtime/revision probe passes. Pre-update reads, non-square
+fallback state sizes, short upstream training chunks, dependency failure, and
+revision failure decline structurally; no fallback changes semantics.
+
 ## Frozen numerical gates
 
 Native versus transparent PyTorch uses FP32 `atol=3e-5, rtol=3e-4` for backward
@@ -60,9 +72,11 @@ not be relaxed based on later performance results.
 
 The committed tests cover minimal routes, non-power-of-two dimensions,
 collision-heavy recurrence, pre/post reads, persistent decode, read-only,
-FP32/BF16 forward and backward, the pinned comparator, and a bounded FP64
-gradcheck of the reference formulation. A guarded-import test executes the
-native path without comparator packages.
+FP32/BF16 forward and backward for every differentiable semantic input, the
+pinned comparator, and a bounded FP64 gradcheck of the reference formulation.
+A guarded-import subprocess executes the native path with comparator imports
+blocked. The external fallback separately proves that adapter dispatch reaches
+the exact stored upstream bound function and produces bitwise-equal results.
 
 ## Frozen benchmark grid and acceptance
 
@@ -73,7 +87,27 @@ never charged for route work omitted from the other.
 
 Substantial cases must satisfy the geometric-mean median, paired-bootstrap
 upper-bound, p95, memory, three-process, randomized AB/BA, raw-sample, and drift
-requirements in the master objective. Decode and the minimal read are
-predeclared host-bound cases and are reported in microseconds with host-dispatch
-share. The original repository remains only a pinned comparator/external
-fallback. This native implementation imports and calls none of its code.
+requirements in the master objective. The committed schema is
+`benchmarks/sparse-state-mixer-result-schema.json`; it requires three fresh
+processes and embeds every single-process artifact with raw samples. Each
+process uses fresh Triton, Torch-extension, and Inductor caches, so import,
+construction, specialization build/load, and first-call time remain separate
+from steady state. Decode and the minimal read are predeclared host-bound cases
+and are reported in microseconds with host-dispatch share. Traffic and achieved
+logical bandwidth are explicitly analytical; MFU and MBU are not acceptance
+metrics without hardware counters. Static cubin inspection records registers,
+local/spill bytes, shared storage, and a register-bound occupancy ceiling. The
+original repository remains only a pinned comparator/external fallback. This
+native implementation imports and calls none of its code.
+
+## Optimization record
+
+The initial partition-owned persistent scan cleared the latency discovery
+gates, so no upstream schedule was transplanted and no shape was removed. The
+retained storage change keeps the BF16 recurrent state cotangent in the
+semantic storage dtype while each loaded fragment, weighted update, and partial
+reduction uses FP32 arithmetic. Differential tests passed before the memory
+result was accepted. Backward timing uses identical preallocated output
+cotangents; the shared scalar-loss formulation remains an untimed correctness
+gate. This avoids charging native execution for pointwise loss-graph work that
+the upstream explicit final-state-cotangent API excludes.

@@ -15,10 +15,9 @@ FA/FLA/SDM/Mamba library APIs.
 ## Current milestone
 
 The routed-reduction/compiler-validation tranche remains complete and frozen.
-Phase 3 is now active with one bounded family-expansion result: an external
-baseline integration of the original authors' Sparse Delta Memory repository.
-The prior milestone plus this adapter have been validated on an NVIDIA A10G
-CUDA host:
+Phase 3 now includes both the closed external Sparse Delta Memory baseline and
+the URM-native certified-route `SparseStateMixer` v0. The prior milestone and
+these state-mixer slices have been validated on an NVIDIA A10G CUDA host:
 
 - a typed `MixerSpec` contract;
 - a dependency-light NumPy correctness oracle;
@@ -48,8 +47,9 @@ CUDA host:
   baseline integration**, not a native/page-local URM kernel; see
   [the frozen SDM contract](docs/sparse-delta-memory.md); and
 - a frozen URM-native `SparseStateMixer` v0 route-to-state contract with
-  independent Triton forward/backward kernels, certified logical routes, and a
-  pre-tuning benchmark grid; see
+  independent Triton forward/backward kernels, certified logical routes,
+  serialized schedules, a revision-aware external fallback, and a strict
+  three-process benchmark confirmation; see
   [the native SparseStateMixer contract](docs/sparse-state-mixer.md); and
 - a layered compiler (docs/compiler-charter.md): typed semantic IR over logical
   domains with explicit locality/effect models, two verified reparameterization
@@ -77,9 +77,9 @@ CUDA host:
   bound).
 
 The routed-reduction/compiler-validation tranche is still closed and was not
-reopened. The new SDM slice does **not** claim that deferred MoE, Mamba,
-FlexAttention, distributed-runtime, transactional GL-SDM, or native page-local
-SDM lowerings exist.
+reopened. Native route production, distributed page ownership, transactional
+GL-SDM, MoE, Mamba, and FlexAttention remain deferred; the native state mixer
+does not claim those pipeline capabilities.
 
 See [the compiler charter](docs/compiler-charter.md), the
 [CODA retrospective](docs/coda-retrospective.md),
@@ -260,6 +260,12 @@ model.
 - Complete: external original-SDM baseline adapter, frozen typed contract,
   compiler capability selection, differential forward/backward tests, sealed
   runtime traces, factual callable-identity checks, and dedicated benchmark.
+- Complete: native certified-route SparseStateMixer v0 forward/backward
+  lowering, persistent ordered state, strict capability declines, serialized
+  schedule, executable pinned fallback, and frozen A10G confirmation protocol.
+- Deferred: native product-key or other route-selection lowering; pipeline
+  comparison remains `not_applicable` until that separate semantic operation
+  exists.
 - Fuse overlay composition and reduction.
 - Add page grouping, prefetch, recurrent address reuse, and distributed sharding.
 - Evaluate GL-SDM traces without making GL-SDM's architectural success a URM

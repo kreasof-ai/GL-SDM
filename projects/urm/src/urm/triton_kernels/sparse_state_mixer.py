@@ -546,7 +546,10 @@ def _sparse_state_update_backward(
     slots = grad_final_memory.shape[1]
     value_dim = grad_final_memory.shape[2]
     block_d, warps = _launch_parameters(value_dim)
-    grad_memory_fp32 = grad_final_memory.float().contiguous()
+    # The cotangent has the same stored dtype as the differentiable state.
+    # Each loaded fragment is promoted by FP32 route weights before arithmetic;
+    # persisting BF16 cotangents avoids a second full-capacity FP32 state buffer.
+    grad_memory = grad_final_memory.contiguous().clone()
     grad_write_weights_fp32 = torch.zeros_like(write_weights, dtype=torch.float32)
     grad_values_fp32 = torch.empty_like(values, dtype=torch.float32)
     grad_beta_fp32 = torch.zeros_like(beta, dtype=torch.float32)
@@ -554,7 +557,7 @@ def _sparse_state_update_backward(
     grad_read_weights_fp32 = torch.zeros_like(read_weights, dtype=torch.float32)
     grid = (parallel, triton.cdiv(value_dim, block_d))
     _sparse_state_update_backward_kernel[grid](
-        grad_memory_fp32,
+        grad_memory,
         saved_write_rows,
         saved_read_rows,
         write_indices,
@@ -580,7 +583,7 @@ def _sparse_state_update_backward(
         num_warps=warps,
     )
     return (
-        grad_memory_fp32.to(grad_final_memory.dtype),
+        grad_memory,
         grad_write_weights_fp32.to(write_weights.dtype),
         grad_values_fp32.to(values.dtype),
         grad_beta_fp32.to(beta.dtype),

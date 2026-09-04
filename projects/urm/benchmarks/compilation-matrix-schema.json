@@ -117,6 +117,10 @@
           "compiled": { "type": "boolean" },
           "decline_reason": { "type": ["string", "null"] },
           "anchors_selected": { "type": "array", "items": { "type": "string" } },
+          "anchor_dispatch_counts": {
+            "type": "object",
+            "additionalProperties": {"type": "integer", "minimum": 1}
+          },
           "estimated_costs": { "type": "array" },
           "traces": { "type": "array" },
           "escape_hatch_count": { "const": 0 },

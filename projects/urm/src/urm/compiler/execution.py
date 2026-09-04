@@ -308,6 +308,9 @@ class AnchorRegistry:
 # concrete kernels remain in urm.backends / urm.adapters / upstream packages.
 
 SDM_EXTERNAL_ANCHOR_NAME = "facebook_sparse_delta_memory_183e7df_external_adapter"
+SDM_SPARSE_STATE_FALLBACK_ANCHOR_NAME = (
+    "facebook_sparse_delta_memory_183e7df_precomputed_route_adapter"
+)
 NATIVE_SPARSE_STATE_MIXER_ANCHOR_NAME = "urm_native_sparse_state_mixer_v0"
 
 
@@ -390,6 +393,15 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
         name=NATIVE_SPARSE_STATE_MIXER_ANCHOR_NAME,
         effect=ORDERED_STATE,
         experimental=True,
+        backward_verified_dtypes=frozenset({"float32", "bfloat16"}),
+        deterministic_accumulation=False,
+        commit_capable=True,
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.SPARSE_STATE_MIXER,
+        name=SDM_SPARSE_STATE_FALLBACK_ANCHOR_NAME,
+        effect=ORDERED_STATE,
         backward_verified_dtypes=frozenset({"float32", "bfloat16"}),
         deterministic_accumulation=False,
         commit_capable=True,
@@ -489,8 +501,10 @@ def make_sdm_selector(
 def make_sparse_state_mixer_selector(
     anchor: ExecutionAnchor,
     support_probe: Callable[[object], object] | None = None,
+    fallback_anchor: ExecutionAnchor | None = None,
+    fallback_support_probe: SDMSupportProbe | None = None,
 ) -> AnchorSelector:
-    """Select only the verified URM-native route-to-state capability."""
+    """Prefer native v0, then retain the pinned external route-state fallback."""
 
     def _select(request: AnchorRequest) -> AnchorDecision | None:
         if request.kind is not AnchorKind.SPARSE_STATE_MIXER:
@@ -505,14 +519,14 @@ def make_sparse_state_mixer_selector(
                     "native SparseStateMixer requires a typed SparseStateMixerAccess",
                 ),
             )
-        probe = support_probe
-        if probe is None:
+        native_probe = support_probe
+        if native_probe is None:
             try:
                 from urm.backends.sparse_state_mixer import (
                     TritonSparseStateMixerBackend,
                 )
 
-                probe = TritonSparseStateMixerBackend.support_status
+                native_probe = TritonSparseStateMixerBackend.support_status
             except Exception as error:  # noqa: BLE001 - optional GPU runtime
                 return AnchorDecision(
                     anchor=None,
@@ -521,8 +535,76 @@ def make_sparse_state_mixer_selector(
                         f"native SparseStateMixer dependencies unavailable: {error!r}",
                     ),
                 )
-        status = probe(request.semantic_op.spec)
-        if not status.supported:
+        spec = request.semantic_op.spec
+        preferred = (request.schedule_params or {}).get("anchor_override")
+        native_status = native_probe(spec)
+        if (
+            preferred != SDM_SPARSE_STATE_FALLBACK_ANCHOR_NAME
+            and native_status.supported
+        ):
+            return AnchorDecision(anchor=anchor, decline=None)
+        if preferred == NATIVE_SPARSE_STATE_MIXER_ANCHOR_NAME:
+            return AnchorDecision(
+                anchor=None,
+                decline=Decline(
+                    {
+                        "missing_dependency": DiagnosticCode.DEPENDENCY_MISSING,
+                        "unsupported_hardware": DiagnosticCode.UNSUPPORTED_HARDWARE,
+                        "unsupported_device": DiagnosticCode.UNSUPPORTED_HARDWARE,
+                        "unsupported_semantics": DiagnosticCode.UNSUPPORTED_SEMANTICS,
+                        "unsupported_dtype": DiagnosticCode.UNSUPPORTED_SEMANTICS,
+                        "unsupported_layout": DiagnosticCode.UNSUPPORTED_SEMANTICS,
+                        "unsupported_shape": DiagnosticCode.ANCHOR_DECLINED,
+                    }.get(native_status.code, DiagnosticCode.ANCHOR_DECLINED),
+                    native_status.reason or native_status.code,
+                ),
+            )
+        from urm.compiler.semantic import SparseReadTiming, SparseStateOperation
+
+        square_root = int(spec.slots_per_partition**0.5)
+        fallback_semantics = (
+            fallback_anchor is not None
+            and spec.slots_per_partition >= 8
+            and spec.slots_per_partition % 8 == 0
+            and square_root * square_root == spec.slots_per_partition
+            and spec.reads <= 128
+            and spec.writes <= 128
+            and (
+                spec.operation is SparseStateOperation.READ_ONLY
+                or spec.read_timing is SparseReadTiming.AFTER_UPDATE
+            )
+            and (spec.mode.value != "training" or spec.sequence >= 16)
+        )
+        if fallback_semantics:
+            upstream_probe = fallback_support_probe
+            if upstream_probe is None:
+                try:
+                    from urm.adapters.sparse_delta_memory import probe_sdm_support
+
+                    upstream_probe = probe_sdm_support
+                except Exception as error:  # noqa: BLE001
+                    return AnchorDecision(
+                        anchor=None,
+                        decline=Decline(
+                            DiagnosticCode.DEPENDENCY_MISSING,
+                            f"pinned SDM fallback dependencies unavailable: {error!r}",
+                        ),
+                    )
+            upstream_status = upstream_probe()
+            if upstream_status.supported:
+                return AnchorDecision(anchor=fallback_anchor, decline=None)
+            code = {
+                "missing_dependency": DiagnosticCode.DEPENDENCY_MISSING,
+                "incompatible_revision": DiagnosticCode.UPSTREAM_REVISION_MISMATCH,
+                "modified_upstream_checkout": DiagnosticCode.UPSTREAM_REVISION_MISMATCH,
+                "unsupported_hardware": DiagnosticCode.UNSUPPORTED_HARDWARE,
+                "incompatible_runtime": DiagnosticCode.DEPENDENCY_MISSING,
+            }.get(upstream_status.code, DiagnosticCode.ANCHOR_DECLINED)
+            return AnchorDecision(
+                anchor=None,
+                decline=Decline(code, upstream_status.reason or upstream_status.code),
+            )
+        if not native_status.supported:
             code = {
                 "missing_dependency": DiagnosticCode.DEPENDENCY_MISSING,
                 "unsupported_hardware": DiagnosticCode.UNSUPPORTED_HARDWARE,
@@ -531,12 +613,22 @@ def make_sparse_state_mixer_selector(
                 "unsupported_dtype": DiagnosticCode.UNSUPPORTED_SEMANTICS,
                 "unsupported_layout": DiagnosticCode.UNSUPPORTED_SEMANTICS,
                 "unsupported_shape": DiagnosticCode.ANCHOR_DECLINED,
-            }.get(status.code, DiagnosticCode.ANCHOR_DECLINED)
+            }.get(native_status.code, DiagnosticCode.ANCHOR_DECLINED)
             return AnchorDecision(
                 anchor=None,
-                decline=Decline(code, status.reason or status.code),
+                decline=Decline(
+                    code,
+                    (native_status.reason or native_status.code)
+                    + "; pinned external fallback cannot represent this shape/semantics",
+                ),
             )
-        return AnchorDecision(anchor=anchor, decline=None)
+        return AnchorDecision(
+            anchor=None,
+            decline=Decline(
+                DiagnosticCode.ANCHOR_DECLINED,
+                "requested external fallback cannot represent this shape/semantics",
+            ),
+        )
 
     return _select
 
@@ -554,6 +646,15 @@ def default_registry() -> AnchorRegistry:
         for anchor in TRUSTED_ANCHORS
         if anchor.kind is AnchorKind.SPARSE_STATE_MIXER
     )
-    registry.register(make_sparse_state_mixer_selector(sparse_state_anchor))
+    sparse_state_fallback = next(
+        anchor
+        for anchor in TRUSTED_ANCHORS
+        if anchor.name == SDM_SPARSE_STATE_FALLBACK_ANCHOR_NAME
+    )
+    registry.register(
+        make_sparse_state_mixer_selector(
+            sparse_state_anchor, fallback_anchor=sparse_state_fallback
+        )
+    )
     registry.register(make_selector(TRUSTED_ANCHORS))
     return registry

@@ -140,6 +140,51 @@ def test_committed_sparse_delta_memory_artifact_validates_against_schema() -> No
         )
 
 
+def test_committed_sparse_state_mixer_confirmation_validates() -> None:
+    schema = _load(
+        PROJECT_ROOT / "benchmarks" / "sparse-state-mixer-result-schema.json"
+    )
+    artifact = _artifact("sparse-state-mixer/confirmation.json")
+    validate(artifact, schema)
+    assert artifact["schema_version"] == 1
+    assert artifact["confirmation"]["passed"] is True
+    assert len(artifact["runs"]) == 3
+    assert {run["provenance"]["git_revision"] for run in artifact["runs"]} == {
+        artifact["provenance"]["git_revision"]
+    }
+    assert all(run["provenance"]["dirty_tree"] is False for run in artifact["runs"])
+    for run in artifact["runs"]:
+        assert run["provenance"]["upstream"]["installed_commit"] == (
+            "183e7df809131b80ad4393741029d0f20fc3640b"
+        )
+        for row in run["cases"].values():
+            for phase in ("forward", "backward"):
+                measured = row[phase]
+                if measured.get("status") == "not_applicable":
+                    continue
+                count = measured["upstream_device"]["count"]
+                assert len(measured["orders"]) == count
+                for path in (
+                    "upstream_wall",
+                    "native_wall",
+                    "upstream_device",
+                    "native_device",
+                ):
+                    assert len(measured[path]["raw_ms"]) == count
+                assert len(measured["paired_device_ratio"]["raw"]) == count
+            assert row["correctness"]["passed"] is True
+            if row["case"]["operation"] == "training":
+                assert row["backward_correctness"]["passed"] is True
+                assert set(row["backward_correctness"]["gradients"]) == {
+                    "initial_memory",
+                    "write_weights",
+                    "values",
+                    "beta",
+                    "log_decay",
+                    "read_weights",
+                }
+
+
 def _steady_state_overhead_rows(artifact: dict) -> list[dict]:
     """Flatten paired adapter-overhead statistics from the attention artifact."""
     min_seq = artifact["methodology"]["steady_state_min_seq"]
@@ -193,6 +238,21 @@ def test_committed_compilation_matrix_validates_against_schema() -> None:
         summary["full_architecture_compile_rate"]
         <= summary["routing_skeleton_compile_rate"]
     )
+    sparse = next(
+        row
+        for row in artifact["rows"]
+        if row["architecture_params"]["preset"] == "sparse_delta_memory"
+    )
+    assert sparse["valid_semantic_programs"] == 2
+    assert {
+        "facebook_sparse_delta_memory_183e7df_external_adapter",
+        "urm_native_sparse_state_mixer_v0",
+    } <= set(sparse["anchors_selected"])
+    assert sparse["anchor_dispatch_counts"] == {
+        "facebook_sparse_delta_memory_183e7df_external_adapter": 1,
+        "urm_native_sparse_state_mixer_v0": 1,
+    }
+    assert summary["native_lowering_rate"] + summary["upstream_adapter_rate"] <= 1
 
 
 def test_committed_solver_artifacts_validate_against_schemas() -> None:

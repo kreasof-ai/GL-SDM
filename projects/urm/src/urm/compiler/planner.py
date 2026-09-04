@@ -1124,6 +1124,9 @@ class UrmCompiler:
                 AnchorRequest(
                     kind=request_kind,
                     visitors=visitors,
+                    schedule_params=(
+                        {"anchor_override": override} if override is not None else None
+                    ),
                     semantic_op=op,
                 )
             )
@@ -1148,22 +1151,27 @@ class UrmCompiler:
                 elif request_kind is AnchorKind.SPARSE_STATE_MIXER:
                     from urm.compiler.execution import (
                         NATIVE_SPARSE_STATE_MIXER_ANCHOR_NAME,
+                        SDM_SPARSE_STATE_FALLBACK_ANCHOR_NAME,
                     )
 
-                    if override != NATIVE_SPARSE_STATE_MIXER_ANCHOR_NAME:
+                    if override not in {
+                        NATIVE_SPARSE_STATE_MIXER_ANCHOR_NAME,
+                        SDM_SPARSE_STATE_FALLBACK_ANCHOR_NAME,
+                    }:
                         decision = AnchorDecision(
                             anchor=None,
                             decline=Decline(
                                 reason_code=DiagnosticCode.ANCHOR_DECLINED,
                                 message=(
                                     f"override {override!r} is incompatible with "
-                                    "the native SparseStateMixer v0 anchor "
-                                    f"{NATIVE_SPARSE_STATE_MIXER_ANCHOR_NAME!r}"
+                                    "the SparseStateMixer native/fallback anchors "
+                                    f"{NATIVE_SPARSE_STATE_MIXER_ANCHOR_NAME!r} and "
+                                    f"{SDM_SPARSE_STATE_FALLBACK_ANCHOR_NAME!r}"
                                 ),
                             ),
                         )
-                    # The exact native override cannot bypass the capability
-                    # and hardware-aware selector's decision.
+                    # Exact native and external overrides cannot bypass their
+                    # capability, hardware, or revision-aware selector paths.
                 elif not (
                     decision.anchor is not None and decision.anchor.name == override
                 ):
@@ -1259,6 +1267,14 @@ class UrmCompiler:
                 if launch_config is not None and anchor.consumes_launch_config
                 else None
             )
+            if anchor.kind is AnchorKind.SPARSE_STATE_MIXER and anchor.name.startswith(
+                "urm_native_"
+            ):
+                from urm.compiler.semantic import SparseStateMixerAccess
+                from urm.sparse_state_mixer import sparse_state_launch_schedule
+
+                assert isinstance(op, SparseStateMixerAccess)
+                step_launch_config = sparse_state_launch_schedule(op.spec)
             steps.append(
                 PlanStep(
                     step_id=step_id,

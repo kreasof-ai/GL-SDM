@@ -94,7 +94,12 @@ def build_program(spec):
     }
 
     if spec.name == "sparse_delta_memory":
-        from urm.compiler.semantic import SDMExecutionMode, sparse_delta_memory_program
+        from urm.compiler.semantic import (
+            SDMExecutionMode,
+            SparseStateExecutionMode,
+            sparse_delta_memory_program,
+            sparse_state_mixer_program,
+        )
 
         return (
             (
@@ -108,6 +113,17 @@ def build_program(spec):
                     reads=64,
                     dtype=DType.BFLOAT16,
                     mode=SDMExecutionMode.TRAINING,
+                ),
+                sparse_state_mixer_program(
+                    name="sparse_state_mixer_kernel_only",
+                    parallel=1,
+                    sequence=128,
+                    slots_per_partition=4096,
+                    value_dim=256,
+                    writes=64,
+                    reads=64,
+                    dtype=DType.BFLOAT16,
+                    mode=SparseStateExecutionMode.TRAINING,
                 ),
             ),
             architecture,
@@ -388,11 +404,15 @@ def main() -> None:
                 "rejected_by_training_intent": rejected_by_intent,
                 "compiled": compiled_programs > 0,
                 "anchors_selected": sorted(set(anchors)),
+                "anchor_dispatch_counts": {
+                    name: anchors.count(name) for name in sorted(set(anchors))
+                },
                 "estimated_costs": costs,
                 "traces": traces,
                 "escape_hatch_count": 0,
                 "measured_performance_pointer": (
-                    "results/sparse-delta-memory/benchmark.json"
+                    "results/sparse-delta-memory/benchmark.json; "
+                    "results/sparse-state-mixer/confirmation.json"
                     if preset.name == "sparse_delta_memory"
                     else (
                         "results/final/*-forward.json (routed-reduction v1 is the "
@@ -430,24 +450,25 @@ def main() -> None:
         if row["compiled"] and row["architecture_params"].get("family_detail_lowered")
     )
     # Where executed work goes for the compiled programs.
-    NATIVE_PREFIXES = ("routed_reduction",)
+    NATIVE_PREFIXES = ("routed_reduction", "urm_native_sparse_state_mixer")
     UPSTREAM_ANCHORS = {
         "flash_attention_adapter",
         "fla_gated_delta_rule_adapter",
         "facebook_sparse_delta_memory_183e7df_external_adapter",
+        "facebook_sparse_delta_memory_183e7df_precomputed_route_adapter",
     }
     compiled_programs_total = sum(row.get("compiled_programs", 0) for row in rows)
     native_programs = sum(
-        row.get("compiled_programs", 0)
+        count
         for row in rows
-        if any(
-            str(a).startswith(NATIVE_PREFIXES) for a in row.get("anchors_selected", [])
-        )
+        for anchor_name, count in row.get("anchor_dispatch_counts", {}).items()
+        if str(anchor_name).startswith(NATIVE_PREFIXES)
     )
     upstream_programs = sum(
-        row.get("compiled_programs", 0)
+        count
         for row in rows
-        if any(a in UPSTREAM_ANCHORS for a in row.get("anchors_selected", []))
+        for anchor_name, count in row.get("anchor_dispatch_counts", {}).items()
+        if anchor_name in UPSTREAM_ANCHORS
     )
     cmd_str = (
         f"python benchmarks/compilation_matrix.py --probe {args.probe}"

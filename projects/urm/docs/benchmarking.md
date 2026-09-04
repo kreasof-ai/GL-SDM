@@ -192,8 +192,27 @@ The native SparseStateMixer grid is frozen in
 certified routes at kernel-only scope; pipeline route-production timing remains
 explicitly not applicable until a native selector exists. Confirmation uses
 three fresh processes, randomized paired AB/BA samples, bootstrap upper bounds,
-drift sentinels, raw samples, and clean provenance. See
+drift sentinels, raw samples, and clean provenance. A whole measurement may be
+retried at most twice after its first attempt when the unchanged 15% sentinel
+threshold fails; every rejected attempt is retained, and exhausting all three
+attempts aborts artifact generation. See
 `docs/sparse-state-mixer.md` for fixed semantic/numerical envelopes.
+`benchmarks/sparse_state_mixer.py` creates fresh per-process Triton,
+Torch-extension, and Inductor caches, records dependency-probe and first-call
+build/load time separately, and embeds all three child artifacts in
+`results/sparse-state-mixer/confirmation.json`. Steady-state backward timing
+receives preallocated reading and final-state cotangents directly on both paths;
+cloning, graph construction, certification, and loss construction are outside
+the region. The strict schema is
+`benchmarks/sparse-state-mixer-result-schema.json`.
+
+Per-case throughput is reported as queries/second. Route, state-read,
+state-write, input, and output bytes—and bandwidth derived from them—are labeled
+analytical. Random page reuse makes an HBM utilization denominator ambiguous,
+so MFU/MBU are `not_applicable` rather than acceptance claims. Static cubin
+resource inspection records registers, local/spill bytes, shared bytes, and a
+register-limited occupancy ceiling; CUDA-event synchronization occurs after,
+not inside, each kernel dispatch.
 
 - `benchmarks/routed_epilogue_selection.py`: solver-guided schedule selection
   for the routed-scale epilogue. Runs the full documented pipeline -

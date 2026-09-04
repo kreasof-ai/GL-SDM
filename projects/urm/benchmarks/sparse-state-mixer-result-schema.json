@@ -1,0 +1,417 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "URM-native SparseStateMixer confirmation",
+  "$ref": "#/$defs/confirmationArtifact",
+  "$defs": {
+    "number": {"type": "number"},
+    "nonnegativeNumber": {"type": "number", "minimum": 0},
+    "nonnegativeInteger": {"type": "integer", "minimum": 0},
+    "ci": {
+      "type": "object",
+      "required": ["lower", "upper"],
+      "properties": {
+        "lower": {"type": "number"},
+        "upper": {"type": "number"}
+      },
+      "additionalProperties": false
+    },
+    "timeStats": {
+      "type": "object",
+      "required": ["count", "median_ms", "p95_ms", "minimum_ms", "raw_ms"],
+      "properties": {
+        "count": {"type": "integer", "minimum": 3},
+        "median_ms": {"$ref": "#/$defs/nonnegativeNumber"},
+        "p95_ms": {"$ref": "#/$defs/nonnegativeNumber"},
+        "minimum_ms": {"$ref": "#/$defs/nonnegativeNumber"},
+        "raw_ms": {
+          "type": "array",
+          "minItems": 3,
+          "items": {"$ref": "#/$defs/nonnegativeNumber"}
+        }
+      },
+      "additionalProperties": false
+    },
+    "ratioStats": {
+      "type": "object",
+      "required": ["count", "median", "p95", "minimum", "raw", "bootstrap_ci95_median"],
+      "properties": {
+        "count": {"type": "integer", "minimum": 3},
+        "median": {"$ref": "#/$defs/nonnegativeNumber"},
+        "p95": {"$ref": "#/$defs/nonnegativeNumber"},
+        "minimum": {"$ref": "#/$defs/nonnegativeNumber"},
+        "raw": {
+          "type": "array",
+          "minItems": 3,
+          "items": {"$ref": "#/$defs/nonnegativeNumber"}
+        },
+        "bootstrap_ci95_median": {"$ref": "#/$defs/ci"}
+      },
+      "additionalProperties": false
+    },
+    "pairedPerformance": {
+      "type": "object",
+      "required": [
+        "sampling", "orders", "upstream_wall", "native_wall",
+        "upstream_device", "native_device", "paired_device_ratio",
+        "paired_wall_ratio", "native_host_dispatch_share",
+        "upstream_host_dispatch_share"
+      ],
+      "properties": {
+        "sampling": {"const": "seeded randomized paired AB/BA"},
+        "orders": {
+          "type": "array",
+          "minItems": 3,
+          "items": {"enum": ["AB", "BA"]}
+        },
+        "upstream_wall": {"$ref": "#/$defs/timeStats"},
+        "native_wall": {"$ref": "#/$defs/timeStats"},
+        "upstream_device": {"$ref": "#/$defs/timeStats"},
+        "native_device": {"$ref": "#/$defs/timeStats"},
+        "paired_device_ratio": {"$ref": "#/$defs/ratioStats"},
+        "paired_wall_ratio": {"$ref": "#/$defs/ratioStats"},
+        "native_host_dispatch_share": {"type": "number", "minimum": 0, "maximum": 1},
+        "upstream_host_dispatch_share": {"type": "number", "minimum": 0, "maximum": 1}
+      },
+      "additionalProperties": false
+    },
+    "notApplicable": {
+      "type": "object",
+      "required": ["status", "reason"],
+      "properties": {
+        "status": {"const": "not_applicable"},
+        "reason": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "memorySample": {
+      "type": "object",
+      "required": ["allocated_before_bytes", "peak_allocated_bytes", "temporary_peak_bytes"],
+      "properties": {
+        "allocated_before_bytes": {"$ref": "#/$defs/nonnegativeInteger"},
+        "peak_allocated_bytes": {"$ref": "#/$defs/nonnegativeInteger"},
+        "temporary_peak_bytes": {"$ref": "#/$defs/nonnegativeInteger"}
+      },
+      "additionalProperties": false
+    },
+    "memoryPair": {
+      "type": "object",
+      "required": ["upstream", "native"],
+      "properties": {
+        "upstream": {"$ref": "#/$defs/memorySample"},
+        "native": {"$ref": "#/$defs/memorySample"}
+      },
+      "additionalProperties": false
+    },
+    "gate": {
+      "type": "object",
+      "required": ["paired_ci95_upper_within_1_10", "p95_ratio", "p95_within_1_10", "memory_passed", "passed"],
+      "properties": {
+        "paired_ci95_upper_within_1_10": {"const": true},
+        "p95_ratio": {"$ref": "#/$defs/nonnegativeNumber"},
+        "p95_within_1_10": {"const": true},
+        "memory_limit_bytes": {"$ref": "#/$defs/nonnegativeNumber"},
+        "memory_passed": {"const": true},
+        "passed": {"const": true}
+      },
+      "additionalProperties": false
+    },
+    "gradient": {
+      "type": "object",
+      "required": ["native_finite", "native_vs_torch_max_abs", "native_vs_upstream_max_abs", "passed"],
+      "properties": {
+        "native_finite": {"const": true},
+        "native_vs_torch_max_abs": {"$ref": "#/$defs/nonnegativeNumber"},
+        "native_vs_upstream_max_abs": {"$ref": "#/$defs/nonnegativeNumber"},
+        "passed": {"const": true}
+      },
+      "additionalProperties": false
+    },
+    "backwardCorrectness": {
+      "oneOf": [
+        {"$ref": "#/$defs/notApplicable"},
+        {
+          "type": "object",
+          "required": ["passed", "tolerances", "gradients"],
+          "properties": {
+            "passed": {"const": true},
+            "tolerances": {
+              "type": "object",
+              "required": ["atol", "rtol"],
+              "properties": {
+                "atol": {"$ref": "#/$defs/nonnegativeNumber"},
+                "rtol": {"$ref": "#/$defs/nonnegativeNumber"}
+              },
+              "additionalProperties": false
+            },
+            "gradients": {
+              "type": "object",
+              "required": ["initial_memory", "write_weights", "values", "beta", "log_decay", "read_weights"],
+              "properties": {
+                "initial_memory": {"$ref": "#/$defs/gradient"},
+                "write_weights": {"$ref": "#/$defs/gradient"},
+                "values": {"$ref": "#/$defs/gradient"},
+                "beta": {"$ref": "#/$defs/gradient"},
+                "log_decay": {"$ref": "#/$defs/gradient"},
+                "read_weights": {"$ref": "#/$defs/gradient"}
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "caseSpec": {
+      "type": "object",
+      "required": ["name", "operation", "classification", "parallel", "sequence", "slots", "dim", "writes", "reads", "dtype", "collision"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "operation": {"enum": ["read_only", "update", "training"]},
+        "classification": {"enum": ["host_bound", "substantial"]},
+        "parallel": {"type": "integer", "minimum": 1},
+        "sequence": {"type": "integer", "minimum": 1},
+        "slots": {"type": "integer", "minimum": 1},
+        "dim": {"type": "integer", "minimum": 1},
+        "writes": {"type": "integer", "minimum": 0},
+        "reads": {"type": "integer", "minimum": 1},
+        "dtype": {"enum": ["float32", "bfloat16"]},
+        "collision": {"enum": ["low", "high", "recurrent"]}
+      },
+      "additionalProperties": false
+    },
+    "caseResult": {
+      "type": "object",
+      "required": [
+        "case", "seed", "construction_wall_ms", "first_call", "correctness",
+        "backward_correctness", "forward", "backward", "memory",
+        "drift_sentinel", "forward_gate", "backward_gate", "analytical_work",
+        "rates", "launch_schedule"
+      ],
+      "properties": {
+        "case": {"$ref": "#/$defs/caseSpec"},
+        "seed": {"type": "integer"},
+        "construction_wall_ms": {"$ref": "#/$defs/nonnegativeNumber"},
+        "first_call": {
+          "type": "object",
+          "required": ["scope", "upstream", "native"],
+          "properties": {
+            "scope": {"type": "string", "minLength": 1},
+            "upstream": {"$ref": "#/$defs/firstCallPath"},
+            "native": {"$ref": "#/$defs/firstCallPath"}
+          },
+          "additionalProperties": false
+        },
+        "correctness": {
+          "type": "object",
+          "required": ["passed", "raw_max_abs", "tolerances"],
+          "properties": {
+            "passed": {"const": true},
+            "raw_max_abs": {
+              "type": "object",
+              "required": ["native_vs_torch_readings", "native_vs_torch_state", "native_vs_numpy_readings", "native_vs_numpy_state", "native_vs_upstream_readings", "native_vs_upstream_state"],
+              "additionalProperties": {"$ref": "#/$defs/nonnegativeNumber"}
+            },
+            "tolerances": {
+              "type": "object",
+              "required": ["native_reference_atol", "rtol", "upstream_atol"],
+              "additionalProperties": {"$ref": "#/$defs/nonnegativeNumber"}
+            }
+          },
+          "additionalProperties": false
+        },
+        "backward_correctness": {"$ref": "#/$defs/backwardCorrectness"},
+        "forward": {"$ref": "#/$defs/pairedPerformance"},
+        "backward": {"oneOf": [{"$ref": "#/$defs/pairedPerformance"}, {"$ref": "#/$defs/notApplicable"}]},
+        "memory": {
+          "type": "object",
+          "required": ["upstream", "native"],
+          "properties": {
+            "upstream": {"$ref": "#/$defs/memorySample"},
+            "native": {"$ref": "#/$defs/memorySample"},
+            "backward": {"$ref": "#/$defs/memoryPair"}
+          },
+          "additionalProperties": false
+        },
+        "drift_sentinel": {
+          "type": "object",
+          "required": ["threshold", "maximum_attempts", "accepted_attempt", "attempts", "passed"],
+          "properties": {
+            "threshold": {"const": 0.15},
+            "maximum_attempts": {"const": 3},
+            "accepted_attempt": {"type": "integer", "minimum": 1, "maximum": 3},
+            "attempts": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 3,
+              "items": {
+                "type": "object",
+                "required": ["attempt", "upstream_before_ms", "upstream_after_ms", "absolute_fraction", "passed"],
+                "properties": {
+                  "attempt": {"type": "integer", "minimum": 1, "maximum": 3},
+                  "upstream_before_ms": {"$ref": "#/$defs/nonnegativeNumber"},
+                  "upstream_after_ms": {"$ref": "#/$defs/nonnegativeNumber"},
+                  "absolute_fraction": {"$ref": "#/$defs/nonnegativeNumber"},
+                  "passed": {"type": "boolean"}
+                },
+                "additionalProperties": false
+              }
+            },
+            "passed": {"const": true}
+          },
+          "additionalProperties": false
+        },
+        "forward_gate": {"$ref": "#/$defs/gate"},
+        "backward_gate": {"oneOf": [{"$ref": "#/$defs/gate"}, {"type": "object", "required": ["status"], "properties": {"status": {"const": "not_applicable"}}, "additionalProperties": false}]},
+        "analytical_work": {
+          "type": "object",
+          "required": ["label", "queries", "route_bytes", "state_read_bytes", "state_write_bytes", "value_gate_input_bytes", "output_bytes", "total_bytes", "useful_flops"],
+          "properties": {
+            "label": {"const": "analytical_logical_not_measured"},
+            "queries": {"$ref": "#/$defs/nonnegativeInteger"},
+            "route_bytes": {"$ref": "#/$defs/nonnegativeInteger"},
+            "state_read_bytes": {"$ref": "#/$defs/nonnegativeInteger"},
+            "state_write_bytes": {"$ref": "#/$defs/nonnegativeInteger"},
+            "value_gate_input_bytes": {"$ref": "#/$defs/nonnegativeInteger"},
+            "output_bytes": {"$ref": "#/$defs/nonnegativeInteger"},
+            "total_bytes": {"$ref": "#/$defs/nonnegativeInteger"},
+            "useful_flops": {"$ref": "#/$defs/nonnegativeInteger"}
+          },
+          "additionalProperties": false
+        },
+        "rates": {
+          "type": "object",
+          "required": ["upstream", "native"],
+          "properties": {
+            "upstream": {"$ref": "#/$defs/rates"},
+            "native": {"$ref": "#/$defs/rates"}
+          },
+          "additionalProperties": false
+        },
+        "launch_schedule": {
+          "type": "object",
+          "required": ["schedule_family", "block_d", "num_warps", "num_stages", "tokens_per_program", "read_timing", "state_layout"],
+          "properties": {
+            "schedule_family": {"const": "partition_owned_ordered_token_scan"},
+            "block_d": {"type": "integer", "minimum": 16, "maximum": 256},
+            "num_warps": {"enum": [2, 4, 8]},
+            "num_stages": {"const": 3},
+            "tokens_per_program": {"const": -1},
+            "read_timing": {"enum": ["current_state", "before_update", "after_update"]},
+            "state_layout": {"const": "partition_slot_value"}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "firstCallPath": {
+      "type": "object",
+      "required": ["wall_ms", "device_ms"],
+      "properties": {
+        "wall_ms": {"$ref": "#/$defs/nonnegativeNumber"},
+        "device_ms": {"$ref": "#/$defs/nonnegativeNumber"}
+      },
+      "additionalProperties": false
+    },
+    "rates": {
+      "type": "object",
+      "required": ["queries_per_second", "median_device_us", "analytical_logical_gb_per_second"],
+      "properties": {
+        "queries_per_second": {"$ref": "#/$defs/nonnegativeNumber"},
+        "median_device_us": {"$ref": "#/$defs/nonnegativeNumber"},
+        "analytical_logical_gb_per_second": {"$ref": "#/$defs/nonnegativeNumber"}
+      },
+      "additionalProperties": false
+    },
+    "upstream": {
+      "type": "object",
+      "required": ["repository", "expected_commit", "installed_commit", "revision_compatible", "checkout_dirty", "license", "runtime_versions", "entry_points", "source_usage"],
+      "properties": {
+        "repository": {"const": "https://github.com/facebookresearch/sparse-delta-memory"},
+        "expected_commit": {"const": "183e7df809131b80ad4393741029d0f20fc3640b"},
+        "installed_commit": {"const": "183e7df809131b80ad4393741029d0f20fc3640b"},
+        "revision_compatible": {"const": true},
+        "checkout_root": {"type": "string"},
+        "module_file": {"type": "string"},
+        "checkout_dirty": {"const": false},
+        "license": {"const": "CC-BY-NC-4.0"},
+        "installation": {"type": "string"},
+        "runtime_versions": {"type": "object", "additionalProperties": {"type": ["string", "null"]}},
+        "runtime_requirements": {"type": "object", "additionalProperties": {"type": "string"}},
+        "entry_points": {"type": "object", "additionalProperties": {"type": "string"}},
+        "source_usage": {"type": "string"},
+        "compute_capability": {"type": "array", "prefixItems": [{"type": "integer"}, {"type": "integer"}], "items": false},
+        "build_tools": {"type": "object", "additionalProperties": {"type": ["string", "null"]}},
+        "library_path": {"type": "array", "items": {"type": "string"}}
+      },
+      "additionalProperties": false
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["git_revision", "dirty_tree", "benchmark_command", "config_hash", "python", "platform", "pytorch", "triton", "cuda", "driver", "gpu", "gpu_uuid"],
+      "properties": {
+        "git_revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "dirty_tree": {"const": false},
+        "benchmark_command": {"type": "string", "minLength": 1},
+        "config_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "solver_version": {"type": ["string", "null"]},
+        "python": {"type": "string"},
+        "platform": {"type": "string"},
+        "pytorch": {"const": "2.8.0"},
+        "triton": {"const": "3.4.0"},
+        "cuda": {"type": "string"},
+        "driver": {"type": "string"},
+        "gpu": {"const": "NVIDIA A10G"},
+        "gpu_uuid": {"type": "string", "minLength": 1},
+        "upstream": {"$ref": "#/$defs/upstream"}
+      },
+      "additionalProperties": false
+    },
+    "singleRun": {
+      "type": "object",
+      "required": ["schema_version", "artifact_kind", "generated_utc", "provenance", "cold_start", "scope", "fixed_tolerances", "methodology", "optimization_history", "native_profile", "cases", "aggregate"],
+      "properties": {
+        "schema_version": {"const": 1},
+        "artifact_kind": {"const": "single_process_run"},
+        "generated_utc": {"type": "string", "format": "date-time"},
+        "provenance": {"allOf": [{"$ref": "#/$defs/provenance"}, {"required": ["upstream"]}]},
+        "cold_start": {"type": "object"},
+        "scope": {"type": "object"},
+        "fixed_tolerances": {"type": "object"},
+        "methodology": {"type": "object"},
+        "optimization_history": {"type": "array", "minItems": 1, "items": {"type": "object", "required": ["id", "kind", "hypothesis", "result", "status"]}},
+        "native_profile": {"type": "object", "required": ["status"]},
+        "cases": {"type": "object", "minProperties": 1, "additionalProperties": {"$ref": "#/$defs/caseResult"}},
+        "aggregate": {"type": "object"}
+      },
+      "additionalProperties": false
+    },
+    "confirmationArtifact": {
+      "type": "object",
+      "required": ["schema_version", "artifact_kind", "generated_utc", "provenance", "methodology", "runs", "confirmation"],
+      "properties": {
+        "schema_version": {"const": 1},
+        "artifact_kind": {"const": "three_process_confirmation"},
+        "generated_utc": {"type": "string", "format": "date-time"},
+        "provenance": {"$ref": "#/$defs/provenance"},
+        "methodology": {"type": "object", "required": ["fresh_processes", "fresh_per_process_caches", "process_wall_ms", "sampling", "kernel_only"]},
+        "runs": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"$ref": "#/$defs/singleRun"}},
+        "confirmation": {
+          "type": "object",
+          "required": ["process_count", "hierarchical_bootstrap_resamples", "cases", "substantial_forward_geometric_mean_native_over_upstream", "geometric_mean_passed", "all_case_forward_backward_correctness_latency_memory_passed", "passed"],
+          "properties": {
+            "process_count": {"const": 3},
+            "hierarchical_bootstrap_resamples": {"type": "integer", "minimum": 1000},
+            "cases": {"type": "object", "minProperties": 1},
+            "substantial_forward_geometric_mean_native_over_upstream": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+            "geometric_mean_passed": {"const": true},
+            "all_case_forward_backward_correctness_latency_memory_passed": {"const": true},
+            "passed": {"const": true}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

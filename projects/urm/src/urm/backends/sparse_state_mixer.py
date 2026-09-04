@@ -15,6 +15,7 @@ from urm.sparse_state_mixer import (
     FROZEN_V0_ENVELOPE,
     NATIVE_SPARSE_STATE_MIXER_NAME,
     SparseStateSupportStatus,
+    sparse_state_launch_schedule,
     sparse_state_spec_status,
 )
 
@@ -342,6 +343,9 @@ class TritonSparseStateMixerBackend:
             "supported_index_dtypes": list(envelope.supported_index_dtypes),
             "minimum_compute_capability": list(envelope.minimum_compute_capability),
         }
+
+    def launch_schedule(self) -> dict[str, str | int]:
+        return sparse_state_launch_schedule(self.spec)
 
 
 __all__ = [

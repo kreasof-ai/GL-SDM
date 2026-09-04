@@ -16,6 +16,7 @@ from urm.adapters.sparse_delta_memory import (
     UrmSparseDeltaMemoryAdapter,
     probe_sdm_support,
 )
+from urm.adapters.sparse_state_mixer_external import SDMSparseStateMixerFallback
 
 SUPPORT = probe_sdm_support()
 if not SUPPORT.supported:
@@ -257,6 +258,132 @@ def test_read_only_matches_pinned_upstream(dtype) -> None:
         memory.flatten(0, 1), weights, _global(indices, slots)
     )
     torch.testing.assert_close(native.float(), direct.float(), atol=2e-2, rtol=2e-2)
+
+
+def test_compiler_visible_external_fallback_calls_exact_bound_update() -> None:
+    slots, memory, wi, ww, values, beta, decay, ri, rw = _sample(
+        torch.float32, sequence=16, dim=37, width=4, collision_heavy=True
+    )
+    spec = SparseStateMixerSpec(
+        1,
+        16,
+        slots,
+        37,
+        4,
+        4,
+        DType.FLOAT32,
+        SparseStateOperation.UPDATE,
+        SparseReadTiming.AFTER_UPDATE,
+    )
+    routes = CertifiedSparseStateRoutes.certify(
+        spec,
+        ri.to(torch.int32),
+        rw,
+        write_indices=wi.to(torch.int32),
+        write_weights=ww,
+    )
+    fallback = SDMSparseStateMixerFallback(spec)
+    bound_update = fallback.bound_callables["update"]
+    assert bound_update is fallback.adapter.direct_calls["update"]
+    prepared = fallback.prepare(routes, values=values, beta=beta, log_decay=decay)
+    direct_memory = memory.flatten(0, 1).clone()
+    direct_output, _ = bound_update(
+        direct_memory,
+        prepared.global_write_indices,
+        ww,
+        values,
+        beta,
+        decay,
+        prepared.global_read_indices,
+        rw,
+    )
+    adapter_output, adapter_state = fallback.execute(
+        SparseState(memory.clone()), prepared
+    )
+    torch.testing.assert_close(adapter_output, direct_output, atol=0, rtol=0)
+    torch.testing.assert_close(
+        adapter_state.memory.flatten(0, 1), direct_memory, atol=0, rtol=0
+    )
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+def test_external_fallback_training_gradients_match_direct(dtype) -> None:
+    slots, memory, wi, ww, values, beta, decay, ri, rw = _sample(
+        dtype, sequence=16, dim=32, width=4, collision_heavy=True
+    )
+    spec = SparseStateMixerSpec(
+        1,
+        16,
+        slots,
+        32,
+        4,
+        4,
+        DType.FLOAT32 if dtype is torch.float32 else DType.BFLOAT16,
+        SparseStateOperation.UPDATE,
+        SparseReadTiming.AFTER_UPDATE,
+        mode=SparseStateExecutionMode.TRAINING,
+    )
+    fallback = SDMSparseStateMixerFallback(spec)
+    generator = torch.Generator(device="cuda").manual_seed(7711)
+    read_grad = (
+        torch.randn(values.shape, device="cuda", generator=generator).to(dtype)
+        / values.numel()
+    )
+    final_grad = (
+        torch.randn(memory.shape, device="cuda", generator=generator).to(dtype)
+        / memory.numel()
+    )
+
+    def leaves():
+        return tuple(
+            item.detach().clone().requires_grad_(True)
+            for item in (memory, ww, values, beta, decay, rw)
+        )
+
+    direct = leaves()
+    direct_output, _ = fallback.bound_callables["update"](
+        direct[0].flatten(0, 1) + 0,
+        _global(wi, slots),
+        direct[1],
+        direct[2],
+        direct[3],
+        direct[4],
+        _global(ri, slots),
+        direct[5],
+        grad_final_memory=final_grad.flatten(0, 1).contiguous(),
+    )
+    direct_gradients = torch.autograd.grad(
+        direct_output, direct, grad_outputs=read_grad
+    )
+
+    adapted = leaves()
+    routes = CertifiedSparseStateRoutes.certify(
+        spec,
+        ri,
+        adapted[5],
+        write_indices=wi,
+        write_weights=adapted[1],
+    )
+    prepared = fallback.prepare(
+        routes,
+        values=adapted[2],
+        beta=adapted[3],
+        log_decay=adapted[4],
+    )
+    adapter_output, _ = fallback.execute(
+        SparseState(adapted[0]), prepared, grad_final_memory=final_grad
+    )
+    adapter_gradients = torch.autograd.grad(
+        adapter_output, adapted, grad_outputs=read_grad
+    )
+    torch.testing.assert_close(adapter_output, direct_output, atol=0, rtol=0)
+    for adapter_gradient, direct_gradient in zip(
+        adapter_gradients, direct_gradients, strict=True
+    ):
+        assert torch.isfinite(adapter_gradient).all()
+        torch.testing.assert_close(
+            adapter_gradient, direct_gradient, **BACKWARD_TOLERANCES[dtype]
+        )
 
 
 @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])

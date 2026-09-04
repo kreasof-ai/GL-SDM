@@ -126,6 +126,22 @@ def test_sparse_delta_result_schema_v2_requires_score_gradients() -> None:
     )
 
 
+def test_sparse_state_mixer_schema_is_strict_version_one() -> None:
+    schema = json.loads(
+        (
+            PROJECT_ROOT / "benchmarks" / "sparse-state-mixer-result-schema.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert (
+        schema["$defs"]["confirmationArtifact"]["properties"]["schema_version"]["const"]
+        == 1
+    )
+    assert schema["$defs"]["confirmationArtifact"]["additionalProperties"] is False
+    assert schema["$defs"]["singleRun"]["additionalProperties"] is False
+    assert schema["$defs"]["caseResult"]["additionalProperties"] is False
+    assert schema["$defs"]["provenance"]["additionalProperties"] is False
+
+
 def test_compilation_matrix_probe_off_does_not_import_torch_or_triton(
     tmp_path: Path,
 ) -> None:

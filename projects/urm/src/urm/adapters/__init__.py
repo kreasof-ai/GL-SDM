@@ -22,6 +22,7 @@ from .sparse_delta_memory import (
     SDMTraceOrigin,
     UrmSparseDeltaMemoryAdapter,
 )
+from .sparse_state_mixer_external import SDMSparseStateMixerFallback
 
 __all__ = [
     "DenseAttentionSpec",
@@ -30,6 +31,7 @@ __all__ = [
     "SDMAdapterMode",
     "SDMAddressTrace",
     "SDMOperationSpec",
+    "SDMSparseStateMixerFallback",
     "SDMState",
     "SDMTraceOrigin",
     "UrmDenseCausalAttentionAdapter",

@@ -183,6 +183,16 @@ external product-key implementation. This separation preserves the composite
 score-to-state front end while allowing native route-to-state evolution and an
 external fallback to coexist.
 
+The native plan serializes its `partition_owned_ordered_token_scan` schedule;
+execution assigns one partition/value fragment to a Triton program and keeps
+cross-token mutation order structural. Capability decisions are runtime-aware.
+When native v0 declines, the compiler may use the pinned
+`facebook_sparse_delta_memory_183e7df_precomputed_route_adapter` only for the
+overlapping post-update/current-read envelope. The adapter performs logical-to-
+physical address translation outside dispatch and calls the exact stored
+upstream bound method. It is labeled external in the plan and never changes the
+semantic operation. Pre-update or otherwise incompatible programs decline.
+
 Remaining slices are:
 
 1. Dense and masked sequence reduction against the NumPy oracle.

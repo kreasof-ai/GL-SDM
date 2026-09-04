@@ -15,8 +15,8 @@ result rather than treated as permanent defaults.
 | Top-k MoE | NumPy stable top-k gate | PyTorch per-expert eager | MegaBlocks; SonicMoE on supported hardware | Expert grouped-GEMM lowering | Semantics represented; family adapter deferred |
 | Advanced MoE routing | Per-family routing/dispatch oracle | PyTorch explicit dispatch | Original model implementation plus grouped-GEMM backend | Typed score/select/balance lowering | Detail specs represented; family adapters deferred |
 | Parameter-token mixer | NumPy dense/top-k reduce | PyTorch SDPA formulation | Attention-compatible fused path | Parameter-block lowering | Semantics represented; comparator deferred |
-| Sparse Delta Memory | NumPy product-key/read/ordered-update oracle | Transparent PyTorch product-key/read/recurrence | Original SDM Triton/CUDA kernels at `183e7df809131b80ad4393741029d0f20fc3640b` | Typed external SDM adapter (not native) | Validated SDM baseline integration; native page-local lowering deferred |
-| SparseStateMixer | NumPy ordered route-to-state oracle | Transparent PyTorch route-to-state recurrence | Original SDM state kernels at the pinned commit, comparator only | URM-owned Triton ordered forward/reverse scans | v0 capability/grid frozen; performance confirmation active |
+| Sparse Delta Memory | NumPy product-key/read/ordered-update oracle | Transparent PyTorch product-key/read/recurrence | Original SDM Triton/CUDA kernels at `183e7df809131b80ad4393741029d0f20fc3640b` | Typed external composite SDM adapter | Validated baseline; native route production deferred |
+| SparseStateMixer | NumPy ordered route-to-state oracle | Transparent PyTorch route-to-state recurrence | Original SDM state kernels at the pinned commit, comparator/fallback only | URM-owned Triton ordered forward/reverse scans | Native v0 implemented with frozen three-process confirmation |
 | Transactional GL-SDM write | NumPy sort/merge/commit | PyTorch sort + segment reduction | Original SDM sparse update plus URM transaction wrapper | Buffered transactional lowering | Oracle/contract present; optimized path deferred |
 | Learned token sparse attention | Dense attention plus selected-index trace | PyTorch gather + SDPA | DeepSeek FlashMLA / DeepGEMM | Token-index lowering | Detail spec represented; comparator deferred |
 | Learned block sparse attention | Dense attention plus selected-block trace | PyTorch block gather + SDPA | MiniMax MSA kernels | GQA-group block lowering | Detail spec represented; comparator deferred |
@@ -82,7 +82,10 @@ and covers product-key top-k, Softmax, ordered state evolution, and all six
 semantic input gradients; route-weight-only gradients are not the capability
 claim.
 See [the frozen contract](sparse-delta-memory.md). No upstream kernel source is
-copied, no FLA kernel is substituted, and no native URM SDM kernel exists yet.
+copied and no FLA kernel is substituted. The later native
+`SparseStateMixer` owns only the certified-route state transition; it does not
+turn the upstream product-key API into semantic IR and does not yet provide a
+native route-selection pipeline.
 
 The upstream implementation requires PyTorch 2.8 or newer, Triton 3.4 or newer,
 a CUDA toolkit and host compiler at runtime, and an SM80-or-newer GPU. This

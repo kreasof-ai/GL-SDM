@@ -82,6 +82,11 @@ such and retained; a semantic that cannot be expressed at all is a URM failure.
     intent, while inference semantic mode permits inference or explicit
     forward-only-analysis intent; every contradictory combination is an
     `intent_conflict` before anchor selection.
+    The certified-route `SparseStateMixerAccess` follows the same intent rule.
+    Its native plan serializes the URM-owned partition/value-tile schedule. A
+    pinned SDM execution fallback may be selected only after native decline and
+    only when a separate revision/runtime/semantic probe proves the exact
+    overlap; its physical address translation remains outside semantic IR.
 12. **Candidate selection never mutates the program implicitly.** The base
     plan is always a candidate; every rewrite occurrence has a stable ID;
     callers may select explicitly; automatic selection runs through the
