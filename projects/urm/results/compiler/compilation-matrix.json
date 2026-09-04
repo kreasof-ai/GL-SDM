@@ -1,8 +1,8 @@
 {
   "schema_version": 2,
-  "generated_utc": "2026-09-04T16:45:09.909358+00:00",
+  "generated_utc": "2026-09-04T19:38:22.168274+00:00",
   "provenance": {
-    "git_revision": "0ab9b3d08f52ae59dd7859f3fc585941658e6e85",
+    "git_revision": "6ee9a1c5c66a949b46e196c669c94a911c3accb4",
     "dirty_tree": false,
     "benchmark_command": "python benchmarks/compilation_matrix.py --probe required",
     "config_hash": "4e799c64c838665e073cb26d3498a9b51d4bc978c0ed4671b4fc8fa411d0a5a8",
@@ -33,7 +33,7 @@
   },
   "summary": {
     "presets_evaluated": 19,
-    "valid_semantic_programs": 21,
+    "valid_semantic_programs": 22,
     "generated_candidates": 10,
     "rewrite_accepted": 10,
     "rewrite_rejected": 0,
@@ -45,12 +45,12 @@
     "verified_models": 10,
     "schedule_models_verified": 10,
     "unsat_categories": [],
-    "solver_time_ms": 659.101,
+    "solver_time_ms": 655.776,
     "compile_failures": 0,
     "routing_skeleton_compile_rate": 0.5789,
     "full_architecture_compile_rate": 0.0526,
-    "native_lowering_rate": 0.9524,
-    "upstream_adapter_rate": 0.0476,
+    "native_lowering_rate": 0.9545,
+    "upstream_adapter_rate": 0.0455,
     "escape_hatch_count": 0,
     "metric_notes": {
       "routing_skeleton_compile_rate": "fraction of presets whose coarse ROUTING SKELETON maps to compiled routed reduction; dense attention, MoE expert GEMMs and sparse attention are NOT fully compiled merely because their skeleton routes map",
@@ -138,7 +138,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 66.951,
+            "wall_ms": 68.073,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -258,6 +258,10 @@
         "routed_reduction_row_scale_epilogue_v0",
         "routed_reduction_v1"
       ],
+      "anchor_dispatch_counts": {
+        "routed_reduction_row_scale_epilogue_v0": 1,
+        "routed_reduction_v1": 1
+      },
       "estimated_costs": [
         {
           "useful_flops": 8388608,
@@ -420,7 +424,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 59.094,
+            "wall_ms": 58.351,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -540,6 +544,10 @@
         "routed_reduction_row_scale_epilogue_v0",
         "routed_reduction_v1"
       ],
+      "anchor_dispatch_counts": {
+        "routed_reduction_row_scale_epilogue_v0": 1,
+        "routed_reduction_v1": 1
+      },
       "estimated_costs": [
         {
           "useful_flops": 8388608,
@@ -702,7 +710,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 65.763,
+            "wall_ms": 64.926,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -822,6 +830,10 @@
         "routed_reduction_row_scale_epilogue_v0",
         "routed_reduction_v1"
       ],
+      "anchor_dispatch_counts": {
+        "routed_reduction_row_scale_epilogue_v0": 1,
+        "routed_reduction_v1": 1
+      },
       "estimated_costs": [
         {
           "useful_flops": 67108864,
@@ -984,7 +996,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 65.975,
+            "wall_ms": 65.407,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -1104,6 +1116,10 @@
         "routed_reduction_row_scale_epilogue_v0",
         "routed_reduction_v1"
       ],
+      "anchor_dispatch_counts": {
+        "routed_reduction_row_scale_epilogue_v0": 1,
+        "routed_reduction_v1": 1
+      },
       "estimated_costs": [
         {
           "useful_flops": 16777216,
@@ -1266,7 +1282,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 57.878,
+            "wall_ms": 58.093,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -1386,6 +1402,10 @@
         "routed_reduction_row_scale_epilogue_v0",
         "routed_reduction_v1"
       ],
+      "anchor_dispatch_counts": {
+        "routed_reduction_row_scale_epilogue_v0": 1,
+        "routed_reduction_v1": 1
+      },
       "estimated_costs": [
         {
           "useful_flops": 2097152,
@@ -1548,7 +1568,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 63.277,
+            "wall_ms": 62.777,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -1668,6 +1688,10 @@
         "routed_reduction_row_scale_epilogue_v0",
         "routed_reduction_v1"
       ],
+      "anchor_dispatch_counts": {
+        "routed_reduction_row_scale_epilogue_v0": 1,
+        "routed_reduction_v1": 1
+      },
       "estimated_costs": [
         {
           "useful_flops": 6291456,
@@ -1830,7 +1854,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 64.207,
+            "wall_ms": 64.605,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -1950,6 +1974,10 @@
         "routed_reduction_row_scale_epilogue_v0",
         "routed_reduction_v1"
       ],
+      "anchor_dispatch_counts": {
+        "routed_reduction_row_scale_epilogue_v0": 1,
+        "routed_reduction_v1": 1
+      },
       "estimated_costs": [
         {
           "useful_flops": 8388608,
@@ -2112,7 +2140,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 66.566,
+            "wall_ms": 65.915,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -2232,6 +2260,10 @@
         "routed_reduction_row_scale_epilogue_v0",
         "routed_reduction_v1"
       ],
+      "anchor_dispatch_counts": {
+        "routed_reduction_row_scale_epilogue_v0": 1,
+        "routed_reduction_v1": 1
+      },
       "estimated_costs": [
         {
           "useful_flops": 8388608,
@@ -2394,7 +2426,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 65.052,
+            "wall_ms": 64.014,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -2514,6 +2546,10 @@
         "routed_reduction_row_scale_epilogue_v0",
         "routed_reduction_v1"
       ],
+      "anchor_dispatch_counts": {
+        "routed_reduction_row_scale_epilogue_v0": 1,
+        "routed_reduction_v1": 1
+      },
       "estimated_costs": [
         {
           "useful_flops": 16777216,
@@ -2676,7 +2712,7 @@
             15024
           ],
           "solver_statistics": {
-            "wall_ms": 71.957,
+            "wall_ms": 71.426,
             "timeout_ms": 10000,
             "rlimit": 10000000,
             "objectives": 8
@@ -2796,6 +2832,10 @@
         "routed_reduction_row_scale_epilogue_v0",
         "routed_reduction_v1"
       ],
+      "anchor_dispatch_counts": {
+        "routed_reduction_row_scale_epilogue_v0": 1,
+        "routed_reduction_v1": 1
+      },
       "estimated_costs": [
         {
           "useful_flops": 8388608,
@@ -3050,8 +3090,8 @@
         "block_hints": {},
         "deterministic": false
       },
-      "valid_semantic_programs": 1,
-      "compiled_programs": 1,
+      "valid_semantic_programs": 2,
+      "compiled_programs": 2,
       "candidates": [
         {
           "candidate_id": "base",
@@ -3063,12 +3103,15 @@
         }
       ],
       "selected_candidate_ids": [
+        "base",
         "base"
       ],
       "selection_policies": [
+        "cost_heuristic",
         "cost_heuristic"
       ],
       "schedule_decisions": [
+        null,
         null
       ],
       "rewrite_accepted": 0,
@@ -3076,8 +3119,13 @@
       "rejected_by_training_intent": 0,
       "compiled": true,
       "anchors_selected": [
-        "facebook_sparse_delta_memory_183e7df_external_adapter"
+        "facebook_sparse_delta_memory_183e7df_external_adapter",
+        "urm_native_sparse_state_mixer_v0"
       ],
+      "anchor_dispatch_counts": {
+        "facebook_sparse_delta_memory_183e7df_external_adapter": 1,
+        "urm_native_sparse_state_mixer_v0": 1
+      },
       "estimated_costs": [
         {
           "useful_flops": 8388608,
@@ -3095,7 +3143,26 @@
           "provenance": "analytical_estimate",
           "notes": [
             "anchor=facebook_sparse_delta_memory_183e7df_external_adapter",
-            "analytical SDM sparse route/state traffic; not measured"
+            "analytical sparse route/state traffic; not measured"
+          ]
+        },
+        {
+          "useful_flops": 8388608,
+          "logical_bytes": 12812288,
+          "physical_bytes_estimate": 12812288,
+          "launch_count": 1,
+          "temporary_bytes": 65536,
+          "route_imbalance": 0.0,
+          "atomic_contention_indicator": 0.0,
+          "communication_bytes": 0,
+          "collective_startup_us": 0.0,
+          "critical_path_us": 0.0,
+          "recompute_bytes": 0,
+          "saved_state_bytes": 0,
+          "provenance": "analytical_estimate",
+          "notes": [
+            "anchor=urm_native_sparse_state_mixer_v0",
+            "analytical sparse route/state traffic; not measured"
           ]
         }
       ],
@@ -3111,10 +3178,22 @@
             "physical_bytes_estimate": 12812288,
             "launch_count": 1
           }
+        },
+        {
+          "attempts": [],
+          "obligations": [],
+          "chosen_anchors": [
+            "urm_native_sparse_state_mixer_v0"
+          ],
+          "estimated_costs": {
+            "useful_flops": 8388608,
+            "physical_bytes_estimate": 12812288,
+            "launch_count": 1
+          }
         }
       ],
       "escape_hatch_count": 0,
-      "measured_performance_pointer": "results/sparse-delta-memory/benchmark.json"
+      "measured_performance_pointer": "results/sparse-delta-memory/benchmark.json; results/sparse-state-mixer/confirmation.json"
     },
     {
       "architecture_params": {
