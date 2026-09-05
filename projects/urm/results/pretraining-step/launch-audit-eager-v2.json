@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "artifact_kind": "sparse_memory_production_launch_audit",
+  "generated_utc": "2026-09-05T03:23:23.268325+00:00",
+  "provenance": {
+    "git_revision": "42671f9e56df2604eb0100e5b2348d370fd74806",
+    "dirty_tree": true,
+    "benchmark_command": "audit_sparse_memory_launches",
+    "config_hash": "3e0d1ade89978aa682f0ef42b28f881f5242b7d3965bbf9a70ff6f16be2a6b50",
+    "solver_version": "4.15.3",
+    "python": "3.12.13",
+    "platform": "Linux-6.12.100-125.179.amzn2023.x86_64-x86_64-with-glibc2.39",
+    "pytorch": "2.8.0",
+    "triton": "3.4.0",
+    "cuda": "12.9",
+    "driver": "595.91.07",
+    "gpu": "NVIDIA A10G",
+    "gpu_uuid": "GPU-a2c961bc-6e65-f876-5f9d-2900ae525b4e"
+  },
+  "mode": "eager",
+  "scope": "one_production_shape_layer_forward_and_backward_separate_process_no_timing",
+  "plan": {
+    "program": "compiled_sparse_memory",
+    "steps": [
+      {
+        "step_id": 0,
+        "kind": "anchor_dispatch",
+        "anchor": "urm_native_sparse_memory_e2e_v0",
+        "exchanges": [],
+        "note": "sdm_access",
+        "launch_config": {
+          "schedule_family": "native_route_then_partition_scan",
+          "route_block_half": 64,
+          "read_route_block": 64,
+          "write_route_block": 64,
+          "state_block_d": 4,
+          "state_num_warps": 2,
+          "state_num_stages": 3,
+          "read_route_num_warps": 8,
+          "write_route_num_warps": 8,
+          "route_backward_num_warps": 4,
+          "route_num_stages": 2,
+          "route_materialization": "explicit_logical_outputs",
+          "fusion": "none"
+        }
+      }
+    ],
+    "obligations": [],
+    "escape_hatch_count": 0
+  },
+  "observed_launches": [
+    {
+      "kernel": "_sparse_route_forward_kernel",
+      "grid": [
+        12288
+      ],
+      "constants": {
+        "HALF": 64,
+        "WIDTH": 64,
+        "BLOCK_HALF": 64,
+        "BLOCK_ROUTE": 64,
+        "BLOCK_PAIR": 4096
+      },
+      "num_warps": 8,
+      "num_stages": 2
+    },
+    {
+      "kernel": "_sparse_route_forward_kernel",
+      "grid": [
+        12288
+      ],
+      "constants": {
+        "HALF": 64,
+        "WIDTH": 64,
+        "BLOCK_HALF": 64,
+        "BLOCK_ROUTE": 64,
+        "BLOCK_PAIR": 4096
+      },
+      "num_warps": 8,
+      "num_stages": 2
+    },
+    {
+      "kernel": "_sparse_state_update_kernel",
+      "grid": [
+        12,
+        16
+      ],
+      "constants": {
+        "SEQUENCE": 1024,
+        "SLOTS": 4096,
+        "WRITE_WIDTH": 64,
+        "READ_WIDTH": 64,
+        "VALUE_DIM": 64,
+        "BLOCK_D": 4,
+        "READ_BEFORE_UPDATE": false,
+        "SAVE_SELECTED": true
+      },
+      "num_warps": 2,
+      "num_stages": 3
+    },
+    {
+      "kernel": "_sparse_state_update_backward_kernel",
+      "grid": [
+        12,
+        16
+      ],
+      "constants": {
+        "SEQUENCE": 1024,
+        "SLOTS": 4096,
+        "WRITE_WIDTH": 64,
+        "READ_WIDTH": 64,
+        "VALUE_DIM": 64,
+        "BLOCK_D": 4,
+        "READ_BEFORE_UPDATE": false
+      },
+      "num_warps": 2,
+      "num_stages": 3
+    },
+    {
+      "kernel": "_sparse_route_backward_kernel",
+      "grid": [
+        12288
+      ],
+      "constants": {
+        "HALF": 64,
+        "WIDTH": 64,
+        "BLOCK_HALF": 64,
+        "BLOCK_ROUTE": 64
+      },
+      "num_warps": 4,
+      "num_stages": 2
+    },
+    {
+      "kernel": "_sparse_route_backward_kernel",
+      "grid": [
+        12288
+      ],
+      "constants": {
+        "HALF": 64,
+        "WIDTH": 64,
+        "BLOCK_HALF": 64,
+        "BLOCK_ROUTE": 64
+      },
+      "num_warps": 4,
+      "num_stages": 2
+    }
+  ],
+  "passed": true
+}

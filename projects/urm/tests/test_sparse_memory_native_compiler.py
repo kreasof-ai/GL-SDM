@@ -69,6 +69,12 @@ def test_composite_sparse_memory_selects_native_with_exact_schedule() -> None:
         "read_route_block": 8,
         "write_route_block": 4,
         "state_block_d": 128,
+        "state_num_warps": 4,
+        "state_num_stages": 3,
+        "read_route_num_warps": 4,
+        "write_route_num_warps": 4,
+        "route_backward_num_warps": 4,
+        "route_num_stages": 2,
         "route_materialization": "explicit_logical_outputs",
         "fusion": "none",
     }

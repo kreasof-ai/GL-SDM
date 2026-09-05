@@ -118,6 +118,16 @@ def compile_sparse_memory_plan(
             else 0
         ),
         "state_block_d": state_schedule["block_d"],
+        "state_num_warps": state_schedule["num_warps"],
+        "state_num_stages": state_schedule["num_stages"],
+        "read_route_num_warps": read_schedule["num_warps"],
+        "write_route_num_warps": (
+            backend.write_backend.launch_schedule()["num_warps"]
+            if backend.write_backend is not None
+            else 4
+        ),
+        "route_backward_num_warps": 4,
+        "route_num_stages": read_schedule["num_stages"],
     }
     mismatches = {
         key: {"serialized": config.get(key), "runtime": value}

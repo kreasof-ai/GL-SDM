@@ -11,6 +11,8 @@ import torch
 import triton
 import triton.language as tl
 
+PROFILE_RANGES = False
+
 
 @triton.jit
 def _sparse_state_read_kernel(
@@ -376,14 +378,9 @@ def _sparse_state_update_backward_kernel(
 
 
 def _launch_parameters(value_dim: int) -> tuple[int, int]:
-    # D=64 model training otherwise launches only one very long-running value
-    # fragment per partition. Sixteen fragments expose enough blocks to occupy
-    # an A10G while preserving the partition-owned ordered token recurrence.
-    if value_dim == 64:
-        return 4, 2
-    block_d = min(256, max(16, triton.next_power_of_2(min(value_dim, 256))))
-    warps = 8 if block_d >= 256 else 4 if block_d >= 64 else 2
-    return block_d, warps
+    from urm.sparse_state_mixer import sparse_state_launch_parameters
+
+    return sparse_state_launch_parameters(value_dim)
 
 
 def _sparse_state_read_forward(
@@ -660,6 +657,17 @@ class _SparseStateUpdate(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_readings, grad_final_memory):
+        if PROFILE_RANGES:
+            from urm.sparse_state_profile import state_stage
+
+            with state_stage("backward"):
+                return _SparseStateUpdate._backward(
+                    ctx, grad_readings, grad_final_memory
+                )
+        return _SparseStateUpdate._backward(ctx, grad_readings, grad_final_memory)
+
+    @staticmethod
+    def _backward(ctx, grad_readings, grad_final_memory):
         (
             saved_write_rows,
             saved_read_rows,

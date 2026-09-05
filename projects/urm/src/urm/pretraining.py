@@ -422,7 +422,7 @@ class SparseMemoryMixer(nn.Module):
             read_scores, write_scores, values, beta, log_decay = self._project(x)
         memory = self.persistent_memory
         if self.backend_name == "urm_native":
-            with self._profile("pretraining::sparse_memory::native_route"):
+            with self._profile("pretraining::sparse_memory::native_prepare"):
                 prepared = self._executor.prepare(
                     read_scores,
                     write_scores=write_scores,
@@ -430,7 +430,7 @@ class SparseMemoryMixer(nn.Module):
                     beta=beta,
                     log_decay=log_decay,
                 )
-            with self._profile("pretraining::sparse_memory::native_state"):
+            with self._profile("pretraining::sparse_memory::native_pipeline"):
                 result = self._executor.execute(SparseState(memory), prepared)
             readings, final = result.readings, result.state.memory
         else:
@@ -563,6 +563,11 @@ class URMDecoderLM(nn.Module):
         self.profile_ranges = enabled
         for mixer in self.sparse_mixers():
             mixer.profile_ranges = enabled
+            if mixer.backend_name == "urm_native":
+                mixer._executor.backend.profile_ranges = enabled
+                from urm.triton_kernels import sparse_state_mixer as state_kernels
+
+                state_kernels.PROFILE_RANGES = enabled
 
     @staticmethod
     def _initialize(module) -> None:

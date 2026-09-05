@@ -19,8 +19,8 @@ from pathlib import Path
 import numpy as np
 
 CONFIG_PATH = Path(__file__).with_name("pretraining_step.toml")
-SCHEMA_PATH = Path(__file__).with_name("pretraining-step-result-schema.json")
-DEFAULT_OUTPUT = Path("results/pretraining-step/confirmation.json")
+SCHEMA_PATH = Path(__file__).with_name("pretraining-step-authority-schema.json")
+DEFAULT_OUTPUT = Path("results/pretraining-step/confirmation-authority-v2.json")
 UPSTREAM_COMMIT = "183e7df809131b80ad4393741029d0f20fc3640b"
 FINEWEB_SHA256 = "6bb7ce7bcac8e11463433767ec3402311c7527c3d8d766e7d65ef86dc4546bb2"
 
@@ -145,18 +145,23 @@ def _one_step(
     gradient_clip: float,
     record_correctness: bool,
     torch,
+    capture_internal_gradients: bool = False,
+    state_snapshots=None,
 ):
     from urm.pretraining import gradient_norms
 
+    execution = model
+    model = getattr(model, "_orig_mod", model)
     model.reset_state()
     optimizer.zero_grad(set_to_none=True)
     losses = []
     sampled_logits = []
     mixer_gradients = []
-    model.capture_mixer_input_gradients(record_correctness)
+    microbatch_states = []
+    model.capture_mixer_input_gradients(capture_internal_gradients)
     profile_ranges = getattr(model, "profile_ranges", False)
     for tokens, targets in batches:
-        logits, loss = model(tokens, targets)
+        logits, loss = execution(tokens, targets)
         if loss is None:
             raise RuntimeError("language-model loss was not produced")
         if profile_ranges:
@@ -164,16 +169,26 @@ def _one_step(
                 (loss / config.gradient_accumulation).backward()
         else:
             (loss / config.gradient_accumulation).backward()
-        losses.append(float(loss.detach().item()))
         if record_correctness:
+            losses.append(float(loss.detach().item()))
             positions = (0, config.sequence_length // 2, config.sequence_length - 1)
             sampled_logits.append(
                 logits[0, positions, :8].detach().float().cpu().tolist()
             )
+        if capture_internal_gradients:
             mixer_gradients.append(
                 [gradient.float().cpu() for gradient in model.mixer_input_gradients()]
             )
         model.detach_state()
+        if record_correctness:
+            microbatch_states.append(model.state_checksums())
+            if state_snapshots is not None:
+                state_snapshots.append(
+                    [
+                        mixer.persistent_memory.detach().cpu().clone()
+                        for mixer in model.sparse_mixers()
+                    ]
+                )
     if profile_ranges:
         with torch.autograd.profiler.record_function("pretraining::gradient_clip"):
             total_norm = torch.nn.utils.clip_grad_norm_(
@@ -187,17 +202,30 @@ def _one_step(
             updates = optimizer.step(record_updates=record_correctness)
     else:
         updates = optimizer.step(record_updates=record_correctness)
-    checksums = model.state_checksums()
     model.capture_mixer_input_gradients(False)
+    if not record_correctness:
+        # No host scalar reads, checksums, or finite scans in the timed boundary.
+        return {}, []
     return {
         "loss_before": statistics.mean(losses),
         "sampled_logits": sampled_logits,
         "gradient_norms": norms,
         "gradient_clip_input_norm": float(total_norm.item()),
         "parameter_updates": updates,
-        "persistent_state_checksums": checksums,
+        "persistent_state_checksums": microbatch_states[-1],
+        "microbatch_persistent_state_checksums": microbatch_states,
         "nonfinite": _finite_model(model, optimizer, torch),
     }, mixer_gradients
+
+
+def _tensor_digest(tensors, torch):
+    digest = hashlib.sha256()
+    for name, tensor in tensors:
+        digest.update(str((name, tuple(tensor.shape), str(tensor.dtype))).encode())
+        digest.update(
+            tensor.detach().cpu().contiguous().view(torch.uint8).numpy().tobytes()
+        )
+    return digest.hexdigest()
 
 
 def _evaluation_loss(model, batch, torch):
@@ -289,6 +317,40 @@ def _child(args) -> None:
         weight_decay=float(optimizer_spec["weight_decay"]),
     )
     construction_ms = (time.perf_counter_ns() - construct_started) / 1e6
+    initial_state = {
+        name: value.detach().cpu().clone() for name, value in model.state_dict().items()
+    }
+    matched_initial = {
+        "parameters_sha256": _tensor_digest(model.named_parameters(), torch),
+        "optimizer_sha256": _tensor_digest(enumerate(optimizer.state_tensors()), torch),
+        "optimizer_step": optimizer.step_count,
+        "batches_sha256": _tensor_digest(
+            (
+                (f"{i}/{j}", value)
+                for i, batch in enumerate(batches)
+                for j, value in enumerate(batch)
+            ),
+            torch,
+        ),
+    }
+
+    def restore_initial():
+        model.load_state_dict(initial_state)
+        model.reset_state()
+        optimizer.zero_grad(set_to_none=True)
+        optimizer.step_count = 0
+        with torch.no_grad():
+            for parameter, master, mean, variance in zip(
+                optimizer.parameters,
+                optimizer.master,
+                optimizer.exp_avg,
+                optimizer.exp_avg_sq,
+                strict=True,
+            ):
+                master.copy_(parameter.float())
+                mean.zero_()
+                variance.zero_()
+
     parameter_count = sum(parameter.numel() for parameter in model.parameters())
     expected_parameters = model_parameter_count(config, args.backend)
     if parameter_count != expected_parameters:
@@ -329,6 +391,7 @@ def _child(args) -> None:
     compile_ms = 0.0
     if args.mode == "compile_fullgraph":
         torch._dynamo.reset()
+        torch._dynamo.utils.counters.clear()
         torch._dynamo.config.error_on_recompile = True
         started = time.perf_counter_ns()
         graph = torch.compile(model, fullgraph=True, dynamic=False)
@@ -337,52 +400,60 @@ def _child(args) -> None:
     cursor = 0
     correctness = []
     gradient_files = []
+    state_files = []
     first_step_ms = None
     first_step_peak = None
+    # Cold timing uses the same diagnostic-free boundary as settled timing.
+    torch.cuda.synchronize()
+    torch.cuda.reset_peak_memory_stats()
+    first_call_started = time.perf_counter_ns()
+    _one_step(
+        graph,
+        optimizer,
+        batches[: config.gradient_accumulation],
+        config,
+        gradient_clip=float(optimizer_spec["gradient_clip_norm"]),
+        record_correctness=False,
+        torch=torch,
+    )
+    torch.cuda.synchronize()
+    first_step_ms = (time.perf_counter_ns() - first_call_started) / 1e6
+    first_step_peak = torch.cuda.max_memory_allocated()
+    restore_initial()
+    if (
+        _tensor_digest(model.named_parameters(), torch)
+        != matched_initial["parameters_sha256"]
+        or _tensor_digest(enumerate(optimizer.state_tensors()), torch)
+        != matched_initial["optimizer_sha256"]
+    ):
+        raise RuntimeError("cold-step reset did not restore matched initial state")
     for index in range(5):
         step_batches = batches[cursor : cursor + config.gradient_accumulation]
         cursor += config.gradient_accumulation
-        # Correctness-only evaluation is deliberately eager.  Compiling this
-        # no-grad signature would create a second graph unrelated to the
-        # production training-forward lane.
-        loss_before = _evaluation_loss(model, step_batches[0], torch)
-        # Differential evidence captures non-leaf mixer gradients.  PyTorch's
-        # AOT dispatcher explicitly rejects retain_grad(), so this bounded
-        # evidence lane stays eager; the authoritative warmup and measured
-        # optimizer steps below execute the compiled model.
-        if index == 0 and args.mode == "eager":
-            torch.cuda.synchronize()
-            torch.cuda.reset_peak_memory_stats()
-            first_call_started = time.perf_counter_ns()
+        state_snapshots = []
         report, gradients = _one_step(
-            model,
+            graph,
             optimizer,
             step_batches,
             config,
             gradient_clip=float(optimizer_spec["gradient_clip_norm"]),
             record_correctness=True,
+            state_snapshots=state_snapshots,
             torch=torch,
         )
-        if index == 0 and args.mode == "eager":
-            torch.cuda.synchronize()
-            first_step_ms = (time.perf_counter_ns() - first_call_started) / 1e6
-            first_step_peak = torch.cuda.max_memory_allocated()
-        report["loss_before"] = loss_before
+        # Auxiliary post-update evaluation is explicitly eager in both modes.
         report["loss_after"] = _evaluation_loss(model, step_batches[0], torch)
-        gradient_path = args.output.with_suffix(f".gradients-{index}.pt")
-        torch.save(gradients, gradient_path)
-        gradient_files.append(str(gradient_path))
+        state_path = args.output.with_suffix(f".states-{index}.pt")
+        torch.save(state_snapshots, state_path)
+        state_files.append(str(state_path))
+        del state_snapshots
         correctness.append(report)
 
     first_report = correctness[0]
     for warmup_index in range(int(measurement["warmup_steps"])):
         step_batches = batches[cursor : cursor + config.gradient_accumulation]
         cursor += config.gradient_accumulation
-        if warmup_index == 0 and args.mode == "compile_fullgraph":
-            torch.cuda.synchronize()
-            torch.cuda.reset_peak_memory_stats()
-            first_call_started = time.perf_counter_ns()
-        warm_report, _ = _one_step(
+        _one_step(
             graph,
             optimizer,
             step_batches,
@@ -391,11 +462,6 @@ def _child(args) -> None:
             record_correctness=False,
             torch=torch,
         )
-        if warmup_index == 0 and args.mode == "compile_fullgraph":
-            torch.cuda.synchronize()
-            first_step_ms = (time.perf_counter_ns() - first_call_started) / 1e6
-            first_step_peak = torch.cuda.max_memory_allocated()
-            first_report = warm_report
     torch.cuda.synchronize()
     raw = []
     peaks_allocated = []
@@ -453,6 +519,30 @@ def _child(args) -> None:
         raise RuntimeError(
             f"compiled lane graph invariant failed: graph_breaks={graph_breaks}, unique_graphs={unique_graphs}"
         )
+    # Separate eager-only internal-gradient evidence, replayed from the same
+    # initial model/AdamW state and the first five batches, after all timing.
+    restore_initial()
+    eager_diagnostics = []
+    for index in range(5):
+        step_batches = batches[
+            index * config.gradient_accumulation : (index + 1)
+            * config.gradient_accumulation
+        ]
+        report, gradients = _one_step(
+            model,
+            optimizer,
+            step_batches,
+            config,
+            gradient_clip=float(optimizer_spec["gradient_clip_norm"]),
+            record_correctness=True,
+            capture_internal_gradients=True,
+            torch=torch,
+        )
+        report["loss_after"] = _evaluation_loss(model, step_batches[0], torch)
+        gradient_path = args.output.with_suffix(f".gradients-{index}.pt")
+        torch.save(gradients, gradient_path)
+        gradient_files.append(str(gradient_path))
+        eager_diagnostics.append(report)
     tokens_per_step = (
         config.microbatch * config.sequence_length * config.gradient_accumulation
     )
@@ -501,8 +591,12 @@ def _child(args) -> None:
             "first_optimizer_step_ms": first_step_ms,
         },
         "correctness": correctness,
+        "correctness_execution": args.mode,
+        "matched_initial": matched_initial,
+        "eager_internal_gradient_diagnostics": eager_diagnostics,
         "compiled_or_eager_first_step": first_report,
         "gradient_files": gradient_files,
+        "state_files": state_files,
         "timing": timing,
         "tokens_per_second": tokens_per_step / (timing["median_ms"] / 1000.0),
         "optimizer_steps_per_second": 1000.0 / timing["median_ms"],
@@ -528,16 +622,48 @@ def _child(args) -> None:
     write_artifact(args.output, result)
 
 
-def _compare_correctness(upstream, native, torch, tolerances):
-    reports = []
-    for index, (left, right) in enumerate(
-        zip(upstream["correctness"], native["correctness"], strict=True)
-    ):
-        left_gradients = torch.load(
-            upstream["gradient_files"][index], weights_only=True
+def _compare_correctness(upstream, native, torch, tolerances, *, internal=False):
+    if upstream["matched_initial"] != native["matched_initial"]:
+        raise RuntimeError(
+            "correctness comparison requires matched parameters, optimizer state, and batches"
         )
-        right_gradients = torch.load(native["gradient_files"][index], weights_only=True)
+    key = "eager_internal_gradient_diagnostics" if internal else "correctness"
+    reports = []
+    for index, (left, right) in enumerate(zip(upstream[key], native[key], strict=True)):
+        left_gradients = (
+            torch.load(upstream["gradient_files"][index], weights_only=True)
+            if internal
+            else []
+        )
+        right_gradients = (
+            torch.load(native["gradient_files"][index], weights_only=True)
+            if internal
+            else []
+        )
         mixer = []
+        state_tensors = []
+        if not internal and "state_files" in upstream and "state_files" in native:
+            left_states = torch.load(
+                upstream["state_files"][index], weights_only=True, mmap=True
+            )
+            right_states = torch.load(
+                native["state_files"][index], weights_only=True, mmap=True
+            )
+            for microbatch, (micro_left, micro_right) in enumerate(
+                zip(left_states, right_states, strict=True)
+            ):
+                for block, (a, b) in enumerate(
+                    zip(micro_left, micro_right, strict=True)
+                ):
+                    difference = a.float() - b.float()
+                    state_tensors.append(
+                        {
+                            "microbatch": microbatch,
+                            "block": block,
+                            "max_abs": float(difference.abs().max()),
+                            "rms": float(difference.square().mean().sqrt()),
+                        }
+                    )
         for micro_left, micro_right in zip(
             left_gradients, right_gradients, strict=True
         ):
@@ -578,21 +704,20 @@ def _compare_correctness(upstream, native, torch, tolerances):
             for key in left["parameter_updates"]
             for field in ("l2", "max_abs")
         )
-        state_sum_error = max(
-            abs(a["sum"] - b["sum"])
-            for a, b in zip(
-                left["persistent_state_checksums"],
-                right["persistent_state_checksums"],
+        state_pairs = [
+            (a, b)
+            for micro_left, micro_right in zip(
+                left["microbatch_persistent_state_checksums"],
+                right["microbatch_persistent_state_checksums"],
                 strict=True,
             )
+            for a, b in zip(micro_left, micro_right, strict=True)
+        ]
+        state_sum_error = max(
+            (abs(a["sum"] - b["sum"]) for a, b in state_pairs), default=0.0
         )
         state_normalized_error = max(
-            abs(a["mean"] - b["mean"])
-            for a, b in zip(
-                left["persistent_state_checksums"],
-                right["persistent_state_checksums"],
-                strict=True,
-            )
+            (abs(a["mean"] - b["mean"]) for a, b in state_pairs), default=0.0
         )
         finite = not any(
             value for report in (left, right) for value in report["nonfinite"].values()
@@ -605,9 +730,9 @@ def _compare_correctness(upstream, native, torch, tolerances):
             and update_error <= tolerances["parameter_update_max_abs"]
             and state_normalized_error
             <= tolerances["persistent_state_checksum_normalized_max_abs"]
-            and min(item["cosine"] for item in mixer)
+            and min((item["cosine"] for item in mixer), default=1.0)
             >= tolerances["mixer_input_gradient_cosine_min"]
-            and max(item["max_abs"] for item in mixer)
+            and max((item["max_abs"] for item in mixer), default=0.0)
             <= tolerances["mixer_input_gradient_max_abs"]
         )
         reports.append(
@@ -620,6 +745,7 @@ def _compare_correctness(upstream, native, torch, tolerances):
                 "persistent_state_checksum_sum_max_abs": state_sum_error,
                 "persistent_state_checksum_normalized_max_abs": state_normalized_error,
                 "mixer_input_gradients": mixer,
+                "persistent_state_tensor_diagnostics": state_tensors,
                 "finite": finite,
                 "passed": passed,
             }
@@ -691,9 +817,34 @@ def _confirmation(args) -> None:
     controls = {}
     with tempfile.TemporaryDirectory(prefix="urm-pretraining-step-") as root:
         root_path = Path(root)
+        launch_audits = {}
+        for mode in modes:
+            audit_output = args.output.with_name(
+                f"{args.output.stem}-launch-{mode}.json"
+            )
+            env = os.environ.copy()
+            env["TORCHINDUCTOR_CACHE_DIR"] = str(root_path / f"audit-cache-{mode}")
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(
+                        Path(__file__)
+                        .with_name("audit_sparse_memory_launches.py")
+                        .resolve()
+                    ),
+                    "--mode",
+                    mode,
+                    "--output",
+                    str(audit_output),
+                ],
+                env=env,
+                check=True,
+            )
+            launch_audits[mode] = json.loads(audit_output.read_text())
         for mode in modes:
             pairs = []
             correctness = []
+            internal_correctness = []
             orders = []
             for seed in seeds:
                 order = ["upstream_sdm", "urm_native"]
@@ -735,6 +886,17 @@ def _confirmation(args) -> None:
                         *pair, torch, payload["correctness"]["bfloat16"]
                     )
                 )
+                internal_correctness.append(
+                    _compare_correctness(
+                        *pair, torch, payload["correctness"]["bfloat16"], internal=True
+                    )
+                )
+                # Full state snapshots remain until cross-mode comparison;
+                # internal-gradient tensors have now been reduced to durable
+                # metrics and need not occupy disk for the rest of the grid.
+                for row in pair:
+                    for path in row.pop("gradient_files", []):
+                        Path(path).unlink()
             ratio = _ratio_summary(pairs)
             graph_passed = all(
                 row["compile"]["graph_break_count"] == 0
@@ -749,11 +911,12 @@ def _confirmation(args) -> None:
                 "orders": orders,
                 "pairs": [{"upstream": pair[0], "native": pair[1]} for pair in pairs],
                 "correctness": correctness,
+                "eager_internal_gradient_diagnostics": internal_correctness,
                 "performance": ratio,
                 "graph_passed": graph_passed,
                 "passed": ratio["passed"]
                 and graph_passed
-                and all(item["passed"] for item in correctness),
+                and all(item["passed"] for item in correctness + internal_correctness),
             }
             # Contextual throughput control only: attention is not a semantic
             # comparator and therefore does not enter sparse correctness or
@@ -807,7 +970,8 @@ def _confirmation(args) -> None:
                 pair[0].pop("gradient_files", None)
                 pair[1].pop("gradient_files", None)
             for row in control_rows:
-                row.pop("gradient_files", None)
+                for path in row.pop("gradient_files", []):
+                    Path(path).unlink()
         support = probe_sdm_support()
         if not support.supported:
             raise RuntimeError(
@@ -817,12 +981,43 @@ def _confirmation(args) -> None:
         artifact_provenance["upstream"] = support.details
         correctness_passed = all(
             result["graph_passed"]
-            and all(item["passed"] for item in result["correctness"])
+            and all(
+                item["passed"]
+                for item in result["correctness"]
+                + result["eager_internal_gradient_diagnostics"]
+            )
             for result in results.values()
         )
-        acceptance_passed = all(
-            result["passed"] for result in results.values()
-        ) and all(control["graph_passed"] for control in controls.values())
+        mode_comparisons = {}
+        for backend in ("upstream", "native"):
+            mode_comparisons[backend] = [
+                _compare_correctness(
+                    eager[backend],
+                    compiled[backend],
+                    torch,
+                    payload["correctness"]["bfloat16"],
+                )
+                for eager, compiled in zip(
+                    results["eager"]["pairs"],
+                    results["compile_fullgraph"]["pairs"],
+                    strict=True,
+                )
+            ]
+        correctness_passed = (
+            correctness_passed
+            and all(audit["passed"] for audit in launch_audits.values())
+            and all(row["passed"] for rows in mode_comparisons.values() for row in rows)
+        )
+        for result in results.values():
+            for pair in result["pairs"]:
+                for row in pair.values():
+                    row.pop("state_files", None)
+        for control in controls.values():
+            for row in control["runs"]:
+                row.pop("state_files", None)
+        acceptance_passed = (
+            all(result["passed"] for result in results.values()) and correctness_passed
+        )
         if acceptance_passed:
             decision = "superiority"
         elif correctness_passed and any(
@@ -842,6 +1037,8 @@ def _confirmation(args) -> None:
             "frozen_configuration": payload,
             "modes": results,
             "contextual_controls": controls,
+            "eager_vs_compiled_correctness": mode_comparisons,
+            "production_launch_audits": launch_audits,
             "correctness_passed": correctness_passed,
             "decision": decision,
             "passed": acceptance_passed,

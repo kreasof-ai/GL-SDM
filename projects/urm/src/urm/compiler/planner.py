@@ -1324,8 +1324,10 @@ class UrmCompiler:
                     if op.spec.writes
                     else 0
                 )
-                state_block = max(
-                    16, 1 << (min(op.spec.value_dim, 256) - 1).bit_length()
+                from urm.sparse_state_mixer import sparse_state_launch_parameters
+
+                state_block, state_warps = sparse_state_launch_parameters(
+                    op.spec.value_dim
                 )
                 step_launch_config = {
                     "schedule_family": "native_route_then_partition_scan",
@@ -1333,6 +1335,14 @@ class UrmCompiler:
                     "read_route_block": read_block,
                     "write_route_block": write_block,
                     "state_block_d": state_block,
+                    "state_num_warps": state_warps,
+                    "state_num_stages": 3,
+                    "read_route_num_warps": 8 if read_block * read_block >= 1024 else 4,
+                    "write_route_num_warps": 8
+                    if write_block * write_block >= 1024
+                    else 4,
+                    "route_backward_num_warps": 4,
+                    "route_num_stages": 2,
                     "route_materialization": "explicit_logical_outputs",
                     "fusion": "none",
                 }

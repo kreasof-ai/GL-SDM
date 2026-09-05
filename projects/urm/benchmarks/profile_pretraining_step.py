@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from pathlib import Path
 
 from pretraining_step import _one_step, load_frozen_config, prefetched_batches
@@ -16,13 +17,16 @@ def main() -> None:
     parser.add_argument("--diagnostic", action="store_true")
     parser.add_argument("--emit-nvtx", action="store_true")
     parser.add_argument(
-        "--output", type=Path, default=Path("results/pretraining-step/profile.json")
+        "--output",
+        type=Path,
+        default=Path("results/pretraining-step/native-profile-authority-v2.json"),
     )
     args = parser.parse_args()
 
     import torch
 
     from urm.pretraining import FP32AdamW, URMDecoderLM
+    from urm.sparse_state_profile import EVENTS
 
     payload, config = load_frozen_config(diagnostic=args.diagnostic)
     torch.manual_seed(811)
@@ -40,9 +44,11 @@ def main() -> None:
     )
     torch.cuda.synchronize()
     model.enable_profiling(True)
+    EVENTS.clear()
 
     measured = batches[config.gradient_accumulation : 2 * config.gradient_accumulation]
     trace_path = args.output.with_suffix(".trace.json")
+    trace_path.parent.mkdir(parents=True, exist_ok=True)
     if args.emit_nvtx:
         with torch.autograd.profiler.emit_nvtx(record_shapes=True):
             _one_step(model, optimizer, measured, config, **kwargs)
@@ -60,12 +66,19 @@ def main() -> None:
         profile_memory=True,
         with_stack=False,
     ) as profile:
+        started = time.perf_counter_ns()
         _one_step(model, optimizer, measured, config, **kwargs)
         torch.cuda.synchronize()
+        wall_ms = (time.perf_counter_ns() - started) / 1e6
     profile.export_chrome_trace(str(trace_path))
     ranges = []
     for event in profile.key_averages():
-        if event.key.startswith("pretraining::"):
+        # CPU range attribution already includes descendant CUDA work. CUDA
+        # entries bearing the same range name would count it a second time.
+        if (
+            event.key.startswith("pretraining::")
+            and event.device_type == torch.autograd.DeviceType.CPU
+        ):
             device_total = getattr(
                 event, "device_time_total", getattr(event, "cuda_time_total", 0.0)
             )
@@ -96,6 +109,25 @@ def main() -> None:
             f"--backend {args.backend} --emit-nvtx"
         ),
         "ranges": ranges,
+        "state_stage_spans": {
+            "scope": "profiled_cuda_spans_include_state_forward_backward_allocations_and_orchestration; not_acceptance_timing",
+            "profiled_step_wall_ms": wall_ms,
+            "forward_ms": sum(
+                start.elapsed_time(end)
+                for phase, start, end in EVENTS
+                if phase == "forward"
+            ),
+            "backward_ms": sum(
+                start.elapsed_time(end)
+                for phase, start, end in EVENTS
+                if phase == "backward"
+            ),
+            "replaceable_fraction_diagnostic": sum(
+                start.elapsed_time(end) for _, start, end in EVENTS
+            )
+            / wall_ms,
+            "span_count": len(EVENTS),
+        },
         "compiler_execution": {
             "layer_count": config.layers,
             "plan": plans[0] if plans else None,
@@ -108,7 +140,9 @@ def main() -> None:
 
     from jsonschema import validate
 
-    schema_path = Path(__file__).with_name("pretraining-step-profile-schema.json")
+    schema_path = Path(__file__).with_name(
+        "pretraining-step-profile-authority-schema.json"
+    )
     validate(artifact, json.loads(schema_path.read_text(encoding="utf-8")))
     write_artifact(args.output, artifact)
 

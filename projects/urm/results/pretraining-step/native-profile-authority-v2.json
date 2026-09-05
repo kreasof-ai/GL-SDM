@@ -1,0 +1,277 @@
+{
+  "schema_version": 1,
+  "artifact_kind": "pretraining_step_profile",
+  "generated_utc": "2026-09-05T04:58:07.547500+00:00",
+  "provenance": {
+    "git_revision": "42671f9e56df2604eb0100e5b2348d370fd74806",
+    "dirty_tree": true,
+    "benchmark_command": "benchmarks/profile_pretraining_step.py --backend urm_native --output results/pretraining-step/native-profile-authority-v2.json",
+    "config_hash": "3e0d1ade89978aa682f0ef42b28f881f5242b7d3965bbf9a70ff6f16be2a6b50",
+    "solver_version": "4.15.3",
+    "python": "3.12.13",
+    "platform": "Linux-6.12.100-125.179.amzn2023.x86_64-x86_64-with-glibc2.39",
+    "pytorch": "2.8.0",
+    "triton": "3.4.0",
+    "cuda": "12.9",
+    "driver": "595.91.07",
+    "gpu": "NVIDIA A10G",
+    "gpu_uuid": "GPU-a2c961bc-6e65-f876-5f9d-2900ae525b4e"
+  },
+  "backend": "urm_native",
+  "diagnostic": false,
+  "configuration": {
+    "vocab_size": 50304,
+    "sequence_length": 1024,
+    "layers": 12,
+    "width": 768,
+    "heads": 12,
+    "value_dim": 64,
+    "mlp_ratio": 4,
+    "slots_per_partition": 4096,
+    "reads": 64,
+    "writes": 64,
+    "microbatch": 1,
+    "gradient_accumulation": 4,
+    "dropout": 0.0,
+    "bias": false
+  },
+  "scope": "one_complete_eager_optimizer_step_after_one_warmup_step",
+  "trace_file": "results/pretraining-step/native-profile-authority-v2.trace.json",
+  "nvtx_command": "nsys profile --trace=cuda,nvtx python benchmarks/profile_pretraining_step.py --backend urm_native --emit-nvtx",
+  "ranges": [
+    {
+      "name": "pretraining::embeddings",
+      "count": 4,
+      "cpu_time_total_us": 1674.295999999993,
+      "device_time_total_us": 69.66400000021986,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 7798784
+    },
+    {
+      "name": "pretraining::block_0",
+      "count": 4,
+      "cpu_time_total_us": 93416.28399999988,
+      "device_time_total_us": 252642.74500000215,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 976027648
+    },
+    {
+      "name": "pretraining::sparse_memory::learned_projections",
+      "count": 48,
+      "cpu_time_total_us": 390756.36000000016,
+      "device_time_total_us": 9460.733000000193,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 488923136
+    },
+    {
+      "name": "pretraining::sparse_memory::native_prepare",
+      "count": 48,
+      "cpu_time_total_us": 2053.2469999997375,
+      "device_time_total_us": 0.0,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 0
+    },
+    {
+      "name": "pretraining::sparse_memory::native_pipeline",
+      "count": 48,
+      "cpu_time_total_us": 341700.6440000001,
+      "device_time_total_us": 1839274.787000001,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 10541334528
+    },
+    {
+      "name": "pretraining::sparse_memory::native_route",
+      "count": 48,
+      "cpu_time_total_us": 183441.6649999991,
+      "device_time_total_us": 602027.4649999996,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 483803136
+    },
+    {
+      "name": "pretraining::sparse_memory::native_state_forward",
+      "count": 48,
+      "cpu_time_total_us": 152004.00799999924,
+      "device_time_total_us": 1219169.790000002,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 10057531392
+    },
+    {
+      "name": "pretraining::block_1",
+      "count": 4,
+      "cpu_time_total_us": 90084.12300000041,
+      "device_time_total_us": 232660.5210000006,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 980647936
+    },
+    {
+      "name": "pretraining::block_2",
+      "count": 4,
+      "cpu_time_total_us": 90173.45600000006,
+      "device_time_total_us": 224900.22900000375,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 982220800
+    },
+    {
+      "name": "pretraining::block_3",
+      "count": 4,
+      "cpu_time_total_us": 88955.48899999991,
+      "device_time_total_us": 192382.03300000093,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 982450176
+    },
+    {
+      "name": "pretraining::block_4",
+      "count": 4,
+      "cpu_time_total_us": 50369.23500000049,
+      "device_time_total_us": 133796.5139999954,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 983629824
+    },
+    {
+      "name": "pretraining::block_5",
+      "count": 4,
+      "cpu_time_total_us": 127307.34300000014,
+      "device_time_total_us": 132496.40599999978,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 983433216
+    },
+    {
+      "name": "pretraining::block_6",
+      "count": 4,
+      "cpu_time_total_us": 34532.751999999964,
+      "device_time_total_us": 119289.41000000123,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 966098944
+    },
+    {
+      "name": "pretraining::block_7",
+      "count": 4,
+      "cpu_time_total_us": 123726.64600000015,
+      "device_time_total_us": 115901.34899999807,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 966623232
+    },
+    {
+      "name": "pretraining::block_8",
+      "count": 4,
+      "cpu_time_total_us": 37742.17099999997,
+      "device_time_total_us": 115466.05000000249,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 964149248
+    },
+    {
+      "name": "pretraining::block_9",
+      "count": 4,
+      "cpu_time_total_us": 58646.14799999964,
+      "device_time_total_us": 115653.60099999979,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 964149248
+    },
+    {
+      "name": "pretraining::block_10",
+      "count": 4,
+      "cpu_time_total_us": 98577.70099999972,
+      "device_time_total_us": 115003.29299999942,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 964149248
+    },
+    {
+      "name": "pretraining::block_11",
+      "count": 4,
+      "cpu_time_total_us": 7516.938999999991,
+      "device_time_total_us": 114560.95000000042,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 965722112
+    },
+    {
+      "name": "pretraining::logits",
+      "count": 4,
+      "cpu_time_total_us": 45845.907999999676,
+      "device_time_total_us": 6629.14499999996,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 418414592
+    },
+    {
+      "name": "pretraining::loss",
+      "count": 4,
+      "cpu_time_total_us": 704.0359999997127,
+      "device_time_total_us": 9159.150000000489,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 824184832
+    },
+    {
+      "name": "pretraining::backward",
+      "count": 4,
+      "cpu_time_total_us": 2328691.289,
+      "device_time_total_us": 12.735999999800697,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": -11945253888
+    },
+    {
+      "name": "pretraining::sparse_memory::native_state_backward",
+      "count": 48,
+      "cpu_time_total_us": 340636.3169999991,
+      "device_time_total_us": 4047.2810000003083,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 567222272
+    },
+    {
+      "name": "pretraining::gradient_clip",
+      "count": 1,
+      "cpu_time_total_us": 28627.967999999877,
+      "device_time_total_us": 3744.193999998737,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 512
+    },
+    {
+      "name": "pretraining::optimizer",
+      "count": 1,
+      "cpu_time_total_us": 755589.4019999998,
+      "device_time_total_us": 28849.31599999126,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 0
+    }
+  ],
+  "state_stage_spans": {
+    "scope": "profiled_cuda_spans_include_state_forward_backward_allocations_and_orchestration; not_acceptance_timing",
+    "profiled_step_wall_ms": 4163.758184,
+    "forward_ms": 1010.322021484375,
+    "backward_ms": 2465.7908477783203,
+    "replaceable_fraction_diagnostic": 0.8348498437349923,
+    "span_count": 96
+  },
+  "compiler_execution": {
+    "layer_count": 12,
+    "plan": {
+      "program": "compiled_sparse_memory",
+      "steps": [
+        {
+          "step_id": 0,
+          "kind": "anchor_dispatch",
+          "anchor": "urm_native_sparse_memory_e2e_v0",
+          "exchanges": [],
+          "note": "sdm_access",
+          "launch_config": {
+            "schedule_family": "native_route_then_partition_scan",
+            "route_block_half": 64,
+            "read_route_block": 64,
+            "write_route_block": 64,
+            "state_block_d": 4,
+            "state_num_warps": 2,
+            "state_num_stages": 3,
+            "read_route_num_warps": 8,
+            "write_route_num_warps": 8,
+            "route_backward_num_warps": 4,
+            "route_num_stages": 2,
+            "route_materialization": "explicit_logical_outputs",
+            "fusion": "none"
+          }
+        }
+      ],
+      "obligations": [],
+      "escape_hatch_count": 0
+    },
+    "all_layers_identical": true,
+    "benchmark_direct_backend_instantiation": false
+  }
+}

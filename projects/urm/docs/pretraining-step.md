@@ -1,7 +1,14 @@
 # Model-level Sparse Memory pretraining-step contract
 
-**Status:** measured model-level regression with one frozen-tolerance
-correctness miss; no parity or superiority claim.
+**Status:** corrected baseline fails frozen correctness and performance gates;
+no parity or superiority claim.
+
+**Authority correction:** the original `confirmation.json` and `native-profile.json`
+are retained historical negative evidence. Their correctness lane was eager even
+in a compiled process, and their timing included diagnostic host synchronizations.
+Use the new protocol and separately named artifacts in
+[pretraining-authority-v2.md](pretraining-authority-v2.md). The historical numerical
+results below must not be described as validation of compiled execution.
 
 This is an independently owned URM decoder language model, not a vendored
 nanoGPT or modded-nanoGPT program. The authoritative boundary starts with a
@@ -133,15 +140,15 @@ substitute.
 export PYTHONPATH=src:/path/to/sparse-delta-memory
 export LIBRARY_PATH=/opt/conda/lib:${LIBRARY_PATH:-}
 python benchmarks/pretraining_step.py \
-  --output results/pretraining-step/confirmation.json
+  --output results/pretraining-step/confirmation-authority-v2.json
 python benchmarks/profile_pretraining_step.py --backend urm_native \
-  --output results/pretraining-step/native-profile.json
+  --output results/pretraining-step/native-profile-authority-v2.json
 nsys profile --trace=cuda,nvtx python benchmarks/profile_pretraining_step.py \
   --backend urm_native --emit-nvtx
 ```
 
 The result must validate against
-`benchmarks/pretraining-step-result-schema.json`. A superiority claim requires
+`benchmarks/pretraining-step-authority-schema.json`. A superiority claim requires
 all thresholds in the frozen TOML; otherwise the artifact's failing gates are
 authoritative.
 
@@ -156,8 +163,9 @@ fullgraph compilation (CI **[2.221, 2.273]**). Native medians are
 lower in both lanes, and every compiled run has one graph, zero graph breaks,
 and zero recompilations.
 
-All eager five-step correctness comparisons passed. Fullgraph seed 1701 step
-five missed only the frozen normalized persistent-state checksum tolerance:
+In the original artifact, all eager-process five-step comparisons passed. The
+eager correctness replay in the fullgraph-labelled seed 1701 process, step five,
+missed only the frozen normalized persistent-state checksum tolerance:
 `2.0007428247481585e-6` versus `2.0e-6`; loss, logits, gradient norms,
 parameter updates, mixer-input gradients, and finite checks passed. The
 tolerance was not relaxed after measurement, so the artifact truthfully records

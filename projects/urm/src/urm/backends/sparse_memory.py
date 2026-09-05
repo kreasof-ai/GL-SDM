@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 
 from urm.backends.sparse_route import (
@@ -81,6 +82,7 @@ class TritonSparseMemoryBackend:
 
     def __init__(self, spec: SparseMemoryMixerSpec) -> None:
         self.spec = spec
+        self.profile_ranges = False
         self.support_status(spec).require()
         self.read_spec = SparseRouteSelectionSpec(
             spec.parallel,
@@ -251,12 +253,23 @@ class TritonSparseMemoryBackend:
         if prepared.spec != self.spec:
             raise ValueError("prepared inputs do not match sparse memory semantics")
         prepared.require_intact()
-        read = self.read_backend.generate_certified(prepared.read_scores)
-        write = (
-            self.write_backend.generate_certified(prepared.write_scores)
-            if self.write_backend is not None and prepared.write_scores is not None
-            else None
-        )
+        import torch
+
+        from urm.sparse_state_profile import state_stage
+
+        with (
+            torch.autograd.profiler.record_function(
+                "pretraining::sparse_memory::native_route"
+            )
+            if self.profile_ranges
+            else nullcontext()
+        ):
+            read = self.read_backend.generate_certified(prepared.read_scores)
+            write = (
+                self.write_backend.generate_certified(prepared.write_scores)
+                if self.write_backend is not None and prepared.write_scores is not None
+                else None
+            )
         routes = CertifiedSparseStateRoutes.from_native_generation(
             self.state_spec, read, write_output=write
         )
@@ -266,7 +279,8 @@ class TritonSparseMemoryBackend:
             beta=prepared.beta,
             log_decay=prepared.log_decay,
         )
-        readings, state = self.state_backend.execute(state, state_inputs)
+        with state_stage("forward") if self.profile_ranges else nullcontext():
+            readings, state = self.state_backend.execute(state, state_inputs)
         return SparseMemoryResult(
             readings,
             state,

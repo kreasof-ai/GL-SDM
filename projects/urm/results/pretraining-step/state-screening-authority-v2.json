@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "artifact_kind": "pretraining_state_replacement_screening",
+  "generated_utc": "2026-09-05T04:59:26.863251+00:00",
+  "provenance": {
+    "git_revision": "42671f9e56df2604eb0100e5b2348d370fd74806",
+    "dirty_tree": true,
+    "benchmark_command": "pretraining_projection.py",
+    "config_hash": "abef83cff73821ccb060d9dd012511b7cd0caa136244337ca4acbd6089f1fc89",
+    "solver_version": "4.15.3",
+    "python": "3.12.13",
+    "platform": "Linux-6.12.100-125.179.amzn2023.x86_64-x86_64-with-glibc2.39",
+    "pytorch": "2.8.0",
+    "triton": "3.4.0",
+    "cuda": "12.9",
+    "driver": "595.91.07",
+    "gpu": "NVIDIA A10G",
+    "gpu_uuid": "GPU-a2c961bc-6e65-f876-5f9d-2900ae525b4e"
+  },
+  "configuration": {
+    "baseline": "results/pretraining-step/confirmation-authority-v2.json",
+    "profile": "results/pretraining-step/native-profile-authority-v2.json",
+    "mode": "eager",
+    "assumed_complete_stage_speedup": 3.0
+  },
+  "formula": "R_baseline * ((1 - f) + f / s)",
+  "projection": {
+    "baseline_native_upstream_ratio": 2.432676143175151,
+    "replaceable_state_fraction": 0.8348498437349923,
+    "complete_stage_speedup": 3.0,
+    "predicted_native_upstream_ratio": 1.0787299445167386,
+    "infinite_state_speedup_ratio_floor": 0.4017568451875325,
+    "required_speedup_for_1_05": 3.132959110960686,
+    "threefold_screen_passed": true,
+    "projection_gate_passed": false,
+    "model_acceptance": "requires_unchanged_full_grid_after_numerical_acceptance_and_credible_complete_stage_measurement"
+  },
+  "fraction_scope": "profiled_cuda_spans_include_state_forward_backward_allocations_and_orchestration; not_acceptance_timing",
+  "speedup_status": "assumed_not_measured",
+  "integration_eligible": false,
+  "limitation": "Screening only: profile fraction is diagnostic and no candidate complete-stage speedup has been measured. Numerical acceptance, a credible measured projection <=1.05, and the unchanged full model grid remain required."
+}

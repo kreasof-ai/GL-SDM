@@ -164,11 +164,17 @@ def sparse_state_spec_status(
     return SparseStateSupportStatus.yes()
 
 
+def sparse_state_launch_parameters(value_dim: int) -> tuple[int, int]:
+    """Shared production schedule; D=64 retains the reviewed D=4 fragment."""
+    if value_dim == 64:
+        return 4, 2
+    block = max(16, 1 << (min(value_dim, 256) - 1).bit_length())
+    return block, 8 if block >= 256 else 4 if block >= 64 else 2
+
+
 def sparse_state_launch_schedule(spec: SparseStateMixerSpec) -> dict[str, str | int]:
     """Serialize the deterministic v0 schedule without importing a GPU runtime."""
-    bounded = min(spec.value_dim, 256)
-    block_d = max(16, 1 << (bounded - 1).bit_length())
-    warps = 8 if block_d >= 256 else 4 if block_d >= 64 else 2
+    block_d, warps = sparse_state_launch_parameters(spec.value_dim)
     return {
         "schedule_family": "partition_owned_ordered_token_scan",
         "block_d": block_d,
