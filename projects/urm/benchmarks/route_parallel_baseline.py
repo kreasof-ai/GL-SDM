@@ -106,9 +106,13 @@ def child(args):
             bwd = (
                 sum(x["duration_us"] for x in events if "backward" in x["name"]) / 1000
             )
-            if len(events) != 96:
+            counts = {
+                "forward": sum("backward" not in x["name"] for x in events),
+                "backward": sum("backward" in x["name"] for x in events),
+            }
+            if counts != {"forward": 48, "backward": 48}:
                 raise RuntimeError(
-                    f"expected 48 actual state forward and backward launches, got {len(events)}"
+                    f"expected 48 actual state forward and backward launches, got {counts}"
                 )
             profiles.append(
                 {
@@ -117,6 +121,7 @@ def child(args):
                     "forward_kernel_ms": fwd,
                     "backward_kernel_ms": bwd,
                     "state_kernel_fraction": (fwd + bwd) / wall_ms,
+                    "launch_counts": counts,
                     "launches": events,
                 }
             )
@@ -170,7 +175,7 @@ def parent(args):
         for seed in frozen["measurement"]["paired_seeds"]:
             seed_rows = {}
             for mode, pairs in all_rows.items():
-                order = ["urm_native", "upstream_sdm"]
+                order = ["upstream_sdm", "urm_native"]
                 random.Random(seed + 77).shuffle(order)
                 rows = {}
                 for backend in order:

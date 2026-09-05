@@ -28,7 +28,9 @@ from sparse_state_triangular import (
     ORACLE_FORWARD,
     UPSTREAM_FORWARD,
     make_case,
-    run_reference,
+)
+from sparse_state_triangular import (
+    run_reference as frozen_run_reference,
 )
 from state_tensor_audit import tensor_audit
 
@@ -38,6 +40,15 @@ from urm.triton_kernels import sparse_state_mixer as native
 
 IMPLEMENTATIONS = ("native", "route_global", "route_resident")
 MODES = ("eager", "compile_fullgraph")
+
+
+def run_reference(kind, sample, chunk, timing):
+    if kind == "pinned_upstream":
+        # Upstream's CUDA gather requires int64. Convert only nondifferentiable
+        # addresses for this separate reference, preserving every address value.
+        wi, ri, data, cy, cf = sample
+        sample = (wi.to(torch.int64), ri.to(torch.int64), data, cy, cf)
+    return frozen_run_reference(kind, sample, chunk, timing)
 
 
 def clean_revision():
@@ -201,12 +212,27 @@ def correctness(args):
         "gradient_tolerances": BACKWARD,
         "loss": "readings_and_final_memory",
         "upstream_comparison": "separate_not_candidate_acceptance",
+        "upstream_index_adapter": "lossless int64 conversion of reference-only addresses; native/candidate indices unchanged",
         "intermediate_state_casts": "every_token_forward_and_reverse; read_gradient_before_write_vjp",
         "native_compiled_scope": "production_shapes_and_rounding_stress_129; both_candidate_modes_cover_every_case",
     }
     artifact = base_artifact(
         "ordered_route_parallel_correctness", config, args.development
     )
+    from urm.adapters.sparse_delta_memory import probe_sdm_support
+
+    support = probe_sdm_support()
+    if not support.supported:
+        raise RuntimeError(support.reason)
+    artifact["verified_upstream"] = support.details
+    if args.captures:
+        manifest = json.loads(args.captures.read_text())
+        if (
+            manifest["clean_source_commit"] != artifact["clean_source_commit"]
+            or not manifest["complete"]
+        ):
+            raise ValueError("captured operands must come from this clean commit")
+        artifact["capture_manifest"] = str(args.captures)
     rp.library()
     specs = []
     lengths = {
@@ -227,15 +253,25 @@ def correctness(args):
             ("float32", "bfloat16"), ("mixed", "repeated"), (False, True)
         ):
             specs.append((dtype, pattern, 1024, before, True))
+        if args.captures:
+            for seed in (1701, 2903, 4409):
+                specs.append(("bfloat16", f"captured_model_{seed}", 1024, False, True))
     rows = []
     # Use one compiled callable per specialization, dynamic=False/fullgraph=True.
     # Compilation/correctness here are never timed as performance.
     for index, (dtype, pattern, t, before, production) in enumerate(specs):
-        sample = (
-            production_case(getattr(torch, dtype), pattern)
-            if production
-            else make_case(getattr(torch, dtype), t, pattern, 64)
-        )
+        if pattern.startswith("captured_model_"):
+            from route_parallel_capture import load_sample
+
+            sample = load_sample(
+                args.captures, int(pattern.rsplit("_", 1)[1]), joint_loss=True
+            )
+        else:
+            sample = (
+                production_case(getattr(torch, dtype), pattern)
+                if production
+                else make_case(getattr(torch, dtype), t, pattern, 64)
+            )
         digest = identity(sample)
         certify_sample(sample)
         timing = (
@@ -312,6 +348,37 @@ def correctness(args):
     artifact["upstream_all_passed_separate"] = all(
         c["against_upstream"]["passed"] for r in rows for c in r["comparisons"]
     )
+    conflicts = []
+    for row in rows:
+        if (row["dtype"], row["pattern"], row["sequence"]) != (
+            "bfloat16",
+            "rounding_stress",
+            129,
+        ):
+            continue
+        comparison = row["upstream_vs_oracle"]["readings"]
+        centers = [comparison["worst_reference"], comparison["worst_candidate"]]
+        intervals = []
+        for center, tol in zip(
+            centers,
+            (ORACLE_FORWARD["bfloat16"], UPSTREAM_FORWARD["bfloat16"]),
+            strict=True,
+        ):
+            allowance = tol["atol"] + tol["rtol"] * abs(center)
+            intervals.append([center - allowance, center + allowance])
+        conflicts.append(
+            {
+                "before": row["before"],
+                "coordinate": comparison["worst_coordinate"],
+                "oracle_value": centers[0],
+                "upstream_value": centers[1],
+                "oracle_interval": intervals[0],
+                "upstream_interval": intervals[1],
+                "disjoint": max(x[0] for x in intervals) > min(x[1] for x in intervals),
+                "contract_changed": False,
+            }
+        )
+    artifact["preserved_oracle_upstream_conflict"] = conflicts
     write_artifact(args.output, artifact)
     return artifact["accepted_against_native_and_oracle"]
 
@@ -356,6 +423,7 @@ def timed(call, iterations=20, warmups=10):
     for _ in range(warmups):
         call()
     torch.cuda.synchronize()
+    starting_allocated = torch.cuda.memory_allocated()
     torch.cuda.reset_peak_memory_stats()
     wall, device = [], []
     for _ in range(iterations):
@@ -378,7 +446,27 @@ def timed(call, iterations=20, warmups=10):
         "median_wall_ms": statistics.median(wall),
         "median_cuda_ms": statistics.median(device),
         "peak_allocated_bytes": torch.cuda.max_memory_allocated(),
+        "starting_allocated_bytes": starting_allocated,
+        "incremental_peak_allocated_bytes": torch.cuda.max_memory_allocated()
+        - starting_allocated,
     }
+
+
+def public_autograd_call(kind, sample, mode):
+    wi, ri, data, cy, cf = sample
+    leaves = [x.detach().requires_grad_() for x in data]
+    m, w, v, b, g, q = leaves
+    dy, df = cy.to(m.dtype), cf.to(m.dtype)
+    fn = function(kind, False)
+    if mode == "compile_fullgraph":
+        fn = torch.compile(fn, fullgraph=True, dynamic=False)
+
+    def call():
+        y, final = fn(m, wi, w, v, b, g, ri, q)
+        gradients = torch.autograd.grad((y, final), leaves, grad_outputs=(dy, df))
+        return y, final, gradients
+
+    return call
 
 
 def performance(args):
@@ -403,10 +491,23 @@ def performance(args):
     artifact = base_artifact(
         "ordered_route_parallel_performance", config, args.development
     )
+    if args.captures is None:
+        raise ValueError("performance requires captured unchanged-model operands")
+    manifest = json.loads(args.captures.read_text())
+    if (
+        not manifest["complete"]
+        or manifest["clean_source_commit"] != artifact["clean_source_commit"]
+    ):
+        raise ValueError("capture source mismatch or incomplete capture")
+    artifact["capture_manifest"] = str(args.captures)
+    artifact["capture_selection"] = manifest["configuration"]
+    from route_parallel_capture import load_sample
+
     artifact["build"] = rp.library()[1]
     rows = []
     for seed in config["seeds"]:
-        sample = production_case(seed=seed)
+        sample = load_sample(args.captures, seed)
+        matched_digest = identity(sample)
         certify_sample(sample)
         order = list(IMPLEMENTATIONS)
         random.Random(seed).shuffle(order)
@@ -435,13 +536,39 @@ def performance(args):
                     "backward": timed(lambda bwd=bwd, wh=wh, rh=rh: bwd(wh, rh)),
                     "combined": timed(both),
                 }
+                del hist, wh, rh
+                torch._dynamo.reset()
+                from torch._dynamo.utils import counters
+
+                counters.clear()
+                row["public_autograd_combined"] = timed(
+                    public_autograd_call(kind, sample, mode)
+                )
+                row["public_autograd_compile"] = {
+                    "graph_breaks": sum(counters["graph_break"].values()),
+                    "unique_graphs": int(counters["stats"].get("unique_graphs", 0)),
+                }
+                if mode == "compile_fullgraph" and row["public_autograd_compile"] != {
+                    "graph_breaks": 0,
+                    "unique_graphs": 1,
+                }:
+                    raise RuntimeError(
+                        "public autograd path did not compile as declared"
+                    )
+                if identity(sample) != matched_digest:
+                    raise RuntimeError(
+                        "timed functional path mutated its matched initial state/operands"
+                    )
                 rows.append(row)
+                artifact["measurements"] = rows
+                artifact["complete"] = False
+                write_artifact(args.output, artifact)
                 print(
-                    f"timing {seed} {kind} {mode}: {row['combined']['median_wall_ms']:.4f} ms",
+                    f"timing {seed} {kind} {mode}: {row['public_autograd_combined']['median_wall_ms']:.4f} ms complete autograd",
                     flush=True,
                 )
-                del hist, wh, rh
     artifact["measurements"] = rows
+    artifact["complete"] = True
     write_artifact(args.output, artifact)
     return True
 
@@ -581,6 +708,7 @@ def main():
     parser.add_argument("phase", choices=("correctness", "performance", "resources"))
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--correctness", type=Path)
+    parser.add_argument("--captures", type=Path)
     parser.add_argument("--development", action="store_true")
     parser.add_argument("--smoke", action="store_true")
     args = parser.parse_args()

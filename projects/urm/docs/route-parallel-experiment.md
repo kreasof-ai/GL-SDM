@@ -82,6 +82,23 @@ Thus baseline nonkernel overhead is not optimistically removed. Each mode uses
 its own measured native/upstream ratio, fraction and stage cost. Projections use
 `R_baseline*((1-f)+f/s)` and remain screening evidence, never model acceptance.
 
+Complete isolated timing uses the public autograd call, including its actual
+eager or Inductor forward/backward dispatch. Low-level forward, backward, and
+manual combined timings are retained separately. Timing operands and cotangents
+are captured in a separate unchanged-model diagnostic replay, with predeclared
+selection **optimizer step 0, microbatch 3, layer 5** (zero based), for seeds
+1701/2903/4409. Initial model, optimizer, all 35 prefetched steps and persistent
+state hashes must match the full-model baseline. This matters because production
+read/write scores share a common projection; independently random routes are not
+assumed representative. Correctness adds the captured operands with a separate
+nonzero final cotangent. Timing retains the real model cotangents.
+
+The original numerical-v1 checkpoint stops after 72 successful cases: pinned
+upstream rejected production BF16 int32 addresses. The new reference-only adapter
+losslessly converts addresses to int64; candidate/native addresses and arithmetic
+remain unchanged. Preserve that incomplete artifact; it is not timing authority.
+Numerical-v2 must complete before measurements from the updated clean commit.
+
 Commands, from `projects/urm` (the upstream checkout must be clean and pinned):
 
 ```bash

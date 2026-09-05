@@ -47,13 +47,16 @@ def test_state_audit_finiteness_and_tolerance_are_explicit():
 @pytest.mark.parametrize("resident", [False, True])
 @pytest.mark.parametrize("before", [False, True])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-def test_nontrivial_joint_vjp_and_selected_zero_weight_decay(resident, before, dtype):
+@pytest.mark.parametrize("d", [4, 64])
+def test_nontrivial_joint_vjp_and_selected_zero_weight_decay(
+    resident, before, dtype, d
+):
     from urm.backends.sparse_state_reference import torch_sparse_state_mixer
     from urm.compiler.semantic import SparseReadTiming
     from urm.experiments.route_parallel import update
 
     torch.manual_seed(9191)
-    p, t, s, d = 1, 3, 67, 4
+    p, t, s = 1, 3, 67
     wi = torch.arange(64, device="cuda").expand(p, t, -1).contiguous()
     ri = (wi + 1).contiguous()
     data = [
@@ -119,12 +122,16 @@ def test_backward_read_cotangent_is_cast_before_write_vjp(resident):
     wi = torch.arange(64, device=device).reshape(1, 1, 64)
     q = torch.full((1, 1, 64), 1 / 64, device=device, dtype=dtype)
     v = torch.zeros(1, 1, 4, device=device, dtype=dtype)
+    v[0, 0, 0], v[0, 0, 1] = 1, -1
+    dy = torch.zeros_like(v)
+    dy[0, 0, 0] = 1 / 16
     df = torch.ones(1, 64, 4, device=device, dtype=dtype)
     histories = torch.zeros(1, 1, 64, 4, device=device, dtype=dtype)
-    # Each +1/1024 reading contribution rounds back to BF16 one. With beta=0,
-    # decay=1, the following VJP must see exactly one, not an FP32 residual.
+    # +1/1024 in dimension zero rounds back to BF16 one BEFORE the write VJP.
+    # Opposite values cancel grad_beta only if this intermediate cast occurs.
+    # Omitting it produces grad_beta=1/1024 despite identical final grad_memory.
     grads = backward(
-        torch.full_like(v, 1 / 16),
+        dy,
         df,
         histories,
         histories,
@@ -139,6 +146,13 @@ def test_backward_read_cotangent_is_cast_before_write_vjp(resident):
         False,
     )
     torch.testing.assert_close(grads[0], df, atol=0, rtol=0)
+    torch.testing.assert_close(grads[3], torch.zeros_like(grads[3]), atol=0, rtol=0)
+    counterfactual = (
+        (df.float() + q[..., None].float() * dy[:, :, None].float())
+        * q[..., None].float()
+        * v[:, :, None].float()
+    ).sum()
+    assert float(counterfactual) == 1 / 1024
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
