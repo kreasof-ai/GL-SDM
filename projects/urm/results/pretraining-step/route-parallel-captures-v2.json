@@ -1,0 +1,387 @@
+{
+  "schema_version": 1,
+  "artifact_kind": "ordered_route_parallel_frozen_operand_capture",
+  "generated_utc": "2026-09-05T07:27:15.589921+00:00",
+  "provenance": {
+    "git_revision": "f69d31582da34a3b095deb25c3c61b2123a040f2",
+    "dirty_tree": false,
+    "benchmark_command": "benchmarks/route_parallel_capture.py --output results/pretraining-step/route-parallel-captures-v2.json",
+    "config_hash": "783845a5fdba65f5f844ab8f84a486bd04077ca75b3047946e0e6591f3635085",
+    "solver_version": "4.15.3",
+    "python": "3.12.13",
+    "platform": "Linux-6.12.100-125.179.amzn2023.x86_64-x86_64-with-glibc2.39",
+    "pytorch": "2.8.0",
+    "triton": "3.4.0",
+    "cuda": "12.9",
+    "driver": "595.91.07",
+    "gpu": "NVIDIA A10G",
+    "gpu_uuid": "GPU-a2c961bc-6e65-f876-5f9d-2900ae525b4e"
+  },
+  "clean_source_commit": "f69d31582da34a3b095deb25c3c61b2123a040f2",
+  "development_only": false,
+  "configuration": {
+    "selection": {
+      "optimizer_step": 0,
+      "microbatch": 3,
+      "layer": 5
+    },
+    "seeds": [
+      1701,
+      2903,
+      4409
+    ]
+  },
+  "comparison_revisions": {
+    "native": "bdae3d7d643dd500582c4d2a0927f123de2978bb",
+    "oracle": "bdae3d7d643dd500582c4d2a0927f123de2978bb",
+    "upstream": "183e7df809131b80ad4393741029d0f20fc3640b",
+    "m2rnn": "384ed0a7bd82ced1f40609603dd541cac5416844",
+    "atma": "fcefd2d75f9db73c16850343e20b57b3b729b3ea"
+  },
+  "runtime_environment": {
+    "torch_cpu_threads": 1,
+    "omp_num_threads": "1",
+    "mkl_num_threads": "1",
+    "gpu_properties": "_CudaDeviceProperties(name='NVIDIA A10G', major=8, minor=6, total_memory=22589MB, multi_processor_count=80, uuid=a2c961bc-6e65-f876-5f9d-2900ae525b4e, pci_bus_id=0, pci_device_id=30, pci_domain_id=0, L2_cache_size=6MB)"
+  },
+  "production_integration": false,
+  "captures": [
+    {
+      "seed": 1701,
+      "selection": {
+        "optimizer_step": 0,
+        "microbatch": 3,
+        "layer": 5
+      },
+      "matched_initial": {
+        "parameters_sha256": "5335ffde58d865dc6d30c710b72c9e7249fb4cd16f4461f2d0385cb21cc82c8c",
+        "optimizer_sha256": "e08847c9e62dc1962e39894e945b6dc32722c5a08bd8549f6bde967d559f585f",
+        "optimizer_step": 0,
+        "batches_sha256": "fe3d0bbce3767dde2c311ec893a96d00813811c6acd9e7822f0a9c2e6f922f9e",
+        "persistent_state_sha256": "3a2d2c9324274ec422929098111f27ee1599bb7715c77778fac5a81af7364821"
+      },
+      "observed_calls": {
+        "forward": 48,
+        "backward": 48
+      },
+      "forward_ordinal": 41,
+      "backward_ordinal": 42,
+      "matched_saved_history_pointer": true,
+      "sample_sha256": "64b3757887f0fe8b21fb856c1f0f1bac9361f1ca45b6f7437775fedb29decec4",
+      "read_write_route_overlap_fraction": 0.9944483637809753,
+      "adjacent_token_write_collision_fraction": 0.04319276288151741,
+      "initial_state_nonzero_elements": 3062336,
+      "final_cotangent_nonzero_elements": 0,
+      "tensor_shapes_and_dtypes": [
+        {
+          "shape": [
+            12,
+            1024,
+            64
+          ],
+          "dtype": "torch.int32"
+        },
+        {
+          "shape": [
+            12,
+            1024,
+            64
+          ],
+          "dtype": "torch.int32"
+        },
+        {
+          "shape": [
+            12,
+            4096,
+            64
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "shape": [
+            12,
+            1024,
+            64
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "shape": [
+            12,
+            1024,
+            64
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "shape": [
+            12,
+            1024,
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "shape": [
+            12,
+            1024,
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "shape": [
+            12,
+            1024,
+            64
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "shape": [
+            12,
+            1024,
+            64
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "shape": [
+            12,
+            4096,
+            64
+          ],
+          "dtype": "torch.bfloat16"
+        }
+      ],
+      "fixture": "route-parallel-captures-v2-1701.pt.gz",
+      "fixture_sha256": "626230bbdd469a423351a617d74c8e1c9dd43cbb2615cdd2067066f46bfb03c2",
+      "fixture_bytes": 11786285
+    },
+    {
+      "seed": 2903,
+      "selection": {
+        "optimizer_step": 0,
+        "microbatch": 3,
+        "layer": 5
+      },
+      "matched_initial": {
+        "parameters_sha256": "5b07fda714dacfb464f9b64fe301bbede182d04f04a9e67090a5b789b6a9cede",
+        "optimizer_sha256": "e26e29bde7f967d4fea498d78f5fc13c1077826282f9abb92ce1d6115fbbaad9",
+        "optimizer_step": 0,
+        "batches_sha256": "4e56b8f27997c948e4f8c97e8e9f9d8a310e6ec5bc97f33461b9674da4710824",
+        "persistent_state_sha256": "3a2d2c9324274ec422929098111f27ee1599bb7715c77778fac5a81af7364821"
+      },
+      "observed_calls": {
+        "forward": 48,
+        "backward": 48
+      },
+      "forward_ordinal": 41,
+      "backward_ordinal": 42,
+      "matched_saved_history_pointer": true,
+      "sample_sha256": "dfe4302213382f795cf4e50654a41274b086032438ff8c5bf22287cda81b0caa",
+      "read_write_route_overlap_fraction": 0.9945068359375,
+      "adjacent_token_write_collision_fraction": 0.045994214713573456,
+      "initial_state_nonzero_elements": 3058367,
+      "final_cotangent_nonzero_elements": 0,
+      "tensor_shapes_and_dtypes": [
+        {
+          "shape": [
+            12,
+            1024,
+            64
+          ],
+          "dtype": "torch.int32"
+        },
+        {
+          "shape": [
+            12,
+            1024,
+            64
+          ],
+          "dtype": "torch.int32"
+        },
+        {
+          "shape": [
+            12,
+            4096,
+            64
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "shape": [
+            12,
+            1024,
+            64
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "shape": [
+            12,
+            1024,
+            64
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "shape": [
+            12,
+            1024,
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "shape": [
+            12,
+            1024,
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "shape": [
+            12,
+            1024,
+            64
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "shape": [
+            12,
+            1024,
+            64
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "shape": [
+            12,
+            4096,
+            64
+          ],
+          "dtype": "torch.bfloat16"
+        }
+      ],
+      "fixture": "route-parallel-captures-v2-2903.pt.gz",
+      "fixture_sha256": "8a16dd6db80862a3909e7f2eeb8b28f32f6f1746a0b2dc5b82eee946531bfa72",
+      "fixture_bytes": 11776968
+    },
+    {
+      "seed": 4409,
+      "selection": {
+        "optimizer_step": 0,
+        "microbatch": 3,
+        "layer": 5
+      },
+      "matched_initial": {
+        "parameters_sha256": "3f68042977bcbbaf823406c5edd55c5407abcb18a3bf73d6f11f82992438c450",
+        "optimizer_sha256": "7c7a3ac80fbede8d821d6b4291231f382fef248dde5363d5132aa2f2c6663015",
+        "optimizer_step": 0,
+        "batches_sha256": "d19a0e23f3d56d011d9c59bf7a6a6017e0f7c7616bee26321697866e66253780",
+        "persistent_state_sha256": "3a2d2c9324274ec422929098111f27ee1599bb7715c77778fac5a81af7364821"
+      },
+      "observed_calls": {
+        "forward": 48,
+        "backward": 48
+      },
+      "forward_ordinal": 41,
+      "backward_ordinal": 42,
+      "matched_saved_history_pointer": true,
+      "sample_sha256": "23d9c1fab4c633a65cc382fcd9b00a05d9d7af0c15b859b767b3f8cde3a13629",
+      "read_write_route_overlap_fraction": 0.994818389415741,
+      "adjacent_token_write_collision_fraction": 0.04403790831565857,
+      "initial_state_nonzero_elements": 3061568,
+      "final_cotangent_nonzero_elements": 0,
+      "tensor_shapes_and_dtypes": [
+        {
+          "shape": [
+            12,
+            1024,
+            64
+          ],
+          "dtype": "torch.int32"
+        },
+        {
+          "shape": [
+            12,
+            1024,
+            64
+          ],
+          "dtype": "torch.int32"
+        },
+        {
+          "shape": [
+            12,
+            4096,
+            64
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "shape": [
+            12,
+            1024,
+            64
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "shape": [
+            12,
+            1024,
+            64
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "shape": [
+            12,
+            1024,
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "shape": [
+            12,
+            1024,
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "shape": [
+            12,
+            1024,
+            64
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "shape": [
+            12,
+            1024,
+            64
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "shape": [
+            12,
+            4096,
+            64
+          ],
+          "dtype": "torch.bfloat16"
+        }
+      ],
+      "fixture": "route-parallel-captures-v2-4409.pt.gz",
+      "fixture_sha256": "1d9362dc9010db9e9ae7913b683acaa4c3b78dac817faffcade351259aea7fc2",
+      "fixture_bytes": 11794398
+    }
+  ],
+  "complete": true
+}

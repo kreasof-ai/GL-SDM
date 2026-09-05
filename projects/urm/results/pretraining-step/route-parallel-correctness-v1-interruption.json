@@ -1,0 +1,14 @@
+{
+  "artifact_kind": "ordered_route_parallel_numerical_harness_interruption",
+  "clean_source_commit": "b36152e4b7022ec3a6380a9ff74350a313ba6b58",
+  "completed_cases": 72,
+  "planned_cases": 76,
+  "next_case": "bfloat16 mixed production shape, T=1024, read after update",
+  "stage": "separate pinned-upstream reference gather",
+  "exception": "RuntimeError: k_idx must be int64",
+  "native_oracle_failure_observed": false,
+  "complete": false,
+  "authorizes_timing": false,
+  "checkpoint": "route-parallel-correctness-v1.json",
+  "resolution": "Lossless int64 conversion of reference-only addresses; native/prototype addresses and all floating arithmetic remain unchanged. Subsequent numerical authority uses new filenames."
+}

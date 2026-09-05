@@ -1,5 +1,8 @@
 # Ordered route parallelism and indexed state residency
 
+Final v3 measurements, state-audit negatives, source commits, and reproducible
+commands are in the [independent-review report](route-parallel-results-v3.md).
+
 This is an isolated training/prefill experiment from `ae95829` and `bdae3d7`.
 No production backend, compiler schedule, model, optimizer, data, frozen gate, or
 decode dispatch is changed. Triangular chunk integration remains rejected.
@@ -99,7 +102,12 @@ losslessly converts addresses to int64; candidate/native addresses and arithmeti
 remain unchanged. Preserve that incomplete artifact; it is not timing authority.
 Numerical-v2 must complete before measurements from the updated clean commit.
 
-Commands, from `projects/urm` (the upstream checkout must be clean and pinned):
+Historical initial commands below describe the v1 harness. They are retained
+as protocol history, not current measurement authority. Use the **v3 command
+sequence and clean revision** in the [final report](route-parallel-results-v3.md)
+to reproduce the complete captured-operand and model-audit experiment.
+
+Initial commands, from `projects/urm` (the upstream checkout must be clean and pinned):
 
 ```bash
 export PYTHONPATH=src:benchmarks:/tmp/urm-sdm-upstream.wKxbSo

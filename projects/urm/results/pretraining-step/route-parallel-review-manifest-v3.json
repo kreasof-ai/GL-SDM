@@ -1,0 +1,72 @@
+{
+  "artifact_kind": "ordered_route_parallel_review_verification",
+  "measurement_source_commit": "19d008d7ab9b01d43641464552ee9c0f731fd470",
+  "original_tracked_files_unchanged_from_bdae3d7": true,
+  "implementation_bytes_match_measurement_commit": true,
+  "all_v3_artifact_source_and_clean_flags_match": true,
+  "matched_inputs_states_optimizer_parameters_and_batches_verified": true,
+  "actual_compiled_graphs_and_state_launch_counts_verified": true,
+  "numerical_cases": 79,
+  "execution_comparisons": 410,
+  "full_state_comparisons": 2880,
+  "full_state_elements": 9059696640,
+  "full_state_nonfinite_comparisons": 0,
+  "full_state_diagnostic_failed_tensors": 2614,
+  "full_state_diagnostic_violating_elements": 144677,
+  "historical_checksum_failed_tensors": 19,
+  "checksum_diagnostic_disagreements": 2595,
+  "additional_state_diagnostic_changes_acceptance": false,
+  "candidate_integrated": false,
+  "files": [
+    {
+      "path": "results/pretraining-step/route-parallel-captures-v3.json",
+      "sha256": "0bb0f49788e5727f84ed58c59341506a04100f47ac6d752c22971f134e320785",
+      "bytes": 9953
+    },
+    {
+      "path": "results/pretraining-step/route-parallel-correctness-v3.json",
+      "sha256": "daaa4553ec04e9fcc0bd1fcdd03b58a326b43a67c3235d393820f81114f1bf7b",
+      "bytes": 9665701
+    },
+    {
+      "path": "results/pretraining-step/route-parallel-resources-v3.json",
+      "sha256": "adf71d40b894ecace8c08c4108b28e002456365d86f281c9ca0c829901787a87",
+      "bytes": 12292
+    },
+    {
+      "path": "results/pretraining-step/route-parallel-counters-v3.json",
+      "sha256": "ecce74bc0698c0c0ac99054b65ed7fcd94b036982888f5066e2140e7d7335907",
+      "bytes": 4891
+    },
+    {
+      "path": "results/pretraining-step/route-parallel-performance-v3.json",
+      "sha256": "ee6c8259db339b327299321c03beb614776caa1519128a4bfde4a77ee037cfd6",
+      "bytes": 103254
+    },
+    {
+      "path": "results/pretraining-step/route-parallel-model-baseline-v3.json",
+      "sha256": "e969eaa88ec1734cbd219de141f95411fdab03312a497f1e34562db1aeced659",
+      "bytes": 8355472
+    },
+    {
+      "path": "results/pretraining-step/route-parallel-projections-v3.json",
+      "sha256": "0e29b597a5555ae297b79d3032d6def879a74e8a846b3410649ba8c849f98480",
+      "bytes": 12569
+    },
+    {
+      "path": "results/pretraining-step/route-parallel-captures-v3-1701.pt.gz",
+      "sha256": "31c10d76a03b765ee0bcc84c81e323cd8f3370b03b6357310a5e30f9d533a734",
+      "bytes": 11786228
+    },
+    {
+      "path": "results/pretraining-step/route-parallel-captures-v3-2903.pt.gz",
+      "sha256": "f912eb7d676fa8fd0dacb7a4f26ffc0dbbebd6cbb44d73f72b73524c9b265ee3",
+      "bytes": 11777121
+    },
+    {
+      "path": "results/pretraining-step/route-parallel-captures-v3-4409.pt.gz",
+      "sha256": "a3faa9c9dd5b8df9ed33e600c9512c9a0e46686842e6c2382616d2fcb4e2cf00",
+      "bytes": 11794300
+    }
+  ]
+}

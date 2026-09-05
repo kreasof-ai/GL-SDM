@@ -1,0 +1,17 @@
+{
+  "artifact_kind": "ordered_route_parallel_model_baseline_interruption",
+  "clean_source_commit": "f69d31582da34a3b095deb25c3c61b2123a040f2",
+  "backend": "urm_native",
+  "mode": "eager",
+  "seed": 1701,
+  "stage": "separate_actual_device_profile_after_completed_frozen_timing_and_eager_diagnostic_replay",
+  "exception": "AttributeError: 'Interval' object has no attribute 'elapsed'. Did you mean: 'elapsed_us'?",
+  "location": "benchmarks/route_parallel_baseline.py:97",
+  "complete": false,
+  "model_timing_authoritative": false,
+  "model_profile_authoritative": false,
+  "child_artifact_retained": false,
+  "child_artifact_status": "TemporaryDirectory was automatically cleaned after the child failure; no model timings or profiles are claimed from this interrupted run.",
+  "isolated_correctness_and_performance_v2_affected": false,
+  "resolution": "Correct the profile interval API, test the event extraction, commit the source fix, and regenerate evidence under new filenames. No kernel, model, tolerance, or acceptance change."
+}

@@ -1,0 +1,161 @@
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_Z16ordered_backwardIfiLb0ELb0EEvPKT_PS0_S2_S2_PKT0_S2_S2_S2_S2_S6_S2_S2_PfS7_S7_S7_S7_iii' for 'sm_86'
+ptxas info    : Function properties for _Z16ordered_backwardIfiLb0ELb0EEvPKT_PS0_S2_S2_PKT0_S2_S2_S2_S2_S6_S2_S2_PfS7_S7_S7_S7_iii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 40 registers, used 1 barriers, 128 bytes smem, 500 bytes cmem[0]
+ptxas info    : Compile time = 14.340 ms
+ptxas info    : Compiling entry function '_Z15ordered_forwardIfiLb0ELb0EEvPKT_PS0_PKT0_S2_S2_S2_S2_S6_S2_S3_S3_S3_iii' for 'sm_86'
+ptxas info    : Function properties for _Z15ordered_forwardIfiLb0ELb0EEvPKT_PS0_PKT0_S2_S2_S2_S2_S6_S2_S3_S3_S3_iii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 39 registers, used 1 barriers, 128 bytes smem, 460 bytes cmem[0]
+ptxas info    : Compile time = 8.653 ms
+ptxas info    : Compiling entry function '_Z16ordered_backwardIfiLb0ELb1EEvPKT_PS0_S2_S2_PKT0_S2_S2_S2_S2_S6_S2_S2_PfS7_S7_S7_S7_iii' for 'sm_86'
+ptxas info    : Function properties for _Z16ordered_backwardIfiLb0ELb1EEvPKT_PS0_S2_S2_PKT0_S2_S2_S2_S2_S6_S2_S2_PfS7_S7_S7_S7_iii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 40 registers, used 1 barriers, 128 bytes smem, 500 bytes cmem[0]
+ptxas info    : Compile time = 13.526 ms
+ptxas info    : Compiling entry function '_Z15ordered_forwardIfiLb0ELb1EEvPKT_PS0_PKT0_S2_S2_S2_S2_S6_S2_S3_S3_S3_iii' for 'sm_86'
+ptxas info    : Function properties for _Z15ordered_forwardIfiLb0ELb1EEvPKT_PS0_PKT0_S2_S2_S2_S2_S6_S2_S3_S3_S3_iii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 40 registers, used 1 barriers, 128 bytes smem, 460 bytes cmem[0]
+ptxas info    : Compile time = 7.763 ms
+ptxas info    : Compiling entry function '_Z16ordered_backwardIfiLb1ELb0EEvPKT_PS0_S2_S2_PKT0_S2_S2_S2_S2_S6_S2_S2_PfS7_S7_S7_S7_iii' for 'sm_86'
+ptxas info    : Function properties for _Z16ordered_backwardIfiLb1ELb0EEvPKT_PS0_S2_S2_PKT0_S2_S2_S2_S2_S6_S2_S2_PfS7_S7_S7_S7_iii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 40 registers, used 1 barriers, 128 bytes smem, 500 bytes cmem[0]
+ptxas info    : Compile time = 20.625 ms
+ptxas info    : Compiling entry function '_Z15ordered_forwardIfiLb1ELb0EEvPKT_PS0_PKT0_S2_S2_S2_S2_S6_S2_S3_S3_S3_iii' for 'sm_86'
+ptxas info    : Function properties for _Z15ordered_forwardIfiLb1ELb0EEvPKT_PS0_PKT0_S2_S2_S2_S2_S6_S2_S3_S3_S3_iii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 38 registers, used 1 barriers, 128 bytes smem, 460 bytes cmem[0]
+ptxas info    : Compile time = 14.517 ms
+ptxas info    : Compiling entry function '_Z16ordered_backwardIfiLb1ELb1EEvPKT_PS0_S2_S2_PKT0_S2_S2_S2_S2_S6_S2_S2_PfS7_S7_S7_S7_iii' for 'sm_86'
+ptxas info    : Function properties for _Z16ordered_backwardIfiLb1ELb1EEvPKT_PS0_S2_S2_PKT0_S2_S2_S2_S2_S6_S2_S2_PfS7_S7_S7_S7_iii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 40 registers, used 1 barriers, 128 bytes smem, 500 bytes cmem[0]
+ptxas info    : Compile time = 20.429 ms
+ptxas info    : Compiling entry function '_Z15ordered_forwardIfiLb1ELb1EEvPKT_PS0_PKT0_S2_S2_S2_S2_S6_S2_S3_S3_S3_iii' for 'sm_86'
+ptxas info    : Function properties for _Z15ordered_forwardIfiLb1ELb1EEvPKT_PS0_PKT0_S2_S2_S2_S2_S6_S2_S3_S3_S3_iii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 38 registers, used 1 barriers, 128 bytes smem, 460 bytes cmem[0]
+ptxas info    : Compile time = 15.013 ms
+ptxas info    : Compiling entry function '_Z16ordered_backwardIflLb0ELb0EEvPKT_PS0_S2_S2_PKT0_S2_S2_S2_S2_S6_S2_S2_PfS7_S7_S7_S7_iii' for 'sm_86'
+ptxas info    : Function properties for _Z16ordered_backwardIflLb0ELb0EEvPKT_PS0_S2_S2_PKT0_S2_S2_S2_S2_S6_S2_S2_PfS7_S7_S7_S7_iii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 40 registers, used 1 barriers, 128 bytes smem, 500 bytes cmem[0]
+ptxas info    : Compile time = 13.891 ms
+ptxas info    : Compiling entry function '_Z15ordered_forwardIflLb0ELb0EEvPKT_PS0_PKT0_S2_S2_S2_S2_S6_S2_S3_S3_S3_iii' for 'sm_86'
+ptxas info    : Function properties for _Z15ordered_forwardIflLb0ELb0EEvPKT_PS0_PKT0_S2_S2_S2_S2_S6_S2_S3_S3_S3_iii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 39 registers, used 1 barriers, 128 bytes smem, 460 bytes cmem[0]
+ptxas info    : Compile time = 8.193 ms
+ptxas info    : Compiling entry function '_Z16ordered_backwardIflLb0ELb1EEvPKT_PS0_S2_S2_PKT0_S2_S2_S2_S2_S6_S2_S2_PfS7_S7_S7_S7_iii' for 'sm_86'
+ptxas info    : Function properties for _Z16ordered_backwardIflLb0ELb1EEvPKT_PS0_S2_S2_PKT0_S2_S2_S2_S2_S6_S2_S2_PfS7_S7_S7_S7_iii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 40 registers, used 1 barriers, 128 bytes smem, 500 bytes cmem[0]
+ptxas info    : Compile time = 14.280 ms
+ptxas info    : Compiling entry function '_Z15ordered_forwardIflLb0ELb1EEvPKT_PS0_PKT0_S2_S2_S2_S2_S6_S2_S3_S3_S3_iii' for 'sm_86'
+ptxas info    : Function properties for _Z15ordered_forwardIflLb0ELb1EEvPKT_PS0_PKT0_S2_S2_S2_S2_S6_S2_S3_S3_S3_iii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 40 registers, used 1 barriers, 128 bytes smem, 460 bytes cmem[0]
+ptxas info    : Compile time = 8.058 ms
+ptxas info    : Compiling entry function '_Z16ordered_backwardIflLb1ELb0EEvPKT_PS0_S2_S2_PKT0_S2_S2_S2_S2_S6_S2_S2_PfS7_S7_S7_S7_iii' for 'sm_86'
+ptxas info    : Function properties for _Z16ordered_backwardIflLb1ELb0EEvPKT_PS0_S2_S2_PKT0_S2_S2_S2_S2_S6_S2_S2_PfS7_S7_S7_S7_iii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 40 registers, used 1 barriers, 128 bytes smem, 500 bytes cmem[0]
+ptxas info    : Compile time = 20.478 ms
+ptxas info    : Compiling entry function '_Z15ordered_forwardIflLb1ELb0EEvPKT_PS0_PKT0_S2_S2_S2_S2_S6_S2_S3_S3_S3_iii' for 'sm_86'
+ptxas info    : Function properties for _Z15ordered_forwardIflLb1ELb0EEvPKT_PS0_PKT0_S2_S2_S2_S2_S6_S2_S3_S3_S3_iii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 40 registers, used 1 barriers, 128 bytes smem, 460 bytes cmem[0]
+ptxas info    : Compile time = 14.993 ms
+ptxas info    : Compiling entry function '_Z16ordered_backwardIflLb1ELb1EEvPKT_PS0_S2_S2_PKT0_S2_S2_S2_S2_S6_S2_S2_PfS7_S7_S7_S7_iii' for 'sm_86'
+ptxas info    : Function properties for _Z16ordered_backwardIflLb1ELb1EEvPKT_PS0_S2_S2_PKT0_S2_S2_S2_S2_S6_S2_S2_PfS7_S7_S7_S7_iii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 40 registers, used 1 barriers, 128 bytes smem, 500 bytes cmem[0]
+ptxas info    : Compile time = 21.355 ms
+ptxas info    : Compiling entry function '_Z15ordered_forwardIflLb1ELb1EEvPKT_PS0_PKT0_S2_S2_S2_S2_S6_S2_S3_S3_S3_iii' for 'sm_86'
+ptxas info    : Function properties for _Z15ordered_forwardIflLb1ELb1EEvPKT_PS0_PKT0_S2_S2_S2_S2_S6_S2_S3_S3_S3_iii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 40 registers, used 1 barriers, 128 bytes smem, 460 bytes cmem[0]
+ptxas info    : Compile time = 15.017 ms
+ptxas info    : Compiling entry function '_Z16ordered_backwardI13__nv_bfloat16iLb0ELb0EEvPKT_PS1_S3_S3_PKT0_S3_S3_S3_S3_S7_S3_S3_PfS8_S8_S8_S8_iii' for 'sm_86'
+ptxas info    : Function properties for _Z16ordered_backwardI13__nv_bfloat16iLb0ELb0EEvPKT_PS1_S3_S3_PKT0_S3_S3_S3_S3_S7_S3_S3_PfS8_S8_S8_S8_iii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 40 registers, used 1 barriers, 128 bytes smem, 500 bytes cmem[0]
+ptxas info    : Compile time = 13.598 ms
+ptxas info    : Compiling entry function '_Z15ordered_forwardI13__nv_bfloat16iLb0ELb0EEvPKT_PS1_PKT0_S3_S3_S3_S3_S7_S3_S4_S4_S4_iii' for 'sm_86'
+ptxas info    : Function properties for _Z15ordered_forwardI13__nv_bfloat16iLb0ELb0EEvPKT_PS1_PKT0_S3_S3_S3_S3_S7_S3_S4_S4_S4_iii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 39 registers, used 1 barriers, 128 bytes smem, 460 bytes cmem[0]
+ptxas info    : Compile time = 9.377 ms
+ptxas info    : Compiling entry function '_Z16ordered_backwardI13__nv_bfloat16iLb0ELb1EEvPKT_PS1_S3_S3_PKT0_S3_S3_S3_S3_S7_S3_S3_PfS8_S8_S8_S8_iii' for 'sm_86'
+ptxas info    : Function properties for _Z16ordered_backwardI13__nv_bfloat16iLb0ELb1EEvPKT_PS1_S3_S3_PKT0_S3_S3_S3_S3_S7_S3_S3_PfS8_S8_S8_S8_iii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 38 registers, used 1 barriers, 128 bytes smem, 500 bytes cmem[0]
+ptxas info    : Compile time = 14.015 ms
+ptxas info    : Compiling entry function '_Z15ordered_forwardI13__nv_bfloat16iLb0ELb1EEvPKT_PS1_PKT0_S3_S3_S3_S3_S7_S3_S4_S4_S4_iii' for 'sm_86'
+ptxas info    : Function properties for _Z15ordered_forwardI13__nv_bfloat16iLb0ELb1EEvPKT_PS1_PKT0_S3_S3_S3_S3_S7_S3_S4_S4_S4_iii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 40 registers, used 1 barriers, 128 bytes smem, 460 bytes cmem[0]
+ptxas info    : Compile time = 8.627 ms
+ptxas info    : Compiling entry function '_Z16ordered_backwardI13__nv_bfloat16iLb1ELb0EEvPKT_PS1_S3_S3_PKT0_S3_S3_S3_S3_S7_S3_S3_PfS8_S8_S8_S8_iii' for 'sm_86'
+ptxas info    : Function properties for _Z16ordered_backwardI13__nv_bfloat16iLb1ELb0EEvPKT_PS1_S3_S3_PKT0_S3_S3_S3_S3_S7_S3_S3_PfS8_S8_S8_S8_iii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 38 registers, used 1 barriers, 128 bytes smem, 500 bytes cmem[0]
+ptxas info    : Compile time = 21.136 ms
+ptxas info    : Compiling entry function '_Z15ordered_forwardI13__nv_bfloat16iLb1ELb0EEvPKT_PS1_PKT0_S3_S3_S3_S3_S7_S3_S4_S4_S4_iii' for 'sm_86'
+ptxas info    : Function properties for _Z15ordered_forwardI13__nv_bfloat16iLb1ELb0EEvPKT_PS1_PKT0_S3_S3_S3_S3_S7_S3_S4_S4_S4_iii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 40 registers, used 1 barriers, 128 bytes smem, 460 bytes cmem[0]
+ptxas info    : Compile time = 16.158 ms
+ptxas info    : Compiling entry function '_Z16ordered_backwardI13__nv_bfloat16iLb1ELb1EEvPKT_PS1_S3_S3_PKT0_S3_S3_S3_S3_S7_S3_S3_PfS8_S8_S8_S8_iii' for 'sm_86'
+ptxas info    : Function properties for _Z16ordered_backwardI13__nv_bfloat16iLb1ELb1EEvPKT_PS1_S3_S3_PKT0_S3_S3_S3_S3_S7_S3_S3_PfS8_S8_S8_S8_iii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 38 registers, used 1 barriers, 128 bytes smem, 500 bytes cmem[0]
+ptxas info    : Compile time = 21.089 ms
+ptxas info    : Compiling entry function '_Z15ordered_forwardI13__nv_bfloat16iLb1ELb1EEvPKT_PS1_PKT0_S3_S3_S3_S3_S7_S3_S4_S4_S4_iii' for 'sm_86'
+ptxas info    : Function properties for _Z15ordered_forwardI13__nv_bfloat16iLb1ELb1EEvPKT_PS1_PKT0_S3_S3_S3_S3_S7_S3_S4_S4_S4_iii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 39 registers, used 1 barriers, 128 bytes smem, 460 bytes cmem[0]
+ptxas info    : Compile time = 15.756 ms
+ptxas info    : Compiling entry function '_Z16ordered_backwardI13__nv_bfloat16lLb0ELb0EEvPKT_PS1_S3_S3_PKT0_S3_S3_S3_S3_S7_S3_S3_PfS8_S8_S8_S8_iii' for 'sm_86'
+ptxas info    : Function properties for _Z16ordered_backwardI13__nv_bfloat16lLb0ELb0EEvPKT_PS1_S3_S3_PKT0_S3_S3_S3_S3_S7_S3_S3_PfS8_S8_S8_S8_iii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 40 registers, used 1 barriers, 128 bytes smem, 500 bytes cmem[0]
+ptxas info    : Compile time = 13.715 ms
+ptxas info    : Compiling entry function '_Z15ordered_forwardI13__nv_bfloat16lLb0ELb0EEvPKT_PS1_PKT0_S3_S3_S3_S3_S7_S3_S4_S4_S4_iii' for 'sm_86'
+ptxas info    : Function properties for _Z15ordered_forwardI13__nv_bfloat16lLb0ELb0EEvPKT_PS1_PKT0_S3_S3_S3_S3_S7_S3_S4_S4_S4_iii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 39 registers, used 1 barriers, 128 bytes smem, 460 bytes cmem[0]
+ptxas info    : Compile time = 8.886 ms
+ptxas info    : Compiling entry function '_Z16ordered_backwardI13__nv_bfloat16lLb0ELb1EEvPKT_PS1_S3_S3_PKT0_S3_S3_S3_S3_S7_S3_S3_PfS8_S8_S8_S8_iii' for 'sm_86'
+ptxas info    : Function properties for _Z16ordered_backwardI13__nv_bfloat16lLb0ELb1EEvPKT_PS1_S3_S3_PKT0_S3_S3_S3_S3_S7_S3_S3_PfS8_S8_S8_S8_iii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 38 registers, used 1 barriers, 128 bytes smem, 500 bytes cmem[0]
+ptxas info    : Compile time = 14.803 ms
+ptxas info    : Compiling entry function '_Z15ordered_forwardI13__nv_bfloat16lLb0ELb1EEvPKT_PS1_PKT0_S3_S3_S3_S3_S7_S3_S4_S4_S4_iii' for 'sm_86'
+ptxas info    : Function properties for _Z15ordered_forwardI13__nv_bfloat16lLb0ELb1EEvPKT_PS1_PKT0_S3_S3_S3_S3_S7_S3_S4_S4_S4_iii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 40 registers, used 1 barriers, 128 bytes smem, 460 bytes cmem[0]
+ptxas info    : Compile time = 9.301 ms
+ptxas info    : Compiling entry function '_Z16ordered_backwardI13__nv_bfloat16lLb1ELb0EEvPKT_PS1_S3_S3_PKT0_S3_S3_S3_S3_S7_S3_S3_PfS8_S8_S8_S8_iii' for 'sm_86'
+ptxas info    : Function properties for _Z16ordered_backwardI13__nv_bfloat16lLb1ELb0EEvPKT_PS1_S3_S3_PKT0_S3_S3_S3_S3_S7_S3_S3_PfS8_S8_S8_S8_iii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 38 registers, used 1 barriers, 128 bytes smem, 500 bytes cmem[0]
+ptxas info    : Compile time = 23.870 ms
+ptxas info    : Compiling entry function '_Z15ordered_forwardI13__nv_bfloat16lLb1ELb0EEvPKT_PS1_PKT0_S3_S3_S3_S3_S7_S3_S4_S4_S4_iii' for 'sm_86'
+ptxas info    : Function properties for _Z15ordered_forwardI13__nv_bfloat16lLb1ELb0EEvPKT_PS1_PKT0_S3_S3_S3_S3_S7_S3_S4_S4_S4_iii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 40 registers, used 1 barriers, 128 bytes smem, 460 bytes cmem[0]
+ptxas info    : Compile time = 16.034 ms
+ptxas info    : Compiling entry function '_Z16ordered_backwardI13__nv_bfloat16lLb1ELb1EEvPKT_PS1_S3_S3_PKT0_S3_S3_S3_S3_S7_S3_S3_PfS8_S8_S8_S8_iii' for 'sm_86'
+ptxas info    : Function properties for _Z16ordered_backwardI13__nv_bfloat16lLb1ELb1EEvPKT_PS1_S3_S3_PKT0_S3_S3_S3_S3_S7_S3_S3_PfS8_S8_S8_S8_iii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 38 registers, used 1 barriers, 128 bytes smem, 500 bytes cmem[0]
+ptxas info    : Compile time = 22.913 ms
+ptxas info    : Compiling entry function '_Z15ordered_forwardI13__nv_bfloat16lLb1ELb1EEvPKT_PS1_PKT0_S3_S3_S3_S3_S7_S3_S4_S4_S4_iii' for 'sm_86'
+ptxas info    : Function properties for _Z15ordered_forwardI13__nv_bfloat16lLb1ELb1EEvPKT_PS1_PKT0_S3_S3_S3_S3_S7_S3_S4_S4_S4_iii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 39 registers, used 1 barriers, 128 bytes smem, 460 bytes cmem[0]
+ptxas info    : Compile time = 20.173 ms

@@ -1,0 +1,486 @@
+{
+  "schema_version": 1,
+  "artifact_kind": "ordered_route_parallel_launch_resources",
+  "generated_utc": "2026-09-05T08:05:40.171838+00:00",
+  "provenance": {
+    "git_revision": "19d008d7ab9b01d43641464552ee9c0f731fd470",
+    "dirty_tree": false,
+    "benchmark_command": "benchmarks/route_parallel_experiment.py resources --output results/pretraining-step/route-parallel-resources-v3.json",
+    "config_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+    "solver_version": "4.15.3",
+    "python": "3.12.13",
+    "platform": "Linux-6.12.100-125.179.amzn2023.x86_64-x86_64-with-glibc2.39",
+    "pytorch": "2.8.0",
+    "triton": "3.4.0",
+    "cuda": "12.9",
+    "driver": "595.91.07",
+    "gpu": "NVIDIA A10G",
+    "gpu_uuid": "GPU-a2c961bc-6e65-f876-5f9d-2900ae525b4e"
+  },
+  "clean_source_commit": "19d008d7ab9b01d43641464552ee9c0f731fd470",
+  "development_only": false,
+  "configuration": {},
+  "comparison_revisions": {
+    "native": "bdae3d7d643dd500582c4d2a0927f123de2978bb",
+    "oracle": "bdae3d7d643dd500582c4d2a0927f123de2978bb",
+    "upstream": "183e7df809131b80ad4393741029d0f20fc3640b",
+    "m2rnn": "384ed0a7bd82ced1f40609603dd541cac5416844",
+    "atma": "fcefd2d75f9db73c16850343e20b57b3b729b3ea"
+  },
+  "runtime_environment": {
+    "torch_cpu_threads": 1,
+    "omp_num_threads": "1",
+    "mkl_num_threads": "1",
+    "gpu_properties": "_CudaDeviceProperties(name='NVIDIA A10G', major=8, minor=6, total_memory=22589MB, multi_processor_count=80, uuid=a2c961bc-6e65-f876-5f9d-2900ae525b4e, pci_bus_id=0, pci_device_id=30, pci_domain_id=0, L2_cache_size=6MB)"
+  },
+  "production_integration": false,
+  "cuda_build": {
+    "source_sha256": "efd068cfa2db1caafbe2d7f090995eb5fa25a1154c4fc7a625566b76a866bc79",
+    "binary_sha256": "4c22981d446f4573c648777d8888458edc975aabe87eaba21e09792aed856753",
+    "binary": "/tmp/urm-route-parallel-build/e50cecbc9380995010839bceb4fd286566ee80982de2c0b0bbbb4d1a903fa9ea/route_parallel.so",
+    "build_log": "/tmp/urm-route-parallel-build/e50cecbc9380995010839bceb4fd286566ee80982de2c0b0bbbb4d1a903fa9ea/build.log",
+    "nvcc": "nvcc: NVIDIA (R) Cuda compiler driver\nCopyright (c) 2005-2025 NVIDIA Corporation\nBuilt on Tue_May_27_02:21:03_PDT_2025\nCuda compilation tools, release 12.9, V12.9.86\nBuild cuda_12.9.r12.9/compiler.36037853_0\n",
+    "flags": [
+      "-O3",
+      "-std=c++17",
+      "--shared",
+      "-Xcompiler=-fPIC",
+      "-gencode=arch=compute_86,code=sm_86",
+      "-gencode=arch=compute_86,code=compute_86",
+      "--fmad=false",
+      "-lineinfo",
+      "--ptxas-options=-v"
+    ]
+  },
+  "resources": {
+    "route_global": {
+      "forward": {
+        "registers_per_thread": 39,
+        "local_bytes_per_thread": 0,
+        "static_shared_bytes": 128,
+        "dynamic_shared_bytes": 0,
+        "max_active_blocks_per_sm": 6,
+        "binary_sm": 86,
+        "theoretical_active_warps_per_sm": 48,
+        "theoretical_occupancy_fraction_sm86": 1.0
+      },
+      "backward": {
+        "registers_per_thread": 40,
+        "local_bytes_per_thread": 0,
+        "static_shared_bytes": 128,
+        "dynamic_shared_bytes": 0,
+        "max_active_blocks_per_sm": 6,
+        "binary_sm": 86,
+        "theoretical_active_warps_per_sm": 48,
+        "theoretical_occupancy_fraction_sm86": 1.0
+      }
+    },
+    "route_resident": {
+      "forward": {
+        "registers_per_thread": 40,
+        "local_bytes_per_thread": 0,
+        "static_shared_bytes": 128,
+        "dynamic_shared_bytes": 32768,
+        "max_active_blocks_per_sm": 3,
+        "binary_sm": 86,
+        "theoretical_active_warps_per_sm": 24,
+        "theoretical_occupancy_fraction_sm86": 0.5
+      },
+      "backward": {
+        "registers_per_thread": 38,
+        "local_bytes_per_thread": 0,
+        "static_shared_bytes": 128,
+        "dynamic_shared_bytes": 32768,
+        "max_active_blocks_per_sm": 3,
+        "binary_sm": 86,
+        "theoretical_active_warps_per_sm": 24,
+        "theoretical_occupancy_fraction_sm86": 0.5
+      }
+    }
+  },
+  "cuda_launch_audits": [
+    {
+      "mode": "eager",
+      "launches": [
+        {
+          "plan": {
+            "backward": 0,
+            "grid": [
+              12,
+              16
+            ],
+            "threads": 256,
+            "dynamic_shared_bytes": 0,
+            "sequence": 1024,
+            "slots": 4096,
+            "value_dim": 64,
+            "block_d": 4,
+            "write_width": 64,
+            "read_width": 64,
+            "resident": false,
+            "before": false
+          },
+          "observed": [
+            0,
+            12,
+            16,
+            256,
+            0,
+            1024,
+            4096,
+            64,
+            0,
+            0,
+            2,
+            4
+          ],
+          "passed": true
+        },
+        {
+          "plan": {
+            "backward": 1,
+            "grid": [
+              12,
+              16
+            ],
+            "threads": 256,
+            "dynamic_shared_bytes": 0,
+            "sequence": 1024,
+            "slots": 4096,
+            "value_dim": 64,
+            "block_d": 4,
+            "write_width": 64,
+            "read_width": 64,
+            "resident": false,
+            "before": false
+          },
+          "observed": [
+            1,
+            12,
+            16,
+            256,
+            0,
+            1024,
+            4096,
+            64,
+            0,
+            0,
+            2,
+            4
+          ],
+          "passed": true
+        },
+        {
+          "plan": {
+            "backward": 0,
+            "grid": [
+              12,
+              16
+            ],
+            "threads": 256,
+            "dynamic_shared_bytes": 32768,
+            "sequence": 1024,
+            "slots": 4096,
+            "value_dim": 64,
+            "block_d": 4,
+            "write_width": 64,
+            "read_width": 64,
+            "resident": true,
+            "before": false
+          },
+          "observed": [
+            0,
+            12,
+            16,
+            256,
+            32768,
+            1024,
+            4096,
+            64,
+            1,
+            0,
+            2,
+            4
+          ],
+          "passed": true
+        },
+        {
+          "plan": {
+            "backward": 1,
+            "grid": [
+              12,
+              16
+            ],
+            "threads": 256,
+            "dynamic_shared_bytes": 32768,
+            "sequence": 1024,
+            "slots": 4096,
+            "value_dim": 64,
+            "block_d": 4,
+            "write_width": 64,
+            "read_width": 64,
+            "resident": true,
+            "before": false
+          },
+          "observed": [
+            1,
+            12,
+            16,
+            256,
+            32768,
+            1024,
+            4096,
+            64,
+            1,
+            0,
+            2,
+            4
+          ],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "mode": "compile_fullgraph",
+      "launches": [
+        {
+          "plan": {
+            "backward": 0,
+            "grid": [
+              12,
+              16
+            ],
+            "threads": 256,
+            "dynamic_shared_bytes": 0,
+            "sequence": 1024,
+            "slots": 4096,
+            "value_dim": 64,
+            "block_d": 4,
+            "write_width": 64,
+            "read_width": 64,
+            "resident": false,
+            "before": false
+          },
+          "observed": [
+            0,
+            12,
+            16,
+            256,
+            0,
+            1024,
+            4096,
+            64,
+            0,
+            0,
+            2,
+            4
+          ],
+          "passed": true
+        },
+        {
+          "plan": {
+            "backward": 1,
+            "grid": [
+              12,
+              16
+            ],
+            "threads": 256,
+            "dynamic_shared_bytes": 0,
+            "sequence": 1024,
+            "slots": 4096,
+            "value_dim": 64,
+            "block_d": 4,
+            "write_width": 64,
+            "read_width": 64,
+            "resident": false,
+            "before": false
+          },
+          "observed": [
+            1,
+            12,
+            16,
+            256,
+            0,
+            1024,
+            4096,
+            64,
+            0,
+            0,
+            2,
+            4
+          ],
+          "passed": true
+        },
+        {
+          "plan": {
+            "backward": 0,
+            "grid": [
+              12,
+              16
+            ],
+            "threads": 256,
+            "dynamic_shared_bytes": 32768,
+            "sequence": 1024,
+            "slots": 4096,
+            "value_dim": 64,
+            "block_d": 4,
+            "write_width": 64,
+            "read_width": 64,
+            "resident": true,
+            "before": false
+          },
+          "observed": [
+            0,
+            12,
+            16,
+            256,
+            32768,
+            1024,
+            4096,
+            64,
+            1,
+            0,
+            2,
+            4
+          ],
+          "passed": true
+        },
+        {
+          "plan": {
+            "backward": 1,
+            "grid": [
+              12,
+              16
+            ],
+            "threads": 256,
+            "dynamic_shared_bytes": 32768,
+            "sequence": 1024,
+            "slots": 4096,
+            "value_dim": 64,
+            "block_d": 4,
+            "write_width": 64,
+            "read_width": 64,
+            "resident": true,
+            "before": false
+          },
+          "observed": [
+            1,
+            12,
+            16,
+            256,
+            32768,
+            1024,
+            4096,
+            64,
+            1,
+            0,
+            2,
+            4
+          ],
+          "passed": true
+        }
+      ]
+    }
+  ],
+  "native_launches": [
+    {
+      "kernel": "_sparse_state_update_kernel",
+      "grid": [
+        12,
+        16
+      ],
+      "registers": 64,
+      "spills": 0,
+      "shared": 0,
+      "warps": 2,
+      "stages": 3,
+      "constants": {
+        "SEQUENCE": 1024,
+        "SLOTS": 4096,
+        "WRITE_WIDTH": 64,
+        "READ_WIDTH": 64,
+        "VALUE_DIM": 64,
+        "BLOCK_D": 4,
+        "READ_BEFORE_UPDATE": false,
+        "SAVE_SELECTED": true
+      },
+      "max_active_blocks_per_sm": 16,
+      "theoretical_occupancy_fraction_sm86": 0.6666666666666666
+    },
+    {
+      "kernel": "_sparse_state_update_backward_kernel",
+      "grid": [
+        12,
+        16
+      ],
+      "registers": 64,
+      "spills": 0,
+      "shared": 0,
+      "warps": 2,
+      "stages": 3,
+      "constants": {
+        "SEQUENCE": 1024,
+        "SLOTS": 4096,
+        "WRITE_WIDTH": 64,
+        "READ_WIDTH": 64,
+        "VALUE_DIM": 64,
+        "BLOCK_D": 4,
+        "READ_BEFORE_UPDATE": false
+      },
+      "max_active_blocks_per_sm": 16,
+      "theoretical_occupancy_fraction_sm86": 0.6666666666666666
+    },
+    {
+      "kernel": "_sparse_state_update_kernel",
+      "grid": [
+        12,
+        16,
+        1
+      ],
+      "registers": 64,
+      "spills": 0,
+      "shared": 0,
+      "warps": 2,
+      "stages": 3,
+      "constants": {
+        "SEQUENCE": 1024,
+        "SLOTS": 4096,
+        "WRITE_WIDTH": 64,
+        "READ_WIDTH": 64,
+        "VALUE_DIM": 64,
+        "BLOCK_D": 4,
+        "READ_BEFORE_UPDATE": false,
+        "SAVE_SELECTED": true
+      },
+      "max_active_blocks_per_sm": 16,
+      "theoretical_occupancy_fraction_sm86": 0.6666666666666666
+    },
+    {
+      "kernel": "_sparse_state_update_backward_kernel",
+      "grid": [
+        12,
+        16,
+        1
+      ],
+      "registers": 64,
+      "spills": 0,
+      "shared": 0,
+      "warps": 2,
+      "stages": 3,
+      "constants": {
+        "SEQUENCE": 1024,
+        "SLOTS": 4096,
+        "WRITE_WIDTH": 64,
+        "READ_WIDTH": 64,
+        "VALUE_DIM": 64,
+        "BLOCK_D": 4,
+        "READ_BEFORE_UPDATE": false
+      },
+      "max_active_blocks_per_sm": 16,
+      "theoretical_occupancy_fraction_sm86": 0.6666666666666666
+    }
+  ],
+  "native_launches_verified": true,
+  "assembly_directory": "results/pretraining-step/route-parallel-resources-v3.assembly",
+  "hardware_counters": "not_measured_by_this_command; collect separately with Nsight Compute if permitted"
+}

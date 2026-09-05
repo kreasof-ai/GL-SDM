@@ -1,0 +1,224 @@
+{
+  "schema_version": 1,
+  "artifact_kind": "ordered_route_parallel_mode_projections",
+  "generated_utc": "2026-09-05T09:43:38.510962+00:00",
+  "provenance": {
+    "git_revision": "19d008d7ab9b01d43641464552ee9c0f731fd470",
+    "dirty_tree": false,
+    "benchmark_command": "benchmarks/route_parallel_projection.py --baseline results/pretraining-step/route-parallel-model-baseline-v3.json --performance results/pretraining-step/route-parallel-performance-v3.json --correctness results/pretraining-step/route-parallel-correctness-v3.json --captures results/pretraining-step/route-parallel-captures-v3.json --output results/pretraining-step/route-parallel-projections-v3.json",
+    "config_hash": "fe3ca24696bb090c3d4efc998132bc912c5f78e952be9357da238f80222fae02",
+    "solver_version": "4.15.3",
+    "python": "3.12.13",
+    "platform": "Linux-6.12.100-125.179.amzn2023.x86_64-x86_64-with-glibc2.39",
+    "pytorch": "2.8.0",
+    "triton": "3.4.0",
+    "cuda": "12.9",
+    "driver": "595.91.07",
+    "gpu": "NVIDIA A10G",
+    "gpu_uuid": "GPU-a2c961bc-6e65-f876-5f9d-2900ae525b4e"
+  },
+  "clean_source_commit": "19d008d7ab9b01d43641464552ee9c0f731fd470",
+  "development_only": false,
+  "configuration": {
+    "baseline": "results/pretraining-step/route-parallel-model-baseline-v3.json",
+    "performance": "results/pretraining-step/route-parallel-performance-v3.json",
+    "correctness": "results/pretraining-step/route-parallel-correctness-v3.json",
+    "captures": "results/pretraining-step/route-parallel-captures-v3.json"
+  },
+  "comparison_revisions": {
+    "native": "bdae3d7d643dd500582c4d2a0927f123de2978bb",
+    "oracle": "bdae3d7d643dd500582c4d2a0927f123de2978bb",
+    "upstream": "183e7df809131b80ad4393741029d0f20fc3640b",
+    "m2rnn": "384ed0a7bd82ced1f40609603dd541cac5416844",
+    "atma": "fcefd2d75f9db73c16850343e20b57b3b729b3ea"
+  },
+  "runtime_environment": {
+    "torch_cpu_threads": 1,
+    "omp_num_threads": "1",
+    "mkl_num_threads": "1",
+    "gpu_properties": "_CudaDeviceProperties(name='NVIDIA A10G', major=8, minor=6, total_memory=22589MB, multi_processor_count=80, uuid=a2c961bc-6e65-f876-5f9d-2900ae525b4e, pci_bus_id=0, pci_device_id=30, pci_domain_id=0, L2_cache_size=6MB)"
+  },
+  "production_integration": false,
+  "projections": {
+    "eager": {
+      "route_global": {
+        "baseline_native_upstream_ratio": 2.421937100791541,
+        "replaceable_state_fraction": 0.830456739910447,
+        "complete_stage_speedup": 9.895041109827334,
+        "predicted_native_upstream_ratio": 0.6138879559444401,
+        "infinite_state_speedup_ratio_floor": 0.4106231118000382,
+        "required_speedup_for_1_05": 3.145740839419386,
+        "threefold_screen_passed": true,
+        "projection_gate_passed": true,
+        "model_acceptance": "requires_unchanged_full_grid_after_numerical_acceptance_and_credible_complete_stage_measurement",
+        "baseline_kernel_per_invocation_ms": 70.20450033333337,
+        "candidate_complete_stage_ms": 7.094917499999999,
+        "conservative_sensitivity_not_confidence_interval": {
+          "baseline_native_upstream_ratio": 2.4340860271736156,
+          "replaceable_state_fraction": 0.8278396222773748,
+          "complete_stage_speedup": 9.605004450903852,
+          "predicted_native_upstream_ratio": 0.628843062983586,
+          "infinite_state_speedup_ratio_floor": 0.4190531698475737,
+          "required_speedup_for_1_05": 3.1936650776726196,
+          "threefold_screen_passed": true,
+          "projection_gate_passed": true,
+          "model_acceptance": "requires_unchanged_full_grid_after_numerical_acceptance_and_credible_complete_stage_measurement"
+        },
+        "sensitivity_scope": "baseline ratio CI upper, smallest observed fraction/kernel cost, largest observed candidate complete cost; not a joint statistical bound",
+        "fraction_min_max": [
+          0.8278396222773748,
+          0.8330717967879526
+        ],
+        "optimistic_threefold_assumption": {
+          "baseline_native_upstream_ratio": 2.421937100791541,
+          "replaceable_state_fraction": 0.830456739910447,
+          "complete_stage_speedup": 3,
+          "predicted_native_upstream_ratio": 1.0810611081305392,
+          "infinite_state_speedup_ratio_floor": 0.4106231118000382,
+          "required_speedup_for_1_05": 3.145740839419386,
+          "threefold_screen_passed": true,
+          "projection_gate_passed": false,
+          "model_acceptance": "requires_unchanged_full_grid_after_numerical_acceptance_and_credible_complete_stage_measurement"
+        },
+        "scope": "remove_actual_native_state_kernels_only; charge_candidate_complete_stage; leave_native_copy/cast/allocation_overhead_in_remainder",
+        "screening_only": true,
+        "integration_authorized": false
+      },
+      "route_resident": {
+        "baseline_native_upstream_ratio": 2.421937100791541,
+        "replaceable_state_fraction": 0.830456739910447,
+        "complete_stage_speedup": 13.02626355624877,
+        "predicted_native_upstream_ratio": 0.5650276331200959,
+        "infinite_state_speedup_ratio_floor": 0.4106231118000382,
+        "required_speedup_for_1_05": 3.145740839419386,
+        "threefold_screen_passed": true,
+        "projection_gate_passed": true,
+        "model_acceptance": "requires_unchanged_full_grid_after_numerical_acceptance_and_credible_complete_stage_measurement",
+        "baseline_kernel_per_invocation_ms": 70.20450033333337,
+        "candidate_complete_stage_ms": 5.389457999999999,
+        "conservative_sensitivity_not_confidence_interval": {
+          "baseline_native_upstream_ratio": 2.4340860271736156,
+          "replaceable_state_fraction": 0.8278396222773748,
+          "complete_stage_speedup": 12.69801656967659,
+          "predicted_native_upstream_ratio": 0.5777419576806301,
+          "infinite_state_speedup_ratio_floor": 0.4190531698475737,
+          "required_speedup_for_1_05": 3.1936650776726196,
+          "threefold_screen_passed": true,
+          "projection_gate_passed": true,
+          "model_acceptance": "requires_unchanged_full_grid_after_numerical_acceptance_and_credible_complete_stage_measurement"
+        },
+        "sensitivity_scope": "baseline ratio CI upper, smallest observed fraction/kernel cost, largest observed candidate complete cost; not a joint statistical bound",
+        "fraction_min_max": [
+          0.8278396222773748,
+          0.8330717967879526
+        ],
+        "optimistic_threefold_assumption": {
+          "baseline_native_upstream_ratio": 2.421937100791541,
+          "replaceable_state_fraction": 0.830456739910447,
+          "complete_stage_speedup": 3,
+          "predicted_native_upstream_ratio": 1.0810611081305392,
+          "infinite_state_speedup_ratio_floor": 0.4106231118000382,
+          "required_speedup_for_1_05": 3.145740839419386,
+          "threefold_screen_passed": true,
+          "projection_gate_passed": false,
+          "model_acceptance": "requires_unchanged_full_grid_after_numerical_acceptance_and_credible_complete_stage_measurement"
+        },
+        "scope": "remove_actual_native_state_kernels_only; charge_candidate_complete_stage; leave_native_copy/cast/allocation_overhead_in_remainder",
+        "screening_only": true,
+        "integration_authorized": false
+      }
+    },
+    "compile_fullgraph": {
+      "route_global": {
+        "baseline_native_upstream_ratio": 2.311391999052122,
+        "replaceable_state_fraction": 0.8349872917553438,
+        "complete_stage_speedup": 10.46299343759611,
+        "predicted_native_upstream_ratio": 0.5658670633235753,
+        "infinite_state_speedup_ratio_floor": 0.3814090535786204,
+        "required_speedup_for_1_05": 2.8866423570401283,
+        "threefold_screen_passed": true,
+        "projection_gate_passed": true,
+        "model_acceptance": "requires_unchanged_full_grid_after_numerical_acceptance_and_credible_complete_stage_measurement",
+        "baseline_kernel_per_invocation_ms": 70.47497281250001,
+        "candidate_complete_stage_ms": 6.7356415,
+        "conservative_sensitivity_not_confidence_interval": {
+          "baseline_native_upstream_ratio": 2.3263010755694573,
+          "replaceable_state_fraction": 0.8320902383523375,
+          "complete_stage_speedup": 10.168437268093466,
+          "predicted_native_upstream_ratio": 0.5809714813915517,
+          "infinite_state_speedup_ratio_floor": 0.39060865911956844,
+          "required_speedup_for_1_05": 2.9355745161368305,
+          "threefold_screen_passed": true,
+          "projection_gate_passed": true,
+          "model_acceptance": "requires_unchanged_full_grid_after_numerical_acceptance_and_credible_complete_stage_measurement"
+        },
+        "sensitivity_scope": "baseline ratio CI upper, smallest observed fraction/kernel cost, largest observed candidate complete cost; not a joint statistical bound",
+        "fraction_min_max": [
+          0.8320902383523375,
+          0.8372095674887592
+        ],
+        "optimistic_threefold_assumption": {
+          "baseline_native_upstream_ratio": 2.311391999052122,
+          "replaceable_state_fraction": 0.8349872917553438,
+          "complete_stage_speedup": 3,
+          "predicted_native_upstream_ratio": 1.0247367020697877,
+          "infinite_state_speedup_ratio_floor": 0.3814090535786204,
+          "required_speedup_for_1_05": 2.8866423570401283,
+          "threefold_screen_passed": true,
+          "projection_gate_passed": true,
+          "model_acceptance": "requires_unchanged_full_grid_after_numerical_acceptance_and_credible_complete_stage_measurement"
+        },
+        "scope": "remove_actual_native_state_kernels_only; charge_candidate_complete_stage; leave_native_copy/cast/allocation_overhead_in_remainder",
+        "screening_only": true,
+        "integration_authorized": false
+      },
+      "route_resident": {
+        "baseline_native_upstream_ratio": 2.311391999052122,
+        "replaceable_state_fraction": 0.8349872917553438,
+        "complete_stage_speedup": 13.9972044930299,
+        "predicted_native_upstream_ratio": 0.5192925106956872,
+        "infinite_state_speedup_ratio_floor": 0.3814090535786204,
+        "required_speedup_for_1_05": 2.8866423570401283,
+        "threefold_screen_passed": true,
+        "projection_gate_passed": true,
+        "model_acceptance": "requires_unchanged_full_grid_after_numerical_acceptance_and_credible_complete_stage_measurement",
+        "baseline_kernel_per_invocation_ms": 70.47497281250001,
+        "candidate_complete_stage_ms": 5.0349319999999995,
+        "conservative_sensitivity_not_confidence_interval": {
+          "baseline_native_upstream_ratio": 2.3263010755694573,
+          "replaceable_state_fraction": 0.8320902383523375,
+          "complete_stage_speedup": 13.590270636207949,
+          "predicted_native_upstream_ratio": 0.5330408790705612,
+          "infinite_state_speedup_ratio_floor": 0.39060865911956844,
+          "required_speedup_for_1_05": 2.9355745161368305,
+          "threefold_screen_passed": true,
+          "projection_gate_passed": true,
+          "model_acceptance": "requires_unchanged_full_grid_after_numerical_acceptance_and_credible_complete_stage_measurement"
+        },
+        "sensitivity_scope": "baseline ratio CI upper, smallest observed fraction/kernel cost, largest observed candidate complete cost; not a joint statistical bound",
+        "fraction_min_max": [
+          0.8320902383523375,
+          0.8372095674887592
+        ],
+        "optimistic_threefold_assumption": {
+          "baseline_native_upstream_ratio": 2.311391999052122,
+          "replaceable_state_fraction": 0.8349872917553438,
+          "complete_stage_speedup": 3,
+          "predicted_native_upstream_ratio": 1.0247367020697877,
+          "infinite_state_speedup_ratio_floor": 0.3814090535786204,
+          "required_speedup_for_1_05": 2.8866423570401283,
+          "threefold_screen_passed": true,
+          "projection_gate_passed": true,
+          "model_acceptance": "requires_unchanged_full_grid_after_numerical_acceptance_and_credible_complete_stage_measurement"
+        },
+        "scope": "remove_actual_native_state_kernels_only; charge_candidate_complete_stage; leave_native_copy/cast/allocation_overhead_in_remainder",
+        "screening_only": true,
+        "integration_authorized": false
+      }
+    }
+  },
+  "numerical_acceptance": true,
+  "capture_initial_conditions_match_both_baseline_backends_and_modes": true,
+  "recommendation": "independent_review_before_any_integration",
+  "full_model_acceptance": "not_run_for_candidates; production_integration_requires_reviewer_assessment_first"
+}

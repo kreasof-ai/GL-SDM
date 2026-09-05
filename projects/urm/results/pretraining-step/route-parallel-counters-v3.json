@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "artifact_kind": "ordered_route_parallel_hardware_counters",
+  "generated_utc": "2026-09-05T08:08:06.151359+00:00",
+  "provenance": {
+    "git_revision": "19d008d7ab9b01d43641464552ee9c0f731fd470",
+    "dirty_tree": false,
+    "benchmark_command": "benchmarks/route_parallel_counters.py --ncu /tmp/nsight_compute-linux-x86_64-2025.2.1.3-archive/ncu --output results/pretraining-step/route-parallel-counters-v3.json",
+    "config_hash": "31afd7f41ea9f1ac487f88ba3318f62fb3f7975d6465fdc2687a88bf8ad2acde",
+    "solver_version": "4.15.3",
+    "python": "3.12.13",
+    "platform": "Linux-6.12.100-125.179.amzn2023.x86_64-x86_64-with-glibc2.39",
+    "pytorch": "2.8.0",
+    "triton": "3.4.0",
+    "cuda": "12.9",
+    "driver": "595.91.07",
+    "gpu": "NVIDIA A10G",
+    "gpu_uuid": "GPU-a2c961bc-6e65-f876-5f9d-2900ae525b4e"
+  },
+  "clean_source_commit": "19d008d7ab9b01d43641464552ee9c0f731fd470",
+  "development_only": false,
+  "configuration": {
+    "ncu": "/tmp/nsight_compute-linux-x86_64-2025.2.1.3-archive/ncu"
+  },
+  "comparison_revisions": {
+    "native": "bdae3d7d643dd500582c4d2a0927f123de2978bb",
+    "oracle": "bdae3d7d643dd500582c4d2a0927f123de2978bb",
+    "upstream": "183e7df809131b80ad4393741029d0f20fc3640b",
+    "m2rnn": "384ed0a7bd82ced1f40609603dd541cac5416844",
+    "atma": "fcefd2d75f9db73c16850343e20b57b3b729b3ea"
+  },
+  "runtime_environment": {
+    "torch_cpu_threads": 1,
+    "omp_num_threads": "1",
+    "mkl_num_threads": "1",
+    "gpu_properties": "_CudaDeviceProperties(name='NVIDIA A10G', major=8, minor=6, total_memory=22589MB, multi_processor_count=80, uuid=a2c961bc-6e65-f876-5f9d-2900ae525b4e, pci_bus_id=0, pci_device_id=30, pci_domain_id=0, L2_cache_size=6MB)"
+  },
+  "production_integration": false,
+  "ncu_version": "NVIDIA (R) Nsight Compute Command Line Profiler\nCopyright (c) 2018-2025 NVIDIA Corporation\nVersion 2025.2.1.0 (build 35987062) (public-release)\n",
+  "runs": [
+    {
+      "implementation": "native",
+      "command": [
+        "/tmp/nsight_compute-linux-x86_64-2025.2.1.3-archive/ncu",
+        "--target-processes",
+        "all",
+        "--kernel-name",
+        "regex:ordered_|sparse_state_update",
+        "--launch-count",
+        "2",
+        "--set",
+        "full",
+        "--csv",
+        "/opt/conda/bin/python",
+        "/home/sagemaker-user/GL-SDM/projects/urm/benchmarks/route_parallel_counters.py",
+        "--probe",
+        "native"
+      ],
+      "returncode": 1,
+      "stdout": "==PROF== Connected to process 136195 (/opt/conda/bin/python3.12)\n==ERROR== ERR_NVGPUCTRPERM - The user does not have permission to access NVIDIA GPU Performance Counters on the target device 0. For instructions on enabling permissions and to get more information see https://developer.nvidia.com/ERR_NVGPUCTRPERM\n==PROF== Disconnected from process 136195\n",
+      "stderr": "",
+      "counters_available": false
+    },
+    {
+      "implementation": "route_global",
+      "command": [
+        "/tmp/nsight_compute-linux-x86_64-2025.2.1.3-archive/ncu",
+        "--target-processes",
+        "all",
+        "--kernel-name",
+        "regex:ordered_|sparse_state_update",
+        "--launch-count",
+        "2",
+        "--set",
+        "full",
+        "--csv",
+        "/opt/conda/bin/python",
+        "/home/sagemaker-user/GL-SDM/projects/urm/benchmarks/route_parallel_counters.py",
+        "--probe",
+        "route_global"
+      ],
+      "returncode": 1,
+      "stdout": "==PROF== Connected to process 136221 (/opt/conda/bin/python3.12)\n==ERROR== ERR_NVGPUCTRPERM - The user does not have permission to access NVIDIA GPU Performance Counters on the target device 0. For instructions on enabling permissions and to get more information see https://developer.nvidia.com/ERR_NVGPUCTRPERM\n==PROF== Disconnected from process 136221\n",
+      "stderr": "",
+      "counters_available": false
+    },
+    {
+      "implementation": "route_resident",
+      "command": [
+        "/tmp/nsight_compute-linux-x86_64-2025.2.1.3-archive/ncu",
+        "--target-processes",
+        "all",
+        "--kernel-name",
+        "regex:ordered_|sparse_state_update",
+        "--launch-count",
+        "2",
+        "--set",
+        "full",
+        "--csv",
+        "/opt/conda/bin/python",
+        "/home/sagemaker-user/GL-SDM/projects/urm/benchmarks/route_parallel_counters.py",
+        "--probe",
+        "route_resident"
+      ],
+      "returncode": 1,
+      "stdout": "==PROF== Connected to process 136244 (/opt/conda/bin/python3.12)\n==ERROR== ERR_NVGPUCTRPERM - The user does not have permission to access NVIDIA GPU Performance Counters on the target device 0. For instructions on enabling permissions and to get more information see https://developer.nvidia.com/ERR_NVGPUCTRPERM\n==PROF== Disconnected from process 136244\n",
+      "stderr": "",
+      "counters_available": false
+    }
+  ],
+  "all_counters_available": false
+}
