@@ -212,36 +212,28 @@ def _dtype(torch, name):
 
 
 def _route_scores(case, width, *, seed, torch):
-    from urm.backends.sparse_route import CertifiedSparseRouteScores
-    from urm.compiler.semantic import DType, SparseRouteSelectionSpec
-
     dtype = _dtype(torch, case["dtype"])
-    dtype_spec = DType.FLOAT32 if dtype is torch.float32 else DType.BFLOAT16
     p, t, slots = (int(case[k]) for k in ("parallel", "sequence", "slots"))
     half = round(slots**0.5)
-    row_spec = SparseRouteSelectionSpec(1, 1, slots, width, dtype_spec)
     generator = torch.Generator(device="cuda").manual_seed(seed)
     rows = []
     needed = 1 if case["collision"] in {"high", "recurrent"} else p * t
-    attempts = 0
-    while len(rows) < needed and attempts < needed * 10_000:
-        candidate = torch.randn(
-            (1, 1, 2 * half),
-            device="cuda",
-            dtype=dtype,
-            generator=generator,
-        ).contiguous()
-        attempts += 1
-        try:
-            CertifiedSparseRouteScores.certify(row_spec, candidate)
-        except ValueError:
-            continue
-        rows.append(candidate)
-    if len(rows) != needed:
-        raise RuntimeError(f"could not generate tie-free scores for {case['name']}")
+    # Build a lexicographic score ladder rather than inspecting random GPU
+    # values. The best left factor dominates the entire right-factor range, so
+    # the selected WIDTH<=HALF products are exactly its WIDTH greatest, unique
+    # right scores. Independent permutations retain deterministic address
+    # diversity across rows. Multiples of 1/4 and powers of two are exact in
+    # both frozen dtypes, including BF16.
+    minor = -torch.arange(half, device="cuda", dtype=torch.float32) * 0.25
+    major_gap = float(2 ** math.ceil(math.log2(half * 0.25 + 1.0)))
+    major = -torch.arange(half, device="cuda", dtype=torch.float32) * major_gap
+    for _ in range(needed):
+        left = major[torch.randperm(half, device="cuda", generator=generator)]
+        right = minor[torch.randperm(half, device="cuda", generator=generator)]
+        rows.append(torch.cat((left, right)).to(dtype).view(1, 1, 2 * half))
     if needed == 1:
-        return rows[0].expand(p, t, -1).clone().contiguous(), attempts
-    return torch.cat(rows, dim=1).reshape(p, t, 2 * half).contiguous(), attempts
+        return rows[0].expand(p, t, -1).clone().contiguous(), needed
+    return torch.cat(rows, dim=1).reshape(p, t, 2 * half).contiguous(), needed
 
 
 def _make_bundle(case, torch):

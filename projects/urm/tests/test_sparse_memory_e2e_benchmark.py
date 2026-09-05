@@ -59,7 +59,7 @@ def test_e2e_completion_rejects_case_filtering() -> None:
         benchmark._run_confirmation(args)
 
 
-def test_e2e_schema_is_strict_version_one() -> None:
+def test_e2e_schema_is_strict_version_two() -> None:
     schema = json.loads(
         (
             Path(__file__).parents[1]
@@ -77,3 +77,14 @@ def test_benchmark_uses_compiler_produced_sparse_memory_plan() -> None:
     source = Path(benchmark.__file__).read_text(encoding="utf-8")
     assert "compile_sparse_memory_plan(spec)" in source
     assert "TritonSparseMemoryBackend(spec)" not in source
+
+
+def test_frozen_score_generator_is_structurally_tie_free_without_value_scan() -> None:
+    source = Path(benchmark.__file__).read_text(encoding="utf-8")
+    route_source = source.split("def _route_scores", 1)[1].split("def _make_bundle", 1)[
+        0
+    ]
+    assert "CertifiedSparseRouteScores" not in route_source
+    assert "randperm" in route_source
+    assert "major_gap" in route_source
+    assert ".item()" not in route_source
