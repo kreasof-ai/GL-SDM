@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "artifact_kind", "generated_utc", "provenance", "upstream", "configuration", "cases", "reference_passed", "numerically_accepted", "gpu_prototype_authorized_by_numerics", "decision"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "artifact_kind": {"const": "selected_slot_triangular_numerical_prototype"},
+    "generated_utc": {"type": "string"},
+    "provenance": {"type": "object"},
+    "upstream": {"type": "object", "required": ["installed_commit", "checkout_dirty"], "properties": {"installed_commit": {"const": "183e7df809131b80ad4393741029d0f20fc3640b"}, "checkout_dirty": {"const": false}}},
+    "configuration": {"type": "object", "required": ["chunks", "cast_policy", "custom_gpu_kernels", "model_integration"], "properties": {"chunks": {"const": [16, 32, 64]}, "model_integration": {"const": false}, "custom_gpu_kernels": {"const": false}}},
+    "cases": {"type": "array", "minItems": 102, "maxItems": 102, "items": {"$ref": "#/$defs/case"}},
+    "reference_passed": {"type": "object", "additionalProperties": false, "required": ["per_token_cast_oracle", "pinned_upstream"], "properties": {"per_token_cast_oracle": {"type": "boolean"}, "pinned_upstream": {"type": "boolean"}}},
+    "numerically_accepted": {"type": "boolean"},
+    "gpu_prototype_authorized_by_numerics": {"type": "boolean"},
+    "decision": {"enum": ["numerically_accepted_pending_cost_projection", "rejected_before_kernel_integration"]}
+  },
+  "$defs": {
+    "error": {"type": "object", "additionalProperties": false, "required": ["max_abs", "rms", "max_tolerance_ratio", "violating_elements", "elements", "finite", "passed"], "properties": {
+      "max_abs": {"type": "number", "minimum": 0}, "rms": {"type": "number", "minimum": 0}, "max_tolerance_ratio": {"type": "number", "minimum": 0}, "violating_elements": {"type": "integer", "minimum": 0}, "elements": {"type": "integer", "minimum": 1}, "finite": {"type": "boolean"}, "passed": {"type": "boolean"}
+    }},
+    "comparison": {"type": "object", "additionalProperties": false, "required": ["forward", "gradients", "joint_loss_abs", "passed"], "properties": {
+      "forward": {"type": "object", "additionalProperties": false, "required": ["readings", "final_memory"], "properties": {"readings": {"$ref": "#/$defs/error"}, "final_memory": {"$ref": "#/$defs/error"}}},
+      "gradients": {"type": "object", "minProperties": 2, "maxProperties": 6, "required": ["initial_memory", "read_weights"], "additionalProperties": {"$ref": "#/$defs/error"}},
+      "joint_loss_abs": {"type": "number", "minimum": 0}, "passed": {"type": "boolean"}
+    }},
+    "case": {"type": "object", "required": ["chunk_size", "dtype", "pattern", "sequence", "read_timing", "initial_state", "partial_chunk", "differentiable_inputs", "references", "passed"], "properties": {
+      "chunk_size": {"enum": [16, 32, 64]}, "dtype": {"enum": ["float32", "bfloat16"]}, "pattern": {"enum": ["repeated", "disjoint", "mixed", "rounding_stress", "read_only"]}, "sequence": {"type": "integer", "minimum": 16},
+      "read_timing": {"enum": ["before_update", "after_update", "current_state"]}, "initial_state": {"const": "nonzero"}, "partial_chunk": {"type": "boolean"},
+      "differentiable_inputs": {"oneOf": [{"const": ["initial_memory", "write_weights", "values", "beta", "log_decay", "read_weights"]}, {"const": ["initial_memory", "read_weights"]}]},
+      "references": {"type": "object", "additionalProperties": false, "required": ["per_token_cast_oracle", "pinned_upstream"], "properties": {"per_token_cast_oracle": {"$ref": "#/$defs/comparison"}, "pinned_upstream": {"$ref": "#/$defs/comparison"}}},
+      "upstream_vs_oracle_diagnostic": {"$ref": "#/$defs/comparison"}, "passed": {"type": "boolean"}
+    }, "if": {"properties": {"pattern": {"const": "read_only"}}}, "else": {"properties": {"references": {"additionalProperties": {"properties": {"gradients": {"minProperties": 6}}}}}}}
+  }
+}
