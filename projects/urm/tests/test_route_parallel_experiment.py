@@ -43,6 +43,33 @@ def test_state_audit_finiteness_and_tolerance_are_explicit():
     assert report["max_abs"] is None
 
 
+def test_actual_profile_interval_api_and_device_filter():
+    from types import SimpleNamespace
+
+    from route_parallel_baseline import state_kernel_events
+    from torch.autograd.profiler_util import Interval
+
+    def event(name, device):
+        return SimpleNamespace(name=name, device_type=device, time_range=Interval(2, 7))
+
+    profile = SimpleNamespace(
+        events=lambda: [
+            event(
+                "_sparse_state_update_forward_kernel", torch.autograd.DeviceType.CUDA
+            ),
+            event(
+                "_sparse_state_update_backward_kernel", torch.autograd.DeviceType.CUDA
+            ),
+            event("_sparse_state_update_forward_kernel", torch.autograd.DeviceType.CPU),
+            event("unrelated_cuda_kernel", torch.autograd.DeviceType.CUDA),
+        ]
+    )
+    assert state_kernel_events(profile) == [
+        {"name": "_sparse_state_update_forward_kernel", "duration_us": 5},
+        {"name": "_sparse_state_update_backward_kernel", "duration_us": 5},
+    ]
+
+
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 @pytest.mark.parametrize("resident", [False, True])
 @pytest.mark.parametrize("before", [False, True])

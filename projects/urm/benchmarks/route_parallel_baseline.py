@@ -24,6 +24,15 @@ from route_parallel_experiment import clean_revision
 from state_tensor_audit import persistent_audit
 
 
+def state_kernel_events(profile):
+    return [
+        {"name": x.name, "duration_us": x.time_range.elapsed_us()}
+        for x in profile.events()
+        if x.device_type == torch.autograd.DeviceType.CUDA
+        and "sparse_state_update" in x.name
+    ]
+
+
 def child(args):
     source = clean_revision()
     original = baseline._one_step
@@ -93,12 +102,7 @@ def child(args):
                 original(execution, optimizer, batches, config, **kwargs)
                 torch.cuda.synchronize()
                 wall_ms = (time.perf_counter_ns() - started) / 1e6
-            events = [
-                {"name": x.name, "duration_us": x.time_range.elapsed()}
-                for x in profile.events()
-                if x.device_type == torch.autograd.DeviceType.CUDA
-                and "sparse_state_update" in x.name
-            ]
+            events = state_kernel_events(profile)
             fwd = (
                 sum(x["duration_us"] for x in events if "backward" not in x["name"])
                 / 1000
