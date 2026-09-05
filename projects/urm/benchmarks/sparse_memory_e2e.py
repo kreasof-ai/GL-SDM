@@ -1244,8 +1244,11 @@ def benchmark_case(case, *, samples, warmup, torch):
         )
         memory["backward_upstream"] = _backward_memory(bundle, "upstream", torch)
         memory["backward_native"] = _backward_memory(bundle, "native", torch)
-    up_peak = memory["upstream"]["temporary_peak_bytes"]
-    native_peak = memory["native"]["temporary_peak_bytes"]
+    # Acceptance is defined on absolute peak allocated memory. Temporary
+    # growth remains useful attribution, but its baseline differs by path when
+    # their pre-dispatch saved graphs have different live allocations.
+    up_peak = memory["upstream"]["peak_allocated_bytes"]
+    native_peak = memory["native"]["peak_allocated_bytes"]
     memory_passed = native_peak <= max(int(up_peak * 1.02), up_peak + 1_048_576)
     ratio = paired["paired_device_ratio"]
     classification = case["classification"]
@@ -1281,8 +1284,8 @@ def benchmark_case(case, *, samples, warmup, torch):
             / backward_paired["upstream_device"]["p95_ms"]
             <= 1.10
         )
-        backward_up_peak = memory["backward_upstream"]["temporary_peak_bytes"]
-        backward_native_peak = memory["backward_native"]["temporary_peak_bytes"]
+        backward_up_peak = memory["backward_upstream"]["peak_allocated_bytes"]
+        backward_native_peak = memory["backward_native"]["peak_allocated_bytes"]
         backward_memory_passed = backward_native_peak <= max(
             int(backward_up_peak * 1.02), backward_up_peak + 1_048_576
         )

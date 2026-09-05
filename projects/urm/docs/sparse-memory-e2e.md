@@ -82,8 +82,10 @@ MFU/MBU are not reported because no meaningful sparse utilization denominator
 was measured. Host-bound cases use absolute microseconds; substantial cases use
 geometric-mean, hierarchical CI, p95, and memory gates. Completion requires
 exactly three clean fresh processes and complete strict-schema artifacts.
-Schema version 2 additionally applies CI, p95, drift, and temporary-peak-memory
-gates to backward and labels training forward timing as grad-enabled execution
-with saved state. Confirmation rejects case filters and requires every frozen
-TOML key. The benchmark obtains native execution only through the verified
-compiler-produced plan.
+Schema version 2 additionally applies CI, p95, drift, and absolute
+peak-allocated-memory gates to backward and labels training forward timing as
+grad-enabled execution with saved state. Path-relative temporary growth is
+retained for attribution but is not an acceptance metric because the live
+pre-dispatch baselines differ. Confirmation rejects case filters and requires
+every frozen TOML key. The benchmark obtains native execution only through the
+verified compiler-produced plan.

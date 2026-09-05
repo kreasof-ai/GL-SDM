@@ -88,3 +88,14 @@ def test_frozen_score_generator_is_structurally_tie_free_without_value_scan() ->
     assert "randperm" in route_source
     assert "major_gap" in route_source
     assert ".item()" not in route_source
+
+
+def test_memory_acceptance_uses_absolute_peak_not_path_relative_temporary_bytes() -> (
+    None
+):
+    source = Path(benchmark.__file__).read_text(encoding="utf-8")
+    gate_source = source.split("# Acceptance is defined on absolute peak", 1)[1].split(
+        'return {\n        "case": case', 1
+    )[0]
+    assert '["peak_allocated_bytes"]' in gate_source
+    assert '["temporary_peak_bytes"]' not in gate_source
