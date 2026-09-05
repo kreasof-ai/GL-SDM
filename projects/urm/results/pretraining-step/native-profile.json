@@ -1,0 +1,399 @@
+{
+  "schema_version": 1,
+  "artifact_kind": "pretraining_step_profile",
+  "generated_utc": "2026-09-05T02:46:56.837817+00:00",
+  "provenance": {
+    "git_revision": "dfe63bb13908ea147da866c77ae540092d429212",
+    "dirty_tree": false,
+    "benchmark_command": "benchmarks/profile_pretraining_step.py --backend urm_native --output results/pretraining-step/native-profile.json",
+    "config_hash": "3e0d1ade89978aa682f0ef42b28f881f5242b7d3965bbf9a70ff6f16be2a6b50",
+    "solver_version": "4.15.3",
+    "python": "3.12.13",
+    "platform": "Linux-6.12.100-125.179.amzn2023.x86_64-x86_64-with-glibc2.39",
+    "pytorch": "2.8.0",
+    "triton": "3.4.0",
+    "cuda": "12.9",
+    "driver": "595.91.07",
+    "gpu": "NVIDIA A10G",
+    "gpu_uuid": "GPU-a2c961bc-6e65-f876-5f9d-2900ae525b4e"
+  },
+  "backend": "urm_native",
+  "diagnostic": false,
+  "configuration": {
+    "vocab_size": 50304,
+    "sequence_length": 1024,
+    "layers": 12,
+    "width": 768,
+    "heads": 12,
+    "value_dim": 64,
+    "mlp_ratio": 4,
+    "slots_per_partition": 4096,
+    "reads": 64,
+    "writes": 64,
+    "microbatch": 1,
+    "gradient_accumulation": 4,
+    "dropout": 0.0,
+    "bias": false
+  },
+  "scope": "one_complete_eager_optimizer_step_after_one_warmup_step",
+  "trace_file": "results/pretraining-step/native-profile.trace.json",
+  "nvtx_command": "nsys profile --trace=cuda,nvtx python benchmarks/profile_pretraining_step.py --backend urm_native --emit-nvtx",
+  "ranges": [
+    {
+      "name": "pretraining::embeddings",
+      "count": 4,
+      "cpu_time_total_us": 1147.143999999741,
+      "device_time_total_us": 69.92000000027156,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 7798784
+    },
+    {
+      "name": "pretraining::embeddings",
+      "count": 4,
+      "cpu_time_total_us": 0.0,
+      "device_time_total_us": 460.4520000001794,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 0
+    },
+    {
+      "name": "pretraining::block_0",
+      "count": 4,
+      "cpu_time_total_us": 8092.612999999958,
+      "device_time_total_us": 169075.20600000108,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 976027648
+    },
+    {
+      "name": "pretraining::block_0",
+      "count": 4,
+      "cpu_time_total_us": 0.0,
+      "device_time_total_us": 172545.66000000024,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 0
+    },
+    {
+      "name": "pretraining::sparse_memory::learned_projections",
+      "count": 48,
+      "cpu_time_total_us": 30368.30300000029,
+      "device_time_total_us": 8532.626999999127,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 488923136
+    },
+    {
+      "name": "pretraining::sparse_memory::learned_projections",
+      "count": 48,
+      "cpu_time_total_us": 0.0,
+      "device_time_total_us": 10614.065999999253,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 0
+    },
+    {
+      "name": "pretraining::sparse_memory::native_route",
+      "count": 48,
+      "cpu_time_total_us": 1973.4409999998015,
+      "device_time_total_us": 0.0,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 0
+    },
+    {
+      "name": "pretraining::sparse_memory::native_state",
+      "count": 48,
+      "cpu_time_total_us": 24790.811999999078,
+      "device_time_total_us": 1508431.2740000018,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 10541334528
+    },
+    {
+      "name": "pretraining::sparse_memory::native_state",
+      "count": 48,
+      "cpu_time_total_us": 0.0,
+      "device_time_total_us": 1508548.653,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 0
+    },
+    {
+      "name": "pretraining::block_1",
+      "count": 4,
+      "cpu_time_total_us": 7027.301999999484,
+      "device_time_total_us": 155699.21699999945,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 980647936
+    },
+    {
+      "name": "pretraining::block_2",
+      "count": 4,
+      "cpu_time_total_us": 6814.1170000000675,
+      "device_time_total_us": 138669.06400000252,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 982220800
+    },
+    {
+      "name": "pretraining::block_3",
+      "count": 4,
+      "cpu_time_total_us": 6880.118000000075,
+      "device_time_total_us": 128792.89199999973,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 982450176
+    },
+    {
+      "name": "pretraining::block_4",
+      "count": 4,
+      "cpu_time_total_us": 6895.7489999995905,
+      "device_time_total_us": 123076.96999999811,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 983629824
+    },
+    {
+      "name": "pretraining::block_5",
+      "count": 4,
+      "cpu_time_total_us": 7121.895000000548,
+      "device_time_total_us": 121980.5879999999,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 983433216
+    },
+    {
+      "name": "pretraining::block_6",
+      "count": 4,
+      "cpu_time_total_us": 6905.808000000243,
+      "device_time_total_us": 119314.92700000067,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 966098944
+    },
+    {
+      "name": "pretraining::block_7",
+      "count": 4,
+      "cpu_time_total_us": 6938.739999999978,
+      "device_time_total_us": 115873.68899999955,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 966623232
+    },
+    {
+      "name": "pretraining::block_8",
+      "count": 4,
+      "cpu_time_total_us": 7097.082999999813,
+      "device_time_total_us": 115301.1379999991,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 964149248
+    },
+    {
+      "name": "pretraining::block_9",
+      "count": 4,
+      "cpu_time_total_us": 7008.1530000004495,
+      "device_time_total_us": 115303.76599999797,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 964149248
+    },
+    {
+      "name": "pretraining::block_10",
+      "count": 4,
+      "cpu_time_total_us": 7105.973999999864,
+      "device_time_total_us": 114996.49100000062,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 964149248
+    },
+    {
+      "name": "pretraining::block_11",
+      "count": 4,
+      "cpu_time_total_us": 6996.531999999839,
+      "device_time_total_us": 114644.33300000196,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 965722112
+    },
+    {
+      "name": "pretraining::logits",
+      "count": 4,
+      "cpu_time_total_us": 648.2829999997884,
+      "device_time_total_us": 5309.323000000324,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 418414592
+    },
+    {
+      "name": "pretraining::loss",
+      "count": 4,
+      "cpu_time_total_us": 684.0349999998689,
+      "device_time_total_us": 9165.73600000015,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 824184832
+    },
+    {
+      "name": "pretraining::backward",
+      "count": 4,
+      "cpu_time_total_us": 603325.7869999995,
+      "device_time_total_us": 12.831999999587424,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": -11945253888
+    },
+    {
+      "name": "pretraining::block_1",
+      "count": 4,
+      "cpu_time_total_us": 0.0,
+      "device_time_total_us": 155790.5800000004,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 0
+    },
+    {
+      "name": "pretraining::block_2",
+      "count": 4,
+      "cpu_time_total_us": 0.0,
+      "device_time_total_us": 138760.0140000001,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 0
+    },
+    {
+      "name": "pretraining::block_3",
+      "count": 4,
+      "cpu_time_total_us": 0.0,
+      "device_time_total_us": 128885.63099999985,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 0
+    },
+    {
+      "name": "pretraining::block_4",
+      "count": 4,
+      "cpu_time_total_us": 0.0,
+      "device_time_total_us": 123170.38599999962,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 0
+    },
+    {
+      "name": "pretraining::block_5",
+      "count": 4,
+      "cpu_time_total_us": 0.0,
+      "device_time_total_us": 122082.02499999994,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 0
+    },
+    {
+      "name": "pretraining::block_6",
+      "count": 4,
+      "cpu_time_total_us": 0.0,
+      "device_time_total_us": 119410.29199999999,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 0
+    },
+    {
+      "name": "pretraining::block_7",
+      "count": 4,
+      "cpu_time_total_us": 0.0,
+      "device_time_total_us": 115965.33600000007,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 0
+    },
+    {
+      "name": "pretraining::block_8",
+      "count": 4,
+      "cpu_time_total_us": 0.0,
+      "device_time_total_us": 115395.53999999957,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 0
+    },
+    {
+      "name": "pretraining::block_9",
+      "count": 4,
+      "cpu_time_total_us": 0.0,
+      "device_time_total_us": 115400.43699999934,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 0
+    },
+    {
+      "name": "pretraining::block_10",
+      "count": 4,
+      "cpu_time_total_us": 0.0,
+      "device_time_total_us": 115086.06700000068,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 0
+    },
+    {
+      "name": "pretraining::block_11",
+      "count": 4,
+      "cpu_time_total_us": 0.0,
+      "device_time_total_us": 114735.40599999996,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 0
+    },
+    {
+      "name": "pretraining::logits",
+      "count": 4,
+      "cpu_time_total_us": 0.0,
+      "device_time_total_us": 5312.459000000323,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 0
+    },
+    {
+      "name": "pretraining::loss",
+      "count": 4,
+      "cpu_time_total_us": 0.0,
+      "device_time_total_us": 9171.912000000128,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 0
+    },
+    {
+      "name": "pretraining::backward",
+      "count": 4,
+      "cpu_time_total_us": 0.0,
+      "device_time_total_us": 15.872000000323169,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 0
+    },
+    {
+      "name": "pretraining::gradient_clip",
+      "count": 1,
+      "cpu_time_total_us": 2211.944000000134,
+      "device_time_total_us": 1606.5059999995865,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 512
+    },
+    {
+      "name": "pretraining::gradient_clip",
+      "count": 1,
+      "cpu_time_total_us": 0.0,
+      "device_time_total_us": 2624.180999999866,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 0
+    },
+    {
+      "name": "pretraining::optimizer",
+      "count": 1,
+      "cpu_time_total_us": 28866.36300000036,
+      "device_time_total_us": 26831.395000010263,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 0
+    },
+    {
+      "name": "pretraining::optimizer",
+      "count": 1,
+      "cpu_time_total_us": 0.0,
+      "device_time_total_us": 28186.944000000134,
+      "cpu_memory_usage_bytes": 0,
+      "device_memory_usage_bytes": 0
+    }
+  ],
+  "compiler_execution": {
+    "layer_count": 12,
+    "plan": {
+      "program": "compiled_sparse_memory",
+      "steps": [
+        {
+          "step_id": 0,
+          "kind": "anchor_dispatch",
+          "anchor": "urm_native_sparse_memory_e2e_v0",
+          "exchanges": [],
+          "note": "sdm_access",
+          "launch_config": {
+            "schedule_family": "native_route_then_partition_scan",
+            "route_block_half": 64,
+            "read_route_block": 64,
+            "write_route_block": 64,
+            "state_block_d": 64,
+            "route_materialization": "explicit_logical_outputs",
+            "fusion": "none"
+          }
+        }
+      ],
+      "obligations": [],
+      "escape_hatch_count": 0
+    },
+    "all_layers_identical": true,
+    "benchmark_direct_backend_instantiation": false
+  }
+}
