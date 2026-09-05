@@ -20,6 +20,7 @@ from urm.backends.sparse_memory import TritonSparseMemoryBackend
 from urm.backends.sparse_route import CertifiedSparseRouteScores
 from urm.backends.sparse_state_mixer import SparseState
 from urm.backends.sparse_state_reference import torch_sparse_state_mixer
+from urm.compiler.anchors.sparse_memory import compile_sparse_memory_plan
 from urm.compiler.semantic import (
     DType,
     SDMExecutionMode,
@@ -344,3 +345,38 @@ def test_fully_native_e2e_score_to_state_gradients_match_reference_and_upstream(
             upstream_gradient.float(),
             **BACKWARD_TOLERANCES[dtype],
         )
+
+
+def test_compiler_produced_plan_executes_its_serialized_schedule() -> None:
+    spec = SparseMemoryMixerSpec(
+        1,
+        2,
+        64,
+        37,
+        4,
+        4,
+        DType.FLOAT32,
+        SDMExecutionMode.INFERENCE,
+    )
+    compiled = compile_sparse_memory_plan(spec)
+    serialized = compiled.serialized_plan()
+    step = serialized["steps"][0]
+    assert step["anchor"] == "urm_native_sparse_memory_e2e_v0"
+    assert step["launch_config"] == compiled.launch_config
+    generator = torch.Generator(device="cuda").manual_seed(499)
+    write_scores = torch.randn((1, 2, 16), device="cuda", generator=generator)
+    read_scores = torch.randn((1, 2, 16), device="cuda", generator=generator)
+    values = torch.randn((1, 2, 37), device="cuda", generator=generator)
+    beta = torch.rand((1, 2, 1), device="cuda", generator=generator)
+    decay = -torch.rand((1, 2, 1), device="cuda", generator=generator)
+    prepared = compiled.prepare(
+        read_scores,
+        write_scores=write_scores,
+        values=values,
+        beta=beta,
+        log_decay=decay,
+    )
+    result = compiled.execute(
+        SparseState(torch.zeros((1, 64, 37), device="cuda")), prepared
+    )
+    assert torch.isfinite(result.readings).all()

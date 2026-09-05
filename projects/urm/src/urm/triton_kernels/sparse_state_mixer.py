@@ -376,6 +376,11 @@ def _sparse_state_update_backward_kernel(
 
 
 def _launch_parameters(value_dim: int) -> tuple[int, int]:
+    # D=64 model training otherwise launches only one very long-running value
+    # fragment per partition. Sixteen fragments expose enough blocks to occupy
+    # an A10G while preserving the partition-owned ordered token recurrence.
+    if value_dim == 64:
+        return 4, 2
     block_d = min(256, max(16, triton.next_power_of_2(min(value_dim, 256))))
     warps = 8 if block_d >= 256 else 4 if block_d >= 64 else 2
     return block_d, warps

@@ -208,6 +208,10 @@ class CertifiedSparseStateRoutes:
         )
 
     def require_intact(self) -> None:
+        import torch
+
+        if torch.compiler.is_compiling():
+            return
         tensors = tuple(
             item
             for item in (
@@ -237,6 +241,10 @@ class CertifiedSparseStateOperands:
             raise ValueError("operands must be created by prepare()")
 
     def require_intact(self) -> None:
+        import torch
+
+        if torch.compiler.is_compiling():
+            return
         self.routes.require_intact()
         tensors = tuple(
             item

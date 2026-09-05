@@ -21,16 +21,18 @@ in either semantic operation.
 
 The v0 route specialization accepts contiguous CUDA FP32 or BF16 factor-score
 tensors `[P,T,2H]`, with `P<=16`, `T<=2048`, `H<=256`, source extent `H*H`, and
-route width `1..64`. It uses additive pair composition, stable selected-set
-top-k, ascending partition-local address order, and Softmax over selected
-scores. Output addresses are `int32`; weights use the score/state dtype. Inputs
-must be finite and the top-k selection boundary must be tie-free. Certification
-occurs outside timed dispatch and seals tensor versions; mutation invalidates
-the certificate.
+route width `1..min(64,H)`. It uses additive pair composition, deterministic
+score-descending/address-descending selection, ascending partition-local
+address order, and Softmax over selected scores. Output addresses are `int32`;
+weights use the score/state dtype. Static certification checks shape, dtype,
+device, contiguity, and tensor version without a value-dependent CUDA scan.
+Equal scores deterministically prefer the highest address, so dynamic inputs do
+not require hot-path tie certification. Non-finite values fail downstream
+correctness gates; mutation invalidates the eager certificate.
 
-The selected set is deterministic for tie-free inputs. Internal equal scores
-may occur only when they do not change membership; canonical address sorting
-then fixes route order. Other composition, selection, normalization, address,
+The selected set is deterministic even with ties; canonical address sorting
+then fixes route order. Exact comparisons against the older upstream tie policy
+use deterministic tie-free inputs. Other composition, selection, normalization, address,
 index, device, dtype, or route-width choices decline structurally. Product-key
 routing is this specialization's implementation target, not a universal
 architectural assumption.
@@ -80,3 +82,8 @@ MFU/MBU are not reported because no meaningful sparse utilization denominator
 was measured. Host-bound cases use absolute microseconds; substantial cases use
 geometric-mean, hierarchical CI, p95, and memory gates. Completion requires
 exactly three clean fresh processes and complete strict-schema artifacts.
+Schema version 2 additionally applies CI, p95, drift, and temporary-peak-memory
+gates to backward and labels training forward timing as grad-enabled execution
+with saved state. Confirmation rejects case filters and requires every frozen
+TOML key. The benchmark obtains native execution only through the verified
+compiler-produced plan.

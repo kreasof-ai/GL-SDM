@@ -563,6 +563,10 @@ class UrmSparseDeltaMemoryAdapter:
         root = round(slots_per_partition**0.5)
         if root * root != slots_per_partition:
             raise ValueError("upstream product-key slots must be a perfect square")
+        if num_writes > root or num_reads > root:
+            raise ValueError(
+                "product-key read/write widths must not exceed factor extent"
+            )
         if not 0 < num_writes <= min(128, slots_per_partition):
             raise ValueError("num_writes must be in [1,min(128,slots)]")
         if not 0 < num_reads <= min(128, slots_per_partition):

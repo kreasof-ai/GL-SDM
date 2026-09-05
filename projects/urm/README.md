@@ -17,8 +17,9 @@ FA/FLA/SDM/Mamba library APIs.
 The routed-reduction/compiler-validation tranche remains complete and frozen.
 Phase 3 now includes the closed external Sparse Delta Memory baseline, the
 URM-native certified-route `SparseStateMixer` v0, and a compiler-visible native
-score-to-route-to-state Sparse Memory v0 path. These slices have been validated
-on an NVIDIA A10G CUDA host:
+score-to-route-to-state Sparse Memory v0 path. Model-level pretraining-step
+closure is active and does not inherit a success claim from isolated E2E
+results. The completed slices have been validated on an NVIDIA A10G CUDA host:
 
 - a typed `MixerSpec` contract;
 - a dependency-light NumPy correctness oracle;
@@ -59,6 +60,12 @@ on an NVIDIA A10G CUDA host:
   four-level E2E protocol keeps transparent PyTorch, pinned upstream, diagnostic
   hybrid, and fully native results distinct. See
   [the E2E Sparse Memory contract](docs/sparse-memory-e2e.md); and
+- an independently owned 124.65M-parameter decoder pretraining harness whose
+  authoritative boundary is a complete optimizer step over prefetched
+  FineWeb-Edu tokens. It compares the pinned external mixer with
+  compiler-produced native plans and keeps SDPA contextual only; see
+  [the model-level contract](docs/pretraining-step.md). Model-level parity or
+  superiority is claimed only by its strict three-seed A10G artifact; and
 - a layered compiler (docs/compiler-charter.md): typed semantic IR over logical
   domains with explicit locality/effect models, two verified reparameterization
   rules with deterministic traces, a simulated routing-to-communication
@@ -273,6 +280,8 @@ model.
 - Complete: independent native factorized-additive top-k route selection and
   the fully native Sparse Memory E2E composition from scores through persistent
   state, with the diagnostic hybrid explicitly excluded from native claims.
+- Active: model-level 124.65M decoder optimizer-step closure. Isolated Sparse
+  Memory E2E completion is not model-level performance evidence.
 - Deferred: physical route/state fusion and route compositions beyond the
   frozen factorized-additive specialization.
 - Fuse overlay composition and reduction.

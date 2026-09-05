@@ -244,8 +244,8 @@
           "properties": {"upstream": {"$ref": "#/$defs/memory"}, "native": {"$ref": "#/$defs/memory"}, "hybrid": {"$ref": "#/$defs/memory"}, "reference": {"$ref": "#/$defs/memory"}, "backward_upstream": {"$ref": "#/$defs/memory"}, "backward_native": {"$ref": "#/$defs/memory"}}
         },
         "gate": {
-          "type": "object", "additionalProperties": false, "required": ["classification", "latency_passed", "memory_passed", "correctness_passed", "passed"],
-          "properties": {"classification": {"enum": ["substantial", "host_bound"]}, "latency_passed": {"type": "boolean"}, "memory_passed": {"type": "boolean"}, "correctness_passed": {"type": "boolean"}, "passed": {"type": "boolean"}}
+          "type": "object", "additionalProperties": false, "required": ["classification", "latency_passed", "memory_passed", "backward_latency_passed", "backward_memory_passed", "backward_drift_passed", "correctness_passed", "passed"],
+          "properties": {"classification": {"enum": ["substantial", "host_bound"]}, "latency_passed": {"type": "boolean"}, "memory_passed": {"type": "boolean"}, "backward_latency_passed": {"type": "boolean"}, "backward_memory_passed": {"type": "boolean"}, "backward_drift_passed": {"type": "boolean"}, "correctness_passed": {"type": "boolean"}, "passed": {"type": "boolean"}}
         }
       }
     },
@@ -275,10 +275,10 @@
     },
     "methodology": {
       "type": "object", "additionalProperties": false,
-      "required": ["scope", "levels", "hybrid_certification", "authoritative_sampling", "attribution_sampling", "nvtx", "profiler", "host_absolute_allowance_us", "mfu_mbu", "optimization_history", "comparator_boundary"],
+      "required": ["scope", "levels", "hybrid_certification", "score_certification", "training_forward", "authoritative_sampling", "attribution_sampling", "nvtx", "profiler", "host_absolute_allowance_us", "mfu_mbu", "optimization_history", "comparator_boundary"],
       "properties": {
         "scope": {"type": "string"}, "levels": {"type": "object", "additionalProperties": false, "required": ["reference", "upstream", "hybrid", "native"], "properties": {"reference": {"type": "string"}, "upstream": {"type": "string"}, "hybrid": {"type": "string"}, "native": {"type": "string"}}},
-        "hybrid_certification": {"type": "string"}, "authoritative_sampling": {"type": "string"}, "attribution_sampling": {"type": "string"}, "nvtx": {"type": "string"}, "profiler": {"type": "string"}, "host_absolute_allowance_us": {"const": 25.0},
+        "hybrid_certification": {"type": "string"}, "score_certification": {"type": "string"}, "training_forward": {"type": "string"}, "authoritative_sampling": {"type": "string"}, "attribution_sampling": {"type": "string"}, "nvtx": {"type": "string"}, "profiler": {"type": "string"}, "host_absolute_allowance_us": {"const": 25.0},
         "mfu_mbu": {"type": "object", "additionalProperties": false, "required": ["status", "reason"], "properties": {"status": {"const": "not_applicable"}, "reason": {"type": "string"}}},
         "optimization_history": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["id", "hypothesis", "result", "status"], "properties": {"id": {"type": "string"}, "hypothesis": {"type": "string"}, "result": {"type": "string"}, "status": {"enum": ["accepted", "rejected", "deferred"]}}}},
         "comparator_boundary": {"type": "string"}
@@ -288,24 +288,26 @@
       "type": "object", "additionalProperties": false,
       "required": ["schema_version", "artifact_kind", "generated_utc", "provenance", "cold_start", "methodology", "cases"],
       "properties": {
-        "schema_version": {"const": 1}, "artifact_kind": {"const": "single_process_attribution"}, "generated_utc": {"type": "string"}, "provenance": {"$ref": "#/$defs/provenance"}, "cold_start": {"$ref": "#/$defs/coldStart"}, "methodology": {"$ref": "#/$defs/methodology"},
+        "schema_version": {"const": 2}, "artifact_kind": {"const": "single_process_attribution"}, "generated_utc": {"type": "string"}, "provenance": {"$ref": "#/$defs/provenance"}, "cold_start": {"$ref": "#/$defs/coldStart"}, "methodology": {"$ref": "#/$defs/methodology"},
         "cases": {"type": "object", "minProperties": 1, "additionalProperties": {"$ref": "#/$defs/caseResult"}}
       }
     },
     "confirmationCase": {
       "type": "object", "additionalProperties": false,
-      "required": ["classification", "hierarchical_forward_ratio_ci95", "per_process_forward_median_ratios", "per_process_forward_p95_ratios", "per_process_backward_median_ratios", "passed"],
+      "required": ["classification", "hierarchical_forward_ratio_ci95", "per_process_forward_median_ratios", "per_process_forward_p95_ratios", "per_process_backward_median_ratios", "hierarchical_backward_ratio_ci95", "per_process_backward_p95_ratios", "passed"],
       "properties": {
         "classification": {"enum": ["substantial", "host_bound"]}, "hierarchical_forward_ratio_ci95": {"$ref": "#/$defs/ci"},
         "per_process_forward_median_ratios": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"$ref": "#/$defs/nonnegative"}}, "per_process_forward_p95_ratios": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"$ref": "#/$defs/nonnegative"}},
-        "per_process_backward_median_ratios": {"type": "array", "maxItems": 3, "items": {"$ref": "#/$defs/nonnegative"}}, "passed": {"type": "boolean"}
+        "per_process_backward_median_ratios": {"type": "array", "maxItems": 3, "items": {"$ref": "#/$defs/nonnegative"}},
+        "hierarchical_backward_ratio_ci95": {"oneOf": [{"$ref": "#/$defs/ci"}, {"type": "null"}]},
+        "per_process_backward_p95_ratios": {"type": "array", "maxItems": 3, "items": {"$ref": "#/$defs/nonnegative"}}, "passed": {"type": "boolean"}
       }
     },
     "confirmation": {
       "type": "object", "additionalProperties": false,
       "required": ["schema_version", "artifact_kind", "generated_utc", "provenance", "methodology", "runs", "confirmation"],
       "properties": {
-        "schema_version": {"const": 1}, "artifact_kind": {"const": "three_process_confirmation"}, "generated_utc": {"type": "string"}, "provenance": {"$ref": "#/$defs/provenance"},
+        "schema_version": {"const": 2}, "artifact_kind": {"const": "three_process_confirmation"}, "generated_utc": {"type": "string"}, "provenance": {"$ref": "#/$defs/provenance"},
         "methodology": {"type": "object", "additionalProperties": false, "required": ["fresh_processes", "fresh_caches", "process_wall_ms", "scope"], "properties": {"fresh_processes": {"const": 3}, "fresh_caches": {"const": true}, "process_wall_ms": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"$ref": "#/$defs/nonnegative"}}, "scope": {"type": "string"}}},
         "runs": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"$ref": "#/$defs/singleRun"}},
         "confirmation": {

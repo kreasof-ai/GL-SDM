@@ -92,7 +92,9 @@ def test_read_only_composite_semantics_are_compiler_visible() -> None:
 
 
 def test_native_decline_falls_back_only_to_revision_aware_external_anchor() -> None:
-    program = sparse_delta_memory_program(sequence=16, slots_per_partition=256)
+    program = sparse_delta_memory_program(
+        sequence=16, slots_per_partition=256, writes=16, reads=16
+    )
     result = _compiler(native_supported=False).compile(program)
     assert result.trace.anchors == (SDM_EXTERNAL_ANCHOR_NAME,)
     params = ScheduleParams(
@@ -105,7 +107,9 @@ def test_native_decline_falls_back_only_to_revision_aware_external_anchor() -> N
 
 
 def test_exact_external_override_remains_runtime_revision_aware() -> None:
-    program = sparse_delta_memory_program(sequence=16, slots_per_partition=256)
+    program = sparse_delta_memory_program(
+        sequence=16, slots_per_partition=256, writes=16, reads=16
+    )
     params = ScheduleParams(anchor_overrides={"sdm_access": SDM_EXTERNAL_ANCHOR_NAME})
     assert _compiler().compile(program, schedule_params=params).trace.anchors == (
         SDM_EXTERNAL_ANCHOR_NAME,

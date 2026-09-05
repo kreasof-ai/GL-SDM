@@ -138,16 +138,21 @@ def hierarchical_bootstrap_paired_slowdown(
         resampled_runs = [
             paired_log_ratios_by_run[rng.randrange(num_runs)] for _ in range(num_runs)
         ]
-        resampled_log_ratios: list[float] = []
+        resampled_run_means: list[float] = []
         for run_blocks in resampled_runs:
             num_blocks = len(run_blocks)
             if num_blocks > 0:
-                resampled_log_ratios.extend(
-                    run_blocks[rng.randrange(num_blocks)] for _ in range(num_blocks)
+                resampled_run_means.append(
+                    sum(
+                        run_blocks[rng.randrange(num_blocks)] for _ in range(num_blocks)
+                    )
+                    / num_blocks
                 )
-        if not resampled_log_ratios:
+        if not resampled_run_means:
             continue
-        mean_log = sum(resampled_log_ratios) / len(resampled_log_ratios)
+        # Each resampled process is one level-one unit. Do not accidentally
+        # weight a process more heavily merely because it retained more blocks.
+        mean_log = sum(resampled_run_means) / len(resampled_run_means)
         slowdown_pct = (math.exp(mean_log) - 1.0) * 100.0
         boot_slowdowns.append(slowdown_pct)
     if not boot_slowdowns:

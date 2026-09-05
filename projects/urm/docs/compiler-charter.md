@@ -93,6 +93,13 @@ such and retained; a semantic that cannot be expressed at all is a URM failure.
     The native composite Sparse Memory anchor serializes both exact schedules
     and an explicit route materialization boundary rather than hiding an
     upstream API or an untyped fused callback.
+    `compile_sparse_memory_plan()` is the sole executable binder for that
+    composite: it verifies the compiler-selected anchor and serialized launch
+    configuration against the runtime launchers before dispatch. The
+    model-level benchmark consumes this plan rather than constructing a backend
+    directly. Opaque `torch.library` operators needed to make the pinned
+    comparator visible to `torch.compile` stay external-adapter glue; they are
+    not serialized, selectable, or expressible in semantic IR.
 12. **Candidate selection never mutates the program implicitly.** The base
     plan is always a candidate; every rewrite occurrence has a stable ID;
     callers may select explicitly; automatic selection runs through the

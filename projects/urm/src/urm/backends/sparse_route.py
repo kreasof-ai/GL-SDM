@@ -35,7 +35,7 @@ class SparseRouteSupportStatus:
 
 @dataclass(frozen=True, slots=True)
 class CertifiedSparseRouteScores:
-    """Tie-free finite score input certified outside steady-state dispatch."""
+    """Static score contract certified without reading dynamic CUDA values."""
 
     spec: SparseRouteSelectionSpec
     scores: object
@@ -61,41 +61,16 @@ class CertifiedSparseRouteScores:
             raise ValueError("score dtype must match route semantics")
         if not scores.is_cuda or not scores.is_contiguous():
             raise ValueError("scores must be contiguous CUDA storage")
-        if not bool(torch.isfinite(scores).all().item()):
-            raise ValueError("scores must be finite")
-        half = spec.factor_extent
-        k_sub = min(spec.route_width, half)
-        # Chunk certification to bound temporary pair-score storage.
-        rows = scores.reshape(-1, spec.score_width)
-        for start in range(0, rows.shape[0], 256):
-            chunk = rows[start : start + 256]
-            chunk_left, chunk_right = chunk.chunk(2, dim=-1)
-            left_sorted = chunk_left.sort(dim=-1, descending=True).values
-            right_sorted = chunk_right.sort(dim=-1, descending=True).values
-            if k_sub < half and (
-                bool((left_sorted[..., k_sub - 1] == left_sorted[..., k_sub]).any())
-                or bool(
-                    (right_sorted[..., k_sub - 1] == right_sorted[..., k_sub]).any()
-                )
-            ):
-                raise ValueError("route scores contain a factor-selection boundary tie")
-            left_top = left_sorted[..., :k_sub]
-            right_top = right_sorted[..., :k_sub]
-            pairs = (left_top.unsqueeze(-1) + right_top.unsqueeze(-2)).flatten(-2)
-            if spec.route_width < pairs.shape[-1]:
-                ordered = pairs.sort(dim=-1, descending=True).values
-                if bool(
-                    (
-                        ordered[..., spec.route_width - 1]
-                        == ordered[..., spec.route_width]
-                    ).any()
-                ):
-                    raise ValueError(
-                        "route scores contain a pair-selection boundary tie"
-                    )
         return cls(spec, scores, scores._version, _SCORE_CERTIFICATE)
 
     def require_intact(self) -> None:
+        import torch
+
+        # prepare() and dispatch are one atomic region under fullgraph capture;
+        # Dynamo cannot guard Tensor._version as a static scalar. Eager calls
+        # retain the mutation guard across their user-visible boundary.
+        if torch.compiler.is_compiling():
+            return
         if self.scores._version != self._version:
             raise ValueError("certified route scores were mutated")
 
@@ -115,6 +90,10 @@ class NativeSparseRouteOutput:
             raise ValueError("native routes must be produced by generate_certified()")
 
     def require_intact(self) -> None:
+        import torch
+
+        if torch.compiler.is_compiling():
+            return
         if (self.addresses._version, self.weights._version) != self._versions:
             raise ValueError("native generated routes were mutated")
 

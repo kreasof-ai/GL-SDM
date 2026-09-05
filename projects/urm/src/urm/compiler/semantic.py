@@ -179,6 +179,12 @@ class SparseAddressCanonicalization(StrEnum):
     ASCENDING = "ascending"
 
 
+class SparseRouteTiePolicy(StrEnum):
+    """Deterministic selected-set policy for equal route scores."""
+
+    HIGHEST_ADDRESS = "highest_address"
+
+
 class SparseUpdateRule(StrEnum):
     DECAYED_DELTA = "decayed_delta"
 
@@ -233,7 +239,7 @@ class SparseRouteSelectionSpec:
     canonicalization: SparseAddressCanonicalization = (
         SparseAddressCanonicalization.ASCENDING
     )
-    tie_policy: MergePolicy = MergePolicy.REJECT
+    tie_policy: SparseRouteTiePolicy = SparseRouteTiePolicy.HIGHEST_ADDRESS
     output_index_dtype: DType = DType.INT32
     partition_local: bool = True
 
@@ -249,12 +255,14 @@ class SparseRouteSelectionSpec:
             raise ValueError(
                 "pairwise factor composition requires square source extent"
             )
+        if self.route_width > factor_extent:
+            raise ValueError("route width must not exceed factor extent")
         exact = (
             self.composition is SparseScoreComposition.PAIRWISE_ADDITIVE_FACTORS
             and self.selection is SelectionKind.TOP_K
             and self.normalization is ScoreNormalization.SOFTMAX
             and self.canonicalization is SparseAddressCanonicalization.ASCENDING
-            and self.tie_policy is MergePolicy.REJECT
+            and self.tie_policy is SparseRouteTiePolicy.HIGHEST_ADDRESS
             and self.output_index_dtype in {DType.INT32, DType.INT64}
             and self.partition_local
         )
@@ -329,6 +337,10 @@ class SparseMemoryMixerSpec:
         max_width = min(128, self.slots_per_partition)
         if self.writes > max_width or self.reads > max_width:
             raise ValueError("SDM read/write widths exceed the frozen upstream subset")
+        if self.reads > root or self.writes > root:
+            raise ValueError(
+                "product-key read/write widths must not exceed factor extent"
+            )
         if self.dtype not in (DType.FLOAT32, DType.BFLOAT16):
             raise ValueError("SDM adapter supports float32 and bfloat16")
         if self.mode is SDMExecutionMode.TRAINING and self.sequence < 16:

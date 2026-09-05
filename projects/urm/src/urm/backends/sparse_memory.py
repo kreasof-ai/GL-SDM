@@ -50,6 +50,10 @@ class CertifiedSparseMemoryInputs:
             raise ValueError("sparse memory inputs must be created by prepare()")
 
     def require_intact(self) -> None:
+        import torch
+
+        if torch.compiler.is_compiling():
+            return
         self.read_scores.require_intact()
         if self.write_scores is not None:
             self.write_scores.require_intact()
@@ -227,8 +231,6 @@ class TritonSparseMemoryBackend:
                     raise ValueError(
                         "update operands must be contiguous and match score device/dtype"
                     )
-                if not bool(torch.isfinite(tensor).all().item()):
-                    raise ValueError("update operands must be finite")
         elif write_scores is not None or any(x is not None for x in supplied):
             raise ValueError("read-only sparse memory accepts only read scores")
         tensors = tuple(x for x in supplied if x is not None)

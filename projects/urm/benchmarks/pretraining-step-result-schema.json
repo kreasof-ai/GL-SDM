@@ -1,0 +1,261 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "URM model pretraining-step confirmation",
+  "$ref": "#/$defs/confirmation",
+  "$defs": {
+    "nonnegative": {"type": "number", "minimum": 0},
+    "nullableString": {"type": ["string", "null"]},
+    "stats": {
+      "type": "object", "additionalProperties": false,
+      "required": ["count", "median_ms", "p95_ms", "minimum_ms", "raw_ms"],
+      "properties": {
+        "count": {"type": "integer", "minimum": 1},
+        "median_ms": {"$ref": "#/$defs/nonnegative"},
+        "p95_ms": {"$ref": "#/$defs/nonnegative"},
+        "minimum_ms": {"$ref": "#/$defs/nonnegative"},
+        "raw_ms": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/nonnegative"}}
+      }
+    },
+    "provenance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["git_revision", "dirty_tree", "benchmark_command", "config_hash", "solver_version", "python", "platform", "pytorch", "triton", "cuda", "driver", "gpu", "gpu_uuid"],
+      "properties": {
+        "git_revision": {"$ref": "#/$defs/nullableString"},
+        "dirty_tree": {"type": "boolean"},
+        "benchmark_command": {"type": "string"},
+        "config_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "solver_version": {"$ref": "#/$defs/nullableString"},
+        "python": {"type": "string"}, "platform": {"type": "string"},
+        "pytorch": {"$ref": "#/$defs/nullableString"}, "triton": {"$ref": "#/$defs/nullableString"},
+        "cuda": {"$ref": "#/$defs/nullableString"}, "driver": {"$ref": "#/$defs/nullableString"},
+        "gpu": {"$ref": "#/$defs/nullableString"}, "gpu_uuid": {"$ref": "#/$defs/nullableString"},
+        "upstream": {"$ref": "#/$defs/upstream"}
+      }
+    },
+    "upstream": {
+      "type": "object", "additionalProperties": false,
+      "required": ["repository", "expected_commit", "installed_commit", "revision_compatible", "checkout_root", "module_file", "checkout_dirty", "license", "installation", "runtime_versions", "runtime_requirements", "entry_points", "source_usage", "compute_capability", "build_tools", "library_path"],
+      "properties": {
+        "repository": {"const": "https://github.com/facebookresearch/sparse-delta-memory"},
+        "expected_commit": {"const": "183e7df809131b80ad4393741029d0f20fc3640b"},
+        "installed_commit": {"const": "183e7df809131b80ad4393741029d0f20fc3640b"},
+        "revision_compatible": {"const": true}, "checkout_root": {"type": "string"},
+        "module_file": {"type": "string"}, "checkout_dirty": {"const": false},
+        "license": {"const": "CC-BY-NC-4.0"}, "installation": {"type": "string"},
+        "runtime_versions": {
+          "type": "object", "additionalProperties": false,
+          "required": ["torch", "triton", "einops", "ninja"],
+          "properties": {"torch": {"const": "2.8.0"}, "triton": {"const": "3.4.0"}, "einops": {"type": "string"}, "ninja": {"type": "string"}}
+        },
+        "runtime_requirements": {
+          "type": "object", "additionalProperties": false,
+          "required": ["upstream_declared_python", "upstream_declared_torch", "upstream_declared_triton", "adapter_validated_python", "adapter_frozen_torch", "adapter_frozen_triton", "cuda"],
+          "properties": {
+            "upstream_declared_python": {"type": "string"}, "upstream_declared_torch": {"type": "string"}, "upstream_declared_triton": {"type": "string"},
+            "adapter_validated_python": {"type": "string"}, "adapter_frozen_torch": {"const": "2.8.0"}, "adapter_frozen_triton": {"const": "3.4.0"}, "cuda": {"type": "string"}
+          }
+        },
+        "entry_points": {
+          "type": "object", "additionalProperties": false,
+          "required": ["address", "read", "update", "cache"],
+          "properties": {"address": {"type": "string"}, "read": {"type": "string"}, "update": {"type": "string"}, "cache": {"type": "string"}}
+        },
+        "source_usage": {"type": "string"},
+        "compute_capability": {"type": "array", "prefixItems": [{"type": "integer"}, {"type": "integer"}], "items": false},
+        "build_tools": {
+          "type": "object", "additionalProperties": false,
+          "required": ["nvcc", "g++", "ninja"],
+          "properties": {"nvcc": {"type": "string"}, "g++": {"type": "string"}, "ninja": {"type": "string"}}
+        },
+        "library_path": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "configuration": {
+      "type": "object", "additionalProperties": false,
+      "required": ["vocab_size", "sequence_length", "layers", "width", "heads", "value_dim", "mlp_ratio", "slots_per_partition", "reads", "writes", "microbatch", "gradient_accumulation", "dropout", "bias"],
+      "properties": {
+        "vocab_size": {"type": "integer", "minimum": 1}, "sequence_length": {"type": "integer", "minimum": 1},
+        "layers": {"type": "integer", "minimum": 1}, "width": {"type": "integer", "minimum": 1},
+        "heads": {"type": "integer", "minimum": 1}, "value_dim": {"type": "integer", "minimum": 1},
+        "mlp_ratio": {"type": "integer", "minimum": 1}, "slots_per_partition": {"type": "integer", "minimum": 8},
+        "reads": {"type": "integer", "minimum": 1}, "writes": {"type": "integer", "minimum": 1},
+        "microbatch": {"type": "integer", "minimum": 1}, "gradient_accumulation": {"type": "integer", "minimum": 1},
+        "dropout": {"$ref": "#/$defs/nonnegative"}, "bias": {"type": "boolean"}
+      }
+    },
+    "compilerPlan": {
+      "type": "object", "additionalProperties": false,
+      "required": ["program", "steps", "obligations", "escape_hatch_count"],
+      "properties": {
+        "program": {"const": "compiled_sparse_memory"},
+        "steps": {"type": "array", "minItems": 1, "maxItems": 1, "items": {
+          "type": "object", "additionalProperties": false,
+          "required": ["step_id", "kind", "anchor", "exchanges", "note", "launch_config"],
+          "properties": {
+            "step_id": {"const": 0}, "kind": {"const": "anchor_dispatch"}, "anchor": {"const": "urm_native_sparse_memory_e2e_v0"},
+            "exchanges": {"type": "array", "maxItems": 0}, "note": {"const": "sdm_access"},
+            "launch_config": {
+              "type": "object", "additionalProperties": false,
+              "required": ["schedule_family", "route_block_half", "read_route_block", "write_route_block", "state_block_d", "route_materialization", "fusion"],
+              "properties": {
+                "schedule_family": {"const": "native_route_then_partition_scan"}, "route_block_half": {"type": "integer", "minimum": 1}, "read_route_block": {"type": "integer", "minimum": 1}, "write_route_block": {"type": "integer", "minimum": 1}, "state_block_d": {"type": "integer", "minimum": 1},
+                "route_materialization": {"const": "explicit_logical_outputs"}, "fusion": {"const": "none"}
+              }
+            }
+          }
+        }},
+        "obligations": {"type": "array", "maxItems": 0}, "escape_hatch_count": {"const": 0}
+      }
+    },
+    "execution": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "layer_count", "compiler_plan", "compiled_boundary", "benchmark_direct_backend_instantiation"],
+      "properties": {
+        "kind": {"enum": ["compiler_produced_native_plan", "pinned_external_comparator", "sdpa_contextual_control"]},
+        "layer_count": {"type": "integer", "minimum": 1},
+        "compiler_plan": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/compilerPlan"}]},
+        "compiled_boundary": {"type": "array", "items": {"type": "string"}},
+        "benchmark_direct_backend_instantiation": {"const": false}
+      }
+    },
+    "nonfinite": {
+      "type": "object", "additionalProperties": false,
+      "required": ["parameters", "gradients", "optimizer_state", "persistent_state"],
+      "properties": {"parameters": {"type": "integer", "minimum": 0}, "gradients": {"type": "integer", "minimum": 0}, "optimizer_state": {"type": "integer", "minimum": 0}, "persistent_state": {"type": "integer", "minimum": 0}}
+    },
+    "update": {
+      "type": "object", "additionalProperties": false, "required": ["l2", "max_abs"],
+      "properties": {"l2": {"$ref": "#/$defs/nonnegative"}, "max_abs": {"$ref": "#/$defs/nonnegative"}}
+    },
+    "stepReport": {
+      "type": "object", "additionalProperties": false,
+      "required": ["loss_before", "sampled_logits", "gradient_norms", "gradient_clip_input_norm", "parameter_updates", "persistent_state_checksums", "nonfinite"],
+      "properties": {
+        "loss_before": {"type": "number"}, "loss_after": {"type": "number"},
+        "sampled_logits": {"type": "array", "items": {"type": "array", "items": {"type": "array", "items": {"type": "number"}}}},
+        "gradient_norms": {"type": "object", "additionalProperties": {"$ref": "#/$defs/nonnegative"}},
+        "gradient_clip_input_norm": {"$ref": "#/$defs/nonnegative"},
+        "parameter_updates": {"type": "object", "additionalProperties": {"$ref": "#/$defs/update"}},
+        "persistent_state_checksums": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["elements", "sum", "mean"], "properties": {"elements": {"type": "integer", "minimum": 1}, "sum": {"type": "number"}, "mean": {"type": "number"}}}},
+        "nonfinite": {"$ref": "#/$defs/nonfinite"}
+      }
+    },
+    "memory": {
+      "type": "object", "additionalProperties": false,
+      "required": ["parameter_bytes", "gradient_bytes", "optimizer_state_bytes", "persistent_state_bytes", "saved_activation_bytes", "steady_peak_allocated_bytes", "steady_peak_reserved_bytes", "temporary_peak_allocated_bytes", "first_step_compilation_peak_bytes", "maximum_common_microbatch", "maximum_backend_microbatch", "maximum_backend_microbatch_status"],
+      "properties": {
+        "parameter_bytes": {"type": "integer", "minimum": 0}, "gradient_bytes": {"type": "integer", "minimum": 0}, "optimizer_state_bytes": {"type": "integer", "minimum": 0}, "persistent_state_bytes": {"type": "integer", "minimum": 0},
+        "saved_activation_bytes": {"type": "integer", "minimum": 0}, "steady_peak_allocated_bytes": {"type": "integer", "minimum": 0}, "steady_peak_reserved_bytes": {"type": "integer", "minimum": 0}, "temporary_peak_allocated_bytes": {"type": "integer", "minimum": 0}, "first_step_compilation_peak_bytes": {"type": "integer", "minimum": 0},
+        "maximum_common_microbatch": {"type": "integer", "minimum": 1}, "maximum_backend_microbatch": {"type": "integer", "minimum": 1}, "maximum_backend_microbatch_status": {"type": "string"}
+      }
+    },
+    "flops": {
+      "type": "object", "additionalProperties": false,
+      "required": ["embedding_projection", "normalization", "mlp", "logits_and_loss", "sparse_score_generation", "sparse_route_normalization", "sparse_state_update_read", "optimizer", "backward_included", "uncredited_route_selection_comparisons", "useful_total", "achieved_useful_tflops", "model_mfu", "denominator"],
+      "properties": {
+        "embedding_projection": {"type": "integer", "minimum": 0}, "normalization": {"type": "integer", "minimum": 0}, "mlp": {"type": "integer", "minimum": 0}, "logits_and_loss": {"type": "integer", "minimum": 0}, "sparse_score_generation": {"type": "integer", "minimum": 0}, "sparse_route_normalization": {"type": "integer", "minimum": 0}, "sparse_state_update_read": {"type": "integer", "minimum": 0}, "optimizer": {"type": "integer", "minimum": 0}, "backward_included": {"const": true}, "uncredited_route_selection_comparisons": {"type": "integer", "minimum": 0}, "useful_total": {"type": "integer", "minimum": 1}, "achieved_useful_tflops": {"$ref": "#/$defs/nonnegative"}, "model_mfu": {"$ref": "#/$defs/nonnegative"},
+        "denominator": {
+          "type": "object", "additionalProperties": false,
+          "required": ["measured_bfloat16_tensor_core_tflops", "denominator_artifact", "sorting_padding_recomputation_credited"],
+          "properties": {"measured_bfloat16_tensor_core_tflops": {"const": 66.16599973571093}, "denominator_artifact": {"const": "results/device-limits.json"}, "sorting_padding_recomputation_credited": {"const": false}}
+        }
+      }
+    },
+    "process": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "artifact_kind", "generated_utc", "provenance", "backend", "mode", "seed", "diagnostic", "upstream", "configuration", "execution", "fineweb", "cold", "correctness", "compiled_or_eager_first_step", "timing", "tokens_per_second", "optimizer_steps_per_second", "data_loading_lane", "memory", "flops", "compile"],
+      "properties": {
+        "schema_version": {"const": 1}, "artifact_kind": {"const": "pretraining_backend_process"}, "generated_utc": {"type": "string"},
+        "provenance": {"$ref": "#/$defs/provenance"}, "backend": {"enum": ["upstream_sdm", "urm_native", "sdpa"]}, "mode": {"enum": ["eager", "compile_fullgraph"]}, "seed": {"type": "integer"}, "diagnostic": {"type": "boolean"},
+        "upstream": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/upstream"}]}, "configuration": {"$ref": "#/$defs/configuration"},
+        "execution": {"$ref": "#/$defs/execution"},
+        "fineweb": {
+          "type": "object", "additionalProperties": false, "required": ["repository", "revision", "file", "sha256", "cache_path"],
+          "properties": {"repository": {"type": "string"}, "revision": {"type": "string"}, "file": {"type": "string"}, "sha256": {"const": "6bb7ce7bcac8e11463433767ec3402311c7527c3d8d766e7d65ef86dc4546bb2"}, "cache_path": {"type": "string"}}
+        },
+        "cold": {
+          "type": "object", "additionalProperties": false, "required": ["process_to_torch_import_ms", "urm_module_import_ms", "backend_dependency_import_build_ms", "backend_dependency_import_build_scope", "model_optimizer_construction_ms", "torch_compile_wrapper_ms", "first_optimizer_step_ms"],
+          "properties": {
+            "process_to_torch_import_ms": {"$ref": "#/$defs/nonnegative"},
+            "urm_module_import_ms": {"$ref": "#/$defs/nonnegative"},
+            "backend_dependency_import_build_ms": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/nonnegative"}]},
+            "backend_dependency_import_build_scope": {"enum": ["not_applicable", "pinned_sdm_import_revision_probe_and_extension_build_if_cold"]},
+            "model_optimizer_construction_ms": {"$ref": "#/$defs/nonnegative"},
+            "torch_compile_wrapper_ms": {"$ref": "#/$defs/nonnegative"},
+            "first_optimizer_step_ms": {"$ref": "#/$defs/nonnegative"}
+          }
+        },
+        "correctness": {"type": "array", "minItems": 5, "maxItems": 5, "items": {"$ref": "#/$defs/stepReport"}},
+        "gradient_files": {"type": "array", "minItems": 5, "maxItems": 5, "items": {"type": "string"}},
+        "compiled_or_eager_first_step": {"$ref": "#/$defs/stepReport"},
+        "timing": {"$ref": "#/$defs/stats"}, "tokens_per_second": {"$ref": "#/$defs/nonnegative"}, "optimizer_steps_per_second": {"$ref": "#/$defs/nonnegative"},
+        "data_loading_lane": {
+          "type": "object", "additionalProperties": false,
+          "required": ["count", "median_ms", "p95_ms", "minimum_ms", "raw_ms", "tokens_per_second", "scope"],
+          "properties": {
+            "count": {"type": "integer", "minimum": 1}, "median_ms": {"$ref": "#/$defs/nonnegative"}, "p95_ms": {"$ref": "#/$defs/nonnegative"}, "minimum_ms": {"$ref": "#/$defs/nonnegative"},
+            "raw_ms": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/nonnegative"}}, "tokens_per_second": {"$ref": "#/$defs/nonnegative"}, "scope": {"type": "string"}
+          }
+        },
+        "memory": {"$ref": "#/$defs/memory"}, "flops": {"$ref": "#/$defs/flops"},
+        "compile": {
+          "type": "object", "additionalProperties": false, "required": ["fullgraph", "graph_break_count", "unique_graphs", "recompilations"],
+          "properties": {"fullgraph": {"type": "boolean"}, "graph_break_count": {"type": "integer", "minimum": 0}, "unique_graphs": {"type": "integer", "minimum": 0}, "recompilations": {"type": "integer", "minimum": 0}}
+        }
+      }
+    },
+    "correctnessComparison": {
+      "type": "object", "additionalProperties": false, "required": ["steps", "passed"],
+      "properties": {
+        "passed": {"type": "boolean"},
+        "steps": {"type": "array", "minItems": 5, "maxItems": 5, "items": {
+          "type": "object", "additionalProperties": false,
+          "required": ["step", "loss_max_abs", "logit_max_abs", "gradient_norm_max_abs", "parameter_update_max_abs", "persistent_state_checksum_sum_max_abs", "persistent_state_checksum_normalized_max_abs", "mixer_input_gradients", "finite", "passed"],
+          "properties": {
+            "step": {"type": "integer", "minimum": 0}, "loss_max_abs": {"$ref": "#/$defs/nonnegative"}, "logit_max_abs": {"$ref": "#/$defs/nonnegative"}, "gradient_norm_max_abs": {"$ref": "#/$defs/nonnegative"}, "parameter_update_max_abs": {"$ref": "#/$defs/nonnegative"}, "persistent_state_checksum_sum_max_abs": {"$ref": "#/$defs/nonnegative"}, "persistent_state_checksum_normalized_max_abs": {"$ref": "#/$defs/nonnegative"},
+            "mixer_input_gradients": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["block", "cosine", "max_abs"], "properties": {"block": {"type": "integer", "minimum": 0}, "cosine": {"type": "number", "minimum": -1, "maximum": 1}, "max_abs": {"$ref": "#/$defs/nonnegative"}}}},
+            "finite": {"type": "boolean"}, "passed": {"type": "boolean"}
+          }
+        }}
+      }
+    },
+    "performance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["geometric_mean_optimizer_step_ratio", "hierarchical_ratio_ci95", "flat_diagnostic_ratio_ci95", "per_seed_median_ratios", "per_seed_p95_ratios", "memory_passed", "passed"],
+      "properties": {
+        "geometric_mean_optimizer_step_ratio": {"$ref": "#/$defs/nonnegative"},
+        "hierarchical_ratio_ci95": {"type": "object", "additionalProperties": false, "required": ["median", "lower", "upper"], "properties": {"median": {"$ref": "#/$defs/nonnegative"}, "lower": {"$ref": "#/$defs/nonnegative"}, "upper": {"$ref": "#/$defs/nonnegative"}}},
+        "flat_diagnostic_ratio_ci95": {"type": "object", "additionalProperties": false, "required": ["lower", "upper"], "properties": {"lower": {"$ref": "#/$defs/nonnegative"}, "upper": {"$ref": "#/$defs/nonnegative"}}},
+        "per_seed_median_ratios": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"$ref": "#/$defs/nonnegative"}}, "per_seed_p95_ratios": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"$ref": "#/$defs/nonnegative"}},
+        "memory_passed": {"type": "boolean"}, "passed": {"type": "boolean"}
+      }
+    },
+    "mode": {
+      "type": "object", "additionalProperties": false,
+      "required": ["orders", "pairs", "correctness", "performance", "graph_passed", "passed"],
+      "properties": {
+        "orders": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"enum": ["upstream_sdm", "urm_native"]}}},
+        "pairs": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "object", "additionalProperties": false, "required": ["upstream", "native"], "properties": {"upstream": {"$ref": "#/$defs/process"}, "native": {"$ref": "#/$defs/process"}}}},
+        "correctness": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"$ref": "#/$defs/correctnessComparison"}},
+        "performance": {"$ref": "#/$defs/performance"}, "graph_passed": {"type": "boolean"}, "passed": {"type": "boolean"}
+      }
+    },
+    "control": {
+      "type": "object", "additionalProperties": false, "required": ["semantic_role", "runs", "graph_passed"],
+      "properties": {"semantic_role": {"const": "contextual_control_not_sparse_equivalence_comparator"}, "runs": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"$ref": "#/$defs/process"}}, "graph_passed": {"type": "boolean"}}
+    },
+    "confirmation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "artifact_kind", "generated_utc", "provenance", "frozen_configuration", "modes", "contextual_controls", "correctness_passed", "decision", "passed"],
+      "properties": {
+        "schema_version": {"const": 1}, "artifact_kind": {"const": "pretraining_step_confirmation"}, "generated_utc": {"type": "string"}, "provenance": {"$ref": "#/$defs/provenance"},
+        "frozen_configuration": {"type": "object"},
+        "modes": {"type": "object", "additionalProperties": false, "required": ["eager", "compile_fullgraph"], "properties": {"eager": {"$ref": "#/$defs/mode"}, "compile_fullgraph": {"$ref": "#/$defs/mode"}}},
+        "contextual_controls": {"type": "object", "additionalProperties": false, "required": ["eager", "compile_fullgraph"], "properties": {"eager": {"$ref": "#/$defs/control"}, "compile_fullgraph": {"$ref": "#/$defs/control"}}},
+        "correctness_passed": {"type": "boolean"},
+        "decision": {"enum": ["superiority", "regression", "parity_without_superiority", "correctness_failure"]},
+        "passed": {"type": "boolean"}
+      }
+    }
+  }
+}

@@ -1,0 +1,97 @@
+schema_version = 1
+freeze_status = "pre_measurement"
+objective = "complete_optimizer_step_from_prefetched_fineweb_tokens"
+
+[model]
+architecture = "urm_owned_decoder_lm"
+vocab_size = 50304
+sequence_length = 1024
+layers = 12
+width = 768
+heads = 12
+value_dim = 64
+mlp_ratio = 4
+slots_per_partition = 4096
+reads = 64
+writes = 64
+microbatch = 1
+gradient_accumulation = 4
+dropout = 0.0
+bias = false
+activation_checkpointing = false
+parameter_dtype = "bfloat16"
+optimizer_state_dtype = "float32"
+
+[optimizer]
+name = "adamw"
+learning_rate = 0.0006
+beta1 = 0.9
+beta2 = 0.95
+epsilon = 1.0e-8
+weight_decay = 0.1
+gradient_clip_norm = 1.0
+loss_scaling = "none_fp32_cross_entropy_loss"
+
+[state]
+reset = "zero_at_optimizer_step_start"
+between_accumulation_microbatches = "persist_then_detach"
+after_optimizer_step = "retain_checksum_then_reset_before_next_step"
+
+[data]
+dataset = "FineWeb-Edu"
+cache_file = "data/fineweb_edu_gpt2_uint16.bin"
+token_dtype = "uint16"
+authoritative_lane = "prefetched_cuda_batches"
+separate_lane = "host_memmap_to_cuda_throughput"
+
+[measurement]
+paired_seeds = [1701, 2903, 4409]
+warmup_steps = 10
+measured_steps = 20
+backend_order = "seeded_randomized"
+fresh_processes = true
+fresh_compiler_caches = true
+cuda_synchronization = "measurement_boundaries_only"
+
+[execution]
+modes = ["eager", "compile_fullgraph"]
+sparse_backends = ["upstream_sdm", "urm_native"]
+contextual_control = "sdpa"
+compiled_fullgraph = true
+compiled_dynamic = false
+recompilation_limit = 0
+
+[acceptance]
+geometric_mean_ratio_max = 1.0
+hierarchical_ci95_upper_max = 1.0
+per_process_median_ratio_max = 1.05
+p95_ratio_max = 1.10
+peak_memory_fraction_max = 1.02
+peak_memory_absolute_allowance_mib = 64
+
+[correctness.bfloat16]
+loss_max_abs = 0.02
+logit_max_abs = 0.08
+gradient_norm_max_abs = 0.05
+parameter_update_max_abs = 0.02
+persistent_state_checksum_normalized_max_abs = 2.0e-6
+mixer_input_gradient_cosine_min = 0.95
+mixer_input_gradient_max_abs = 0.02
+
+[flops]
+measured_bfloat16_tensor_core_tflops = 66.16599973571093
+denominator_artifact = "results/device-limits.json"
+sorting_padding_recomputation_credited = false
+
+[diagnostic]
+enabled_only_after_primary_failure = true
+sequence_length = 128
+layers = 2
+width = 256
+heads = 4
+value_dim = 64
+slots_per_partition = 4096
+reads = 64
+writes = 64
+microbatch = 1
+gradient_accumulation = 1

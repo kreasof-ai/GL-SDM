@@ -234,6 +234,24 @@ p95 as an absolute microsecond delta and host-dispatch share rather than a
 percentage acceptance metric. Every substantial case keeps the strict
 paired-CI upper, p95 percentage, and memory gates.
 
+The next authority is the model-level optimizer-step protocol in
+`benchmarks/pretraining_step.toml` and `docs/pretraining-step.md`. Its fixed
+124.65M decoder starts at prefetched FineWeb-Edu token batches and includes all
+learned projections, 12 Sparse Memory mixers, residual/norm/MLP paths, logits,
+loss, backward, clipping, and FP32-master AdamW. It runs eager and
+`torch.compile(fullgraph=True)` lanes in fresh processes, requires one compiled
+graph with no recompilation, retains five-step trajectory/gradient evidence,
+and measures 20 post-warmup optimizer steps for each of three paired seeds.
+The strict schema is `benchmarks/pretraining-step-result-schema.json`.
+
+Tokens/s is primary. Its semantic FLOP ledger does not credit sorting, top-k
+comparisons, padding, redundant work, or recomputation, and reports MFU only
+against the measured A10G BF16 tensor-core denominator in
+`results/device-limits.json`. Data transfer and profiler/NVTX attribution are
+separate lanes. Parameters, gradients, FP32 optimizer state, persistent state,
+saved activations, temporary allocation, and allocated/reserved peaks are
+reported independently.
+
 Per-case throughput is reported as queries/second. Route, state-read,
 state-write, input, and output bytes—and bandwidth derived from them—are labeled
 analytical. Random page reuse makes an HBM utilization denominator ambiguous,

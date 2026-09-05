@@ -71,3 +71,9 @@ def test_e2e_schema_is_strict_version_one() -> None:
     assert schema["$defs"]["caseResult"]["additionalProperties"] is False
     assert schema["$defs"]["provenance"]["additionalProperties"] is False
     assert schema["$defs"]["upstream"]["additionalProperties"] is False
+
+
+def test_benchmark_uses_compiler_produced_sparse_memory_plan() -> None:
+    source = Path(benchmark.__file__).read_text(encoding="utf-8")
+    assert "compile_sparse_memory_plan(spec)" in source
+    assert "TritonSparseMemoryBackend(spec)" not in source

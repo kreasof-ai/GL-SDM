@@ -19,7 +19,7 @@ PROCESS_START_NS = time.perf_counter_ns()
 CASES_PATH = Path(__file__).with_name("sparse_memory_e2e_cases.toml")
 DEFAULT_OUTPUT = Path("results/sparse-memory-e2e/confirmation.json")
 UPSTREAM_COMMIT = "183e7df809131b80ad4393741029d0f20fc3640b"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 HOST_ABSOLUTE_ALLOWANCE_US = 25.0
 
 
@@ -252,11 +252,11 @@ def _make_bundle(case, torch):
         MODE_TRAINING,
         UrmSparseDeltaMemoryAdapter,
     )
-    from urm.backends.sparse_memory import TritonSparseMemoryBackend
     from urm.backends.sparse_state_mixer import (
         CertifiedSparseStateRoutes,
         SparseState,
     )
+    from urm.compiler.anchors.sparse_memory import compile_sparse_memory_plan
     from urm.compiler.semantic import (
         DType,
         SDMExecutionMode,
@@ -316,7 +316,7 @@ def _make_bundle(case, torch):
             -torch.rand((p, t, 1), device="cuda", dtype=dtype, generator=generator)
             * 0.1
         ).contiguous()
-    native = TritonSparseMemoryBackend(spec)
+    native = compile_sparse_memory_plan(spec)
     native_prepared = native.prepare(
         read_scores,
         write_scores=write_scores,
@@ -786,7 +786,7 @@ def _backward_memory(bundle, path, torch):
     }
 
 
-def _backward_setup(bundle, path, torch):
+def _training_graph_setup(bundle, path, torch):
     from urm.adapters.sparse_delta_memory_reference import torch_product_key
     from urm.backends.sparse_state_mixer import CertifiedSparseStateRoutes
     from urm.backends.sparse_state_reference import torch_sparse_state_mixer
@@ -816,82 +816,117 @@ def _backward_setup(bundle, path, torch):
         / memory.numel()
     )
     half = round(spec.slots_per_partition**0.5)
-    if path == "native":
-        prepared = bundle["native"].prepare(
-            read_scores,
-            write_scores=write_scores,
-            values=values,
-            beta=beta,
-            log_decay=decay,
-        )
-        result = bundle["native"].execute(bundle["SparseState"](memory), prepared)
-        outputs = (result.readings, result.state.memory)
-        gradients = (grad_read.to(result.readings.dtype), grad_state.to(memory.dtype))
-    elif path == "reference":
-        write_values, write_indices = torch_product_key(write_scores, spec.writes, half)
-        read_values, read_indices = torch_product_key(read_scores, spec.reads, half)
-        outputs = torch_sparse_state_mixer(
-            memory,
-            read_indices,
-            torch.softmax(read_values, -1),
-            write_indices=write_indices,
-            write_weights=torch.softmax(write_values, -1),
-            values=values,
-            beta=beta,
-            log_decay=decay,
-            read_timing=spec.read_timing,
-        )
-        gradients = (grad_read.to(outputs[0].dtype), grad_state.to(outputs[1].dtype))
-    else:
-        address = bundle["upstream"].direct_calls["address"]
-        write_values, write_indices = address(write_scores, spec.writes, half)
-        read_values, read_indices = address(read_scores, spec.reads, half)
-        write_weights = bundle["upstream"].layer.write_act(write_values)
-        read_weights = bundle["upstream"].layer.read_act(read_values)
-        if path == "hybrid":
-            routes = CertifiedSparseStateRoutes.certify(
-                bundle["native"].state_spec,
-                read_indices.to(torch.int32).contiguous(),
-                read_weights,
-                write_indices=write_indices.to(torch.int32).contiguous(),
-                write_weights=write_weights,
+    saved: list[tuple[tuple[object, ...], tuple[object, ...]]] = []
+
+    def forward():
+        if path == "native":
+            prepared = bundle["native"].prepare(
+                read_scores,
+                write_scores=write_scores,
+                values=values,
+                beta=beta,
+                log_decay=decay,
             )
-            prepared = bundle["native"].state_backend.prepare(
-                routes, values=values, beta=beta, log_decay=decay
+            result = bundle["native"].execute(bundle["SparseState"](memory), prepared)
+            outputs = (result.readings, result.state.memory)
+            gradients = (
+                grad_read.to(result.readings.dtype),
+                grad_state.to(memory.dtype),
             )
-            outputs = bundle["native"].state_backend.execute(
-                bundle["SparseState"](memory), prepared
+        elif path == "reference":
+            write_values, write_indices = torch_product_key(
+                write_scores, spec.writes, half
             )
-            outputs = (outputs[0], outputs[1].memory)
+            read_values, read_indices = torch_product_key(read_scores, spec.reads, half)
+            outputs = torch_sparse_state_mixer(
+                memory,
+                read_indices,
+                torch.softmax(read_values, -1),
+                write_indices=write_indices,
+                write_weights=torch.softmax(write_values, -1),
+                values=values,
+                beta=beta,
+                log_decay=decay,
+                read_timing=spec.read_timing,
+            )
             gradients = (
                 grad_read.to(outputs[0].dtype),
                 grad_state.to(outputs[1].dtype),
             )
         else:
-            offsets = bundle["offsets"]
-            flat_memory = memory.reshape(
-                spec.parallel * spec.slots_per_partition, spec.value_dim
-            )
-            readings, _ = bundle["upstream"].direct_calls["update"](
-                flat_memory + 0,
-                write_indices + offsets,
-                write_weights,
-                values,
-                beta,
-                decay,
-                read_indices + offsets,
-                read_weights,
-                grad_final_memory=grad_state.reshape_as(flat_memory)
-                .to(memory.dtype)
-                .contiguous(),
-            )
-            outputs = (readings,)
-            gradients = (grad_read.to(readings.dtype),)
+            address = bundle["upstream"].direct_calls["address"]
+            write_values, write_indices = address(write_scores, spec.writes, half)
+            read_values, read_indices = address(read_scores, spec.reads, half)
+            write_weights = bundle["upstream"].layer.write_act(write_values)
+            read_weights = bundle["upstream"].layer.read_act(read_values)
+            if path == "hybrid":
+                routes = CertifiedSparseStateRoutes.certify(
+                    bundle["native"].state_spec,
+                    read_indices.to(torch.int32).contiguous(),
+                    read_weights,
+                    write_indices=write_indices.to(torch.int32).contiguous(),
+                    write_weights=write_weights,
+                )
+                prepared = bundle["native"].state_backend.prepare(
+                    routes, values=values, beta=beta, log_decay=decay
+                )
+                state_outputs = bundle["native"].state_backend.execute(
+                    bundle["SparseState"](memory), prepared
+                )
+                outputs = (state_outputs[0], state_outputs[1].memory)
+                gradients = (
+                    grad_read.to(outputs[0].dtype),
+                    grad_state.to(outputs[1].dtype),
+                )
+            else:
+                offsets = bundle["offsets"]
+                flat_memory = memory.reshape(
+                    spec.parallel * spec.slots_per_partition, spec.value_dim
+                )
+                readings, _ = bundle["upstream"].direct_calls["update"](
+                    flat_memory + 0,
+                    write_indices + offsets,
+                    write_weights,
+                    values,
+                    beta,
+                    decay,
+                    read_indices + offsets,
+                    read_weights,
+                    grad_final_memory=grad_state.reshape_as(flat_memory)
+                    .to(memory.dtype)
+                    .contiguous(),
+                )
+                outputs = (readings,)
+                gradients = (grad_read.to(readings.dtype),)
+        saved[:] = [(tuple(outputs), tuple(gradients))]
+        return outputs
 
     def backward():
+        if not saved:
+            raise RuntimeError("training forward must execute before backward")
+        outputs, gradients = saved.pop()
         torch.autograd.backward(outputs, gradients)
 
+    return forward, backward, leaves
+
+
+def _backward_setup(bundle, path, torch):
+    forward, backward, leaves = _training_graph_setup(bundle, path, torch)
+    forward()
     return backward, leaves
+
+
+def _training_forward_pair(bundle, path, torch):
+    holder = []
+
+    def reset():
+        holder[:] = [_training_graph_setup(bundle, path, torch)]
+
+    def call():
+        forward, _backward, _leaves = holder[0]
+        return forward()
+
+    return call, reset
 
 
 def _backward_correctness(bundle, torch):
@@ -1143,26 +1178,34 @@ def benchmark_case(case, *, samples, warmup, torch):
         raise RuntimeError(
             f"forward correctness failed for {case['name']}: {correctness}"
         )
+    training = case["operation"] == "training"
+    timed_calls = calls
+    if training:
+        timed_calls = {}
+        for path in ("upstream", "native", "reference", "hybrid"):
+            call, reset = _training_forward_pair(bundle, path, torch)
+            timed_calls[path] = call
+            timed_calls[f"reset_{path}"] = reset
     paired, forward_drift_attempts = _paired_with_drift_retries(
-        calls["upstream"],
-        calls["native"],
-        calls["reset_upstream"],
-        calls["reset_native"],
+        timed_calls["upstream"],
+        timed_calls["native"],
+        timed_calls["reset_upstream"],
+        timed_calls["reset_native"],
         samples=samples,
         warmup=warmup,
         seed=3101 + int(case["sequence"]),
         torch=torch,
     )
     reference = _single_measure(
-        calls["reference"],
-        calls["reset_reference"],
+        timed_calls["reference"],
+        timed_calls["reset_reference"],
         samples=min(5, samples),
         warmup=1,
         torch=torch,
     )
     hybrid = _single_measure(
-        calls["hybrid"],
-        calls["reset_hybrid"],
+        timed_calls["hybrid"],
+        timed_calls["reset_hybrid"],
         samples=min(7, samples),
         warmup=1,
         torch=torch,
@@ -1171,12 +1214,15 @@ def benchmark_case(case, *, samples, warmup, torch):
         bundle, calls, samples=min(7, samples), warmup=1, torch=torch
     )
     memory = {
-        "upstream": _memory(calls["upstream"], calls["reset_upstream"], torch),
-        "native": _memory(calls["native"], calls["reset_native"], torch),
-        "hybrid": _memory(calls["hybrid"], calls["reset_hybrid"], torch),
-        "reference": _memory(calls["reference"], calls["reset_reference"], torch),
+        "upstream": _memory(
+            timed_calls["upstream"], timed_calls["reset_upstream"], torch
+        ),
+        "native": _memory(timed_calls["native"], timed_calls["reset_native"], torch),
+        "hybrid": _memory(timed_calls["hybrid"], timed_calls["reset_hybrid"], torch),
+        "reference": _memory(
+            timed_calls["reference"], timed_calls["reset_reference"], torch
+        ),
     }
-    training = case["operation"] == "training"
     backward_correctness = (
         _backward_correctness(bundle, torch)
         if training
@@ -1231,6 +1277,26 @@ def benchmark_case(case, *, samples, warmup, torch):
             and paired["native_device"]["p95_ms"] / paired["upstream_device"]["p95_ms"]
             <= 1.10
         )
+    backward_latency_passed = True
+    backward_memory_passed = True
+    backward_drift_passed = True
+    if training:
+        backward_paired = backward["authoritative"]
+        backward_ratio = backward_paired["paired_device_ratio"]
+        backward_latency_passed = bool(
+            backward_ratio["bootstrap_ci95_median"]["upper"] <= 1.10
+            and backward_paired["native_device"]["p95_ms"]
+            / backward_paired["upstream_device"]["p95_ms"]
+            <= 1.10
+        )
+        backward_up_peak = memory["backward_upstream"]["temporary_peak_bytes"]
+        backward_native_peak = memory["backward_native"]["temporary_peak_bytes"]
+        backward_memory_passed = backward_native_peak <= max(
+            int(backward_up_peak * 1.02), backward_up_peak + 1_048_576
+        )
+        backward_drift_passed = bool(
+            backward["drift_attempts"] and backward["drift_attempts"][-1]["passed"]
+        )
     return {
         "case": case,
         "construction_ms": construction_ms,
@@ -1251,10 +1317,16 @@ def benchmark_case(case, *, samples, warmup, torch):
             "classification": classification,
             "latency_passed": latency_passed,
             "memory_passed": memory_passed,
+            "backward_latency_passed": backward_latency_passed,
+            "backward_memory_passed": backward_memory_passed,
+            "backward_drift_passed": backward_drift_passed,
             "correctness_passed": correctness["passed"]
             and (not training or backward_correctness["passed"]),
             "passed": latency_passed
             and memory_passed
+            and backward_latency_passed
+            and backward_memory_passed
+            and backward_drift_passed
             and correctness["passed"]
             and (not training or backward_correctness["passed"]),
         },
@@ -1334,6 +1406,8 @@ def _single_process(args):
                 "native": "fully native URM route and state lowerings",
             },
             "hybrid_certification": "fixed immutable scores permit one-time route certification; route production is still charged",
+            "score_certification": "static shape/dtype/device/version checks only; deterministic highest-address tie semantics remove value-dependent CUDA scans and synchronization",
+            "training_forward": "grad-enabled forward with saved route/state tensors; backward is measured separately",
             "authoritative_sampling": "randomized paired AB/BA without per-stage events",
             "attribution_sampling": "separate diagnostic CUDA-event passes",
             "nvtx": "stage names exercised by optional --profile pass",
@@ -1371,6 +1445,25 @@ def _single_process(args):
 
 
 def _confirmation_summary(runs, grid):
+    from measurement import hierarchical_bootstrap_paired_slowdown
+
+    def hierarchical_ratio(rows, phase, seed):
+        logs = [
+            [
+                math.log(value)
+                for value in row[phase]["authoritative"]["paired_device_ratio"]["raw"]
+            ]
+            for row in rows
+        ]
+        median_pct, lower_pct, upper_pct = hierarchical_bootstrap_paired_slowdown(
+            logs, num_resamples=10_000, seed=seed
+        )
+        return {
+            "median": 1.0 + median_pct / 100.0,
+            "lower": 1.0 + lower_pct / 100.0,
+            "upper": 1.0 + upper_pct / 100.0,
+        }
+
     expected = {case["name"] for case in grid}
     if any(set(run["cases"]) != expected for run in runs):
         raise RuntimeError("confirmation process case keys differ from frozen grid")
@@ -1383,16 +1476,8 @@ def _confirmation_summary(runs, grid):
             row["forward"]["authoritative"]["paired_device_ratio"]["median"]
             for row in rows
         ]
-        hierarchical = []
-        rng = random.Random(8849 + len(name))
-        for _ in range(10_000):
-            process = rng.choice(rows)
-            raw = process["forward"]["authoritative"]["paired_device_ratio"]["raw"]
-            hierarchical.append(
-                statistics.median(rng.choice(raw) for _ in range(len(raw)))
-            )
-        hierarchical.sort()
-        ci = {"lower": hierarchical[250], "upper": hierarchical[9750]}
+        hierarchical = hierarchical_ratio(rows, "forward", 8849 + len(name))
+        ci = {"lower": hierarchical["lower"], "upper": hierarchical["upper"]}
         p95_ratios = [
             row["forward"]["authoritative"]["native_device"]["p95_ms"]
             / row["forward"]["authoritative"]["upstream_device"]["p95_ms"]
@@ -1409,12 +1494,34 @@ def _confirmation_summary(runs, grid):
         else:
             case_passed = all(row["gate"]["passed"] for row in rows)
         backward_ratios = []
+        backward_p95_ratios = []
+        backward_ci = None
         if rows[0]["backward"].get("status") != "not_applicable":
             backward_ratios = [
                 row["backward"]["authoritative"]["paired_device_ratio"]["median"]
                 for row in rows
             ]
-            case_passed = case_passed and max(backward_ratios) <= 1.10
+            backward_p95_ratios = [
+                row["backward"]["authoritative"]["native_device"]["p95_ms"]
+                / row["backward"]["authoritative"]["upstream_device"]["p95_ms"]
+                for row in rows
+            ]
+            backward_hierarchical = hierarchical_ratio(
+                rows, "backward", 12821 + len(name)
+            )
+            backward_ci = {
+                "lower": backward_hierarchical["lower"],
+                "upper": backward_hierarchical["upper"],
+            }
+            case_passed = bool(
+                case_passed
+                and backward_ci["upper"] <= 1.10
+                and max(backward_ratios) <= 1.10
+                and max(backward_p95_ratios) <= 1.10
+                and all(row["gate"]["backward_latency_passed"] for row in rows)
+                and all(row["gate"]["backward_memory_passed"] for row in rows)
+                and all(row["gate"]["backward_drift_passed"] for row in rows)
+            )
         passed = passed and case_passed
         reports[name] = {
             "classification": classification,
@@ -1422,6 +1529,8 @@ def _confirmation_summary(runs, grid):
             "per_process_forward_median_ratios": ratios,
             "per_process_forward_p95_ratios": p95_ratios,
             "per_process_backward_median_ratios": backward_ratios,
+            "hierarchical_backward_ratio_ci95": backward_ci,
+            "per_process_backward_p95_ratios": backward_p95_ratios,
             "passed": case_passed,
         }
     geometric = math.exp(sum(math.log(x) for x in substantial) / len(substantial))

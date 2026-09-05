@@ -193,6 +193,21 @@ under `urm_native_sparse_memory_e2e_v0`; the explicit logical route boundary is
 retained even though both physical stages are native. Product-key factorization
 is one specialization, not a universal assumption in state semantics.
 
+The executable composite is bound by `compile_sparse_memory_plan()`. It first
+compiles the typed program, requires the native anchor, verifies the serialized
+route/state schedule against the production launchers, and only then exposes
+`prepare()`/`execute()`. Model and benchmark code consume this executable plan;
+they do not instantiate `TritonSparseMemoryBackend` or select an unserialized
+schedule. The external comparator's fullgraph-only custom-op boundary remains
+adapter glue and is not an execution or semantic IR concept.
+
+The model-level vertical slice is the URM-owned decoder in
+`src/urm/pretraining.py`. Sparse Memory occupies every sequence-mixer position
+behind an otherwise identical learned architecture and optimizer. Persistent
+state resets per optimizer step and persists/detaches across accumulation
+microbatches. This establishes a real training boundary without importing a
+nanoGPT implementation; see `docs/pretraining-step.md`.
+
 The native plan serializes its `partition_owned_ordered_token_scan` schedule;
 execution assigns one partition/value fragment to a Triton program and keeps
 cross-token mutation order structural. Capability decisions are runtime-aware.
@@ -216,7 +231,7 @@ Remaining slices are:
 ## Non-goals for milestone zero
 
 - A general tensor compiler.
-- Training a language model.
+- Treating a third-party language-model trainer as URM architecture.
 - Reimplementing every upstream kernel.
 - Distributed expert or memory sharding (simulated planning exists; real
   multi-device execution does not yet).

@@ -79,6 +79,16 @@ def test_hierarchical_bootstrap_repeated_execution_is_byte_stable() -> None:
     assert run_a == run_b
 
 
+def test_hierarchical_bootstrap_weights_processes_not_block_counts() -> None:
+    data = [[math.log(2.0)], [math.log(0.5)] * 101]
+    median, _lower, _upper = hierarchical_bootstrap_paired_slowdown(
+        data, num_resamples=4000, seed=821
+    )
+    # Equal process weighting centers the geometric mean at one. Flattening all
+    # blocks would incorrectly center this result near a 50% speedup.
+    assert median == pytest.approx(0.0, abs=3.0)
+
+
 def test_provenance_tampering_fails_closed() -> None:
     """Aggregation fails closed if any child run has mismatched provenance invariants."""
     import sys

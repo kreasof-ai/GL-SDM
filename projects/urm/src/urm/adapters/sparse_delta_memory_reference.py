@@ -100,6 +100,27 @@ def torch_product_key(scores, num_keys: int, half_key: int):
     return values.gather(-1, order), addresses
 
 
+def torch_product_key_highest_address(scores, num_keys: int, half_key: int):
+    """Transparent frozen URM policy: score descending, address descending ties.
+
+    The full Cartesian formulation is intentionally dependency-light and
+    transparent.  It is a semantic oracle, not the production schedule.
+    Returned routes are canonicalized into increasing-address order.
+    """
+    if scores.shape[-1] != 2 * half_key:
+        raise ValueError("scores must have width 2*half_key")
+    left, right = scores.split(half_key, dim=-1)
+    pair_scores = (left.unsqueeze(-1) + right.unsqueeze(-2)).flatten(-2)
+    # Reversing makes stable score sorting prefer the greatest logical address.
+    reversed_scores = pair_scores.flip(-1)
+    selected_reversed = reversed_scores.argsort(dim=-1, descending=True, stable=True)[
+        ..., :num_keys
+    ]
+    selected = pair_scores.shape[-1] - 1 - selected_reversed
+    addresses = selected.sort(dim=-1).values
+    return pair_scores.gather(-1, addresses), addresses
+
+
 def product_key_selection_is_tie_free(scores, num_keys: int, half_key: int) -> bool:
     """Whether every decision used by product-key top-k has a unique value."""
     import torch
@@ -683,6 +704,7 @@ __all__ = [
     "oracle_write_read",
     "product_key_selection_is_tie_free",
     "torch_product_key",
+    "torch_product_key_highest_address",
     "torch_sparse_read",
     "torch_write_read",
 ]

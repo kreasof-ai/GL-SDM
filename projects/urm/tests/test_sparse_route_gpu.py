@@ -14,7 +14,7 @@ from urm.adapters.sparse_delta_memory import (
     UrmSparseDeltaMemoryAdapter,
     probe_sdm_support,
 )
-from urm.adapters.sparse_delta_memory_reference import torch_product_key
+from urm.adapters.sparse_delta_memory_reference import torch_product_key_highest_address
 from urm.backends.sparse_route import (
     CertifiedSparseRouteScores,
     TritonSparseRouteBackend,
@@ -68,7 +68,9 @@ def test_native_route_matches_transparent_reference(dtype, slots, width) -> None
     output = TritonSparseRouteBackend(spec).generate_certified(
         CertifiedSparseRouteScores.certify(spec, scores)
     )
-    values, addresses = torch_product_key(scores, width, spec.factor_extent)
+    values, addresses = torch_product_key_highest_address(
+        scores, width, spec.factor_extent
+    )
     weights = torch.softmax(values, dim=-1)
     assert torch.equal(output.addresses.to(torch.int64), addresses)
     torch.testing.assert_close(
@@ -86,7 +88,9 @@ def test_native_route_score_gradients_match_reference(dtype, slots, width) -> No
     native = TritonSparseRouteBackend(spec).generate_certified(
         CertifiedSparseRouteScores.certify(spec, native_scores)
     )
-    values, addresses = torch_product_key(reference_scores, width, spec.factor_extent)
+    values, addresses = torch_product_key_highest_address(
+        reference_scores, width, spec.factor_extent
+    )
     reference_weights = torch.softmax(values, dim=-1)
     cotangent = torch.randn_like(reference_weights)
     (native.weights.float() * cotangent.float()).sum().backward()
@@ -126,3 +130,17 @@ def test_native_route_addresses_match_exact_pinned_upstream_callable() -> None:
         atol=2e-5,
         rtol=2e-5,
     )
+
+
+def test_dynamic_tied_scores_need_no_value_dependent_certification() -> None:
+    spec = SparseRouteSelectionSpec(1, 2, 16, 2, DType.FLOAT32)
+    scores = torch.zeros((1, 2, 8), device="cuda")
+    certified = CertifiedSparseRouteScores.certify(spec, scores)
+    backend = TritonSparseRouteBackend(spec)
+    addresses_a, weights_a = backend.generate(certified)
+    addresses_b, weights_b = backend.generate(certified)
+    expected = torch.tensor([14, 15], device="cuda", dtype=torch.int32)
+    assert torch.equal(addresses_a, expected.view(1, 1, 2).expand_as(addresses_a))
+    assert torch.equal(addresses_a, addresses_b)
+    assert torch.equal(weights_a, weights_b)
+    assert torch.equal(weights_a, torch.full_like(weights_a, 0.5))
