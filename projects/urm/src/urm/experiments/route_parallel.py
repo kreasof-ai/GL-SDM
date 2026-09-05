@@ -111,7 +111,7 @@ def _call(tensors, memory, indices, resident, before, backward=False, resources=
     if status:
         raise RuntimeError(f"CUDA route-parallel launch failed: {status}")
     if AUDIT is not None and resources is None:
-        observed = (ctypes.c_int * 8)()
+        observed = (ctypes.c_int * 12)()
         lib.get_launch(observed)
         plan = schedule(memory, indices, resident, before, backward)
         expected = [
@@ -122,6 +122,10 @@ def _call(tensors, memory, indices, resident, before, backward=False, resources=
             plan["sequence"],
             plan["slots"],
             plan["value_dim"],
+            int(resident),
+            int(before),
+            memory.element_size(),
+            indices.element_size(),
         ]
         if list(observed) != expected:
             raise RuntimeError(

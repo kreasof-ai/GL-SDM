@@ -150,10 +150,10 @@ __global__ void ordered_backward(
 
 // Audit is opt-in and outside timing. Values come from the same launch site.
 static bool audit_enabled = false;
-static int last_launch[8] = {};
+static int last_launch[12] = {};
 extern "C" void set_audit(int enabled) { audit_enabled = enabled; }
 extern "C" void get_launch(int* output) {
-    for (int i = 0; i < 8; ++i) output[i] = last_launch[i];
+    for (int i = 0; i < 12; ++i) output[i] = last_launch[i];
 }
 
 template<typename T, typename I, bool R, bool B>
@@ -184,8 +184,8 @@ int dispatch(int backward, void** a, int P, int Tlen, int S, int D, cudaStream_t
     }
     dim3 grid(P, D / TILE_D);
     if (audit_enabled) {
-        int v[] = {backward, int(grid.x), int(grid.y), THREADS, shared, Tlen, S, D};
-        for (int i = 0; i < 8; ++i) last_launch[i] = v[i];
+        int v[] = {backward, int(grid.x), int(grid.y), THREADS, shared, Tlen, S, D, int(R), int(B), int(sizeof(T)), int(sizeof(I))};
+        for (int i = 0; i < 12; ++i) last_launch[i] = v[i];
     }
     if (!backward) fwd<<<grid, THREADS, shared, stream>>>(
         (T*)a[0], (T*)a[1], (I*)a[2], (T*)a[3], (T*)a[4], (T*)a[5],

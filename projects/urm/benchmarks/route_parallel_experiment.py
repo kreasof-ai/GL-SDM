@@ -290,12 +290,17 @@ def correctness(args):
                 "a functional comparison mutated matched initial inputs/state"
             )
         rows.append(row)
+        artifact["cases"] = rows
+        artifact["complete"] = False
+        artifact["accepted_against_native_and_oracle"] = False
+        write_artifact(args.output, artifact)
         print(
             f"correctness {index + 1}/{len(specs)} {dtype} {pattern} T={t} before={before}",
             flush=True,
         )
         del oracle, upstream, native_result, sample, result
     artifact["cases"] = rows
+    artifact["complete"] = True
     artifact["accepted_against_native_and_oracle"] = all(
         c["against_native"]["passed"]
         and c["against_oracle"]["passed"]
@@ -479,6 +484,8 @@ def resources(args):
 
     def hook(kernel, grid, stream, *arguments):
         if "sparse_state_update" in kernel.name:
+            # Triton 3.4 loads runtime registers/spills/function lazily.
+            kernel._init_handles()
             stem = "native_backward" if "backward" in kernel.name else "native_forward"
             for fmt in ("ptx", "cubin"):
                 value = kernel.asm[fmt]
