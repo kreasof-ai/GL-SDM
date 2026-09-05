@@ -1,7 +1,7 @@
 # Model-level Sparse Memory pretraining-step contract
 
-**Status:** implemented measurement harness; authoritative A10G confirmation is
-the only source for a parity, regression, or superiority label.
+**Status:** measured model-level regression with one frozen-tolerance
+correctness miss; no parity or superiority claim.
 
 This is an independently owned URM decoder language model, not a vendored
 nanoGPT or modded-nanoGPT program. The authoritative boundary starts with a
@@ -144,3 +144,29 @@ The result must validate against
 `benchmarks/pretraining-step-result-schema.json`. A superiority claim requires
 all thresholds in the frozen TOML; otherwise the artifact's failing gates are
 authoritative.
+
+## A10G result and blocker
+
+The clean three-seed artifact at `results/pretraining-step/confirmation.json`
+reports native/upstream geometric-mean optimizer-step ratios of **2.365** in
+eager mode (95% hierarchical CI **[2.340, 2.387]**) and **2.245** under
+fullgraph compilation (CI **[2.221, 2.273]**). Native medians are
+4.164–4.193 seconds eager and 4.149–4.176 seconds fullgraph, versus
+1.751–1.778 and 1.833–1.867 seconds upstream. Native peak allocated memory is
+lower in both lanes, and every compiled run has one graph, zero graph breaks,
+and zero recompilations.
+
+All eager five-step correctness comparisons passed. Fullgraph seed 1701 step
+five missed only the frozen normalized persistent-state checksum tolerance:
+`2.0007428247481585e-6` versus `2.0e-6`; loss, logits, gradient norms,
+parameter updates, mixer-input gradients, and finite checks passed. The
+tolerance was not relaxed after measurement, so the artifact truthfully records
+`correctness_failure` rather than performance regression alone.
+
+The native profile identifies the ordered state recurrence as the dominant
+device range. Together with the D=64/32/16/8/4/2 schedule sweep, this is the
+concrete blocker: value tiling improves occupancy but cannot remove the serial
+`T * route_width` recurrence. The smallest credible next step is an exact
+chunk-parallel recurrence with a proved ordered-collision backward, followed by
+the unchanged model grid. No model-width, route-width, context, or tolerance
+change is justified by these results.

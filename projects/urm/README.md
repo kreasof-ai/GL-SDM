@@ -281,7 +281,9 @@ model.
   the fully native Sparse Memory E2E composition from scores through persistent
   state, with the diagnostic hybrid explicitly excluded from native claims.
 - Active: model-level 124.65M decoder optimizer-step closure. Isolated Sparse
-  Memory E2E completion is not model-level performance evidence.
+  Memory E2E completion is not model-level performance evidence. The frozen
+  A10G result is a 2.365x eager / 2.245x fullgraph regression and includes one
+  unrelaxed compiled persistent-state tolerance miss; see the model contract.
 - Deferred: physical route/state fusion and route compositions beyond the
   frozen factorized-additive specialization.
 - Fuse overlay composition and reduction.

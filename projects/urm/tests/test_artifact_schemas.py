@@ -9,6 +9,7 @@ attention artifact so documentation cannot drift from the artifacts.
 from __future__ import annotations
 
 import json
+import sys
 import tomllib
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from jsonschema import validate
 
 PROJECT_ROOT = Path(__file__).parents[1]
 RESULTS = PROJECT_ROOT / "results"
+sys.path.insert(0, str(PROJECT_ROOT / "benchmarks"))
 
 
 def _load(path: Path) -> dict:
@@ -283,9 +285,10 @@ def test_pretraining_step_schema_is_strict_and_committed_artifact_validates() ->
         )
     )
     assert set(artifact["modes"]) == {"eager", "compile_fullgraph"}
+    comparison_passes = []
     for mode in artifact["modes"].values():
         assert len(mode["pairs"]) == 3
-        assert all(item["passed"] for item in mode["correctness"])
+        comparison_passes.extend(item["passed"] for item in mode["correctness"])
         for pair in mode["pairs"]:
             assert "gradient_files" not in pair["upstream"]
             assert "gradient_files" not in pair["native"]
@@ -301,6 +304,10 @@ def test_pretraining_step_schema_is_strict_and_committed_artifact_validates() ->
             assert pair["upstream"]["upstream"]["installed_commit"] == (
                 "183e7df809131b80ad4393741029d0f20fc3640b"
             )
+    assert artifact["correctness_passed"] is all(comparison_passes)
+    if not artifact["correctness_passed"]:
+        assert artifact["decision"] == "correctness_failure"
+        assert artifact["passed"] is False
 
 
 def test_pretraining_profile_artifact_validates() -> None:
