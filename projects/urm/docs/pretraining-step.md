@@ -174,7 +174,9 @@ tolerance was not relaxed after measurement, so the artifact truthfully records
 The native profile identifies the ordered state recurrence as the dominant
 device range. Together with the D=64/32/16/8/4/2 schedule sweep, this is the
 concrete blocker: value tiling improves occupancy but cannot remove the serial
-`T * route_width` recurrence. The smallest credible next step is an exact
-chunk-parallel recurrence with a proved ordered-collision backward, followed by
-the unchanged model grid. No model-width, route-width, context, or tolerance
+`T * route_width` recurrence. The documented architectural resolution is the
+[dual-form sparse attention reparameterization](sdm-sparse-attention-reparameterization.md),
+which maps the prefill/training pass to a parallel lower-triangular solve and
+sparse causal cross-attention on Tensor Cores while retaining exact boundary
+folding for flat-latency recurrent decode. No model-width, route-width, context, or tolerance
 change is justified by these results.
