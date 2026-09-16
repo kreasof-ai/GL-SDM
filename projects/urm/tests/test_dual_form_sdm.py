@@ -213,3 +213,54 @@ def test_exact_gradient_alignment_with_upstream_reference(seed, dtype):
         assert cos_sim > 0.9999, f"{name} cosine similarity failed: {cos_sim:.6f} for seed={seed}, dtype={dtype}"
         assert abs_diff <= tol, f"{name} max error failed: {abs_diff:.4e} > {tol} for seed={seed}, dtype={dtype}"
 
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for Triton backend")
+def test_triton_dual_form_sdm_forward_and_backward():
+    """Verify pure Triton Dual-Form SDM kernel forward and backward pass."""
+    from urm.triton_kernels.dual_form_sdm import triton_dual_form_sdm
+
+    torch.manual_seed(99)
+    device = "cuda"
+    dtype = torch.bfloat16
+    P, T, S, D, W, R = 2, 64, 256, 32, 16, 16
+
+    wi = torch.zeros(P, T, W, device=device, dtype=torch.int32)
+    ri = torch.zeros(P, T, R, device=device, dtype=torch.int32)
+    for p in range(P):
+        for t in range(T):
+            wi[p, t] = torch.randperm(S, device=device)[:W]
+            ri[p, t] = torch.randperm(S, device=device)[:R]
+
+    w = torch.rand(P, T, W, device=device, dtype=dtype, requires_grad=True)
+    q = torch.rand(P, T, R, device=device, dtype=dtype, requires_grad=True)
+    v = torch.randn(P, T, D, device=device, dtype=dtype, requires_grad=True)
+    b = torch.rand(P, T, 1, device=device, dtype=dtype, requires_grad=True)
+    g = (-torch.rand(P, T, 1, device=device, dtype=dtype) * 0.05).requires_grad_()
+    memory = torch.randn(P, S, D, device=device, dtype=dtype, requires_grad=True)
+
+    out, final_m = triton_dual_form_sdm(
+        memory, ri, q,
+        write_indices=wi, write_weights=w,
+        values=v, beta=b, log_decay=g,
+        block_t=32,
+    )
+
+    assert out.shape == (P, T, D)
+    assert final_m.shape == (P, S, D)
+    assert torch.isfinite(out).all()
+    assert torch.isfinite(final_m).all()
+
+    loss = (out.float() ** 2).sum() + (final_m.float() ** 2).sum()
+    loss.backward()
+
+    for name, tensor in [
+        ("v", v),
+        ("b", b),
+        ("w", w),
+        ("q", q),
+        ("memory", memory),
+    ]:
+        assert tensor.grad is not None, f"Triton kernel failed to compute gradient for {name}"
+        assert torch.isfinite(tensor.grad).all(), f"Non-finite gradient in {name}"
+
+
