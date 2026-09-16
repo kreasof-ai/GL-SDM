@@ -264,3 +264,48 @@ def test_triton_dual_form_sdm_forward_and_backward():
         assert torch.isfinite(tensor.grad).all(), f"Non-finite gradient in {name}"
 
 
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for Chunked Dual-Form SDM")
+def test_chunked_dual_form_sdm_forward_and_backward():
+    """Verify Chunked Dual-Form SDM with C=32 on T=64 sequence."""
+    from urm.backends.dual_form_sdm import chunked_dual_form_sdm
+
+    torch.manual_seed(101)
+    device = "cuda"
+    dtype = torch.bfloat16
+    P, T, S, D, W, R = 2, 64, 128, 32, 8, 8
+    C = 32
+
+    wi = torch.stack([torch.randperm(S, device=device)[:W].sort().values for _ in range(P * T)]).view(P, T, W)
+    ri = torch.stack([torch.randperm(S, device=device)[:R].sort().values for _ in range(P * T)]).view(P, T, R)
+    w = torch.rand(P, T, W, device=device, dtype=dtype, requires_grad=True)
+    q = torch.rand(P, T, R, device=device, dtype=dtype, requires_grad=True)
+    v = torch.randn(P, T, D, device=device, dtype=dtype, requires_grad=True)
+    b = torch.rand(P, T, 1, device=device, dtype=dtype, requires_grad=True)
+    memory = torch.randn(P, S, D, device=device, dtype=dtype, requires_grad=True)
+
+    out, final_m = chunked_dual_form_sdm(
+        memory, ri, q,
+        write_indices=wi, write_weights=w,
+        values=v, beta=b, chunk_size=C,
+    )
+
+    assert out.shape == (P, T, D)
+    assert final_m.shape == (P, S, D)
+    assert torch.isfinite(out).all()
+    assert torch.isfinite(final_m).all()
+
+    loss = (out.float() ** 2).sum() + (final_m.float() ** 2).sum()
+    loss.backward()
+
+    for name, tensor in [
+        ("v", v),
+        ("b", b),
+        ("w", w),
+        ("q", q),
+        ("memory", memory),
+    ]:
+        assert tensor.grad is not None, f"Chunked Dual-Form SDM failed to compute gradient for {name}"
+        assert torch.isfinite(tensor.grad).all(), f"Non-finite gradient in {name}"
+
+
+
