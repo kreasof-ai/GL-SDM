@@ -1,0 +1,173 @@
+{
+  "timestamp_utc": "2026-09-16T02:00:52.042603+00:00",
+  "hardware": {
+    "device": "NVIDIA A10G",
+    "peak_bf16_tflops": 66.166,
+    "cuda_version": "13.0",
+    "pytorch_version": "2.14.0+cu130"
+  },
+  "shapes": {
+    "parallel_heads": 12,
+    "sequence_length": 1024,
+    "memory_slots": 4096,
+    "value_dim": 64,
+    "write_width": 64,
+    "read_width": 64,
+    "dtype": "bfloat16"
+  },
+  "upstream_reference": {
+    "repository": "https://github.com/facebookresearch/sparse-delta-memory",
+    "entry_point": "lingua.sparse_delta_memory.memory_ops.GatedSparseMemoryWriteRead",
+    "commit": "183e7df809131b80ad4393741029d0f20fc3640b"
+  },
+  "alignment_audit": {
+    "seed_42": {
+      "Forward Readings (Y)": {
+        "cosine_similarity": 0.999997079372406,
+        "max_abs_diff": 0.000244140625,
+        "mse": 8.79714079360383e-10,
+        "status": "MATCHED"
+      },
+      "grad(Values)": {
+        "cosine_similarity": 0.9999946355819702,
+        "max_abs_diff": 3.814697265625e-06,
+        "mse": 1.0831228492227951e-13,
+        "status": "MATCHED"
+      },
+      "grad(Beta)": {
+        "cosine_similarity": 0.9999951124191284,
+        "max_abs_diff": 7.62939453125e-06,
+        "mse": 8.055751161625824e-13,
+        "status": "MATCHED"
+      },
+      "grad(Initial Memory)": {
+        "cosine_similarity": 0.9999809265136719,
+        "max_abs_diff": 0.00018310546875,
+        "mse": 1.1382528253278679e-10,
+        "status": "MATCHED"
+      },
+      "grad(Write Weights)": {
+        "cosine_similarity": 0.995252788066864,
+        "max_abs_diff": 0.00078582763671875,
+        "mse": 1.786494840949615e-09,
+        "status": "MATCHED"
+      },
+      "grad(Read Weights)": {
+        "cosine_similarity": 0.9999943971633911,
+        "max_abs_diff": 0.0009765625,
+        "mse": 6.233549676437633e-09,
+        "status": "MATCHED"
+      }
+    },
+    "seed_1701": {
+      "Forward Readings (Y)": {
+        "cosine_similarity": 0.9999969601631165,
+        "max_abs_diff": 0.000244140625,
+        "mse": 8.770909554201012e-10,
+        "status": "MATCHED"
+      },
+      "grad(Values)": {
+        "cosine_similarity": 0.999994695186615,
+        "max_abs_diff": 3.814697265625e-06,
+        "mse": 1.0392014804022284e-13,
+        "status": "MATCHED"
+      },
+      "grad(Beta)": {
+        "cosine_similarity": 0.9999952912330627,
+        "max_abs_diff": 7.62939453125e-06,
+        "mse": 7.653657438724815e-13,
+        "status": "MATCHED"
+      },
+      "grad(Initial Memory)": {
+        "cosine_similarity": 0.9999811053276062,
+        "max_abs_diff": 0.00018310546875,
+        "mse": 1.1390871579308737e-10,
+        "status": "MATCHED"
+      },
+      "grad(Write Weights)": {
+        "cosine_similarity": 0.9952558279037476,
+        "max_abs_diff": 0.00091552734375,
+        "mse": 1.7868204693627376e-09,
+        "status": "MATCHED"
+      },
+      "grad(Read Weights)": {
+        "cosine_similarity": 0.9999943971633911,
+        "max_abs_diff": 0.0009765625,
+        "mse": 6.248382700135835e-09,
+        "status": "MATCHED"
+      }
+    },
+    "seed_2026": {
+      "Forward Readings (Y)": {
+        "cosine_similarity": 0.9999970197677612,
+        "max_abs_diff": 0.000244140625,
+        "mse": 8.758218039695009e-10,
+        "status": "MATCHED"
+      },
+      "grad(Values)": {
+        "cosine_similarity": 0.9999946355819702,
+        "max_abs_diff": 3.814697265625e-06,
+        "mse": 1.1351942335365711e-13,
+        "status": "MATCHED"
+      },
+      "grad(Beta)": {
+        "cosine_similarity": 0.9999948143959045,
+        "max_abs_diff": 7.62939453125e-06,
+        "mse": 8.704707419281144e-13,
+        "status": "MATCHED"
+      },
+      "grad(Initial Memory)": {
+        "cosine_similarity": 0.9999811053276062,
+        "max_abs_diff": 0.00018310546875,
+        "mse": 1.1437988750584438e-10,
+        "status": "MATCHED"
+      },
+      "grad(Write Weights)": {
+        "cosine_similarity": 0.9951937198638916,
+        "max_abs_diff": 0.00081634521484375,
+        "mse": 1.8081983688134073e-09,
+        "status": "MATCHED"
+      },
+      "grad(Read Weights)": {
+        "cosine_similarity": 0.9999943971633911,
+        "max_abs_diff": 0.000640869140625,
+        "mse": 6.246217765237816e-09,
+        "status": "MATCHED"
+      }
+    }
+  },
+  "performance_comparison": {
+    "Upstream SDM (C=256, Default)": {
+      "forward_ms": 7.12437744140625,
+      "backward_ms": 8.162849934895831,
+      "step_ms": 15.287227376302083,
+      "peak_memory_mib": 471.900390625,
+      "throughput_tflops": 34.146152677050694,
+      "mfu_percent": 51.60679605394114
+    },
+    "Upstream SDM (C=1024, Full WY)": {
+      "forward_ms": 20.673126220703125,
+      "backward_ms": 23.789023844401044,
+      "step_ms": 44.46215006510417,
+      "peak_memory_mib": 879.96240234375,
+      "throughput_tflops": 11.740322931654363,
+      "mfu_percent": 17.743739884010466
+    },
+    "PyTorch Tensor Core SDM (Ours)": {
+      "forward_ms": 19.20279744466146,
+      "backward_ms": 33.411549886067704,
+      "step_ms": 52.61434733072917,
+      "peak_memory_mib": 2843.89990234375,
+      "throughput_tflops": 9.921248223773524,
+      "mfu_percent": 14.994480887122577
+    },
+    "Triton Dual-Form SDM (Ours)": {
+      "forward_ms": 25.964398193359376,
+      "backward_ms": 31.573069254557293,
+      "step_ms": 57.53746744791667,
+      "peak_memory_mib": 2680.39990234375,
+      "throughput_tflops": 9.072349256117645,
+      "mfu_percent": 13.711497228361463
+    }
+  }
+}

@@ -12,7 +12,10 @@ Covers:
 
 from __future__ import annotations
 
+import datetime
 import gc
+import json
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -62,6 +65,7 @@ def run_alignment_audit(seeds=(42, 1701, 2026)):
     device = "cuda"
     dtype = torch.bfloat16
     P, T, S, D, W, R = 12, 1024, 4096, 64, 64, 64
+    alignment_data = {}
 
     for seed in seeds:
         torch.manual_seed(seed)
@@ -119,6 +123,7 @@ def run_alignment_audit(seeds=(42, 1701, 2026)):
         print(f"{'Quantity / Gradient':<24} | {'Cosine Sim':<12} | {'Max Abs Diff':<14} | {'MSE Error':<14} | {'Status'}")
         print("-" * 85)
 
+        seed_audit = {}
         for name, u_t, tr_t in comparisons:
             u_f = u_t.float().flatten().unsqueeze(0)
             tr_f = tr_t.float().flatten().unsqueeze(0)
@@ -126,9 +131,17 @@ def run_alignment_audit(seeds=(42, 1701, 2026)):
             abs_diff = (u_f - tr_f).abs().max().item()
             mse = F.mse_loss(u_f, tr_f).item()
             passed = cos_sim > 0.995 and abs_diff < 0.05
+            seed_audit[name] = {
+                "cosine_similarity": cos_sim,
+                "max_abs_diff": abs_diff,
+                "mse": mse,
+                "status": "MATCHED" if passed else "DIVERGED",
+            }
             print(f"{name:<24} | {cos_sim:<12.8f} | {abs_diff:<14.4e} | {mse:<14.4e} | {'MATCHED' if passed else 'DIVERGED'}")
+        alignment_data[f"seed_{seed}"] = seed_audit
 
     print("=" * 95)
+    return alignment_data
 
 
 def run_performance_comparison():
@@ -256,14 +269,56 @@ def run_performance_comparison():
         mfu = (tflops / a10g_peak_tflops) * 100.0
         results.append((name, fwd_ms, bwd_ms, step_ms, step_mem, tflops, mfu))
 
+    perf_data = {}
     print("\n" + "=" * 115)
     print(f"{'Implementation':<32} | {'Fwd (ms)':<9} | {'Bwd (ms)':<9} | {'Step (ms)':<10} | {'Peak Mem':<10} | {'Throughput':<12} | {'MFU'}")
     print("-" * 115)
     for name, fwd_ms, bwd_ms, step_ms, step_mem, tflops, mfu in results:
         print(f"{name:<32} | {fwd_ms:<9.2f} | {bwd_ms:<9.2f} | {step_ms:<10.2f} | {step_mem:<7.1f} MiB | {tflops:<6.2f} TFLOP/s | {mfu:.1f}%")
+        perf_data[name] = {
+            "forward_ms": fwd_ms,
+            "backward_ms": bwd_ms,
+            "step_ms": step_ms,
+            "peak_memory_mib": step_mem,
+            "throughput_tflops": tflops,
+            "mfu_percent": mfu,
+        }
     print("=" * 115)
+    return perf_data
 
 
 if __name__ == "__main__":
-    run_alignment_audit(seeds=(42, 1701, 2026))
-    run_performance_comparison()
+    alignment = run_alignment_audit(seeds=(42, 1701, 2026))
+    performance = run_performance_comparison()
+
+    artifact = {
+        "timestamp_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "hardware": {
+            "device": torch.cuda.get_device_name(0),
+            "peak_bf16_tflops": 66.166,
+            "cuda_version": torch.version.cuda,
+            "pytorch_version": torch.__version__,
+        },
+        "shapes": {
+            "parallel_heads": 12,
+            "sequence_length": 1024,
+            "memory_slots": 4096,
+            "value_dim": 64,
+            "write_width": 64,
+            "read_width": 64,
+            "dtype": "bfloat16",
+        },
+        "upstream_reference": {
+            "repository": "https://github.com/facebookresearch/sparse-delta-memory",
+            "entry_point": "lingua.sparse_delta_memory.memory_ops.GatedSparseMemoryWriteRead",
+            "commit": "183e7df809131b80ad4393741029d0f20fc3640b",
+        },
+        "alignment_audit": alignment,
+        "performance_comparison": performance,
+    }
+
+    out_path = Path("projects/urm/results/sparse-delta-memory/dual_form_vs_upstream_audit.json")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w") as f:
+        json.dump(artifact, f, indent=2)
+    print(f"\nWrote audit artifact to: {out_path}")
