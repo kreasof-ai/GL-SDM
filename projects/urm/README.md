@@ -284,9 +284,9 @@ model.
   Memory E2E completion is not model-level performance evidence. The frozen
   A10G result is a 2.365x eager / 2.245x fullgraph regression and includes one
   unrelaxed compiled persistent-state tolerance miss; see the model contract.
-  The documented resolution path is the
+  The verified Phase 3 continuation is the
   [dual-form sparse attention reparameterization](docs/sdm-sparse-attention-reparameterization.md),
-  which unblocks Tensor Core MFU via parallel prefill/training and boundary folding.
+  which unblocks Tensor Core MFU (>28% MMA MFU) via parallel prefill/training and boundary folding.
 - Deferred: physical route/state fusion and route compositions beyond the
   frozen factorized-additive specialization.
 - Fuse overlay composition and reduction.
