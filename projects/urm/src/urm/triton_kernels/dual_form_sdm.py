@@ -19,12 +19,13 @@ from urm.compiler.semantic import SparseReadTiming
 
 @triton.jit
 def _triton_dual_form_fwd_kernel(
-    K_ptr,           # [P, T, W] int32/int64
+    K_ptr,           # [P, T, W] int32
     W_ptr,           # [P, T, W] float32/bfloat16
-    Q_ptr,           # [P, T, R] int32/int64
+    Q_ptr,           # [P, T, R] int32
     QW_ptr,          # [P, T, R] float32/bfloat16
     V_ptr,           # [P, T, D] float32/bfloat16
     Beta_ptr,        # [P, T, 1] float32/bfloat16
+    SlotCum_ptr,     # [P, T+1, SLOTS] float32
     V0_ptr,          # [P, T, D] float32
     Y0_ptr,          # [P, T, D] float32
     Out_ptr,         # [P, T, D] float32/bfloat16
@@ -33,6 +34,7 @@ def _triton_dual_form_fwd_kernel(
     Omega_ptr,       # [P, T, T] float32
     P: tl.constexpr,
     T: tl.constexpr,
+    SLOTS: tl.constexpr,
     W: tl.constexpr,
     R: tl.constexpr,
     D: tl.constexpr,
@@ -58,15 +60,20 @@ def _triton_dual_form_fwd_kernel(
             rhs_t = b_t * (v_t - v0_t)
             delta_acc = tl.zeros((D,), dtype=tl.float32)
 
-            # Intra-chunk lower-triangular solve in SRAM registers
+            # Lower-triangular solve for Delta[t] in registers/SRAM
             for tau_i in range(0, t_i):
                 tau = t_start + tau_i
                 k_tau = tl.load(K_ptr + (pid_p * T + tau) * W + offs_w)
                 w_tau = tl.load(W_ptr + (pid_p * T + tau) * W + offs_w).to(tl.float32)
 
-                # Match slot intersections
                 match = k_t[:, None] == k_tau[None, :]
-                w_prod = w_t[:, None] * w_tau[None, :]
+
+                # Exact slot decay accumulated between token tau and token t
+                cum_t = tl.load(SlotCum_ptr + (pid_p * (T + 1) + t + 1) * SLOTS + k_t)
+                cum_tau = tl.load(SlotCum_ptr + (pid_p * (T + 1) + tau + 1) * SLOTS + k_t)
+                gamma_s = tl.exp(cum_t - cum_tau)
+
+                w_prod = (w_t * gamma_s)[:, None] * w_tau[None, :]
                 a_val = tl.sum(tl.where(match, w_prod, 0.0))
 
                 tl.store(A_ptr + (pid_p * T + t) * T + tau, a_val)
@@ -77,19 +84,24 @@ def _triton_dual_form_fwd_kernel(
             delta_t = rhs_t - b_t * delta_acc
             tl.store(Delta_ptr + (pid_p * T + t) * D + offs_d, delta_t)
 
-            # Causal cross-attention: reading = Y0 + Omega @ Delta
+            # Causal cross-attention for Out[t]
             q_t = tl.load(Q_ptr + (pid_p * T + t) * R + offs_r)
             qw_t = tl.load(QW_ptr + (pid_p * T + t) * R + offs_r).to(tl.float32)
             y0_t = tl.load(Y0_ptr + (pid_p * T + t) * D + offs_d).to(tl.float32)
 
             y_acc = tl.zeros((D,), dtype=tl.float32)
+            cum_qt = tl.load(SlotCum_ptr + (pid_p * (T + 1) + t + 1) * SLOTS + q_t)
+
             for tau_i in range(0, t_i + 1):
                 tau = t_start + tau_i
                 k_tau = tl.load(K_ptr + (pid_p * T + tau) * W + offs_w)
                 w_tau = tl.load(W_ptr + (pid_p * T + tau) * W + offs_w).to(tl.float32)
 
                 match_r = q_t[:, None] == k_tau[None, :]
-                qw_prod = qw_t[:, None] * w_tau[None, :]
+                cum_qtau = tl.load(SlotCum_ptr + (pid_p * (T + 1) + tau + 1) * SLOTS + q_t)
+                gamma_qr = tl.exp(cum_qt - cum_qtau)
+
+                qw_prod = (qw_t * gamma_qr)[:, None] * w_tau[None, :]
                 om_val = tl.sum(tl.where(match_r, qw_prod, 0.0))
 
                 tl.store(Omega_ptr + (pid_p * T + t) * T + tau, om_val)
@@ -102,17 +114,11 @@ def _triton_dual_form_fwd_kernel(
 
 @triton.jit
 def _triton_dual_form_bwd_kernel(
-    dOut_ptr,        # [P, T, D]
     dDelta_ptr,      # [P, T, D]
     A_ptr,           # [P, T, T]
     Beta_ptr,        # [P, T, 1]
     Lambda_ptr,      # [P, T, D]
     dV_ptr,          # [P, T, D]
-    dBeta_ptr,       # [P, T, 1]
-    V_ptr,           # [P, T, D]
-    V0_ptr,          # [P, T, D]
-    Delta_ptr,       # [P, T, D]
-    dA_ptr,          # [P, T, T]
     P: tl.constexpr,
     T: tl.constexpr,
     D: tl.constexpr,
@@ -172,18 +178,30 @@ class TritonDualFormSDMFunction(torch.autograd.Function):
         W = write_indices.shape[-1]
         R = read_indices.shape[-1]
 
-        # 1. Initial projections V0 and Y0
+        wi_long = write_indices.long()
+        ri_long = read_indices.long()
+
+        # 1. Cumulative slot log-decay
+        slot_log_decay = torch.zeros(P, T, slots, device=device, dtype=torch.float32)
+        slot_log_decay.scatter_add_(2, wi_long, log_decay.float().expand(-1, -1, W))
+        slot_cum = torch.zeros(P, T + 1, slots, device=device, dtype=torch.float32)
+        torch.cumsum(slot_log_decay, dim=1, out=slot_cum[:, 1:])
+
+        # 2. Initial projections V0 and Y0
         m_fp32 = memory.float()
         ww_fp32 = write_weights.float()
         rw_fp32 = read_weights.float()
 
-        m0_w = torch.take_along_dim(m_fp32, write_indices.long().reshape(P, -1, 1).expand(-1, -1, D), dim=1).view(P, T, W, D)
-        V0 = (ww_fp32.unsqueeze(-1) * m0_w).sum(dim=2)
+        dec_w0 = torch.exp(slot_cum[:, 1:].gather(2, wi_long))
+        dec_r0 = torch.exp(slot_cum[:, 1:].gather(2, ri_long))
 
-        m0_r = torch.take_along_dim(m_fp32, read_indices.long().reshape(P, -1, 1).expand(-1, -1, D), dim=1).view(P, T, R, D)
-        Y0 = (rw_fp32.unsqueeze(-1) * m0_r).sum(dim=2)
+        m0_w = torch.take_along_dim(m_fp32, wi_long.reshape(P, -1, 1).expand(-1, -1, D), dim=1).view(P, T, W, D)
+        V0 = (ww_fp32.unsqueeze(-1) * dec_w0.unsqueeze(-1) * m0_w).sum(dim=2)
 
-        # 2. Allocate output buffers
+        m0_r = torch.take_along_dim(m_fp32, ri_long.reshape(P, -1, 1).expand(-1, -1, D), dim=1).view(P, T, R, D)
+        Y0 = (rw_fp32.unsqueeze(-1) * dec_r0.unsqueeze(-1) * m0_r).sum(dim=2)
+
+        # 3. Output buffers
         out = torch.empty((P, T, D), device=device, dtype=dtype)
         delta = torch.empty((P, T, D), device=device, dtype=torch.float32)
         A = torch.zeros((P, T, T), device=device, dtype=torch.float32)
@@ -193,32 +211,37 @@ class TritonDualFormSDMFunction(torch.autograd.Function):
 
         # Launch Triton forward kernel
         _triton_dual_form_fwd_kernel[grid](
-            write_indices.to(torch.int32),
+            wi_long.to(torch.int32),
             write_weights,
-            read_indices.to(torch.int32),
+            ri_long.to(torch.int32),
             read_weights,
             values,
             beta.float(),
+            slot_cum,
             V0,
             Y0,
             out,
             delta,
             A,
             Omega,
-            P=P, T=T, W=W, R=R, D=D, BLOCK_T=block_t,
+            P=P, T=T, SLOTS=slots, W=W, R=R, D=D, BLOCK_T=block_t,
         )
 
-        # 3. Final memory boundary fold
-        final_memory = memory.clone()
-        delta_scaled = ww_fp32.unsqueeze(-1) * delta.unsqueeze(2)  # [P, T, W, D]
-        wi_long = write_indices.long()
-        ri_long = read_indices.long()
+        # 4. Final memory boundary fold
+        dec_final = torch.exp(slot_cum[:, T:] - slot_cum[:, :1])
+        final_memory = (dec_final.squeeze(1).unsqueeze(-1) * m_fp32).to(dtype)
+
+        dec_delta = torch.exp(
+            slot_cum[:, T:].expand(-1, T, -1).gather(2, wi_long)
+            - slot_cum[:, 1:].gather(2, wi_long)
+        )
+        delta_scaled = (ww_fp32 * dec_delta).unsqueeze(-1) * delta.unsqueeze(2)  # [P, T, W, D]
         for p in range(P):
             final_memory[p].index_add_(0, wi_long[p].reshape(-1), delta_scaled[p].to(dtype).reshape(-1, D))
 
         ctx.save_for_backward(
             delta, A, Omega, beta.float(), wi_long, ri_long,
-            write_weights.float(), read_weights.float(), m_fp32, values.float(), V0, Y0
+            write_weights.float(), read_weights.float(), m_fp32, values.float(), V0, Y0, slot_cum
         )
         ctx.P, ctx.T, ctx.D, ctx.W, ctx.R, ctx.slots, ctx.block_t = P, T, D, W, R, slots, block_t
 
@@ -228,7 +251,7 @@ class TritonDualFormSDMFunction(torch.autograd.Function):
     def backward(ctx, dOut: torch.Tensor, dFinalMemory: torch.Tensor) -> tuple[torch.Tensor | None, ...]:
         (
             delta, A, Omega, beta_fp32, wi_long, ri_long,
-            ww_fp32, rw_fp32, m_fp32, v_fp32, V0, Y0
+            ww_fp32, rw_fp32, m_fp32, v_fp32, V0, Y0, slot_cum
         ) = ctx.saved_tensors
         P, T, D, W, R, slots, block_t = ctx.P, ctx.T, ctx.D, ctx.W, ctx.R, ctx.slots, ctx.block_t
         device = dOut.device
@@ -238,20 +261,21 @@ class TritonDualFormSDMFunction(torch.autograd.Function):
 
         # Step 1: dDelta = Omega^T @ dOut + dDelta_state
         dDelta_read = torch.bmm(Omega.transpose(1, 2).to(torch.bfloat16), dOut_fp32.to(torch.bfloat16)).float()
+        dec_delta = torch.exp(
+            slot_cum[:, T:].expand(-1, T, -1).gather(2, wi_long)
+            - slot_cum[:, 1:].gather(2, wi_long)
+        )
         dM_gathered = torch.take_along_dim(dM_fp32, wi_long.reshape(P, -1, 1).expand(-1, -1, D), dim=1).view(P, T, W, D)
-        dDelta_state = (ww_fp32.unsqueeze(-1) * dM_gathered).sum(dim=2)
+        dDelta_state = (ww_fp32.unsqueeze(-1) * dec_delta.unsqueeze(-1) * dM_gathered).sum(dim=2)
         dDelta = dDelta_read + dDelta_state
 
         # Step 2: Back-substitution solve on Lambda using Triton backward kernel
         Lambda = torch.zeros((P, T, D), device=device, dtype=torch.float32)
         dV = torch.zeros((P, T, D), device=device, dtype=dOut.dtype)
-        dBeta = torch.zeros((P, T, 1), device=device, dtype=torch.float32)
-        dA = torch.zeros((P, T, T), device=device, dtype=torch.float32)
 
         grid = (P, triton.cdiv(T, block_t))
         _triton_dual_form_bwd_kernel[grid](
-            dOut, dDelta, A, beta_fp32, Lambda, dV, dBeta,
-            v_fp32, V0, delta, dA,
+            dDelta, A, beta_fp32, Lambda, dV,
             P=P, T=T, D=D, BLOCK_T=block_t,
         )
 
@@ -265,12 +289,16 @@ class TritonDualFormSDMFunction(torch.autograd.Function):
         dOmega = torch.bmm(dOut_fp32.to(torch.bfloat16), delta.transpose(1, 2).to(torch.bfloat16)).float() * tril_causal
 
         # Step 4: dMemory
-        dMemory = dM_fp32.clone()
+        dec_final = torch.exp(slot_cum[:, T:] - slot_cum[:, :1])
+        dMemory = dec_final.squeeze(1).unsqueeze(-1) * dM_fp32
         dV0 = -(beta_fp32 * Lambda)
         dY0 = dOut_fp32
 
-        term_v0 = ww_fp32.unsqueeze(-1) * dV0.unsqueeze(2)
-        term_y0 = rw_fp32.unsqueeze(-1) * dY0.unsqueeze(2)
+        dec_w0 = torch.exp(slot_cum[:, 1:].gather(2, wi_long))
+        dec_r0 = torch.exp(slot_cum[:, 1:].gather(2, ri_long))
+
+        term_v0 = (ww_fp32.unsqueeze(-1) * dec_w0.unsqueeze(-1)) * dV0.unsqueeze(2)
+        term_y0 = (rw_fp32.unsqueeze(-1) * dec_r0.unsqueeze(-1)) * dY0.unsqueeze(2)
         for p in range(P):
             dMemory[p].index_add_(0, wi_long[p].reshape(-1), term_v0[p].reshape(-1, D))
             dMemory[p].index_add_(0, ri_long[p].reshape(-1), term_y0[p].reshape(-1, D))
@@ -288,11 +316,11 @@ class TritonDualFormSDMFunction(torch.autograd.Function):
         m0_w = torch.take_along_dim(m_fp32, wi_long.reshape(P, -1, 1).expand(-1, -1, D), dim=1).view(P, T, W, D)
         m0_r = torch.take_along_dim(m_fp32, ri_long.reshape(P, -1, 1).expand(-1, -1, D), dim=1).view(P, T, R, D)
 
-        dw_v0 = (m0_w * dV0.unsqueeze(2)).sum(dim=-1)
-        dw_final = (dM_gathered * delta.unsqueeze(2)).sum(dim=-1)
+        dw_v0 = (dec_w0.unsqueeze(-1) * m0_w * dV0.unsqueeze(2)).sum(dim=-1)
+        dw_final = (dec_delta.unsqueeze(-1) * dM_gathered * delta.unsqueeze(2)).sum(dim=-1)
         dWrite_weights = dw_v0 + dw_final + (dW_curr.gather(2, wi_long) + dW_prev.gather(2, wi_long))
 
-        dq_y0 = (m0_r * dY0.unsqueeze(2)).sum(dim=-1)
+        dq_y0 = (dec_r0.unsqueeze(-1) * m0_r * dY0.unsqueeze(2)).sum(dim=-1)
         dRead_weights = dq_y0 + dQ_curr.gather(2, ri_long)
 
         dLogDecay = torch.zeros_like(beta_fp32)
