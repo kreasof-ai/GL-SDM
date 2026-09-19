@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "urm-kernel-lab"
 version = "0.1.0"
-description = "Reference semantics and benchmark harness for the Unified Routed Mixer research project"
+description = "Semantic-to-execution compiler for routed sequence models"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

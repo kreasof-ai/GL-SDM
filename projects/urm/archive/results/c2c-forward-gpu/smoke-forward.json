@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "case": {
+    "name": "smoke",
+    "queries": 32,
+    "sources": 128,
+    "route_width": 8,
+    "value_dim": 128,
+    "dtype": "float16",
+    "distribution": "uniform",
+    "seed": 0
+  },
+  "environment": {
+    "timestamp_utc": "2026-08-25T23:24:20.331994+00:00",
+    "git_revision": "c12d7324736a255a7cc991b03e0b5cf26adc8621",
+    "platform": "Linux-6.12.95-124.187.amzn2023.x86_64-x86_64-with-glibc2.39",
+    "python": "3.12.13",
+    "torch": "2.8.0",
+    "triton": "3.4.0",
+    "cuda": "12.9",
+    "gpu": "NVIDIA A10G",
+    "compute_capability": [
+      8,
+      6
+    ],
+    "total_memory_bytes": 23686938624
+  },
+  "correctness": {
+    "output": {
+      "max_abs_error": 0.0,
+      "mean_abs_error": 0.0
+    }
+  },
+  "measurements": [
+    {
+      "backend": "torch_routed_reduction",
+      "mode": "forward",
+      "cold_compile_or_first_call_ms": 34.494257000005746,
+      "median_ms": 0.12774400115013124,
+      "p95_ms": 0.15994880199432374,
+      "min_ms": 0.1223680019378662,
+      "max_ms": 0.1912832021713257,
+      "samples": 50,
+      "inner_iterations": 10,
+      "useful_tflops": 0.000513026047485226,
+      "peak_allocated_bytes": 371200,
+      "kernel_metadata": {
+        "backend": "torch_routed_reduction",
+        "schema_version": 1,
+        "accumulation_dtype": "float32"
+      }
+    },
+    {
+      "backend": "triton_routed_reduction",
+      "mode": "forward",
+      "cold_compile_or_first_call_ms": 546.881688999747,
+      "median_ms": 0.04301119893789292,
+      "p95_ms": 0.055193597078323366,
+      "min_ms": 0.03819519877433777,
+      "max_ms": 0.05785599946975708,
+      "samples": 50,
+      "inner_iterations": 10,
+      "useful_tflops": 0.00152369619118575,
+      "peak_allocated_bytes": 58880,
+      "kernel_metadata": {
+        "backend": "triton_routed_reduction",
+        "schema_version": 1,
+        "accumulation_dtype": "float32",
+        "index_validation_sync": false,
+        "routes_per_program": 8,
+        "block_d": 128,
+        "num_warps": 4
+      }
+    }
+  ]
+}

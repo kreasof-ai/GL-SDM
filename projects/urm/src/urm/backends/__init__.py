@@ -13,3 +13,15 @@ __all__ = [
     "TritonSparseRouteBackend",
     "TritonSparseStateMixerBackend",
 ]
+
+
+def __getattr__(name):
+    legacy = {
+        "DualFormSDMFunction": "SparseDeltaFunction",
+        "dual_form_sdm": "sparse_delta",
+    }
+    if name in legacy:
+        from importlib import import_module
+
+        return getattr(import_module("urm.experimental.sparse_delta"), legacy[name])
+    raise AttributeError(name)

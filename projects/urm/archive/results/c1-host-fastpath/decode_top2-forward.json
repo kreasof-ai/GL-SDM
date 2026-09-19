@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "case": {
+    "name": "decode_top2",
+    "queries": 1,
+    "sources": 64,
+    "route_width": 2,
+    "value_dim": 4096,
+    "dtype": "bfloat16",
+    "distribution": "uniform",
+    "seed": 1
+  },
+  "environment": {
+    "timestamp_utc": "2026-08-25T23:06:47.445800+00:00",
+    "git_revision": "c12d7324736a255a7cc991b03e0b5cf26adc8621",
+    "platform": "Linux-6.12.95-124.187.amzn2023.x86_64-x86_64-with-glibc2.39",
+    "python": "3.12.13",
+    "torch": "2.8.0",
+    "triton": "3.4.0",
+    "cuda": "12.9",
+    "gpu": "NVIDIA A10G",
+    "compute_capability": [
+      8,
+      6
+    ],
+    "total_memory_bytes": 23686938624
+  },
+  "correctness": {
+    "output": {
+      "max_abs_error": 0.0,
+      "mean_abs_error": 0.0
+    }
+  },
+  "measurements": [
+    {
+      "backend": "torch_routed_reduction",
+      "mode": "forward",
+      "cold_compile_or_first_call_ms": 35.06071999981941,
+      "median_ms": 0.12385280132293701,
+      "p95_ms": 0.1511423945426941,
+      "min_ms": 0.11704319715499878,
+      "max_ms": 0.17049599885940553,
+      "samples": 50,
+      "inner_iterations": 10,
+      "useful_tflops": 0.0001322860672103809,
+      "peak_allocated_bytes": 615936,
+      "kernel_metadata": {
+        "backend": "torch_routed_reduction",
+        "schema_version": 1,
+        "accumulation_dtype": "float32"
+      }
+    },
+    {
+      "backend": "triton_routed_reduction",
+      "mode": "forward",
+      "cold_compile_or_first_call_ms": 540.9539620000032,
+      "median_ms": 0.03809280097484589,
+      "p95_ms": 0.045772799849510194,
+      "min_ms": 0.03604480028152466,
+      "max_ms": 0.05273600220680237,
+      "samples": 50,
+      "inner_iterations": 10,
+      "useful_tflops": 0.00043010751587469175,
+      "peak_allocated_bytes": 549888,
+      "kernel_metadata": {
+        "backend": "triton_routed_reduction",
+        "schema_version": 1,
+        "accumulation_dtype": "float32",
+        "index_validation_sync": false,
+        "routes_per_program": 2,
+        "block_d": 256,
+        "num_warps": 8
+      }
+    }
+  ]
+}

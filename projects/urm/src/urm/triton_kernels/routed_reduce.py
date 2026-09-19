@@ -1,6 +1,6 @@
 """Triton forward and backward kernels for routed weighted reduction.
 
-Routed-reduction v1 semantic contract (projects/urm/docs/triton-backend.md):
+Routed-reduction v1 semantic contract (projects/urm/archive/docs/runtime/triton-backend.md):
 
     output[q, d] = sum_k(weights[q, k] * values[indices[q, k], d])
 

@@ -1,6 +1,6 @@
 """Canonical specs used by tests and benchmark adapters."""
 
-from .ir import (
+from .frontend.spec import (
     BalanceStrategy,
     CapacityPolicy,
     CollisionPolicy,
