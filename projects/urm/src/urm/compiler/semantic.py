@@ -994,7 +994,7 @@ def row_scaled_routed_reduction_program(
         output[q, d] = row_scale[q] * base[q, d]
 
     This is the materialized reference form for the CODA-style epilogue
-    reparameterization (docs/coda-retrospective.md).
+    reparameterization (archive/docs/coda-retrospective.md).
     """
 
     base_program = routed_reduction_program(

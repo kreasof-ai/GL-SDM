@@ -29,7 +29,7 @@ from urm.adapters.gated_delta_rule import (
 
 PROJECT_ROOT = Path(__file__).parents[1]
 
-# Dtype-specific tolerances (docs/benchmarking.md: tolerances live in tests).
+# Dtype-specific tolerances (archive/docs/validation/benchmarking.md: tolerances live in tests).
 OUTPUT_TOL = {
     torch.bfloat16: {"atol": 2e-2, "rtol": 2e-2},
     torch.float16: {"atol": 1.5e-2, "rtol": 2e-2},
@@ -215,7 +215,7 @@ def test_gradients_match_eager_baseline_including_initial_state() -> None:
     ):
         assert got is not None and torch.isfinite(got).all(), name
         # bf16 kernel gradients versus an fp32 eager recurrence: tolerances
-        # are dtype-scaled per docs/fla-gated-delta-rule.md.
+        # are dtype-scaled per archive/docs/adapters/fla-gated-delta-rule.md.
         torch.testing.assert_close(got.float(), want.float(), atol=5e-2, rtol=2e-2)
 
 

@@ -1,7 +1,6 @@
-"""Unified Routed Mixer reference semantics."""
+"""Unified Routed Mixer compiler frontend and compatibility exports."""
 
-from .backend import Backend, BackendRegistry, BackendResult
-from .ir import (
+from .frontend.spec import (
     BalanceStrategy,
     CapacityPolicy,
     CollisionPolicy,
@@ -27,7 +26,7 @@ from .ir import (
     SparseIndexerKind,
     StateLayout,
 )
-from .reference import ReferenceResult, execute, merge_writes
+from .oracles.routed import ReferenceResult, execute, merge_writes
 from .routed_reduction import (
     DeviceType,
     RoutedReductionRegistry,
@@ -38,6 +37,7 @@ from .routed_reduction import (
     TensorLayout,
     TensorMetadata,
 )
+from .runtime.registry import Backend, BackendRegistry, BackendResult
 
 __all__ = [
     "Backend",

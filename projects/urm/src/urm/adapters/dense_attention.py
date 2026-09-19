@@ -1,6 +1,6 @@
 """Dense causal attention adapter: URM dispatch around a pinned upstream kernel.
 
-Comparison levels (see docs/baselines.md):
+Comparison levels (see archive/docs/validation/baselines.md):
 
 1. semantic oracle - explicit fp32 softmax-reduce, correctness only;
 2. framework baseline - ``torch.nn.functional.scaled_dot_product_attention``

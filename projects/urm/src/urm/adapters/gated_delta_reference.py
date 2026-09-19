@@ -1,7 +1,7 @@
 """Reference recurrences for the frozen FLA gated delta-rule contract.
 
 These are the level-1 semantic oracle and the level-2 transparent eager
-PyTorch baseline for docs/fla-gated-delta-rule.md. Both implement exactly:
+PyTorch baseline for archive/docs/adapters/fla-gated-delta-rule.md. Both implement exactly:
 
     u_t  = S^T k_t
     dv_t = beta_t * (v_t - u_t)

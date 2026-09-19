@@ -1,0 +1,1577 @@
+{
+  "schema_version": 1,
+  "audit_date": "2026-09-19",
+  "purpose": "Production compiler comparison backlog, not a support claim or executable benchmark configuration. Combined ambiguous names must be split before qualification.",
+  "sources": {
+    "fla": {
+      "repository": "https://github.com/fla-org/flash-linear-attention",
+      "revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+      "audit": "Directory inventory at this revision; selected equation/reference inspections recorded in docs/planning/unification-audit.md. Not a benchmark run."
+    },
+    "flash": {
+      "repository": "https://github.com/Dao-AILab/flash-attention",
+      "revision": "1bda8f9290cd48d030f1516f0e680cd464ef3554"
+    },
+    "mamba": {
+      "repository": "https://github.com/state-spaces/mamba",
+      "revision": "e9594ce1c732d97440f0332fdc43170a2294dbfa"
+    },
+    "sdm": {
+      "repository": "https://github.com/facebookresearch/sparse-delta-memory",
+      "revision": "183e7df809131b80ad4393741029d0f20fc3640b"
+    },
+    "pattention": {
+      "repository": "https://github.com/Haiyang-W/TokenFormer",
+      "revision": "4d56c73f407635e62f6df16b97dc897b4477129e"
+    },
+    "xma": {
+      "repository": "https://github.com/open-lm-engine/accelerated-model-architectures",
+      "revision": "384ed0a7bd82ced1f40609603dd541cac5416844"
+    },
+    "bdh": {
+      "repository": "https://github.com/pathwaycom/bdh",
+      "revision": "2b0d7a45b058d4309c84a10e0768d541fe18bdc2"
+    },
+    "samba": {
+      "repository": "https://github.com/microsoft/Samba",
+      "revision": "617c7a0f8c71f1b7cb6180b86f9543d146f5c66f"
+    },
+    "fwpkm": {
+      "repository": "https://github.com/SakanaAI/fast-weight-product-key-memory",
+      "revision": "b1c8e234b523d70245fa197eed4b80a985c413a8"
+    },
+    "atma": {
+      "repository": null,
+      "local_path": "D:/Workspace/kreasof-ai/github/atma",
+      "revision": "28bb3de8afbe7c0b00115e0fbff36afc9ad49c11",
+      "audit": "Checkout identity only; benchmark worktree dirtiness and callable source hashes before use."
+    },
+    "unresolved": {
+      "repository": null,
+      "revision": null,
+      "audit": "Identity or executable comparator needs resolution; not an accepted baseline."
+    }
+  },
+  "architectures": [
+    {
+      "id": "arch-001",
+      "architecture": "Transformer MHA",
+      "source": "flash",
+      "source_path": null,
+      "proposed_lowering": "K1",
+      "wave": 1,
+      "audit_status": "source_identified",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Online softmax and complete Q/K/V backward; compare matching direct attention kernels",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-002",
+      "architecture": "Transformer MQA",
+      "source": "flash",
+      "source_path": null,
+      "proposed_lowering": "K1",
+      "wave": 1,
+      "audit_status": "source_identified",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Shared KV layout and gradient reduction; cache decode workload",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-003",
+      "architecture": "Transformer GQA",
+      "source": "flash",
+      "source_path": null,
+      "proposed_lowering": "K1",
+      "wave": 1,
+      "audit_status": "source_identified",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Explicit head mapping and KV gradient accumulation",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-004",
+      "architecture": "MLA",
+      "source": "fla",
+      "source_path": "fla/layers/mla.py",
+      "proposed_lowering": "K1+composition",
+      "wave": 2,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Preserve latent KV and positional branches; do not inflate cache for a false parity win",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-005",
+      "architecture": "NSA",
+      "source": "fla",
+      "source_path": "fla/ops/nsa",
+      "proposed_lowering": "K1+route/compression",
+      "wave": 2,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Compression selection and local branches; include indexer and auxiliary routing work",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-006",
+      "architecture": "MoBA",
+      "source": "fla",
+      "source_path": "fla/ops/moba",
+      "proposed_lowering": "K1+route",
+      "wave": 2,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Block scoring selection and causal boundaries; sparse traversal",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-007",
+      "architecture": "DSA",
+      "source": "fla",
+      "source_path": "fla/ops/dsa",
+      "proposed_lowering": "K1+route",
+      "wave": 2,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Indexer objective and selected attention; full-layer comparison",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-008",
+      "architecture": "Forgetting Transformer / FoX",
+      "source": "fla",
+      "source_path": "fla/ops/forgetting_attn",
+      "proposed_lowering": "K1+gate",
+      "wave": 2,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Log-forget score bias; stable normalization and gate gradients",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-009",
+      "architecture": "Log-linear attention",
+      "source": "fla",
+      "source_path": "fla/ops/log_linear_attn",
+      "proposed_lowering": "extension audit",
+      "wave": 3,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Derive structured mask and state; do not assume ordinary softmax semantics",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-010",
+      "architecture": "PaTH attention",
+      "source": "fla",
+      "source_path": "fla/ops/path_attn",
+      "proposed_lowering": "K1+transform recurrence",
+      "wave": 3,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Preserve recurrent transformation and its gradients before softmax",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-011",
+      "architecture": "Wall attention",
+      "source": "fla",
+      "source_path": "fla/ops/wall_attn",
+      "proposed_lowering": "extension audit",
+      "wave": 3,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Audit wall-specific score/state equations and supported head dimensions",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-012",
+      "architecture": "Parallax",
+      "source": "fla",
+      "source_path": "fla/ops/parallax",
+      "proposed_lowering": "extension audit",
+      "wave": 3,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Derive positional/state transformation; do not assume a window mask suffices",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-013",
+      "architecture": "DeltaFormer",
+      "source": "fla",
+      "source_path": "fla/ops/deltaformer",
+      "proposed_lowering": "K1+K2 composition audit",
+      "wave": 3,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Verify whether fused interaction matches a composition; time full coupled layer",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-014",
+      "architecture": "BitAttention",
+      "source": "fla",
+      "source_path": "fla/layers/bitattn.py",
+      "proposed_lowering": "K1+precision audit",
+      "wave": 3,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Audit quantization and gradient surrogate; compare identical precision contract",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-015",
+      "architecture": "Linear attention",
+      "source": "fla",
+      "source_path": "fla/ops/linear_attn",
+      "proposed_lowering": "K2 additive",
+      "wave": 1,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Feature maps and denominator state; prefill and recurrent decode",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-016",
+      "architecture": "Lightning Attention",
+      "source": "fla",
+      "source_path": "fla/ops/lightning_attn",
+      "proposed_lowering": "K2 additive candidate",
+      "wave": 2,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Derive exact decay/normalization and tile schedule",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-017",
+      "architecture": "RetNet / retention",
+      "source": "fla",
+      "source_path": "fla/ops/retention",
+      "proposed_lowering": "K2+frontend",
+      "wave": 2,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Multiscale decay positional transforms and layer normalization",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-018",
+      "architecture": "Simple GLA",
+      "source": "fla",
+      "source_path": "fla/ops/simple_gla",
+      "proposed_lowering": "K2 candidate",
+      "wave": 2,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Freeze gate granularity then chunk and recurrent paths",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-019",
+      "architecture": "GLA",
+      "source": "fla",
+      "source_path": "fla/ops/gla",
+      "proposed_lowering": "K2 diagonal transition",
+      "wave": 2,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Channel-wise gates; stable decay factorization and all gate gradients",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-020",
+      "architecture": "Based",
+      "source": "fla",
+      "source_path": "fla/ops/based",
+      "proposed_lowering": "K2+feature map",
+      "wave": 2,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Feature expansion and denominator; count feature-map execution cost",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-021",
+      "architecture": "ReBased",
+      "source": "fla",
+      "source_path": "fla/ops/rebased",
+      "proposed_lowering": "K2+feature map",
+      "wave": 2,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Preserve learned feature-map normalization and gradients",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-022",
+      "architecture": "LightNet",
+      "source": "fla",
+      "source_path": "fla/layers/lightnet.py",
+      "proposed_lowering": "K2+frontend audit",
+      "wave": 2,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Extract exact feature/gate composition; layer-level parity",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-023",
+      "architecture": "HGRN",
+      "source": "fla",
+      "source_path": "fla/ops/hgrn",
+      "proposed_lowering": "K2 vector-state extension",
+      "wave": 2,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Vector state layout and gate activation; no unnecessary matrix expansion",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-024",
+      "architecture": "HGRN2",
+      "source": "fla",
+      "source_path": "fla/layers/hgrn2.py",
+      "proposed_lowering": "K2+frontend audit",
+      "wave": 2,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "State expansion and gate semantics; include projection costs",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-025",
+      "architecture": "DeltaNet",
+      "source": "fla",
+      "source_path": "fla/ops/delta_rule",
+      "proposed_lowering": "K2 delta",
+      "wave": 1,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Stable triangular solve; initial/final-state and key gradients",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-026",
+      "architecture": "Gated DeltaNet",
+      "source": "fla",
+      "source_path": "fla/ops/gated_delta_rule",
+      "proposed_lowering": "K2 delta",
+      "wave": 1,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Decay-before-retrieval; full backward and recurrent inference",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-027",
+      "architecture": "GDN2",
+      "source": "fla",
+      "source_path": "fla/ops/gdn2",
+      "proposed_lowering": "K2 extension audit",
+      "wave": 3,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Derive actual recurrence instead of treating it as a renamed GDN",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-028",
+      "architecture": "KDA",
+      "source": "fla",
+      "source_path": "fla/ops/kda",
+      "proposed_lowering": "K2 transition extension",
+      "wave": 2,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Channel gate placement and triangular solve; normalization and backward",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-029",
+      "architecture": "Gated DeltaProduct",
+      "source": "fla",
+      "source_path": "fla/ops/gated_delta_product",
+      "proposed_lowering": "K2 multi-update",
+      "wave": 3,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Ordered products of updates per token; rank and update ordering",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-030",
+      "architecture": "Momentum DeltaNet",
+      "source": "fla",
+      "source_path": "fla/ops/momentum_delta_rule",
+      "proposed_lowering": "K2 augmented state",
+      "wave": 3,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Carry momentum state and derive block transition/VJP",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-031",
+      "architecture": "Generalized delta IPLR",
+      "source": "fla",
+      "source_path": "fla/ops/generalized_delta_rule/iplr",
+      "proposed_lowering": "K2 low-rank transition",
+      "wave": 3,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Independent left/right factors; chunk representation already exists upstream",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-032",
+      "architecture": "Generalized delta DPLR",
+      "source": "fla",
+      "source_path": "fla/ops/generalized_delta_rule/dplr",
+      "proposed_lowering": "K2 low-rank transition",
+      "wave": 3,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Diagonal-plus-low-rank transition; separate factor gradients",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-033",
+      "architecture": "Gated Oja rule",
+      "source": "fla",
+      "source_path": "fla/ops/gated_oja_rule",
+      "proposed_lowering": "K2 extension audit",
+      "wave": 3,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Derive exact Oja update and additional state dependence",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-034",
+      "architecture": "PGDN",
+      "source": "fla",
+      "source_path": "fla/ops/precond_gated_delta_rule",
+      "proposed_lowering": "K2+preconditioner state",
+      "wave": 3,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "ATK state transform and gradients; not a scalar row rescaling",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-035",
+      "architecture": "PKDA",
+      "source": "fla",
+      "source_path": "fla/ops/precond_kda",
+      "proposed_lowering": "K2+preconditioner state",
+      "wave": 3,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Preconditioner plus channel gates and saved-state policy",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-036",
+      "architecture": "Rodimus",
+      "source": "fla",
+      "source_path": "fla/layers/rodimus.py",
+      "proposed_lowering": "K2+frontend audit",
+      "wave": 3,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Audit update and gating composition; full-layer comparison",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-037",
+      "architecture": "Comba",
+      "source": "fla",
+      "source_path": "fla/ops/comba",
+      "proposed_lowering": "K2 extension audit",
+      "wave": 3,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Derive full state equation and non-shared update factors",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-038",
+      "architecture": "MesaNet",
+      "source": "fla",
+      "source_path": "fla/ops/mesa_net",
+      "proposed_lowering": "K2/solve extension audit",
+      "wave": 3,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Explicit solve or optimization state and differentiability; inspect actual implementation",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-039",
+      "architecture": "Titans",
+      "source": "fla",
+      "source_path": "fla/ops/titans",
+      "proposed_lowering": "typed update composition",
+      "wave": 3,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Pin operator variant; distinguish memory kernel from complete Titans architecture",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-040",
+      "architecture": "RWKV-4",
+      "source": "fla",
+      "source_path": "fla/ops/rwkv4",
+      "proposed_lowering": "K2+stable normalized state",
+      "wave": 2,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Numerical rescaling denominator and time mixing; no generic delta substitution",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-041",
+      "architecture": "RWKV-6",
+      "source": "fla",
+      "source_path": "fla/ops/rwkv6",
+      "proposed_lowering": "K2+read correction",
+      "wave": 2,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Time-dependent transition and read correction; frontend time shift",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-042",
+      "architecture": "RWKV-7",
+      "source": "fla",
+      "source_path": "fla/ops/rwkv7",
+      "proposed_lowering": "K2 low-rank extension",
+      "wave": 3,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Audit generalized state transition and value/time mixing; compare chunk and recurrent upstream",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-043",
+      "architecture": "Mamba-1",
+      "source": "mamba",
+      "source_path": null,
+      "proposed_lowering": "K2/SSM+convolution",
+      "wave": 3,
+      "audit_status": "source_identified",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Selective state update discretization local convolution and cache ABI",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-044",
+      "architecture": "Mamba-2 / SSD",
+      "source": "mamba",
+      "source_path": null,
+      "proposed_lowering": "K2/semiseparable+convolution",
+      "wave": 3,
+      "audit_status": "source_identified",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Inter-chunk state and diagonal blocks; preserve SSM discretization",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-045",
+      "architecture": "Mamba-3",
+      "source": "mamba",
+      "source_path": null,
+      "proposed_lowering": "K2/SSM multi-state",
+      "wave": 3,
+      "audit_status": "source_identified",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "SISO/MIMO rotary phase and previous-key/value state; separate mode gates",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-046",
+      "architecture": "LogLinearMamba2",
+      "source": "fla",
+      "source_path": "fla/layers/log_linear_mamba2.py",
+      "proposed_lowering": "K2+structured composition",
+      "wave": 3,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Audit structured mixing plus full Mamba layer and cache",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-047",
+      "architecture": "Sparse Delta Memory",
+      "source": "sdm",
+      "source_path": "lingua/sparse_delta_memory",
+      "proposed_lowering": "K3 delta",
+      "wave": 1,
+      "audit_status": "source_identified",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Repair chunk decay VJP and boundary folding; preserve declared rounding policy",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-048",
+      "architecture": "ABC",
+      "source": "fla",
+      "source_path": "fla/ops/abc",
+      "proposed_lowering": "K2+slot softmax composition",
+      "wave": 2,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Two recurrent summaries and slot normalization; not a simple bounded attention mask",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-049",
+      "architecture": "GSA",
+      "source": "fla",
+      "source_path": "fla/ops/gsa",
+      "proposed_lowering": "K2+slot softmax composition",
+      "wave": 2,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Two state matrices and interposed softmax; no SDM delta substitution",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-050",
+      "architecture": "Raven",
+      "source": "fla",
+      "source_path": "fla/layers/raven.py",
+      "proposed_lowering": "GSA+route/frontend",
+      "wave": 3,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Audit actual GSA use and router/decay options; compare full layer",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-051",
+      "architecture": "Mixture of Memories / MoM",
+      "source": "fla",
+      "source_path": "fla/layers/mom.py",
+      "proposed_lowering": "route+state composition",
+      "wave": 3,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Memory selection dispatch merge and gradient coverage for each routed memory",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-052",
+      "architecture": "YOCO",
+      "source": "fla",
+      "source_path": "fla/layers/yoco.py",
+      "proposed_lowering": "multi-layer/cache composition",
+      "wave": 3,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Cache sharing and self/cross-decoder composition; not only an isolated mixer",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-053",
+      "architecture": "Samba",
+      "source": "samba",
+      "source_path": null,
+      "proposed_lowering": "K1+SSM+MLP composition",
+      "wave": 3,
+      "audit_status": "source_identified",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Benchmark complete hybrid block and caches against pinned original model",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-054",
+      "architecture": "Attention Residuals / AttnRes",
+      "source": "fla",
+      "source_path": "fla/ops/attnres",
+      "proposed_lowering": "depth-axis reduction",
+      "wave": 3,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Layer-axis dependencies normalization and gradient accumulation",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-055",
+      "architecture": "TTT",
+      "source": "fla",
+      "source_path": "fla/ops/ttt",
+      "proposed_lowering": "typed inner-update extension",
+      "wave": 4,
+      "audit_status": "source_inventory",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Pin linear/MLP variant inner loss update schedule and higher-order gradients",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-056",
+      "architecture": "FwPKM",
+      "source": "fwpkm",
+      "source_path": null,
+      "proposed_lowering": "sparse route+typed inner update",
+      "wave": 4,
+      "audit_status": "source_identified",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Fast weight/key update objective chunk boundaries and optimizer state",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-057",
+      "architecture": "TokenFormer / Pattention",
+      "source": "pattention",
+      "source_path": null,
+      "proposed_lowering": "parameter-axis contraction",
+      "wave": 3,
+      "audit_status": "source_identified",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Exact activation/normalization and parameter gradients; no automatic SwiGLU equivalence",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-058",
+      "architecture": "SwiGLU MLP",
+      "source": "xma",
+      "source_path": null,
+      "proposed_lowering": "parameter-axis grouped contractions",
+      "wave": 3,
+      "audit_status": "source_identified",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Two up projections SiLU product and down projection; fused forward/backward",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-059",
+      "architecture": "Top-k MoE",
+      "source": "xma",
+      "source_path": null,
+      "proposed_lowering": "route+grouped expert compute",
+      "wave": 3,
+      "audit_status": "source_identified",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Dispatch capacity expert MLP combine and backward; include permutation costs",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-060",
+      "architecture": "RNN",
+      "source": "xma",
+      "source_path": null,
+      "proposed_lowering": "nonlinear recurrent extension",
+      "wave": 4,
+      "audit_status": "source_identified",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Preserve nonlinear transition; audit iterative solver convergence and exactness",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-061",
+      "architecture": "GRU",
+      "source": "xma",
+      "source_path": null,
+      "proposed_lowering": "nonlinear recurrent extension",
+      "wave": 4,
+      "audit_status": "source_identified",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Reset/update gates and full training path; do not use affine scan without proof",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-062",
+      "architecture": "M2RNN",
+      "source": "xma",
+      "source_path": null,
+      "proposed_lowering": "nonlinear recurrent extension",
+      "wave": 4,
+      "audit_status": "source_identified",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Pin upstream operator and solver tolerances; compare state and all gradients",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-063",
+      "architecture": "BDH",
+      "source": "bdh",
+      "source_path": null,
+      "proposed_lowering": "graph/state composition audit",
+      "wave": 4,
+      "audit_status": "source_identified",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Extract reference update and graph semantics before proposing a lowering",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-064",
+      "architecture": "POLAR attention",
+      "source": "atma",
+      "source_path": "docs/POLAR_ATTENTION.md",
+      "proposed_lowering": "score/reduction extension audit",
+      "wave": 3,
+      "audit_status": "source_identified",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Freeze local implementation and magnitude/normalization channel; full backward",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-065",
+      "architecture": "Foveal sparse attention",
+      "source": "atma",
+      "source_path": null,
+      "proposed_lowering": "K1+geometric route audit",
+      "wave": 3,
+      "audit_status": "source_identified",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Resolve exact local callable and selection semantics; routing cost included",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-066",
+      "architecture": "CAT / Compress-and-Attend",
+      "source": "unresolved",
+      "source_path": null,
+      "proposed_lowering": "compression+K1 composition",
+      "wave": 4,
+      "audit_status": "identity_unresolved",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Disambiguate named paper/version and official implementation; shape variation is not alone a rejection",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-067",
+      "architecture": "Differential Attention",
+      "source": "unresolved",
+      "source_path": null,
+      "proposed_lowering": "multiple K1+combine",
+      "wave": 3,
+      "audit_status": "identity_unresolved",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Pin exact variant lambda parameterization and normalization; do not conflate names",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-068",
+      "architecture": "TDA",
+      "source": "unresolved",
+      "source_path": null,
+      "proposed_lowering": "multiple K1+combine",
+      "wave": 3,
+      "audit_status": "identity_unresolved",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Pin exact variant lambda parameterization and normalization; do not conflate names",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-069",
+      "architecture": "TPA",
+      "source": "unresolved",
+      "source_path": null,
+      "proposed_lowering": "factorized projection+K1 audit",
+      "wave": 3,
+      "audit_status": "identity_unresolved",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Pin architecture and factorization; cache expansion cost included",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-070",
+      "architecture": "Tucker attention",
+      "source": "unresolved",
+      "source_path": null,
+      "proposed_lowering": "factorized projection+K1 audit",
+      "wave": 3,
+      "audit_status": "identity_unresolved",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Pin architecture and factorization; cache expansion cost included",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-071",
+      "architecture": "Longformer",
+      "source": "unresolved",
+      "source_path": null,
+      "proposed_lowering": "K1 sparse-mask fixtures",
+      "wave": 2,
+      "audit_status": "identity_unresolved",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Resolve separate original implementations and mask contracts before benchmarking",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-072",
+      "architecture": "Sparse Transformer",
+      "source": "unresolved",
+      "source_path": null,
+      "proposed_lowering": "K1 sparse-mask fixtures",
+      "wave": 2,
+      "audit_status": "identity_unresolved",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Resolve separate original implementations and mask contracts before benchmarking",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-073",
+      "architecture": "KATA",
+      "source": "unresolved",
+      "source_path": null,
+      "proposed_lowering": "identity and equation audit",
+      "wave": 4,
+      "audit_status": "identity_unresolved",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Archived names need exact paper/repository resolution before assigning family",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-074",
+      "architecture": "HLA",
+      "source": "unresolved",
+      "source_path": null,
+      "proposed_lowering": "identity and equation audit",
+      "wave": 4,
+      "audit_status": "identity_unresolved",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Archived names need exact paper/repository resolution before assigning family",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-075",
+      "architecture": "Conformer",
+      "source": "unresolved",
+      "source_path": null,
+      "proposed_lowering": "convolution+mixing composition audit",
+      "wave": 4,
+      "audit_status": "identity_unresolved",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Split exact architecture fixtures after source resolution; not all linear aggregation is attention",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-076",
+      "architecture": "H3",
+      "source": "unresolved",
+      "source_path": null,
+      "proposed_lowering": "convolution+mixing composition audit",
+      "wave": 4,
+      "audit_status": "identity_unresolved",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Split exact architecture fixtures after source resolution; not all linear aggregation is attention",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-077",
+      "architecture": "Hyena",
+      "source": "unresolved",
+      "source_path": null,
+      "proposed_lowering": "convolution+mixing composition audit",
+      "wave": 4,
+      "audit_status": "identity_unresolved",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Split exact architecture fixtures after source resolution; not all linear aggregation is attention",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-078",
+      "architecture": "Hopfield",
+      "source": "unresolved",
+      "source_path": null,
+      "proposed_lowering": "iterative update composition audit",
+      "wave": 4,
+      "audit_status": "identity_unresolved",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Identify model and objective; fixed-point and meta-optimizer semantics are different",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-079",
+      "architecture": "MAML",
+      "source": "unresolved",
+      "source_path": null,
+      "proposed_lowering": "iterative update composition audit",
+      "wave": 4,
+      "audit_status": "identity_unresolved",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Identify model and objective; fixed-point and meta-optimizer semantics are different",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    },
+    {
+      "id": "arch-080",
+      "architecture": "Reptile",
+      "source": "unresolved",
+      "source_path": null,
+      "proposed_lowering": "iterative update composition audit",
+      "wave": 4,
+      "audit_status": "identity_unresolved",
+      "mapping_status": "proposed",
+      "native_parity_status": "not_measured",
+      "work_required": "Identify model and objective; fixed-point and meta-optimizer semantics are different",
+      "mode_qualification": {
+        "training": "unqualified",
+        "prefill": "unqualified",
+        "decode": "unqualified"
+      },
+      "callable": "resolve_before_execution",
+      "tolerances": "freeze_before_execution"
+    }
+  ]
+}
