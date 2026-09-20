@@ -29,7 +29,7 @@ from urm.compiler.effects import (
     STATE_READ_EFFECT,
     EffectSignature,
 )
-from urm.compiler.unified_mixer import MixerKernelFamily, UnifiedMixerSpec
+from urm.ir.mixer import MixerKernelFamily, UnifiedMixerSpec
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

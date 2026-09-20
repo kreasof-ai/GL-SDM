@@ -50,8 +50,8 @@ def test_compiled_fla_gated_additive_matches_direct_pinned_upstream(recipe_name)
         MixerBackend,
         MixerIntent,
         compile_mixer,
-        named_mixer_recipe,
     )
+    from urm.frontend.mixer_recipes import named_mixer_recipe
 
     torch.manual_seed(44018 if recipe_name == "simple_gla" else 44019)
     query = torch.randn(1, 24, 2, 16, device="cuda", dtype=torch.float32)

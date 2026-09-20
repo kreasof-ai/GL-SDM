@@ -12,7 +12,6 @@ from urm.compiler.unified_mixer import (
     MixerBackend,
     MixerIntent,
     MixerKernelFamily,
-    MIXER_RECIPE_NAMES,
     PolynomialBasis,
     ReadTiming,
     RecurrentLayout,
@@ -22,6 +21,9 @@ from urm.compiler.unified_mixer import (
     UnifiedMixerSpec,
     compile_frontend_mixer,
     compile_mixer,
+)
+from urm.frontend.mixer_recipes import (
+    MIXER_RECIPE_NAMES,
     delta_rule_spec,
     diagonal_ssm_spec,
     linear_attention_spec,
@@ -127,6 +129,7 @@ def test_atma_selection_is_semantic_and_independent_of_recipe_name():
     torch = _torch()
     recipe = named_mixer_recipe("atma_gated_delta_decode_core")
     renamed = replace(recipe.spec, name="renamed_decode_operation")
+    assert recipe.spec.semantic_signature() == renamed.semantic_signature()
     original_plan = compile_mixer(recipe.spec, backend=MixerBackend.LIBRARY)
     renamed_plan = compile_mixer(renamed, backend=MixerBackend.LIBRARY)
     assert original_plan.anchor == renamed_plan.anchor == "atma_gated_delta_decode_adapter"
@@ -152,6 +155,7 @@ def test_atma_selection_is_semantic_and_independent_of_recipe_name():
         replace(recipe.spec, read_scale=0.5),
     )
     for spec in changed_semantics:
+        assert spec.semantic_signature() != recipe.spec.semantic_signature()
         with pytest.raises(ValueError, match="exact gated-delta decode semantics"):
             compile_mixer(spec, backend=MixerBackend.LIBRARY)
 
@@ -1233,8 +1237,8 @@ def test_xma_nonlinear_recurrences_match_pinned_equations_and_triton_gradients(
         MixerBackend,
         MixerIntent,
         compile_mixer,
-        named_mixer_recipe,
     )
+    from urm.frontend.mixer_recipes import named_mixer_recipe
 
     source_root = __import__("pathlib").Path(xma.__file__).resolve().parents[1]
     revision = (
@@ -1397,8 +1401,8 @@ def test_atma_polar_k1_kernels_match_materialized_reference_and_gradients(recipe
         MixerBackend,
         MixerIntent,
         compile_mixer,
-        named_mixer_recipe,
     )
+    from urm.frontend.mixer_recipes import named_mixer_recipe
 
     source_root = __import__("pathlib").Path(source.__file__).resolve().parents[1]
     revision = (
