@@ -174,7 +174,7 @@ def test_metadata_reports_epilogue_capability() -> None:
 
 def test_v1_contract_stays_unchanged_alongside_prototype() -> None:
     """The frozen v1 kernel must not grow an implicit epilogue."""
-    from urm.triton_kernels.routed_reduce import routed_reduce
+    from urm.backends.triton.softmax.routed_reduce import routed_reduce
 
     indices, weights, values, scale = _sample(q=8, k=2, s=16, d=32, seed=43)
     v1_output = routed_reduce(indices, weights, values)

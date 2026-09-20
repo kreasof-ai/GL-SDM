@@ -140,7 +140,9 @@ class TritonSparseRouteBackend:
                 f"{NATIVE_SPARSE_ROUTE_NAME} declined [unsupported_hardware]: "
                 "v0 requires SM80 or newer"
             )
-        from urm.triton_kernels.sparse_route import sparse_route_selection
+        from urm.backends.triton.sparse_state.route_selection import (
+            sparse_route_selection,
+        )
 
         index_dtype = {
             DType.INT32: torch.int32,

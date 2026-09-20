@@ -856,7 +856,7 @@ def make_triton_compile_probe(
                 )
 
             if effective_anchor == "routed_reduction_v1":
-                from urm.triton_kernels.routed_reduce import routed_reduce
+                from urm.backends.triton.softmax.routed_reduce import routed_reduce
 
                 output = routed_reduce(indices, weights, values)
                 torch.cuda.synchronize()

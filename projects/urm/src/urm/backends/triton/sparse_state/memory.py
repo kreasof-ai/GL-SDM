@@ -6,11 +6,11 @@ import importlib.util
 from contextlib import nullcontext
 from dataclasses import dataclass, field
 
-from urm.backends.sparse_route import (
+from urm.backends.triton.sparse_state.route_backend import (
     CertifiedSparseRouteScores,
     TritonSparseRouteBackend,
 )
-from urm.backends.sparse_state_mixer import (
+from urm.backends.triton.sparse_state.backend import (
     CertifiedSparseStateRoutes,
     SparseState,
     TritonSparseStateMixerBackend,

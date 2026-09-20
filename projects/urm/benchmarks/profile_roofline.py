@@ -166,7 +166,7 @@ def _python_binary() -> str:
 def triton_kernel_metadata() -> dict[str, object]:
     """Extract registers/spills/shared-mem from compiled Triton kernels."""
     try:
-        from urm.triton_kernels import routed_reduce as rr
+        from urm.backends.triton.softmax import routed_reduce as rr
 
         out: dict[str, object] = {}
         caches = getattr(rr._routed_reduce_forward_kernel, "device_caches", None)

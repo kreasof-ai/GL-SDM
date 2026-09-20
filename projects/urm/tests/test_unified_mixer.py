@@ -6674,7 +6674,7 @@ def test_k3_native_overlapping_routes_match_reference_vjp(dtype_name, read_timin
         pytest.skip("native K3 requires CUDA")
 
     spec = sparse_delta_spec(read_timing=read_timing)
-    from urm.backends.sparse_state_mixer import TritonSparseStateMixerBackend
+    from urm.backends.triton.sparse_state.backend import TritonSparseStateMixerBackend
     from urm.compiler.semantic import (
         DType,
         SparseReadTiming,
@@ -6819,7 +6819,7 @@ def test_k3_native_anchor_executes_when_cuda_contract_is_supported(dtype_name):
     torch = _torch()
     if not torch.cuda.is_available():
         pytest.skip("native K3 requires CUDA")
-    from urm.backends.sparse_state_mixer import TritonSparseStateMixerBackend
+    from urm.backends.triton.sparse_state.backend import TritonSparseStateMixerBackend
     from urm.compiler.semantic import (
         DType,
         SparseReadTiming,

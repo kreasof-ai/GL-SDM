@@ -415,7 +415,7 @@ class SparseMemoryMixer(nn.Module):
         )
 
     def forward(self, x):
-        from urm.backends.sparse_state_mixer import SparseState
+        from urm.backends.triton.sparse_state.backend import SparseState
 
         b, t, _ = x.shape
         with self._profile("pretraining::sparse_memory::learned_projections"):
@@ -565,7 +565,7 @@ class URMDecoderLM(nn.Module):
             mixer.profile_ranges = enabled
             if mixer.backend_name == "urm_native":
                 mixer._executor.backend.profile_ranges = enabled
-                from urm.triton_kernels import sparse_state_mixer as state_kernels
+                from urm.backends.triton.sparse_state import mixer as state_kernels
 
                 state_kernels.PROFILE_RANGES = enabled
 

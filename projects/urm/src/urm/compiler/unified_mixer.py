@@ -3148,7 +3148,7 @@ def _execute_fwpkm_selected_read(plan: CompiledMixerPlan, torch: Any, **operands
         raise TypeError("FwPKM selected-read K1 currently supports float32")
     if not (query.device == key.device == value.device):
         raise ValueError("FwPKM K1 inputs must share a device")
-    from urm.backends.selected_softmax import selected_softmax_read
+    from urm.backends.triton.softmax.selected import selected_softmax_read
 
     scores = key[:, :, 0, 0] * query[:, 0, 0, 0].unsqueeze(-1)
     output = selected_softmax_read(scores, value[:, :, 0, :])
@@ -3283,7 +3283,7 @@ def _execute_hla_second_order(plan: CompiledMixerPlan, torch: Any, **operands: A
         raise ValueError("HLA operands must share a device")
 
     if plan.backend is MixerBackend.LIBRARY and query.is_cuda:
-        from urm.backends.hla_triton import hla_second_order_triton
+        from urm.backends.triton.recurrence.hla import hla_second_order_triton
 
         output = hla_second_order_triton(query, key, value)
         return MixerResult(
@@ -8663,7 +8663,7 @@ def _execute_native_sparse_delta(plan: CompiledMixerPlan, torch: Any, **operands
     except KeyError as error:
         raise ValueError("native K3 supports float32 or bfloat16 state") from error
 
-    from urm.backends.sparse_state_mixer import (
+    from urm.backends.triton.sparse_state.backend import (
         CertifiedSparseStateRoutes,
         SparseState,
         TritonSparseStateMixerBackend,
@@ -8807,7 +8807,7 @@ def _execute_native_diagonal_ssm(plan: CompiledMixerPlan, torch: Any, **operands
         state_width,
     ):
         raise ValueError("initial_state must use [B,C,N]")
-    from urm.backends.diagonal_ssm import execute_diagonal_ssm
+    from urm.backends.triton.recurrence.diagonal_ssm import execute_diagonal_ssm
     from urm.compiler.execution import NATIVE_DIAGONAL_SSM_ANCHOR_NAME
 
     dtype = str(x.dtype).removeprefix("torch.")

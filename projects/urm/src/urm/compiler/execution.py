@@ -935,7 +935,7 @@ def make_native_sparse_memory_selector(
         probe = support_probe
         if probe is None:
             try:
-                from urm.backends.sparse_memory import TritonSparseMemoryBackend
+                from urm.backends.triton.sparse_state.memory import TritonSparseMemoryBackend
 
                 probe = TritonSparseMemoryBackend.support_status
             except Exception as error:  # noqa: BLE001
@@ -998,7 +998,7 @@ def make_sparse_state_mixer_selector(
         native_probe = support_probe
         if native_probe is None:
             try:
-                from urm.backends.sparse_state_mixer import (
+                from urm.backends.triton.sparse_state.backend import (
                     TritonSparseStateMixerBackend,
                 )
 
@@ -1140,7 +1140,7 @@ def make_sparse_route_selector(
         probe = support_probe
         if probe is None:
             try:
-                from urm.backends.sparse_route import TritonSparseRouteBackend
+                from urm.backends.triton.sparse_state.route_backend import TritonSparseRouteBackend
 
                 probe = TritonSparseRouteBackend.support_status
             except Exception as error:  # noqa: BLE001

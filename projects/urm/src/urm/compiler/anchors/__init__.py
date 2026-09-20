@@ -1,7 +1,7 @@
 """Experimental compiler-generated anchors (CODA-style rewriting prototypes).
 
 These kernels are NOT part of routed-reduction v1 and never change its frozen
-contract (``urm.triton_kernels.routed_reduce`` stays untouched). Each anchor
+contract (``urm.backends.triton.softmax.routed_reduce`` stays untouched). Each anchor
 here exists because the URM planner selected it after a verified rewrite
 folded work into an anchor's epilogue lifetime.
 

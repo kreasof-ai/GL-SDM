@@ -244,7 +244,7 @@ def _make_bundle(case, torch):
         MODE_TRAINING,
         UrmSparseDeltaMemoryAdapter,
     )
-    from urm.backends.sparse_state_mixer import (
+    from urm.backends.triton.sparse_state.backend import (
         CertifiedSparseStateRoutes,
         SparseState,
     )
@@ -484,7 +484,7 @@ def _make_bundle(case, torch):
 
 def _calls(bundle, torch):
     from urm.adapters.sparse_delta_memory_reference import torch_product_key
-    from urm.backends.sparse_state_reference import torch_sparse_state_mixer
+    from urm.backends.pytorch.sparse_state import torch_sparse_state_mixer
 
     spec = bundle["spec"]
     read_only = spec.operation.value == "read_only"
@@ -780,8 +780,8 @@ def _backward_memory(bundle, path, torch):
 
 def _training_graph_setup(bundle, path, torch):
     from urm.adapters.sparse_delta_memory_reference import torch_product_key
-    from urm.backends.sparse_state_mixer import CertifiedSparseStateRoutes
-    from urm.backends.sparse_state_reference import torch_sparse_state_mixer
+    from urm.backends.triton.sparse_state.backend import CertifiedSparseStateRoutes
+    from urm.backends.pytorch.sparse_state import torch_sparse_state_mixer
 
     spec = bundle["spec"]
     base = (
@@ -1054,7 +1054,7 @@ def _route_backward_setup(bundle, path, torch):
 
 
 def _state_backward_setup(bundle, path, torch):
-    from urm.backends.sparse_state_mixer import (
+    from urm.backends.triton.sparse_state.backend import (
         CertifiedSparseStateRoutes,
         SparseState,
     )

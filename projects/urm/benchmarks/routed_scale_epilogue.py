@@ -175,7 +175,7 @@ def run_case(
     import torch
 
     from urm.compiler.anchors import routed_reduce_row_scale
-    from urm.triton_kernels.routed_reduce import routed_reduce
+    from urm.backends.triton.softmax.routed_reduce import routed_reduce
 
     indices, weights, values, scale = make_inputs(case)
     q, k = indices.shape

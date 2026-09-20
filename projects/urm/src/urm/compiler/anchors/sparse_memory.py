@@ -104,7 +104,7 @@ def compile_sparse_memory_plan(
             f"compiler emitted incompatible Sparse Memory plan: {config}"
         )
 
-    from urm.backends.sparse_memory import TritonSparseMemoryBackend
+    from urm.backends.triton.sparse_state.memory import TritonSparseMemoryBackend
 
     backend = TritonSparseMemoryBackend(spec)
     read_schedule = backend.read_backend.launch_schedule()

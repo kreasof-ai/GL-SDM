@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 
-from ..routed_reduction import (
+from ....routed_reduction import (
     DeviceType,
     RoutedReductionResult,
     RoutedReductionSignature,

@@ -144,7 +144,7 @@ def guarded(name, *args, **kwargs):
     return real_import(name, *args, **kwargs)
 builtins.__import__ = guarded
 import urm.sparse_state_mixer
-import urm.backends.sparse_state_mixer
+import urm.backends.triton.sparse_state.backend
 import urm.compiler.semantic
 """
     completed = subprocess.run(
