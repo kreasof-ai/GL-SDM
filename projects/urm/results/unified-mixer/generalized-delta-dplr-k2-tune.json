@@ -1,0 +1,246 @@
+{
+  "schema_version": 1,
+  "generated_utc": "2026-09-19T20:34:00.647417+00:00",
+  "purpose": "compare unified K2 compiler plan overhead with direct pinned FLA operator",
+  "upstream": {
+    "repository": "https://github.com/fla-org/flash-linear-attention",
+    "revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+    "module_version": "0.6.0",
+    "distribution_version": "0.5.2",
+    "fla_core_distribution_version": "0.5.2",
+    "loaded_module": "/tmp/urm-fla-pinned/fla/__init__.py"
+  },
+  "provenance": {
+    "git_revision": "19ca443a118b8607ea8f871d255d683acfb68398",
+    "dirty_tree": true,
+    "benchmark_command": "PYTHONPATH=/path/to/fla-checkout:src python benchmarks/unified_mixer_fla.py",
+    "config_hash": "b98dabc22c8fbb24e9fa15ef3f5db50699f4b87351c015de8d442beb8fba014b",
+    "solver_version": null,
+    "python": "3.12.14",
+    "platform": "Linux-6.12.103-127.188.amzn2023.x86_64-x86_64-with-glibc2.39",
+    "pytorch": "2.14.0+cu130",
+    "triton": "3.8.0",
+    "cuda": "13.0",
+    "driver": "595.91.07",
+    "gpu": "NVIDIA A10G",
+    "gpu_uuid": "GPU-624fe7c6-80af-dacf-0397-57fbc701f3de"
+  },
+  "hardware": {
+    "gpu": "NVIDIA A10G",
+    "compute_capability": [
+      8,
+      6
+    ],
+    "torch": "2.14.0+cu130",
+    "cuda": "13.0"
+  },
+  "methodology": {
+    "timed_work": "one forward call or one forward plus backward on preallocated leaf inputs",
+    "sampling": "paired interleaved direct/compiled calls, order alternates, synchronized wall and CUDA event timing",
+    "warmup": 1,
+    "pairs": 3,
+    "overhead": "median of per-pair (compiled-direct)/direct fractions",
+    "overhead_gate_fraction": 0.1,
+    "interpretation": "the library backend calls the same upstream kernel; measures URM compiler-plan and validation overhead, not a new kernel speedup"
+  },
+  "cases": {
+    "generalized_delta_dplr_core": {
+      "architecture_ids": [
+        "arch-032"
+      ],
+      "semantic_scope": "DPLR additive key-value write with diagonal-plus-low-rank left transition; full-layer factors/projections excluded",
+      "shape": {
+        "batch": 1,
+        "sequence": 256,
+        "heads": 2,
+        "key_dim": 32,
+        "value_dim": 32,
+        "dtype": "bfloat16",
+        "update_rank": null
+      },
+      "upstream_callable": "fla.ops.generalized_delta_rule.dplr.chunk.chunk_dplr_delta_rule",
+      "architecture_entrypoint": null,
+      "compiled_anchor": "fla_chunk_dplr_adapter",
+      "compiler_plan_build_ms": 41.58775099858758,
+      "parity": {
+        "status": "pass",
+        "output_max_abs_error": 0.0,
+        "final_state_max_abs_errors": [
+          0.0
+        ],
+        "input_gradient_max_abs_errors": {
+          "query": 0.0,
+          "key": 0.0,
+          "value": 0.0,
+          "log_decay": 0.0,
+          "transition_alpha": 0.0,
+          "transition_beta": 0.0,
+          "initial_state": 0.0
+        },
+        "tolerances": {
+          "output_atol": 0.0001,
+          "state_atol": 0.0003,
+          "gradient_atol": 0.002
+        }
+      },
+      "reference_equation_parity": {
+        "status": "pass",
+        "anchor": "urm.unified.k2.state_reference.v1",
+        "test": "tests/test_unified_mixer.py::test_generalized_delta_transition_cores_match_pinned_upstream",
+        "output_max_abs_error": 0.0009765625,
+        "final_state_max_abs_errors": [
+          0.0002776831388473511
+        ],
+        "input_gradient_max_abs_errors": {
+          "query": 2.384185791015625e-07,
+          "key": 4.76837158203125e-07,
+          "value": 4.76837158203125e-07,
+          "log_decay": 2.384185791015625e-07,
+          "transition_alpha": 3.725290298461914e-09,
+          "transition_beta": 1.4901161193847656e-08,
+          "initial_state": 1.2867531040683389e-08
+        },
+        "tolerances": {
+          "output_atol": 0.015,
+          "state_atol": 0.015,
+          "gradient_atol": 0.02
+        }
+      },
+      "architecture_entrypoint_parity": null,
+      "performance": {
+        "first_direct_forward_call_ms": {
+          "wall": 450.20095799918636,
+          "device": 450.1268615722656
+        },
+        "first_compiled_forward_call_after_direct_autotune_ms": {
+          "wall": 22.982606002187822,
+          "device": 22.943744659423828
+        },
+        "warmup_calls_per_backend_per_mode": 1,
+        "paired_samples_per_mode": 3,
+        "measurements": {
+          "forward": {
+            "direct_wall": {
+              "sample_count": 3,
+              "median_ms": 0.5981730027997401,
+              "p95_ms": 0.5984349012578605,
+              "raw_samples_ms": [
+                0.5984640010865405,
+                0.5981730027997401,
+                0.5742229986935854
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 3,
+              "median_ms": 0.5967830002191477,
+              "p95_ms": 0.6116069002018776,
+              "raw_samples_ms": [
+                0.5967830002191477,
+                0.6132540001999587,
+                0.5907929989916738
+              ]
+            },
+            "direct_device": {
+              "sample_count": 3,
+              "median_ms": 0.5703679919242859,
+              "p95_ms": 0.571289598941803,
+              "raw_samples_ms": [
+                0.5703679919242859,
+                0.5713919997215271,
+                0.5447679758071899
+              ]
+            },
+            "compiled_device": {
+              "sample_count": 3,
+              "median_ms": 0.5703359842300415,
+              "p95_ms": 0.5851103961467744,
+              "raw_samples_ms": [
+                0.5703359842300415,
+                0.5867519974708557,
+                0.5601279735565186
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": 0.025211765374953787,
+              "p95": 0.028491923620437263,
+              "raw_samples": [
+                -0.0028088587857263408,
+                0.025211765374953787,
+                0.028856385647713204
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect",
+              "directcompiled"
+            ]
+          },
+          "forward_backward": {
+            "direct_wall": {
+              "sample_count": 3,
+              "median_ms": 2.116428000590531,
+              "p95_ms": 2.1166629001527326,
+              "raw_samples_ms": [
+                2.116428000590531,
+                2.1166890001040883,
+                2.097828000842128
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 3,
+              "median_ms": 2.1579389976977836,
+              "p95_ms": 2.193354899281985,
+              "raw_samples_ms": [
+                2.1579389976977836,
+                2.1972899994580075,
+                2.144800000678515
+              ]
+            },
+            "direct_device": {
+              "sample_count": 3,
+              "median_ms": 2.0828158855438232,
+              "p95_ms": 2.0874528884887695,
+              "raw_samples_ms": [
+                2.0828158855438232,
+                2.087968111038208,
+                2.0684800148010254
+              ]
+            },
+            "compiled_device": {
+              "sample_count": 3,
+              "median_ms": 2.1288959980010986,
+              "p95_ms": 2.164838457107544,
+              "raw_samples_ms": [
+                2.1288959980010986,
+                2.1688320636749268,
+                2.1176319122314453
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": 0.02239077742194842,
+              "p95": 0.03651000720559738,
+              "raw_samples": [
+                0.0196137062520766,
+                0.03807881051489171,
+                0.02239077742194842
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect",
+              "directcompiled"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

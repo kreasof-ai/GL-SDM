@@ -29,6 +29,7 @@ from urm.compiler.effects import (
     STATE_READ_EFFECT,
     EffectSignature,
 )
+from urm.compiler.unified_mixer import MixerKernelFamily, UnifiedMixerSpec
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -104,6 +105,7 @@ class DType(StrEnum):
     FLOAT32 = "float32"
     FLOAT16 = "float16"
     BFLOAT16 = "bfloat16"
+    BOOL = "bool"
     INT32 = "int32"
     INT64 = "int64"
 
@@ -607,6 +609,23 @@ class SparseStateMixerAccess(SemanticOp):
         return ORDERED_STATE
 
 
+@dataclass(frozen=True, slots=True)
+class UnifiedMixerAccess(SemanticOp):
+    """One closed K1/K2/K3 mixer equation presented to the general compiler.
+
+    The spec carries the equation; backend selection, intent validation,
+    candidate enumeration, and anchor resolution remain compiler concerns.
+    """
+
+    spec: UnifiedMixerSpec
+
+    @property
+    def effect(self) -> EffectSignature:
+        if self.spec.family is MixerKernelFamily.SOFTMAX:
+            return REDUCING
+        return ORDERED_STATE
+
+
 # Compatibility name for users of the external-baseline constructor. The
 # semantic node itself is the URM-owned sparse-memory skeleton above.
 SparseDeltaMemoryAccess = SparseMemoryAccess
@@ -637,6 +656,7 @@ SemanticNode = (
     | SparseMemoryAccess
     | SparseRouteGeneration
     | SparseStateMixerAccess
+    | UnifiedMixerAccess
     | CollectiveExchange
 )
 

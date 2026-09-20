@@ -1,0 +1,265 @@
+{
+  "schema_version": 1,
+  "generated_utc": "2026-09-19T22:21:38.591396+00:00",
+  "purpose": "compare AttnRes residual-depth aggregation with a unified K1 library plan",
+  "upstream": {
+    "repository": "https://github.com/fla-org/flash-linear-attention",
+    "revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+    "loaded_module": "/tmp/urm-fla-pinned/fla/__init__.py"
+  },
+  "provenance": {
+    "git_revision": "19ca443a118b8607ea8f871d255d683acfb68398",
+    "dirty_tree": true,
+    "benchmark_command": "PYTHONPATH=/path/to/flash-linear-attention:src:benchmarks python benchmarks/unified_mixer_attnres.py",
+    "config_hash": "d7d626f3f6849fadd347b86027435701a33de6a76e0385952b65e6a920a64ce8",
+    "solver_version": null,
+    "python": "3.12.14",
+    "platform": "Linux-6.12.103-127.188.amzn2023.x86_64-x86_64-with-glibc2.39",
+    "pytorch": "2.14.0+cu130",
+    "triton": "3.8.0",
+    "cuda": "13.0",
+    "driver": "595.91.07",
+    "gpu": "NVIDIA A10G",
+    "gpu_uuid": "GPU-624fe7c6-80af-dacf-0397-57fbc701f3de"
+  },
+  "hardware": {
+    "gpu": "NVIDIA A10G",
+    "compute_capability": [
+      8,
+      6
+    ],
+    "torch": "2.14.0+cu130",
+    "cuda": "13.0"
+  },
+  "methodology": {
+    "timed_work": "pinned FLA fused AttnRes versus its unified compiler adapter on preallocated leaf inputs",
+    "sampling": "paired alternating direct/compiled calls with synchronized wall and CUDA event timing",
+    "warmup": 3,
+    "pairs": 21,
+    "overhead_gate_fraction": 0.1,
+    "interpretation": "the compiler library plan invokes the pinned fused AttnRes operator; a separate reference-equation check covers RMSNorm, query scaling and generic K1 depth softmax"
+  },
+  "cases": {
+    "attnres_depth_core": {
+      "architecture_ids": [
+        "arch-054"
+      ],
+      "semantic_scope": "AttnRes residual-depth softmax; RMS-normalized keys, learned query and residual value sum included; surrounding transformer layer excluded",
+      "shape": {
+        "depth": 8,
+        "batch": 1,
+        "sequence": 256,
+        "width": 128,
+        "dtype": "bfloat16",
+        "kernel_compute_dtype": "float32"
+      },
+      "upstream_callable": "fla.ops.attnres.fused.fused_attnres",
+      "compiled_anchor": "fla_fused_attnres_adapter",
+      "compiler_plan_build_ms": 42.580779001582414,
+      "parity": {
+        "status": "pass",
+        "output_max_abs_error": 0.0,
+        "input_gradient_max_abs_errors": {
+          "query": 0.0,
+          "rms_weight": 0.0,
+          "residuals": 0.0
+        },
+        "reference_equation": {
+          "status": "pass",
+          "output_max_abs_error": 0.00390625,
+          "input_gradient_max_abs_errors": {
+            "query": 9.5367431640625e-07,
+            "rms_weight": 2.384185791015625e-07,
+            "residuals": 3.814697265625e-06
+          }
+        },
+        "tolerances": {
+          "output_atol": 0.02,
+          "gradient_atol": 0.02
+        }
+      },
+      "performance": {
+        "measurements": {
+          "forward": {
+            "direct_wall": {
+              "sample_count": 21,
+              "median_ms": 0.2695560033316724,
+              "p95_ms": 0.35260799631942064,
+              "raw_samples_ms": [
+                0.28323599690338597,
+                0.2695560033316724,
+                0.29872699815314263,
+                0.27461600257083774,
+                0.2656759970705025,
+                0.2824059993145056,
+                0.3081070026382804,
+                0.2697160016396083,
+                0.27258599584456533,
+                0.2662660044734366,
+                0.26339600299252197,
+                0.27822700212709606,
+                0.2667560038389638,
+                0.2664060011738911,
+                0.2678160017239861,
+                0.2641460014274344,
+                0.2685669969650917,
+                0.26497599901631474,
+                0.26374599838163704,
+                0.3539280005497858,
+                0.35260799631942064
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 21,
+              "median_ms": 0.2953260045615025,
+              "p95_ms": 0.32018799538491294,
+              "raw_samples_ms": [
+                0.3008269995916635,
+                0.32018799538491294,
+                0.2968459957628511,
+                0.294146993837785,
+                0.2930269984062761,
+                0.3004770042025484,
+                0.2953260045615025,
+                0.31050699908519164,
+                0.29234700195956975,
+                0.2899669998441823,
+                0.2998670024680905,
+                0.29088599694659933,
+                0.32706699857953936,
+                0.293916993541643,
+                0.2889870011131279,
+                0.29358699976000935,
+                0.2951360002043657,
+                0.3097670050919987,
+                0.2919770049629733,
+                0.30957700073486194,
+                0.3110770048806444
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": 0.08901247238683874,
+              "p95": 0.18783477803290075,
+              "raw_samples": [
+                0.06210722817932617,
+                0.18783477803290075,
+                -0.006296727118475058,
+                0.07112109667356031,
+                0.10294871059998498,
+                0.06398945111614915,
+                -0.04148233557606894,
+                0.1512368461552676,
+                0.07249457571647441,
+                0.08901247238683874,
+                0.13846451374056717,
+                0.045498800341889745,
+                0.22609048670928622,
+                0.10326716457785293,
+                0.07905053937352423,
+                0.1114572932146502,
+                0.09892877211092121,
+                0.16903797416356253,
+                0.10703861576882148,
+                -0.12531079695878755,
+                -0.11778233015780547
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            }
+          },
+          "forward_backward": {
+            "direct_wall": {
+              "sample_count": 21,
+              "median_ms": 0.9415319946128875,
+              "p95_ms": 1.0223239951301366,
+              "raw_samples_ms": [
+                1.0662740023690276,
+                0.9268909998354502,
+                0.9837130055529997,
+                0.9289709996664897,
+                0.9169620025204495,
+                0.9748919983394444,
+                0.941011996474117,
+                0.9263520041713491,
+                0.9281609964091331,
+                0.9711930033518001,
+                0.9310009991168045,
+                0.9583319988450967,
+                0.9060009979293682,
+                0.9209010022459552,
+                0.9557119992678054,
+                0.9632830042392015,
+                0.9415319946128875,
+                0.9326809959020466,
+                0.9943830009433441,
+                1.0223239951301366,
+                0.955032002821099
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 21,
+              "median_ms": 0.9636419999878854,
+              "p95_ms": 1.0538549977354705,
+              "raw_samples_ms": [
+                1.0482840007171035,
+                0.9887020059977658,
+                0.9810929986997508,
+                0.9600920020602643,
+                0.9378009999636561,
+                1.0538549977354705,
+                0.9691719969850965,
+                0.9623820005799644,
+                0.94096200336935,
+                0.9411610008100979,
+                0.9636419999878854,
+                1.061034003214445,
+                0.9740320019773208,
+                0.9568319946993142,
+                1.0381840038462542,
+                0.9542319967295043,
+                1.0036829989985563,
+                1.0063629961223342,
+                0.9395509987371042,
+                0.9440709982300177,
+                0.9450310026295483
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": 0.033500510139657165,
+              "p95": 0.08629378373572026,
+              "raw_samples": [
+                -0.01687183745637074,
+                0.06668638078618612,
+                -0.0026633853964104833,
+                0.033500510139657165,
+                0.022726129747935624,
+                0.08099666376432015,
+                0.02992523008898112,
+                0.0388944982537661,
+                0.013791795830401635,
+                -0.03092279540529556,
+                0.03506011368628588,
+                0.10716745813884576,
+                0.07508932573301237,
+                0.0390172150597384,
+                0.08629378373572026,
+                -0.009396000417183413,
+                0.06601050706855933,
+                0.07900021609106093,
+                -0.05514173326999981,
+                -0.07654422401594681,
+                -0.01047190058763312
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

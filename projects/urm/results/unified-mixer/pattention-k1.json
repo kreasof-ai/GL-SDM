@@ -1,0 +1,257 @@
+{
+  "schema_version": 1,
+  "generated_utc": "2026-09-19T22:39:53.090695+00:00",
+  "purpose": "profile the softmax mode of TokenFormer Pattention against the unified K1 parameter-axis plan",
+  "upstream": {
+    "repository": "https://github.com/Haiyang-W/TokenFormer",
+    "revision": "4d56c73f407635e62f6df16b97dc897b4477129e",
+    "loaded_module": "/tmp/urm-pattention-pinned/megatron/model/tokenformer.py",
+    "source_sha256": "483c35c7b6c897625f729d822b26c556a6300a0dc7c39cb1d864b36bebb074ab"
+  },
+  "provenance": {
+    "git_revision": "19ca443a118b8607ea8f871d255d683acfb68398",
+    "dirty_tree": true,
+    "benchmark_command": "PYTHONPATH=/path/to/TokenFormer:src:benchmarks python benchmarks/unified_mixer_pattention.py",
+    "config_hash": "3f4d62840598a4fa9f5fb969dd335fb8c2e4bbc4436e69a8d19cc6b95a8bd51d",
+    "solver_version": null,
+    "python": "3.12.14",
+    "platform": "Linux-6.12.103-127.188.amzn2023.x86_64-x86_64-with-glibc2.39",
+    "pytorch": "2.14.0+cu130",
+    "triton": "3.8.0",
+    "cuda": "13.0",
+    "driver": "595.91.07",
+    "gpu": "NVIDIA A10G",
+    "gpu_uuid": "GPU-624fe7c6-80af-dacf-0397-57fbc701f3de"
+  },
+  "hardware": {
+    "gpu": "NVIDIA A10G",
+    "compute_capability": [
+      8,
+      6
+    ],
+    "torch": "2.14.0+cu130",
+    "cuda": "13.0"
+  },
+  "methodology": {
+    "timed_work": "pinned Pattention softmax equation versus compiler K1 SDPA with the architecture's S output multiplier",
+    "sampling": "paired alternating direct/compiled calls with synchronized wall and CUDA event timing",
+    "warmup": 3,
+    "pairs": 21,
+    "overhead_gate_fraction": 0.1,
+    "interpretation": "Pattention.forward is reproduced from the pinned source's softmax branch; parameter token creation, projections and routing are excluded"
+  },
+  "cases": {
+    "pattention_core": {
+      "architecture_ids": [
+        "arch-057"
+      ],
+      "semantic_scope": "TokenFormer Pattention with norm_activation_type='softmax', parameter token construction supplied, no mask or dropout; GELU/L2 normalization and MoE routing excluded",
+      "shape": {
+        "batch": 1,
+        "sequence": 128,
+        "parameter_tokens": 256,
+        "query_dim": 32,
+        "value_dim": 32,
+        "dtype": "bfloat16"
+      },
+      "upstream_callable": "megatron.model.tokenformer.Pattention.forward (softmax branch)",
+      "compiled_anchor": "torch.nn.functional.scaled_dot_product_attention",
+      "compiler_plan_build_ms": 41.54763699625619,
+      "parity": {
+        "status": "pass",
+        "output_max_abs_error": 0.00048828125,
+        "input_gradient_max_abs_errors": {
+          "query": 2.7939677238464355e-09,
+          "key_param_tokens": 3.725290298461914e-09,
+          "value_param_tokens": 1.52587890625e-05
+        },
+        "tolerances": {
+          "output_atol": 0.02,
+          "gradient_atol": 0.02
+        }
+      },
+      "performance": {
+        "measurements": {
+          "forward": {
+            "direct_wall": {
+              "sample_count": 21,
+              "median_ms": 0.2068250032607466,
+              "p95_ms": 0.24811600451357663,
+              "raw_samples_ms": [
+                0.22943600197322667,
+                0.2068250032607466,
+                0.19934400188503787,
+                0.20483399566728622,
+                0.19894499564543366,
+                0.20808499539270997,
+                0.2532350044930354,
+                0.20672499522333965,
+                0.218754998059012,
+                0.20777500321855769,
+                0.19721499847946689,
+                0.21065500186523423,
+                0.1987349969567731,
+                0.20471499738050625,
+                0.19870499818352982,
+                0.22694499784847721,
+                0.24811600451357663,
+                0.20799499907298014,
+                0.19930499547626823,
+                0.21187499805819243,
+                0.20398500055307522
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 21,
+              "median_ms": 0.20542399579426274,
+              "p95_ms": 0.2201349998358637,
+              "raw_samples_ms": [
+                0.21236499742371961,
+                0.2022640037466772,
+                0.20741500338772312,
+                0.20383500668685883,
+                0.21093500254210085,
+                0.2025339999818243,
+                0.2201349998358637,
+                0.20512499759206548,
+                0.23265599884325638,
+                0.20257399592082947,
+                0.20542399579426274,
+                0.1978350046556443,
+                0.21506499615497887,
+                0.20252400281606242,
+                0.2045540022663772,
+                0.20566499733831733,
+                0.2077449971693568,
+                0.21805500000482425,
+                0.2075440061162226,
+                0.20313500135671347,
+                0.2053139978670515
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": -0.007739739597263374,
+              "p95": 0.06354598024084648,
+              "raw_samples": [
+                -0.07440421033617514,
+                -0.0220524571118672,
+                0.0404878071392377,
+                -0.004877066314959024,
+                0.06026794922771603,
+                -0.026676577042037578,
+                -0.13070864639521826,
+                -0.007739739597263374,
+                0.06354598024084648,
+                -0.02503192018848048,
+                0.041624609578822344,
+                -0.06085778688412761,
+                0.08216972072491949,
+                -0.010702657804652184,
+                0.029435616297105286,
+                -0.09376721545705867,
+                -0.1627102105862372,
+                0.04836655196846496,
+                0.04133870613862962,
+                -0.04125072227294359,
+                0.006515171754653076
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            }
+          },
+          "forward_backward": {
+            "direct_wall": {
+              "sample_count": 21,
+              "median_ms": 0.7348069993895479,
+              "p95_ms": 0.8301699999719858,
+              "raw_samples_ms": [
+                0.8137290060403757,
+                0.7348069993895479,
+                0.7738280037301593,
+                0.7220769984996878,
+                0.7219069957500324,
+                0.8082979984465055,
+                0.7890580018283799,
+                0.7327470011659898,
+                0.712606000888627,
+                0.732706997951027,
+                0.718396004231181,
+                0.7317670024349354,
+                0.7326459963223897,
+                0.8092190037132241,
+                0.7275159950950183,
+                1.0775449991342612,
+                0.8301699999719858,
+                0.8001780006452464,
+                0.7216670055640861,
+                0.775407999753952,
+                0.7772579992888495
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 21,
+              "median_ms": 0.5822140010423027,
+              "p95_ms": 0.6452650050050579,
+              "raw_samples_ms": [
+                0.5823030005558394,
+                0.5729129989049397,
+                0.5767839975305833,
+                0.5609720028587617,
+                0.636013995972462,
+                0.5822140010423027,
+                0.5992540027364157,
+                0.5946840028627776,
+                0.5675030042766593,
+                0.5650329985655844,
+                0.5593629975919612,
+                0.5927230013185181,
+                0.5796729965368286,
+                0.5666130018653348,
+                0.609353999607265,
+                0.6452650050050579,
+                0.6555050058523193,
+                0.6007939955452457,
+                0.5800329963676631,
+                0.5751829958171584,
+                0.5895029971725307
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": -0.22311331890596944,
+              "p95": -0.1624184159309385,
+              "raw_samples": [
+                -0.2844018140764831,
+                -0.2203217996277989,
+                -0.2546354037974141,
+                -0.22311331890596944,
+                -0.1189807001223627,
+                -0.27970376994465046,
+                -0.24054505328145265,
+                -0.18841837371359874,
+                -0.20362303493237882,
+                -0.2288418151516681,
+                -0.2213723429731699,
+                -0.1900113023049032,
+                -0.208795244297285,
+                -0.29980265012889573,
+                -0.1624184159309385,
+                -0.401171175659961,
+                -0.21039665866697255,
+                -0.24917456483335165,
+                -0.1962595048747112,
+                -0.25821890411283854,
+                -0.2415607202346001
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

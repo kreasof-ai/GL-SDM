@@ -23,6 +23,18 @@ typed rules and anchors. Solver expressions never leak outside
 from urm.compiler.constraints import ConstraintModel
 from urm.compiler.cost import CostEstimate, DeviceLimits
 from urm.compiler.diagnostics import CompilerError, Diagnostic, DiagnosticCode
+from urm.compiler.unified_mixer import (
+    CompiledMixerPlan,
+    MixerBackend,
+    MixerIntent,
+    MixerKernelFamily,
+    MixerRecipe,
+    MIXER_RECIPE_NAMES,
+    UnifiedMixerSpec,
+    compile_frontend_mixer,
+    compile_mixer,
+    mixer_semantic_program,
+)
 
 __all__ = [
     "CompilerError",
@@ -31,6 +43,16 @@ __all__ = [
     "DeviceLimits",
     "Diagnostic",
     "DiagnosticCode",
+    "CompiledMixerPlan",
+    "MixerBackend",
+    "MixerIntent",
+    "MixerKernelFamily",
+    "MixerRecipe",
+    "MIXER_RECIPE_NAMES",
+    "UnifiedMixerSpec",
+    "compile_frontend_mixer",
+    "compile_mixer",
+    "mixer_semantic_program",
     "constraints",
     "cost",
     "diagnostics",

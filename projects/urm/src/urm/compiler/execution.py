@@ -315,6 +315,53 @@ SDM_SPARSE_STATE_FALLBACK_ANCHOR_NAME = (
 )
 NATIVE_SPARSE_STATE_MIXER_ANCHOR_NAME = "urm_native_sparse_state_mixer_v0"
 NATIVE_SPARSE_ROUTE_ANCHOR_NAME = "urm_native_sparse_route_selection_v0"
+NATIVE_DIAGONAL_SSM_ANCHOR_NAME = "urm_native_diagonal_ssm_v0"
+MAMBA_SELECTIVE_SCAN_ANCHOR_NAME = "mamba_selective_scan_adapter"
+MAMBA2_SSD_ANCHOR_NAME = "mamba2_ssd_adapter"
+FLA_LOG_LINEAR_ANCHOR_NAME = "fla_chunk_log_linear_attention_adapter"
+BDH_ATTENTION_ANCHOR_NAME = "bdh_attention_adapter"
+FLA_KDA_ANCHOR_NAME = "fla_chunk_kda_adapter"
+FLA_GATED_DELTA_PRODUCT_ANCHOR_NAME = "fla_chunk_gated_delta_product_adapter"
+FLA_IPLR_ANCHOR_NAME = "fla_fused_recurrent_iplr_adapter"
+FLA_DPLR_ANCHOR_NAME = "fla_chunk_dplr_adapter"
+FLA_RWKV7_ANCHOR_NAME = "fla_chunk_rwkv7_adapter"
+FLA_HGRN_ANCHOR_NAME = "fla_fused_recurrent_hgrn_adapter"
+FLA_GDN2_ANCHOR_NAME = "fla_chunk_gdn2_adapter"
+FLA_BASED_ANCHOR_NAME = "fla_fused_chunk_based_adapter"
+FLA_REBASED_ANCHOR_NAME = "fla_parallel_rebased_adapter"
+FLA_RWKV4_ANCHOR_NAME = "fla_fused_recurrent_rwkv4_adapter"
+FLA_FORGETTING_ATTENTION_ANCHOR_NAME = "fla_parallel_forgetting_attention_adapter"
+FLA_PARALLAX_ANCHOR_NAME = "fla_parallel_parallax_adapter"
+FLA_WALL_ANCHOR_NAME = "fla_parallel_wall_attention_adapter"
+FLA_MOBA_ANCHOR_NAME = "fla_parallel_moba_adapter"
+FLA_ATTNRES_ANCHOR_NAME = "fla_fused_attnres_adapter"
+FLA_RWKV6_ANCHOR_NAME = "fla_fused_recurrent_rwkv6_adapter"
+FLA_MOMENTUM_DELTA_ANCHOR_NAME = "fla_chunk_momentum_delta_rule_adapter"
+FLA_PATH_ATTENTION_ANCHOR_NAME = "fla_parallel_path_attention_adapter"
+FLA_GATED_OJA_ANCHOR_NAME = "fla_chunk_gated_oja_adapter"
+FLA_COMBA_ANCHOR_NAME = "fla_chunk_comba_adapter"
+FLA_PGDN_ANCHOR_NAME = "fla_chunk_precond_gated_delta_adapter"
+FLA_PKDA_ANCHOR_NAME = "fla_chunk_precond_kda_adapter"
+FLA_ABC_ANCHOR_NAME = "fla_chunk_abc_adapter"
+FLA_GSA_ANCHOR_NAME = "fla_chunk_gsa_adapter"
+FLA_DELTAFORMER_ANCHOR_NAME = "fla_parallel_deltaformer_adapter"
+FLA_MESA_NET_ANCHOR_NAME = "fla_chunk_mesa_net_adapter"
+FLA_TITANS_LINEAR_ANCHOR_NAME = "fla_chunk_titans_linear_adapter"
+FLA_TTT_LINEAR_ANCHOR_NAME = "fla_chunk_ttt_linear_adapter"
+XMA_RNN_ANCHOR_NAME = "xma_rnn_triton_adapter"
+XMA_GRU_ANCHOR_NAME = "xma_gru_triton_adapter"
+XMA_M2RNN_ANCHOR_NAME = "xma_m2rnn_triton_adapter"
+ATMA_POLAR_ANCHOR_NAME = "atma_polar_triton_adapter"
+ATMA_POLAR_SPARSE_ANCHOR_NAME = "atma_polar_sparse_triton_adapter"
+MAMBA3_SISO_ANCHOR_NAME = "mamba3_siso_combined_adapter"
+TDA_TRITON_ANCHOR_NAME = "tda_triton_attention_adapter"
+TUCKER_TRITON_ANCHOR_NAME = "tucker_triton_attention_adapter"
+LONGFORMER_SLIDING_CHUNKS_ANCHOR_NAME = "longformer_sliding_chunks_adapter"
+KATA_PARALLEL_TRITON_ANCHOR_NAME = "kata_parallel_triton_adapter"
+FWPKM_SELECTED_SOFTMAX_ANCHOR_NAME = "fwpkm_selected_softmax_triton_adapter"
+H3_SSM_FFT_ANCHOR_NAME = "h3_ssm_fft_convolution_adapter"
+HYENA_FFT_ANCHOR_NAME = "hyena_fft_convolution_adapter"
+HLA_SECOND_ORDER_ANCHOR_NAME = "hla_second_order_triton_adapter"
 
 
 TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
@@ -331,9 +378,345 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
         supported_visitors=frozenset(),
     ),
     ExecutionAnchor(
+        kind=AnchorKind.ATTENTION,
+        name="torch.nn.functional.scaled_dot_product_attention",
+        backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.ATTENTION,
+        name=FLA_FORGETTING_ATTENTION_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.ATTENTION,
+        name=FLA_PARALLAX_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.ATTENTION,
+        name=FLA_DELTAFORMER_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.ATTENTION,
+        name=FLA_WALL_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.ATTENTION,
+        name=FLA_MOBA_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.ATTENTION,
+        name=FLA_ATTNRES_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.ATTENTION,
+        name=TDA_TRITON_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float32"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.ATTENTION,
+        name=TUCKER_TRITON_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.ATTENTION,
+        name=LONGFORMER_SLIDING_CHUNKS_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.ATTENTION,
+        name=KATA_PARALLEL_TRITON_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.ATTENTION,
+        name=FWPKM_SELECTED_SOFTMAX_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float32"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name=H3_SSM_FFT_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float32"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name=HYENA_FFT_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float32"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name=HLA_SECOND_ORDER_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float32"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name=FLA_RWKV6_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name=FLA_MOMENTUM_DELTA_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.ATTENTION,
+        name=FLA_PATH_ATTENTION_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name=FLA_GATED_OJA_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name=FLA_COMBA_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name=FLA_PGDN_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name=FLA_PKDA_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name=FLA_ABC_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name=FLA_GSA_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name=FLA_MESA_NET_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float32", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name=FLA_TITANS_LINEAR_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float32"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name=FLA_TTT_LINEAR_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name=XMA_RNN_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float32"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name=XMA_GRU_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float32"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name=XMA_M2RNN_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float32"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.ATTENTION,
+        name=ATMA_POLAR_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float32"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.ATTENTION,
+        name=ATMA_POLAR_SPARSE_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float32"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name=MAMBA3_SISO_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float32", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.ATTENTION,
+        name="urm.unified.k1.softmax_reference.v1",
+        backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
         kind=AnchorKind.RECURRENT_SCAN,
         name="fla_gated_delta_rule_adapter",
         backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name="fla_chunk_simple_gla_adapter",
+        backward_verified_dtypes=frozenset({"float32"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name="fla_chunk_gla_adapter",
+        backward_verified_dtypes=frozenset({"float32", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name="fla_fused_recurrent_simple_gla_decode_adapter",
+        forward_only=True,
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name="fla_fused_recurrent_gla_decode_adapter",
+        forward_only=True,
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name="fla_chunk_linear_attention_adapter",
+        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name="fla_chunk_delta_rule_adapter",
+        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name="urm.unified.k2.state_reference.v1",
+        backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name=NATIVE_DIAGONAL_SSM_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float32"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name=MAMBA_SELECTIVE_SCAN_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float32"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name=MAMBA2_SSD_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float32"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name=FLA_LOG_LINEAR_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float32"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name=BDH_ATTENTION_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float32"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name=FLA_KDA_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float32"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name=FLA_GATED_DELTA_PRODUCT_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name=FLA_IPLR_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float32"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name=FLA_DPLR_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name=FLA_RWKV7_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name=FLA_HGRN_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float32"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name=FLA_GDN2_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float32"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name=FLA_BASED_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float32"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name=FLA_REBASED_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float32"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name=FLA_RWKV4_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float32"}),
         supported_visitors=frozenset(),
     ),
     ExecutionAnchor(
@@ -414,6 +797,15 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
         effect=ORDERED_STATE,
         backward_verified_dtypes=frozenset({"float32", "bfloat16"}),
         deterministic_accumulation=False,
+        commit_capable=True,
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.SPARSE_STATE_MIXER,
+        name="urm.unified.k3.sparse_delta_reference.v1",
+        effect=ORDERED_STATE,
+        backward_verified_dtypes=frozenset({"float32", "bfloat16"}),
+        deterministic_accumulation=True,
         commit_capable=True,
         supported_visitors=frozenset(),
     ),
@@ -580,7 +972,13 @@ def make_sparse_state_mixer_selector(
     def _select(request: AnchorRequest) -> AnchorDecision | None:
         if request.kind is not AnchorKind.SPARSE_STATE_MIXER:
             return None
-        from urm.compiler.semantic import SparseStateMixerAccess
+        from urm.compiler.semantic import SparseStateMixerAccess, UnifiedMixerAccess
+
+        if isinstance(request.semantic_op, UnifiedMixerAccess):
+            # The unified compiler verifies the exact K3 anchor binding and the
+            # native executor repeats shape/device checks against its concrete
+            # launch contract before dispatch.
+            return None
 
         if not isinstance(request.semantic_op, SparseStateMixerAccess):
             return AnchorDecision(

@@ -1,0 +1,430 @@
+{
+  "schema_version": 1,
+  "generated_utc": "2026-09-20T04:50:41.172169+00:00",
+  "purpose": "compare the unified LONGFORMER K1 plan against its pinned source attention callable",
+  "upstream": {
+    "repository": "https://github.com/allenai/longformer",
+    "revision": "caefee668e39cacdece7dd603a0bebf24df6d8ca",
+    "loaded_module": "/tmp/urm-source-audit-longformer/longformer/sliding_chunks.py",
+    "kernel_source_sha256": {
+      "sliding_chunks.py": "9cf13638a7b0eabd3e12ea502132342e12d590ff8097d5d21836aeeaab45cd87",
+      "diagonaled_mm_tvm.py": "70c3008f0d39624daf9fb85b29e67519f5ceaab492627882b7e863f510b2b130"
+    }
+  },
+  "provenance": {
+    "git_revision": "19ca443a118b8607ea8f871d255d683acfb68398",
+    "dirty_tree": true,
+    "benchmark_command": "PYTHONPATH=/path/to/longformer-checkout:src python benchmarks/unified_mixer_factorized_attention.py --case longformer",
+    "config_hash": "56e7a3936875129738a45218bff8fe8e2ca21ba6f7abe6be45522889202b32b9",
+    "solver_version": null,
+    "python": "3.12.14",
+    "platform": "Linux-6.12.103-127.188.amzn2023.x86_64-x86_64-with-glibc2.39",
+    "pytorch": "2.14.0+cu130",
+    "triton": "3.8.0",
+    "cuda": "13.0",
+    "driver": "595.91.07",
+    "gpu": "NVIDIA A10G",
+    "gpu_uuid": "GPU-624fe7c6-80af-dacf-0397-57fbc701f3de"
+  },
+  "hardware": {
+    "gpu": "NVIDIA A10G",
+    "compute_capability": [
+      8,
+      6
+    ],
+    "torch": "2.14.0+cu130",
+    "cuda": "13.0"
+  },
+  "methodology": {
+    "timed_work": "complete named attention call; TPA includes CP factorization and output projection, Tucker includes source factorized query attention",
+    "sampling": "paired interleaved calls with alternating order and synchronized wall/CUDA-event timing",
+    "warmup": 3,
+    "pairs": 21,
+    "overhead_gate_fraction": 0.1
+  },
+  "cases": {
+    "longformer_attention_core": {
+      "architecture_ids": [
+        "arch-071"
+      ],
+      "semantic_scope": "bidirectional local-window softmax attention using Longformer's sliding-chunks K1 operator",
+      "shape": {
+        "batch": 1,
+        "sequence": 2048,
+        "heads": 4,
+        "head_dim": 32,
+        "one_sided_window": 32,
+        "dtype": "float32"
+      },
+      "upstream_callable": "/tmp/urm-source-audit-longformer/longformer/sliding_chunks.py",
+      "compiled_anchor": "longformer_sliding_chunks_adapter",
+      "compiler_plan_build_ms": 25.63747800013516,
+      "parity": {
+        "status": "pass",
+        "output_max_abs_error": 0.0,
+        "input_and_parameter_gradient_max_abs_errors": [
+          0.0,
+          0.0,
+          2.842170943040401e-14
+        ],
+        "tolerances": {
+          "output_atol": 0.0,
+          "gradient_atol": 1e-12,
+          "relative_tolerance": 1e-05
+        },
+        "independent_reference": "tests/test_unified_mixer.py verifies reference K1 equation parity"
+      },
+      "performance": {
+        "comparison": "full source attention callable vs compiler library plan including required factorization/output stages",
+        "measurements": {
+          "forward": {
+            "upstream_wall": {
+              "sample_count": 21,
+              "median_ms": 0.8083479988272302,
+              "p95_ms": 0.8650800009490922,
+              "raw_samples_ms": [
+                0.8606589981354773,
+                0.838359999761451,
+                0.8083479988272302,
+                0.8634600017103367,
+                0.796378000814002,
+                0.8177190029527992,
+                0.8076790036284365,
+                0.7993379986146465,
+                0.798168002802413,
+                0.8426889980910346,
+                0.7963679963722825,
+                0.8167279956978746,
+                0.793819002865348,
+                0.792908002040349,
+                0.7930190040497109,
+                0.8436490024905652,
+                0.8814809989416972,
+                0.8026889991015196,
+                0.7943680029711686,
+                0.8650800009490922,
+                0.8159680000972003
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 21,
+              "median_ms": 0.8250989994849078,
+              "p95_ms": 0.9069099978660233,
+              "raw_samples_ms": [
+                0.8097889949567616,
+                0.9029700013343245,
+                0.817808999272529,
+                0.8071880001807585,
+                0.8001189999049529,
+                0.8167990017682314,
+                0.840489003167022,
+                0.8416700002271682,
+                0.8250989994849078,
+                0.8002889953786507,
+                0.8135789976222441,
+                0.7993980034370907,
+                0.8344890011358075,
+                0.9069099978660233,
+                0.8449500019196421,
+                1.0037429965450428,
+                0.8112079958664253,
+                0.8116090029943734,
+                0.8439890007139184,
+                0.8919009997043759,
+                0.891780000529252
+              ]
+            },
+            "upstream_device": {
+              "sample_count": 21,
+              "median_ms": 0.7731199860572815,
+              "p95_ms": 0.834559977054596,
+              "raw_samples_ms": [
+                0.8294399976730347,
+                0.8069120049476624,
+                0.7731199860572815,
+                0.834559977054596,
+                0.766975998878479,
+                0.7895039916038513,
+                0.7701119780540466,
+                0.7720959782600403,
+                0.7701119780540466,
+                0.78438401222229,
+                0.7680000066757202,
+                0.7874559760093689,
+                0.7659199833869934,
+                0.7639039754867554,
+                0.7639039754867554,
+                0.8069120049476624,
+                0.8489279747009277,
+                0.7731199860572815,
+                0.7659519910812378,
+                0.834559977054596,
+                0.7864320278167725
+              ]
+            },
+            "compiled_device": {
+              "sample_count": 21,
+              "median_ms": 0.796671986579895,
+              "p95_ms": 0.8755199909210205,
+              "raw_samples_ms": [
+                0.7812479734420776,
+                0.8734080195426941,
+                0.7905279994010925,
+                0.7772160172462463,
+                0.7710719704627991,
+                0.7874559760093689,
+                0.8110079765319824,
+                0.8110079765319824,
+                0.796671986579895,
+                0.7720959782600403,
+                0.78438401222229,
+                0.7720959782600403,
+                0.7997440099716187,
+                0.8755199909210205,
+                0.8161280155181885,
+                0.9738240242004395,
+                0.7823359966278076,
+                0.7823359966278076,
+                0.8130559921264648,
+                0.8581119775772095,
+                0.8601599931716919
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": 0.031004067514978886,
+              "p95": 0.14377707821376373,
+              "raw_samples": [
+                -0.05910587502009501,
+                0.0770671329634736,
+                0.011704118101393319,
+                -0.06517036274768358,
+                0.004697516866522114,
+                -0.00112508230974903,
+                0.04062257331339445,
+                0.052958825535491125,
+                0.03374101265390072,
+                -0.050315125518944355,
+                0.021611869548202982,
+                -0.02121880522287698,
+                0.051233339241890316,
+                0.14377707821376373,
+                0.06548518712002498,
+                0.18976374485343867,
+                -0.0797215177180692,
+                0.011112652475414958,
+                0.06246600764022809,
+                0.031004067514978886,
+                0.09291050681279264
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled"
+            ]
+          },
+          "forward_backward": {
+            "upstream_wall": {
+              "sample_count": 21,
+              "median_ms": 2.674692004802637,
+              "p95_ms": 3.010888998687733,
+              "raw_samples_ms": [
+                2.6783020002767444,
+                2.657840996107552,
+                2.6331000044592656,
+                2.689851993636694,
+                2.9165070009185,
+                2.758953000011388,
+                2.605449997645337,
+                3.036779999092687,
+                3.010888998687733,
+                2.9671680022147484,
+                2.6126800003112294,
+                2.6709509984357283,
+                2.623870997922495,
+                2.6447410054970533,
+                2.6130100013688207,
+                2.562937996117398,
+                2.621760002512019,
+                2.7872439968632534,
+                2.782212999591138,
+                2.9883690003771335,
+                2.674692004802637
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 21,
+              "median_ms": 2.6722710026660934,
+              "p95_ms": 2.9983190033817664,
+              "raw_samples_ms": [
+                2.6061500029754825,
+                2.6933920016745105,
+                2.6365500016254373,
+                2.6238900027237833,
+                2.8395460030878894,
+                2.6812819996848702,
+                2.732051994826179,
+                2.9983190033817664,
+                2.8752069993061014,
+                3.4970510023413226,
+                2.6991719932993874,
+                2.7791939937742427,
+                2.5777089977054857,
+                2.583179004432168,
+                2.584089001175016,
+                2.5796190020628273,
+                2.6024199978564866,
+                2.6379510018159635,
+                2.6722710026660934,
+                2.7292329978081398,
+                2.5833990002865903
+              ]
+            },
+            "upstream_device": {
+              "sample_count": 21,
+              "median_ms": 2.6398720741271973,
+              "p95_ms": 2.9715840816497803,
+              "raw_samples_ms": [
+                2.6460158824920654,
+                2.6275839805603027,
+                2.6019840240478516,
+                2.654207944869995,
+                2.8784639835357666,
+                2.721791982650757,
+                2.5733120441436768,
+                2.993151903152466,
+                2.9715840816497803,
+                2.933759927749634,
+                2.5804800987243652,
+                2.638848066329956,
+                2.5917439460754395,
+                2.614272117614746,
+                2.5825281143188477,
+                2.5323519706726074,
+                2.589695930480957,
+                2.756608009338379,
+                2.7494399547576904,
+                2.9521920680999756,
+                2.6398720741271973
+              ]
+            },
+            "compiled_device": {
+              "sample_count": 21,
+              "median_ms": 2.6408960819244385,
+              "p95_ms": 2.960383892059326,
+              "raw_samples_ms": [
+                2.575360059738159,
+                2.662400007247925,
+                2.6030080318450928,
+                2.5907199382781982,
+                2.8088319301605225,
+                2.6501119136810303,
+                2.698240041732788,
+                2.960383892059326,
+                2.8416318893432617,
+                3.463167905807495,
+                2.667520046234131,
+                2.7443199157714844,
+                2.5466880798339844,
+                2.5518081188201904,
+                2.5528318881988525,
+                2.546720027923584,
+                2.572256088256836,
+                2.6060800552368164,
+                2.6408960819244385,
+                2.698240041732788,
+                2.5425920486450195
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": -0.017593090610612743,
+              "p95": 0.04859122120756791,
+              "raw_samples": [
+                -0.02693945540637558,
+                0.013375896307951949,
+                0.0013102416012794633,
+                -0.024522535466246824,
+                -0.026388072377804432,
+                -0.028152346316228427,
+                0.04859122120756791,
+                -0.012665058292800834,
+                -0.04506376669507488,
+                0.17858206873728075,
+                0.03310470205989821,
+                0.04052601316980661,
+                -0.017593090610612743,
+                -0.023277137888711878,
+                -0.011068078644419381,
+                0.006508548381076448,
+                -0.007376725801370858,
+                -0.05356294433329241,
+                -0.039516024452909033,
+                -0.08671486102830361,
+                -0.034132155908838155
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled"
+            ]
+          }
+        },
+        "cold_calls": {
+          "upstream_forward": {
+            "wall": 1.2005570024484769,
+            "device": 1.1272319555282593
+          },
+          "compiled_forward_after_upstream": {
+            "wall": 0.9178609980153851,
+            "device": 0.882752001285553
+          }
+        }
+      }
+    }
+  }
+}

@@ -65,6 +65,9 @@ device/provider, shapes/layouts, precision, mode, required gradients, numeric re
 raw timing blocks, confidence interval, memory, model trajectory and environment.
 Statuses distinguish `identity_unresolved`, `semantic_blocked`, `upstream_unavailable`,
 `numeric_failed`, `correct_below_parity`, `inconclusive`, and `parity_qualified`.
+The architecture coverage register also uses `not_applicable` for pinned catalog
+items classified outside the sequence-mixer kernel boundary; each such row names
+the separate compiler domain that would own it.
 
 CUDA/A10G is the existing evidence base, not universal hardware certification.
 Add Hopper/Blackwell, ROCm and other providers as separately qualified targets when

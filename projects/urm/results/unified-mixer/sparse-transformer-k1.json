@@ -1,0 +1,1059 @@
+{
+  "schema_version": 1,
+  "generated_utc": "2026-09-20T06:40:19.367328+00:00",
+  "purpose": "compare unified sparse-mask K1 against pinned OpenAI Sparse Transformer dense source equations",
+  "upstream": {
+    "repository": "/tmp/urm-comparator-pins/sparse_transformer",
+    "revision": "c53f3bdbf6225be0582f0357072e82b13c69be7d",
+    "loaded_module": "/tmp/urm-comparator-pins/sparse_transformer/attention.py",
+    "kernel_source_sha256": {
+      "attention.py": "eef8bb1fbdb33f8358078d1206e9201b7d4d5c2739526a818a32c7b74177eba9"
+    }
+  },
+  "provenance": {
+    "git_revision": "19ca443a118b8607ea8f871d255d683acfb68398",
+    "dirty_tree": true,
+    "benchmark_command": "PYTHONPATH=/path/to/sparse_attention-checkout:src python benchmarks/unified_mixer_sparse_transformer.py",
+    "config_hash": "d1dacc66ddc783ac251deea3caaaf3ce03db2e1c21f9eb83cb8b058331bbdaf3",
+    "solver_version": null,
+    "python": "3.12.14",
+    "platform": "Linux-6.12.103-127.188.amzn2023.x86_64-x86_64-with-glibc2.39",
+    "pytorch": "2.14.0+cu130",
+    "triton": "3.8.0",
+    "cuda": "13.0",
+    "driver": "595.91.07",
+    "gpu": "NVIDIA A10G",
+    "gpu_uuid": "GPU-624fe7c6-80af-dacf-0397-57fbc701f3de"
+  },
+  "hardware": {
+    "gpu": "NVIDIA A10G",
+    "compute_capability": [
+      8,
+      6
+    ],
+    "torch": "2.14.0+cu130",
+    "cuda": "13.0",
+    "tensorflow": "2.19.1"
+  },
+  "methodology": {
+    "timed_work": "pinned source attention_impl including all/local/strided mask generation, or dense fixed-mask equation using the pinned block layout/callback, vs unified K1 with the equivalent caller-supplied mask; output-only and input-gradient modes",
+    "sampling": "interleaved alternating order with synchronized TensorFlow eager execution and CUDA synchronization for PyTorch",
+    "warmup": 3,
+    "pairs": 21,
+    "overhead_gate_fraction": 0.1
+  },
+  "cases": {
+    "sparse_all": {
+      "architecture_ids": [
+        "arch-072"
+      ],
+      "semantic_scope": "Pinned OpenAI dense attention mask mode=all from attention_impl or the exact fixed-mode BlocksparseTransformer layout/callback; optimized block traversal is not included",
+      "shape": {
+        "batch": 1,
+        "sequence": 128,
+        "heads": 4,
+        "head_dim": 32,
+        "dtype": "float32"
+      },
+      "upstream_callable": "attention_impl(attn_mode='all', local_attn_ctx=None)",
+      "compiled_anchor": "torch.nn.functional.scaled_dot_product_attention",
+      "parity": {
+        "status": "pass",
+        "output_max_abs_error": 0.00010865926742553711,
+        "input_and_parameter_gradient_max_abs_errors": [
+          1.2171597063570516e-10,
+          1.7699974819151976e-10,
+          3.0653609428554773e-08
+        ],
+        "tolerances": {
+          "output_atol": 0.0002,
+          "gradient_atol": 0.0003,
+          "relative_tolerance": 0.0005
+        },
+        "independent_reference": "tests/test_unified_mixer.py compares pinned TensorFlow attention_impl outputs and gradients against the unified K1 plan"
+      },
+      "performance": {
+        "comparison": "pinned TensorFlow 2 eager attention_impl for all/local/strided, or dense fixed-mask equation from pinned layout/callback functions, vs PyTorch SDPA K1; the legacy custom blocksparse kernel is not timed",
+        "measurements": {
+          "forward": {
+            "upstream_wall": {
+              "sample_count": 21,
+              "median_ms": 2.0119569962844253,
+              "raw_samples_ms": [
+                2.2156019986141473,
+                2.0373279985506088,
+                1.9654660136438906,
+                2.0094069914193824,
+                1.9726769969565794,
+                2.0149269985267892,
+                2.000427004531957,
+                2.0489479938987643,
+                1.9602160027716309,
+                2.1204500080784783,
+                2.0119569962844253,
+                2.0333669963292778,
+                1.943905997904949,
+                2.0575280068442225,
+                1.9387259962968528,
+                2.046317997155711,
+                1.9493759900797158,
+                2.0219769940013066,
+                1.9364460022188723,
+                2.039337996393442,
+                1.991755998460576
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 21,
+              "median_ms": 0.2975069946842268,
+              "raw_samples_ms": [
+                0.37021900061517954,
+                0.2679859899217263,
+                0.2975069946842268,
+                0.2717059978749603,
+                0.3076270077144727,
+                0.2576359984232113,
+                0.3018870047526434,
+                0.25823598843999207,
+                0.3334379871375859,
+                0.25659600214567035,
+                0.3083869960391894,
+                0.2724369987845421,
+                0.30330699519254267,
+                0.2590259973658249,
+                0.30797699582763016,
+                0.26860700745601207,
+                0.3203880041837692,
+                0.2602360036689788,
+                0.30936699477024376,
+                0.2606959897093475,
+                0.31414799741469324
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": -0.8490887175244486,
+              "raw_samples": [
+                -0.8329036528912908,
+                -0.8684620296229295,
+                -0.8486328470607022,
+                -0.8647829936716624,
+                -0.8440560678767606,
+                -0.8721363113345638,
+                -0.8490887175244486,
+                -0.8739665480973886,
+                -0.8298973242407347,
+                -0.8789898365120176,
+                -0.8467228690231938,
+                -0.8660168089300372,
+                -0.8439703383191199,
+                -0.874108154783705,
+                -0.8411446504478225,
+                -0.8687364291232528,
+                -0.8356458652336907,
+                -0.8712962588392286,
+                -0.8402398030124484,
+                -0.872166364687763,
+                -0.8422758622755511
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled"
+            ]
+          },
+          "forward_backward": {
+            "upstream_wall": {
+              "sample_count": 21,
+              "median_ms": 4.689109991886653,
+              "raw_samples_ms": [
+                5.332004991942085,
+                4.726950006443076,
+                4.5621780009241775,
+                4.743521989439614,
+                4.587837989674881,
+                4.814453001017682,
+                4.695829993579537,
+                4.693130002124235,
+                4.494456006796099,
+                4.715090995887294,
+                4.4868849945487455,
+                4.632769007002935,
+                4.702880003605969,
+                4.689109991886653,
+                4.464995989110321,
+                4.5379660004982725,
+                4.608898001606576,
+                4.628889000741765,
+                4.711190995294601,
+                4.739541007438675,
+                4.552655998850241
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 21,
+              "median_ms": 0.7867680105846375,
+              "raw_samples_ms": [
+                0.967412008321844,
+                0.7745879993308336,
+                0.7984679978108034,
+                0.7216869998956099,
+                0.8642900065751746,
+                0.6523150077555329,
+                0.8921300031943247,
+                0.6529950042022392,
+                0.7904480007709935,
+                0.69312599953264,
+                0.7844079955248162,
+                0.6579849869012833,
+                0.91011100448668,
+                0.724906989489682,
+                0.8021590037969872,
+                0.7867680105846375,
+                0.8858810033416376,
+                0.7309869979508221,
+                0.9257319907192141,
+                0.7287069893209264,
+                0.8644010085845366
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": -0.8251776017264054,
+              "raw_samples": [
+                -0.8185650595256697,
+                -0.836133659489728,
+                -0.8249809635553337,
+                -0.8478584053152312,
+                -0.8116127883067591,
+                -0.8645090090987188,
+                -0.8100165456555909,
+                -0.8608615137644436,
+                -0.8241282149439774,
+                -0.8529983832470647,
+                -0.8251776017264054,
+                -0.8579715531021151,
+                -0.8064779446235402,
+                -0.8454062731000223,
+                -0.8203449665456872,
+                -0.8266254065151106,
+                -0.8077889762297114,
+                -0.8420815453052161,
+                -0.8035036168892732,
+                -0.8462494599841575,
+                -0.8101325888002875
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled"
+            ]
+          }
+        }
+      }
+    },
+    "sparse_local": {
+      "architecture_ids": [
+        "arch-072"
+      ],
+      "semantic_scope": "Pinned OpenAI dense attention mask mode=local from attention_impl or the exact fixed-mode BlocksparseTransformer layout/callback; optimized block traversal is not included",
+      "shape": {
+        "batch": 1,
+        "sequence": 128,
+        "heads": 4,
+        "head_dim": 32,
+        "dtype": "float32"
+      },
+      "upstream_callable": "attention_impl(attn_mode='local', local_attn_ctx=32)",
+      "compiled_anchor": "torch.nn.functional.scaled_dot_product_attention",
+      "parity": {
+        "status": "pass",
+        "output_max_abs_error": 0.00010865926742553711,
+        "input_and_parameter_gradient_max_abs_errors": [
+          1.2171597063570516e-10,
+          1.766018442594941e-10,
+          3.0086084734648466e-08
+        ],
+        "tolerances": {
+          "output_atol": 0.0002,
+          "gradient_atol": 0.0003,
+          "relative_tolerance": 0.0005
+        },
+        "independent_reference": "tests/test_unified_mixer.py compares pinned TensorFlow attention_impl outputs and gradients against the unified K1 plan"
+      },
+      "performance": {
+        "comparison": "pinned TensorFlow 2 eager attention_impl for all/local/strided, or dense fixed-mask equation from pinned layout/callback functions, vs PyTorch SDPA K1; the legacy custom blocksparse kernel is not timed",
+        "measurements": {
+          "forward": {
+            "upstream_wall": {
+              "sample_count": 21,
+              "median_ms": 1.8303230026504025,
+              "raw_samples_ms": [
+                1.9132849993184209,
+                1.92316499305889,
+                1.8600839975988492,
+                1.9178250076947734,
+                1.8062729941448197,
+                1.8303230026504025,
+                1.8477840058039874,
+                1.8271320004714653,
+                1.8264929967699572,
+                1.8656339962035418,
+                1.8033520027529448,
+                1.8618540052557364,
+                1.8359629902988672,
+                1.882333992398344,
+                1.7611420043976977,
+                1.913275002152659,
+                1.7401899967808276,
+                1.8050020007649437,
+                1.7850209987955168,
+                1.8150920077459887,
+                1.8161820044042543
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 21,
+              "median_ms": 0.29174699739087373,
+              "raw_samples_ms": [
+                0.32596800883766264,
+                0.2604059991426766,
+                0.30133700056467205,
+                0.2610060037113726,
+                0.3051270032301545,
+                0.25862600887194276,
+                0.29803698998875916,
+                0.2582260058261454,
+                0.3583189973141998,
+                0.2732860011747107,
+                0.3099570021731779,
+                0.2741170028457418,
+                0.3014170069945976,
+                0.2777370100375265,
+                0.29946699214633554,
+                0.2599360013846308,
+                0.2924470027210191,
+                0.25193599867634475,
+                0.29336698935367167,
+                0.24966600176412612,
+                0.29174699739087373
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": -0.8393624666011528,
+              "raw_samples": [
+                -0.8296291410041976,
+                -0.864595081502348,
+                -0.8379981759137421,
+                -0.8639052037260156,
+                -0.8310737057912905,
+                -0.8586992522645244,
+                -0.8387057204453501,
+                -0.8586714009937356,
+                -0.8038213133322354,
+                -0.8535157476059977,
+                -0.8281217412352072,
+                -0.8527720207535336,
+                -0.8358262075067584,
+                -0.8524507281071556,
+                -0.8299586340008103,
+                -0.8641408051157453,
+                -0.8319453604135089,
+                -0.860423424146025,
+                -0.8356506788706533,
+                -0.8624499470557608,
+                -0.8393624666011528
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled"
+            ]
+          },
+          "forward_backward": {
+            "upstream_wall": {
+              "sample_count": 21,
+              "median_ms": 4.43534400255885,
+              "raw_samples_ms": [
+                4.404072999022901,
+                5.511679002665915,
+                4.408113993122242,
+                4.445204001967795,
+                4.351772004156373,
+                4.412113994476385,
+                4.6310479956446216,
+                4.58839800558053,
+                4.412514012074098,
+                4.436944000190124,
+                4.368551992229186,
+                4.568226999253966,
+                4.547065997030586,
+                4.685310006607324,
+                4.393722992972471,
+                4.372342009446584,
+                4.3817830010084435,
+                4.619697996531613,
+                4.426383995451033,
+                4.43534400255885,
+                4.556177009362727
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 21,
+              "median_ms": 0.7800979947205633,
+              "raw_samples_ms": [
+                0.8792910084594041,
+                0.7239869883051142,
+                0.9017010015668347,
+                0.6934569973964244,
+                0.7800979947205633,
+                0.657144992146641,
+                0.8406699926126748,
+                0.7059159979689866,
+                0.8751709974603727,
+                0.7412469858536497,
+                1.1087460006820038,
+                0.7056769973132759,
+                0.823069000034593,
+                0.68184599513188,
+                0.8750809938646853,
+                0.6688760040560737,
+                0.9329019958386198,
+                0.6777660018997267,
+                0.914201998966746,
+                0.6563850038219243,
+                0.8589499921072274
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": -0.8207401504546901,
+              "raw_samples": [
+                -0.8003459505202375,
+                -0.8686449287132046,
+                -0.7954451715691306,
+                -0.8439988362537588,
+                -0.8207401504546901,
+                -0.8510589270881637,
+                -0.81847089613338,
+                -0.8461519691381538,
+                -0.8016615935800735,
+                -0.832937493504113,
+                -0.746198282027031,
+                -0.8455249711915542,
+                -0.818988991896733,
+                -0.8544715303426398,
+                -0.8008338269698997,
+                -0.8470211153173869,
+                -0.7870953455194113,
+                -0.8532878117988273,
+                -0.7934652755146716,
+                -0.8520103506191986,
+                -0.8114757195907608
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled"
+            ]
+          }
+        }
+      }
+    },
+    "sparse_strided": {
+      "architecture_ids": [
+        "arch-072"
+      ],
+      "semantic_scope": "Pinned OpenAI dense attention mask mode=strided from attention_impl or the exact fixed-mode BlocksparseTransformer layout/callback; optimized block traversal is not included",
+      "shape": {
+        "batch": 1,
+        "sequence": 128,
+        "heads": 4,
+        "head_dim": 32,
+        "dtype": "float32"
+      },
+      "upstream_callable": "attention_impl(attn_mode='strided', local_attn_ctx=8)",
+      "compiled_anchor": "torch.nn.functional.scaled_dot_product_attention",
+      "parity": {
+        "status": "pass",
+        "output_max_abs_error": 0.00011643767356872559,
+        "input_and_parameter_gradient_max_abs_errors": [
+          3.1749181061968557e-10,
+          2.5791280222620117e-10,
+          2.538217813707888e-08
+        ],
+        "tolerances": {
+          "output_atol": 0.0002,
+          "gradient_atol": 0.0003,
+          "relative_tolerance": 0.0005
+        },
+        "independent_reference": "tests/test_unified_mixer.py compares pinned TensorFlow attention_impl outputs and gradients against the unified K1 plan"
+      },
+      "performance": {
+        "comparison": "pinned TensorFlow 2 eager attention_impl for all/local/strided, or dense fixed-mask equation from pinned layout/callback functions, vs PyTorch SDPA K1; the legacy custom blocksparse kernel is not timed",
+        "measurements": {
+          "forward": {
+            "upstream_wall": {
+              "sample_count": 21,
+              "median_ms": 3.1823250028537586,
+              "raw_samples_ms": [
+                3.4853319957619533,
+                3.2605259912088513,
+                3.0552109965356067,
+                3.170883996062912,
+                3.292947993031703,
+                3.232586008380167,
+                3.2330050016753376,
+                3.152195000438951,
+                3.1817650015000254,
+                3.5133320052409545,
+                3.196325007593259,
+                3.1823250028537586,
+                3.1294130021706223,
+                3.123093003523536,
+                3.0830320029053837,
+                3.272096990258433,
+                3.096382992225699,
+                3.208466005162336,
+                3.142843008390628,
+                3.379619010956958,
+                3.099692999967374
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 21,
+              "median_ms": 0.313437994918786,
+              "raw_samples_ms": [
+                0.3852789959637448,
+                0.256457002251409,
+                0.313437994918786,
+                0.2783859963528812,
+                0.32893700699787587,
+                0.2893370110541582,
+                0.3357279929332435,
+                0.2538359985919669,
+                0.33769800211302936,
+                0.2571060031186789,
+                0.3862690064124763,
+                0.25379599537700415,
+                0.330928000039421,
+                0.24846498854458332,
+                0.3398979897610843,
+                0.2581759908935055,
+                0.31855700945015997,
+                0.25304600421804935,
+                0.3253879986004904,
+                0.2569960051914677,
+                0.3638580092228949
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": -0.9001086541014469,
+              "raw_samples": [
+                -0.8894570168832607,
+                -0.9213448986627073,
+                -0.8974087238903622,
+                -0.9122055563374328,
+                -0.9001086541014469,
+                -0.9104936387449305,
+                -0.8961560551996456,
+                -0.9194732563954262,
+                -0.8938645682651536,
+                -0.9268198955478317,
+                -0.8791521495796432,
+                -0.9202482476964446,
+                -0.8942523726303039,
+                -0.9204426546810293,
+                -0.8897520397320652,
+                -0.9210976961678894,
+                -0.897119635959123,
+                -0.9211317795448338,
+                -0.896466989368612,
+                -0.9239571074851133,
+                -0.8826148237174698
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled"
+            ]
+          },
+          "forward_backward": {
+            "upstream_wall": {
+              "sample_count": 21,
+              "median_ms": 5.912388005526736,
+              "raw_samples_ms": [
+                5.958570007351227,
+                5.964359996141866,
+                5.739073996664956,
+                5.91768798767589,
+                6.097374003729783,
+                6.0498420061776415,
+                5.7829849974950776,
+                5.9463990037329495,
+                5.912388005526736,
+                6.094904005294666,
+                5.82971700350754,
+                5.922887998167425,
+                5.724314003600739,
+                6.377570010954514,
+                5.795005999971181,
+                5.813536001369357,
+                5.738974999985658,
+                5.902288990910165,
+                5.908097999054007,
+                6.133964008768089,
+                5.77787499059923
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 21,
+              "median_ms": 0.8646010101074353,
+              "raw_samples_ms": [
+                1.1108360049547628,
+                0.6601860077353194,
+                0.8585600007791072,
+                0.7266369939316064,
+                0.9556320001138374,
+                0.9113220003200695,
+                0.9111719991778955,
+                0.6775959918741137,
+                1.1169459903612733,
+                0.7280069985426962,
+                0.8950310002546757,
+                0.6813259969931096,
+                0.8814610046101734,
+                0.7256470125867054,
+                0.9789829928195104,
+                0.6825960008427501,
+                0.8646609931020066,
+                0.666525011183694,
+                0.9704030089778826,
+                0.6537949957419187,
+                0.8646010101074353
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": -0.8503600352181094,
+              "raw_samples": [
+                -0.8135733903295088,
+                -0.8893115090030832,
+                -0.8504009529624419,
+                -0.8772093095403319,
+                -0.8432715461558904,
+                -0.849364330607395,
+                -0.842439155631119,
+                -0.8860493566865019,
+                -0.811083780476318,
+                -0.8805548048155847,
+                -0.8464709350872149,
+                -0.8849672664409802,
+                -0.8460145610363596,
+                -0.8862188872344343,
+                -0.8310643694200871,
+                -0.8825850565504424,
+                -0.8493352919111571,
+                -0.8870734706128118,
+                -0.8357503533060451,
+                -0.8934139498035263,
+                -0.8503600352181094
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled"
+            ]
+          }
+        }
+      }
+    },
+    "sparse_fixed": {
+      "architecture_ids": [
+        "arch-072"
+      ],
+      "semantic_scope": "Pinned OpenAI dense attention mask mode=fixed from attention_impl or the exact fixed-mode BlocksparseTransformer layout/callback; optimized block traversal is not included",
+      "shape": {
+        "batch": 1,
+        "sequence": 128,
+        "heads": 4,
+        "head_dim": 32,
+        "dtype": "float32"
+      },
+      "upstream_callable": "dense transcription of blocksparse_attention_impl(fixed) using pinned get_blocksparse_obj/get_callback",
+      "compiled_anchor": "torch.nn.functional.scaled_dot_product_attention",
+      "parity": {
+        "status": "pass",
+        "output_max_abs_error": 0.00010865926742553711,
+        "input_and_parameter_gradient_max_abs_errors": [
+          1.2171597063570516e-10,
+          1.7770318549992226e-10,
+          3.096647560596466e-08
+        ],
+        "tolerances": {
+          "output_atol": 0.0002,
+          "gradient_atol": 0.0003,
+          "relative_tolerance": 0.0005
+        },
+        "independent_reference": "tests/test_unified_mixer.py compares the fixed-mode mask generated by pinned get_blocksparse_obj/get_callback and a dense TensorFlow equation against the unified K1 plan"
+      },
+      "performance": {
+        "comparison": "pinned TensorFlow 2 eager attention_impl for all/local/strided, or dense fixed-mask equation from pinned layout/callback functions, vs PyTorch SDPA K1; the legacy custom blocksparse kernel is not timed",
+        "measurements": {
+          "forward": {
+            "upstream_wall": {
+              "sample_count": 21,
+              "median_ms": 1.7851209995569661,
+              "raw_samples_ms": [
+                1.8270029977429658,
+                2.06185900606215,
+                1.895234003313817,
+                1.7851209995569661,
+                1.6891289997147396,
+                1.7548710020491853,
+                1.73135100340005,
+                1.7919520032592118,
+                1.9935369928134605,
+                1.7724109929986298,
+                1.6908300021896139,
+                1.805332998628728,
+                1.8165419896831736,
+                1.7852410092018545,
+                1.7052600014721975,
+                1.7396909970557317,
+                1.745161003782414,
+                1.7569409974385053,
+                1.6954299935605377,
+                1.8884449964389205,
+                1.9438849994912744
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 21,
+              "median_ms": 0.29637699481099844,
+              "raw_samples_ms": [
+                0.3316469956189394,
+                0.2979369892273098,
+                0.31816800765227526,
+                0.25346600159537047,
+                0.2987670013681054,
+                0.25398599973414093,
+                0.2984570019179955,
+                0.286216993117705,
+                0.3281980025349185,
+                0.2532960061216727,
+                0.29637699481099844,
+                0.25006600480992347,
+                0.3218479978386313,
+                0.255595994531177,
+                0.2979170094477013,
+                0.2517259999876842,
+                0.29859700589440763,
+                0.25091601128224283,
+                0.29581600392702967,
+                0.25233499763999134,
+                0.3834389935946092
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": -0.8353689930419923,
+              "raw_samples": [
+                -0.818474848684623,
+                -0.8555007940158207,
+                -0.832122045564844,
+                -0.8580118649333709,
+                -0.8231236327014921,
+                -0.8552679943781861,
+                -0.8276161209761154,
+                -0.8402764177851125,
+                -0.8353689930419923,
+                -0.857089576220052,
+                -0.8247150840550546,
+                -0.861484831330361,
+                -0.8228238049731152,
+                -0.8568282975722987,
+                -0.8252952575029606,
+                -0.8553041888394505,
+                -0.8289000239821789,
+                -0.857185863584457,
+                -0.8255215461266009,
+                -0.8663794825288401,
+                -0.8027460504633981
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled"
+            ]
+          },
+          "forward_backward": {
+            "upstream_wall": {
+              "sample_count": 21,
+              "median_ms": 4.466854996280745,
+              "raw_samples_ms": [
+                4.701430996647105,
+                4.761571995913982,
+                4.375032003736123,
+                4.516196000622585,
+                4.433463996974751,
+                4.5405669952742755,
+                4.395954005303793,
+                4.701739992015064,
+                4.360381994047202,
+                4.514636006206274,
+                4.404573002830148,
+                4.526577002252452,
+                4.349902999820188,
+                4.552476995741017,
+                4.398203003802337,
+                4.4516350026242435,
+                4.403654005727731,
+                4.466854996280745,
+                4.41273300384637,
+                4.555947001790628,
+                4.53324599948246
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 21,
+              "median_ms": 0.8384389948332682,
+              "raw_samples_ms": [
+                0.9890540095511824,
+                0.8581300062360242,
+                0.876201011124067,
+                0.7143859984353185,
+                0.8763799996813759,
+                0.7253270014189184,
+                0.8384389948332682,
+                0.742078002076596,
+                0.9212820004904643,
+                0.701255994499661,
+                0.8411499875364825,
+                0.7214259967440739,
+                0.8132490038406104,
+                0.746147008612752,
+                0.954522009124048,
+                0.7088970014592633,
+                0.8553700026823208,
+                0.7467370014637709,
+                0.8450799941783771,
+                0.7397169974865392,
+                0.9260020015062764
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": -0.8130420370582453,
+              "raw_samples": [
+                -0.7896270283969836,
+                -0.819780104769516,
+                -0.799726948196991,
+                -0.8418168745694748,
+                -0.8023261268661731,
+                -0.840256293503912,
+                -0.8092702985923699,
+                -0.8421694939879997,
+                -0.7887153002309891,
+                -0.8446705352246241,
+                -0.8090280290516235,
+                -0.8406243843007447,
+                -0.8130420370582453,
+                -0.8361008722700202,
+                -0.7829745447632035,
+                -0.8407558119564232,
+                -0.8057590352080883,
+                -0.8328271228670889,
+                -0.8084905673101542,
+                -0.8376370495100562,
+                -0.7957309174017925
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled",
+              "compiledsource",
+              "sourcecompiled"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

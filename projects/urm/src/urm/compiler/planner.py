@@ -76,6 +76,7 @@ from urm.compiler.semantic import (
     SparseStateMixerAccess,
     StateUpdate,
     Transform,
+    UnifiedMixerAccess,
     WeightedReduce,
 )
 
@@ -1031,9 +1032,11 @@ class UrmCompiler:
         rejections = tuple(
             RejectedAlternative(
                 candidate_id=c.candidate_id,
-                reason_code="higher_estimated_cost"
-                if c.candidate_id != chosen.candidate_id
-                else "selected",
+                reason_code=(
+                    "higher_estimated_cost"
+                    if c.candidate_id != chosen.candidate_id
+                    else "selected"
+                ),
                 detail=(
                     f"heuristic order ({c.traffic_bytes_delta:+d} B traffic, "
                     f"{c.launch_count_delta:+d} launches); {heuristic_note}"
@@ -1132,7 +1135,14 @@ class UrmCompiler:
                 )
             )
             if override is not None:
-                if request_kind is AnchorKind.SPARSE_DELTA_MEMORY:
+                if isinstance(op, UnifiedMixerAccess):
+                    # Unified mixer plans pin the exact registered backend
+                    # anchor from their typed compilation request. Runtime
+                    # shape/device qualification still belongs to that anchor.
+                    decision = self._apply_override(
+                        request_kind, visitors, override, op
+                    )
+                elif request_kind is AnchorKind.SPARSE_DELTA_MEMORY:
                     from urm.compiler.execution import (
                         NATIVE_SPARSE_MEMORY_ANCHOR_NAME,
                         SDM_EXTERNAL_ANCHOR_NAME,
@@ -1292,13 +1302,13 @@ class UrmCompiler:
                 if launch_config is not None and anchor.consumes_launch_config
                 else None
             )
-            if anchor.kind is AnchorKind.SPARSE_STATE_MIXER and anchor.name.startswith(
-                "urm_native_"
+            if (
+                anchor.kind is AnchorKind.SPARSE_STATE_MIXER
+                and anchor.name.startswith("urm_native_")
+                and isinstance(op, SparseStateMixerAccess)
             ):
-                from urm.compiler.semantic import SparseStateMixerAccess
                 from urm.sparse_state_mixer import sparse_state_launch_schedule
 
-                assert isinstance(op, SparseStateMixerAccess)
                 step_launch_config = sparse_state_launch_schedule(op.spec)
             if anchor.kind is AnchorKind.SPARSE_ROUTE_SELECTION:
                 assert isinstance(op, SparseRouteGeneration)
@@ -1338,9 +1348,9 @@ class UrmCompiler:
                     "state_num_warps": state_warps,
                     "state_num_stages": 3,
                     "read_route_num_warps": 8 if read_block * read_block >= 1024 else 4,
-                    "write_route_num_warps": 8
-                    if write_block * write_block >= 1024
-                    else 4,
+                    "write_route_num_warps": (
+                        8 if write_block * write_block >= 1024 else 4
+                    ),
                     "route_backward_num_warps": 4,
                     "route_num_stages": 2,
                     "route_materialization": "explicit_logical_outputs",
@@ -1551,6 +1561,14 @@ class UrmCompiler:
             return AnchorKind.ROUTED_REDUCTION, ()
         if isinstance(op, OrderedRecurrence):
             return AnchorKind.RECURRENT_SCAN, ()
+        if isinstance(op, UnifiedMixerAccess):
+            from urm.compiler.unified_mixer import MixerKernelFamily
+
+            return {
+                MixerKernelFamily.SOFTMAX: AnchorKind.ATTENTION,
+                MixerKernelFamily.RECURRENCE: AnchorKind.RECURRENT_SCAN,
+                MixerKernelFamily.SPARSE_DELTA: AnchorKind.SPARSE_STATE_MIXER,
+            }[op.spec.family], ()
         if isinstance(op, SparseDeltaMemoryAccess):
             return AnchorKind.SPARSE_DELTA_MEMORY, ()
         if isinstance(op, SparseRouteGeneration):

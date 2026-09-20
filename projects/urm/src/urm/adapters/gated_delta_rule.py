@@ -20,7 +20,10 @@ raise instead of being silently forced through this typed boundary.
 from __future__ import annotations
 
 import importlib.metadata
+import subprocess
 from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
 
 import torch
 
@@ -33,12 +36,28 @@ MODE_DECODE = "decode"
 # actually installed: an incompatible installation must be rejected, never
 # relabeled as the expected pin.
 EXPECTED_FLA_VERSION = "0.5.2"
+EXPECTED_FLA_SOURCE_REVISION = "864a87f6ce5be8828bef81eb22baafd41937cdf2"
 
 
 def _version_compatible(installed: str) -> bool:
     """Exact-match contract: 0.5.2 == 0.5.2; any other version is rejected."""
 
     return installed == EXPECTED_FLA_VERSION
+
+
+@lru_cache(maxsize=1)
+def _loaded_fla_source_revision() -> str | None:
+    try:
+        import fla
+
+        package_root = Path(fla.__file__).resolve().parents[1]
+        return subprocess.check_output(
+            ["git", "-C", str(package_root), "rev-parse", "HEAD"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+    except (ImportError, OSError, subprocess.CalledProcessError):
+        return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,6 +152,7 @@ class GatedDeltaRuleSpec:
         )
 
 
+@lru_cache(maxsize=1)
 def fla_version() -> dict[str, object]:
     """Identity of the pinned FLA upstream, resolved dynamically.
 
@@ -145,13 +165,26 @@ def fla_version() -> dict[str, object]:
     try:
         distribution = importlib.metadata.distribution("flash-linear-attention")
         installed_version = distribution.metadata["Version"]
+        import fla
         import fla.ops.gated_delta_rule as gdr_module
+
+        module_version = getattr(fla, "__version__", None)
+        source_revision = _loaded_fla_source_revision()
+        version_compatible = (
+            _version_compatible(installed_version)
+            and module_version == EXPECTED_FLA_VERSION
+        )
+        revision_compatible = source_revision == EXPECTED_FLA_SOURCE_REVISION
 
         return {
             "package": "flash-linear-attention",
             "expected_version": EXPECTED_FLA_VERSION,
             "installed_version": installed_version,
-            "version_compatible": _version_compatible(installed_version),
+            "module_version": module_version,
+            "source_revision": source_revision,
+            "version_compatible": version_compatible,
+            "revision_compatible": revision_compatible,
+            "comparison_compatible": version_compatible or revision_compatible,
             "version": installed_version,
             "helper_package": {
                 name: importlib.metadata.version(name)
@@ -163,8 +196,16 @@ def fla_version() -> dict[str, object]:
             "decode_entry_point": f"{gdr_module.fused_recurrent_gated_delta_rule.__module__}"
             ".fused_recurrent_gated_delta_rule",
             "repository": "https://github.com/fla-org/flash-linear-attention",
-            "pin": f"release {EXPECTED_FLA_VERSION} (GitHub tag "
-            f"v{EXPECTED_FLA_VERSION}); installed version recorded separately",
+            "pin": (
+                f"release {EXPECTED_FLA_VERSION} (GitHub tag v{EXPECTED_FLA_VERSION})"
+                if version_compatible
+                else (
+                    f"source revision {EXPECTED_FLA_SOURCE_REVISION}"
+                    if revision_compatible
+                    else f"release {EXPECTED_FLA_VERSION} or source revision "
+                    f"{EXPECTED_FLA_SOURCE_REVISION}; loaded identity recorded separately"
+                )
+            ),
             "license": "MIT",
             "usage": "URM calls the installed package externally; no FLA "
             "source is vendored into URM",

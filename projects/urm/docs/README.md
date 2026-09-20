@@ -9,15 +9,16 @@ Read in this order:
 1. [Compiler charter](compiler/compiler-charter.md): architectural invariants.
 2. [Architecture](compiler/architecture.md): frontend, IR and component ownership.
 3. [Kernel generation](compiler/kernel-generation.md): verified lowering pipeline.
-4. [Runtime execution](runtime/execution.md): capabilities, binding and providers.
-5. Kernel contracts: [softmax attention](kernels/softmax-attention.md),
+4. [Unified mixer prototype](compiler/unified-mixer.md): executable K1/K2/K3 semantic and anchor boundary.
+5. [Runtime execution](runtime/execution.md): capabilities, binding and providers.
+6. Kernel contracts: [softmax attention](kernels/softmax-attention.md),
    [linear/delta recurrence](kernels/linear-delta.md), and
    [sparse routed delta](kernels/sparse-delta.md).
-6. [Named coverage register](planning/coverage.md): architecture-by-architecture comparisons.
+7. [Named coverage register](planning/coverage.md): architecture-by-architecture comparisons.
    [Unification audit](planning/unification-audit.md) records source findings;
    [generality axes](compiler/generality-axes.md) specifies the required IR extensions.
-7. [Construction roadmap](planning/lowering-roadmap.md): implementation milestones.
-8. [Acceptance requirements](validation/acceptance.md) and
+8. [Construction roadmap](planning/lowering-roadmap.md): implementation milestones.
+9. [Acceptance requirements](validation/acceptance.md) and
    [parity plan](validation/parity.md): numerical, integration and performance gates.
 
 Kernel contracts are architecture-independent. Names such as `sparse_delta`

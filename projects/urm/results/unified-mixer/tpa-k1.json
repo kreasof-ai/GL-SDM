@@ -1,0 +1,435 @@
+{
+  "schema_version": 1,
+  "generated_utc": "2026-09-20T04:33:43.124188+00:00",
+  "purpose": "compare the unified TPA K1 plan against its pinned source attention callable",
+  "upstream": {
+    "repository": "/tmp/urm-source-audit-tpa",
+    "revision": "c276c80d5ad807881dedb4707d8d3c20b4e97ec6",
+    "loaded_module": "/tmp/urm-source-audit-tpa/model/T6.py",
+    "kernel_source_sha256": {
+      "T6.py": "dd0d7a641d4b0e68b41b785a334df41afee59bc2013d66169498379d69e7e682"
+    }
+  },
+  "provenance": {
+    "git_revision": "19ca443a118b8607ea8f871d255d683acfb68398",
+    "dirty_tree": true,
+    "benchmark_command": "PYTHONPATH=/path/to/tpa-checkout:src python benchmarks/unified_mixer_factorized_attention.py --case tpa",
+    "config_hash": "12becdca6d2b258e205f6ea1f11d459e813545231b5fed0083fb16a7fee6e4e1",
+    "solver_version": null,
+    "python": "3.12.14",
+    "platform": "Linux-6.12.103-127.188.amzn2023.x86_64-x86_64-with-glibc2.39",
+    "pytorch": "2.14.0+cu130",
+    "triton": "3.8.0",
+    "cuda": "13.0",
+    "driver": "595.91.07",
+    "gpu": "NVIDIA A10G",
+    "gpu_uuid": "GPU-624fe7c6-80af-dacf-0397-57fbc701f3de"
+  },
+  "hardware": {
+    "gpu": "NVIDIA A10G",
+    "compute_capability": [
+      8,
+      6
+    ],
+    "torch": "2.14.0+cu130",
+    "cuda": "13.0"
+  },
+  "methodology": {
+    "timed_work": "complete named attention call; TPA includes CP factorization and output projection, Tucker includes source factorized query attention",
+    "sampling": "paired interleaved calls with alternating order and synchronized wall/CUDA-event timing",
+    "warmup": 3,
+    "pairs": 21,
+    "overhead_gate_fraction": 0.1
+  },
+  "cases": {
+    "tpa_attention_core": {
+      "architecture_ids": [
+        "arch-069"
+      ],
+      "semantic_scope": "softmax attention after caller-supplied projections/transforms",
+      "shape": {
+        "batch": 1,
+        "sequence": 64,
+        "heads": 2,
+        "head_dim": 32,
+        "q_rank": 4,
+        "rank": 4,
+        "dtype": "float32"
+      },
+      "upstream_callable": "/tmp/urm-source-audit-tpa/model/T6.py",
+      "compiled_anchor": "torch.nn.functional.scaled_dot_product_attention",
+      "compiler_plan_build_ms": 43.70852399733849,
+      "parity": {
+        "status": "pass",
+        "output_max_abs_error": 0.0,
+        "input_and_parameter_gradient_max_abs_errors": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "tolerances": {
+          "output_atol": 0.0,
+          "gradient_atol": 0.0,
+          "relative_tolerance": 0.0
+        },
+        "independent_reference": "tests/test_unified_mixer.py verifies reference K1 equation parity"
+      },
+      "performance": {
+        "comparison": "full source attention callable vs compiler library plan including required factorization/output stages",
+        "measurements": {
+          "forward": {
+            "upstream_wall": {
+              "sample_count": 21,
+              "median_ms": 0.8550990023650229,
+              "p95_ms": 0.8973309959401377,
+              "raw_samples_ms": [
+                0.8973309959401377,
+                0.8550990023650229,
+                0.8335090024047531,
+                0.8469290041830391,
+                0.8677600053488277,
+                0.8779900017543696,
+                0.8649599985801615,
+                0.895099998160731,
+                0.8316989988088608,
+                0.8504299985361286,
+                0.8343990048160776,
+                0.8571899961680174,
+                0.8809799983282574,
+                0.841449000290595,
+                0.9588719985913485,
+                0.8404700056416914,
+                0.844339003378991,
+                0.8597589985583909,
+                0.8822810050332919,
+                0.8375489996979013,
+                0.8479989992338233
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 21,
+              "median_ms": 0.871410004037898,
+              "p95_ms": 0.9074500048882328,
+              "raw_samples_ms": [
+                0.8732299975235946,
+                0.8725399966351688,
+                0.9108109952649102,
+                0.8634799960418604,
+                0.9074500048882328,
+                0.8802409938653,
+                0.8588900018366985,
+                0.8891999968909658,
+                0.8591199948568828,
+                0.8709500034456141,
+                0.8620290027465671,
+                0.8796900001470931,
+                0.8762700017541647,
+                0.8998710036394186,
+                0.8562000002712011,
+                0.8630800002720207,
+                0.8555099993827753,
+                0.871410004037898,
+                0.8641989988973364,
+                0.8979709964478388,
+                0.8659499944769777
+              ]
+            },
+            "upstream_device": {
+              "sample_count": 21,
+              "median_ms": 0.822272002696991,
+              "p95_ms": 0.8642560243606567,
+              "raw_samples_ms": [
+                0.8642560243606567,
+                0.822272002696991,
+                0.8017920255661011,
+                0.8151040077209473,
+                0.834559977054596,
+                0.8447999954223633,
+                0.8325120210647583,
+                0.8642560243606567,
+                0.8007040023803711,
+                0.8191999793052673,
+                0.8028159737586975,
+                0.8253440260887146,
+                0.8488960266113281,
+                0.8058879971504211,
+                0.92467200756073,
+                0.809984028339386,
+                0.814079999923706,
+                0.8294399976730347,
+                0.8499199748039246,
+                0.8069120049476624,
+                0.8171520233154297
+              ]
+            },
+            "compiled_device": {
+              "sample_count": 21,
+              "median_ms": 0.8386560082435608,
+              "p95_ms": 0.8755199909210205,
+              "raw_samples_ms": [
+                0.8366720080375671,
+                0.8386560082435608,
+                0.8806399703025818,
+                0.8335360288619995,
+                0.8755199909210205,
+                0.8488960266113281,
+                0.8273919820785522,
+                0.857088029384613,
+                0.8273919820785522,
+                0.839680016040802,
+                0.8304640054702759,
+                0.8437759876251221,
+                0.8447999954223633,
+                0.8673279881477356,
+                0.8243200182914734,
+                0.8325759768486023,
+                0.8243200182914734,
+                0.8407040238380432,
+                0.8325120210647583,
+                0.8663039803504944,
+                0.8335360288619995
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": 0.020396461955759268,
+              "p95": 0.07214144697412495,
+              "raw_samples": [
+                -0.026858537736448394,
+                0.020396461955759268,
+                0.09274284097368284,
+                0.01954236043053775,
+                0.04573845221577165,
+                0.0025638015312617773,
+                -0.007017661803351515,
+                -0.006591443729067854,
+                0.03296985578591985,
+                0.024128975864923977,
+                0.0331136515875637,
+                0.026248561088743138,
+                -0.0053463149935643476,
+                0.06943023680418844,
+                -0.10707581248694288,
+                0.026901608003329972,
+                0.01323046307120555,
+                0.013551478378293316,
+                -0.02049461116447038,
+                0.07214144697412495,
+                0.021168651448142502
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled"
+            ]
+          },
+          "forward_backward": {
+            "upstream_wall": {
+              "sample_count": 21,
+              "median_ms": 2.613260003272444,
+              "p95_ms": 2.7654739969875664,
+              "raw_samples_ms": [
+                2.5655089993961155,
+                2.5869889941532165,
+                2.979058997880202,
+                2.737221999268513,
+                2.619250000861939,
+                2.5700490004965104,
+                2.602350003144238,
+                2.5370880030095577,
+                2.667880995431915,
+                2.7654739969875664,
+                2.664211002411321,
+                2.5997899938374758,
+                2.5418590012122877,
+                2.696511997783091,
+                2.5346980037284084,
+                2.6759719985420816,
+                2.6693010004237294,
+                2.613260003272444,
+                2.5907890012604184,
+                2.630889997817576,
+                2.5714090006658807
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 21,
+              "median_ms": 2.6092800035257824,
+              "p95_ms": 2.69723199744476,
+              "raw_samples_ms": [
+                2.67096099560149,
+                2.7310029981890693,
+                2.677121003216598,
+                2.5531179999234155,
+                2.6139799956581555,
+                2.5433289993088692,
+                2.617760001157876,
+                2.544748997024726,
+                2.633370997500606,
+                2.561829001933802,
+                2.55586900311755,
+                2.527668002585415,
+                2.636259996506851,
+                2.69723199744476,
+                2.540558001783211,
+                2.6676609995774925,
+                2.6092800035257824,
+                2.6886720006586984,
+                2.4900069984141737,
+                2.608039998449385,
+                2.5220390016329475
+              ]
+            },
+            "upstream_device": {
+              "sample_count": 21,
+              "median_ms": 2.570240020751953,
+              "p95_ms": 2.732032060623169,
+              "raw_samples_ms": [
+                2.5323519706726074,
+                2.545664072036743,
+                2.8979198932647705,
+                2.705471992492676,
+                2.5876479148864746,
+                2.5374720096588135,
+                2.570240020751953,
+                2.504703998565674,
+                2.634752035140991,
+                2.732032060623169,
+                2.6306560039520264,
+                2.5671679973602295,
+                2.50982403755188,
+                2.663424015045166,
+                2.5026559829711914,
+                2.6357760429382324,
+                2.623487949371338,
+                2.5610239505767822,
+                2.5578880310058594,
+                2.598912000656128,
+                2.537503957748413
+              ]
+            },
+            "compiled_device": {
+              "sample_count": 21,
+              "median_ms": 2.575360059738159,
+              "p95_ms": 2.6552319526672363,
+              "raw_samples_ms": [
+                2.638848066329956,
+                2.697216033935547,
+                2.6449921131134033,
+                2.521087884902954,
+                2.5763840675354004,
+                2.5088000297546387,
+                2.5855679512023926,
+                2.510848045349121,
+                2.6009600162506104,
+                2.529279947280884,
+                2.5231359004974365,
+                2.4934399127960205,
+                2.605056047439575,
+                2.6470398902893066,
+                2.5077760219573975,
+                2.631648063659668,
+                2.575360059738159,
+                2.6552319526672363,
+                2.4576640129089355,
+                2.5722880363464355,
+                2.4883201122283936
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": -0.008685273571736452,
+              "p95": 0.04110373272134165,
+              "raw_samples": [
+                0.04110373272134165,
+                0.05566858009884657,
+                -0.10135347936326623,
+                -0.06725943288279032,
+                -0.00201202832950244,
+                -0.010396689394824422,
+                0.005921570117401246,
+                0.0030196012144950175,
+                -0.012935358807382662,
+                -0.07363836914597466,
+                -0.04066569772278269,
+                -0.027741468127432774,
+                0.03713856482579909,
+                0.0002670114808541832,
+                0.0023119117331463815,
+                -0.003105786969787828,
+                -0.022485660810983552,
+                0.02885744139190896,
+                -0.03890011992378163,
+                -0.008685273571736452,
+                -0.019199590193605384
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled"
+            ]
+          }
+        },
+        "cold_calls": {
+          "upstream_forward": {
+            "wall": 1.231377995281946,
+            "device": 1.1560959815979004
+          },
+          "compiled_forward_after_upstream": {
+            "wall": 0.9081309981411323,
+            "device": 0.8714240193367004
+          }
+        }
+      }
+    }
+  }
+}

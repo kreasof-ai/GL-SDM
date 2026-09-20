@@ -41,6 +41,7 @@ and sparse-slot memory. These are engineering boundaries, not a proof of univers
 coverage or a promise of three universal kernel source files.
 
 - [Runtime and lowering contracts](docs/runtime/execution.md)
+- [Unified mixer kernel compiler prototype](docs/compiler/unified-mixer.md)
 - [Coverage and implementation milestones](docs/planning/lowering-roadmap.md)
 - [Verified sparse-slot formulation](docs/kernels/sparse-delta.md)
 - [Compiler architecture](docs/compiler/architecture.md)
