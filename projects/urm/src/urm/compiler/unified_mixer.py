@@ -70,6 +70,11 @@ class ReadTiming(StrEnum):
     AFTER_UPDATE = "after_update"
 
 
+class StateEffect(StrEnum):
+    FUNCTIONAL = "functional"
+    IN_PLACE_SLOT_TABLE = "in_place_slot_table"
+
+
 class MixerIntent(StrEnum):
     INFERENCE = "inference"
     TRAINING = "training"
@@ -176,6 +181,7 @@ class UnifiedMixerSpec:
     read_scale: float | None = None
     state_v_first: bool = False
     accepts_score_bias: bool = False
+    requires_attention_mask: bool = False
     path_attention: bool = False
     deltaformer_attention: bool = False
     recurrent_layout: RecurrentLayout = RecurrentLayout.MATRIX
@@ -186,6 +192,7 @@ class UnifiedMixerSpec:
     decay: DecayGranularity = DecayGranularity.NONE
     transition: StateTransition = StateTransition.POINTWISE
     read_timing: ReadTiming = ReadTiming.AFTER_UPDATE
+    state_effect: StateEffect = StateEffect.FUNCTIONAL
     static_head_decay: bool = False
     static_head_decay_chunk: bool = False
     mamba2_ssm: bool = False
@@ -218,6 +225,7 @@ class UnifiedMixerSpec:
             ("decay", DecayGranularity),
             ("transition", StateTransition),
             ("read_timing", ReadTiming),
+            ("state_effect", StateEffect),
         ):
             try:
                 value = enum_type(getattr(self, name))
@@ -232,6 +240,8 @@ class UnifiedMixerSpec:
             raise ValueError("path_attention must be a bool")
         if not isinstance(self.deltaformer_attention, bool):
             raise ValueError("deltaformer_attention must be a bool")
+        if not isinstance(self.requires_attention_mask, bool):
+            raise ValueError("requires_attention_mask must be a bool")
         if not isinstance(self.state_v_first, bool):
             raise ValueError("state_v_first must be a bool")
         if self.deltaformer_attention and self.family is not MixerKernelFamily.SOFTMAX:
@@ -742,6 +752,7 @@ class UnifiedMixerSpec:
                 or self.decay is not DecayGranularity.NONE
                 or self.transition is not StateTransition.POINTWISE
                 or self.read_scale is not None
+                or self.state_effect is not StateEffect.FUNCTIONAL
             ):
                 raise ValueError("K1 accepts softmax attention semantics only")
             if self.path_attention and self.accepts_score_bias:
@@ -755,6 +766,8 @@ class UnifiedMixerSpec:
                     "DeltaFormer requires its own causal two-stage attention semantics"
                 )
         elif self.family is MixerKernelFamily.RECURRENCE:
+            if self.requires_attention_mask:
+                raise ValueError("attention masks belong to K1")
             if self.accepts_score_bias or self.attention_scale is not None:
                 raise ValueError("score bias and attention scale belong to K1")
             if self.recurrent_layout is RecurrentLayout.DIAGONAL:
@@ -798,6 +811,8 @@ class UnifiedMixerSpec:
                 or self.accepts_score_bias
                 or self.attention_scale is not None
                 or self.read_scale is not None
+                or self.requires_attention_mask
+                or self.state_effect is not StateEffect.FUNCTIONAL
             ):
                 raise ValueError("K3 accepts ordered sparse delta semantics only")
 
@@ -912,6 +927,10 @@ class CompiledMixerPlan:
         inference-only.
         """
         torch = _torch()
+        if self.spec.requires_attention_mask and operands.get("attention_mask") is None:
+            raise ValueError(
+                "this K1 operation requires a precomputed attention_mask route"
+            )
         primary_name = {
             MixerKernelFamily.SOFTMAX: "query",
             MixerKernelFamily.RECURRENCE: (
@@ -930,11 +949,14 @@ class CompiledMixerPlan:
                 f"compiled for {self.compile_dtype}, but {primary_name} uses "
                 f"{primary.dtype}"
             )
-        if (
-            self.backend is MixerBackend.LIBRARY
-            and self.spec.name == "atma_gated_delta_decode_core"
-        ):
-            return _execute_atma_gated_delta_decode(self, torch, **operands)
+        if self.spec.state_effect is StateEffect.IN_PLACE_SLOT_TABLE:
+            if not _is_atma_gated_delta_decode_spec(self.spec):
+                raise RuntimeError("unsupported in-place slot-table K2 semantics")
+            if self.backend is MixerBackend.LIBRARY:
+                return _execute_atma_gated_delta_decode(self, torch, **operands)
+            if self.backend is MixerBackend.REFERENCE:
+                return _execute_atma_gated_delta_reference(self, torch, **operands)
+            raise RuntimeError("in-place slot-table K2 has no selected native backend")
         if self.spec.name == "h3_ssm_fft_core":
             return _execute_h3_ssm_fft(self, torch, **operands)
         if self.spec.name == "hyena_fftconv_core":
@@ -1029,8 +1051,6 @@ class CompiledMixerPlan:
             if self.spec.family is MixerKernelFamily.RECURRENCE:
                 return _execute_native_diagonal_ssm(self, torch, **operands)
             return _execute_native_sparse_delta(self, torch, **operands)
-        if self.spec.name == "atma_gated_delta_decode_core":
-            return _execute_atma_gated_delta_reference(self, torch, **operands)
         if self.spec.family is MixerKernelFamily.SOFTMAX:
             if self.spec.name == "kata_attention_core":
                 return _execute_kata_attention_reference(self.spec, torch, **operands)
@@ -1124,6 +1144,13 @@ def compile_mixer(
     dtype = str(dtype)
     if dtype not in {"float32", "float16", "bfloat16"}:
         raise ValueError(f"unsupported mixer compile dtype {dtype!r}")
+    if spec.state_effect is StateEffect.IN_PLACE_SLOT_TABLE and not (
+        _is_atma_gated_delta_decode_spec(spec)
+    ):
+        raise ValueError(
+            "in-place slot-table K2 currently supports only the exact gated-delta "
+            "decode semantics"
+        )
     if resolved_backend is MixerBackend.NATIVE and not (
         spec.family is MixerKernelFamily.SPARSE_DELTA
         or (
@@ -1144,7 +1171,7 @@ def compile_mixer(
         resolved_backend is MixerBackend.LIBRARY
         and spec.family is MixerKernelFamily.RECURRENCE
     ):
-        if spec.name == "atma_gated_delta_decode_core":
+        if _is_atma_gated_delta_decode_spec(spec):
             library_k2_anchor = "atma_gated_delta_decode_adapter"
         elif spec.name == "h3_ssm_fft_core":
             library_k2_anchor = "h3_ssm_fft_convolution_adapter"
@@ -1401,7 +1428,7 @@ def mixer_semantic_program(spec: UnifiedMixerSpec, *, dtype: str = "float32"):
                 floating_inputs += ("score_bias",)
             output_names = ("output",)
     elif spec.family is MixerKernelFamily.RECURRENCE:
-        if spec.name == "atma_gated_delta_decode_core":
+        if spec.state_effect is StateEffect.IN_PLACE_SLOT_TABLE:
             floating_inputs = (
                 "query",
                 "key",
@@ -1768,7 +1795,11 @@ def compile_frontend_mixer(
             recipe = replace(
                 recipe,
                 architecture_ids=(),
-                spec=replace(recipe.spec, name=spec.name),
+                spec=replace(
+                    recipe.spec,
+                    name=spec.name,
+                    requires_attention_mask=True,
+                ),
                 component_scope=(f"{spec.name}: exact masked softmax attention core"),
             )
             return compile_mixer(recipe, intent=intent, backend=backend, dtype=dtype)
@@ -1808,6 +1839,19 @@ def _is_fla_gated_delta_spec(spec: UnifiedMixerSpec) -> bool:
         and spec.transition is StateTransition.POINTWISE
         and spec.read_timing is ReadTiming.AFTER_UPDATE
     )
+
+
+def _is_atma_gated_delta_decode_spec(spec: UnifiedMixerSpec) -> bool:
+    """Match the complete semantic contract of ATMA's slot-table decode step."""
+    expected = UnifiedMixerSpec(
+        "atma_gated_delta_decode_core",
+        MixerKernelFamily.RECURRENCE,
+        update_rule=StateUpdateRule.DELTA,
+        decay=DecayGranularity.HEAD,
+        feature_map=FeatureMap.L2_NORMALIZE,
+        state_effect=StateEffect.IN_PLACE_SLOT_TABLE,
+    )
+    return replace(spec, name=expected.name) == expected
 
 
 def _is_fla_gdn2_spec(spec: UnifiedMixerSpec) -> bool:
@@ -1914,6 +1958,7 @@ def softmax_attention_spec(
     causal: bool = True,
     scale: float | None = None,
     score_bias: bool = False,
+    requires_attention_mask: bool = False,
 ) -> UnifiedMixerSpec:
     return UnifiedMixerSpec(
         name=name,
@@ -1921,6 +1966,7 @@ def softmax_attention_spec(
         causal=causal,
         attention_scale=scale,
         accepts_score_bias=score_bias,
+        requires_attention_mask=requires_attention_mask,
     )
 
 
@@ -2018,7 +2064,11 @@ def named_mixer_recipe(name: str) -> MixerRecipe:
         )
     recipes["sparse_attention_core"] = MixerRecipe(
         ("arch-006", "arch-072"),
-        replace(attention, name="sparse_attention_core"),
+        replace(
+            attention,
+            name="sparse_attention_core",
+            requires_attention_mask=True,
+        ),
         "exact softmax attention for a caller-supplied boolean/additive mask",
         ("architecture-specific indexer/selection", "sparse traversal kernel"),
     )
@@ -2124,7 +2174,9 @@ def named_mixer_recipe(name: str) -> MixerRecipe:
     )
     recipes["cat_attention_core"] = MixerRecipe(
         ("arch-066",),
-        softmax_attention_spec("cat_attention_core", score_bias=False),
+        softmax_attention_spec(
+            "cat_attention_core", score_bias=False, requires_attention_mask=True
+        ),
         "CAT Compress And Attend causal attention over prior compressed tokens and the current local block",
         (
             "chunk compression and compressed-token construction",
@@ -2168,7 +2220,9 @@ def named_mixer_recipe(name: str) -> MixerRecipe:
     )
     recipes["nsa_selected_attention_core"] = MixerRecipe(
         ("arch-005",),
-        softmax_attention_spec("nsa_selected_attention_core"),
+        softmax_attention_spec(
+            "nsa_selected_attention_core", requires_attention_mask=True
+        ),
         "NSA selected-block causal attention from caller-supplied block routes",
         (
             "NSA compression and indexer routes",
@@ -2177,7 +2231,11 @@ def named_mixer_recipe(name: str) -> MixerRecipe:
     )
     recipes["moba_selected_attention_core"] = MixerRecipe(
         ("arch-006",),
-        softmax_attention_spec("moba_selected_attention_core", score_bias=False),
+        softmax_attention_spec(
+            "moba_selected_attention_core",
+            score_bias=False,
+            requires_attention_mask=True,
+        ),
         "MoBA causal attention over local and selected KV blocks",
         ("block-score route selection", "sparse traversal and full layer"),
     )
@@ -2217,7 +2275,7 @@ def named_mixer_recipe(name: str) -> MixerRecipe:
     )
     recipes["dsa_attention_core"] = MixerRecipe(
         ("arch-007",),
-        softmax_attention_spec("dsa_attention_core"),
+        softmax_attention_spec("dsa_attention_core", requires_attention_mask=True),
         "causal softmax attention restricted to caller-supplied DSA token indices",
         (
             "DSA indexer objective and token selection",
@@ -2411,6 +2469,7 @@ def named_mixer_recipe(name: str) -> MixerRecipe:
             update_rule=StateUpdateRule.DELTA,
             decay=DecayGranularity.HEAD,
             feature_map=FeatureMap.L2_NORMALIZE,
+            state_effect=StateEffect.IN_PLACE_SLOT_TABLE,
         ),
         "ATMA's in-place, slot-indexed one-token gated-delta decode update",
         (
@@ -2952,15 +3011,7 @@ def _execute_sdpa(spec: UnifiedMixerSpec, torch: Any, **operands: Any):
     score_bias = operands.pop("score_bias", None)
     if operands:
         raise TypeError(f"unexpected K1 operands: {', '.join(sorted(operands))}")
-    if (
-        spec.name
-        in {
-            "dsa_attention_core",
-            "nsa_selected_attention_core",
-            "moba_selected_attention_core",
-        }
-        and mask is None
-    ):
+    if spec.requires_attention_mask and mask is None:
         raise ValueError(
             "sparse K1 attention requires precomputed selected-token attention_mask"
         )
@@ -3827,15 +3878,7 @@ def _execute_softmax(spec: UnifiedMixerSpec, torch: Any, **operands: Any):
     score_bias = operands.pop("score_bias", None)
     if operands:
         raise TypeError(f"unexpected K1 operands: {', '.join(sorted(operands))}")
-    if (
-        spec.name
-        in {
-            "dsa_attention_core",
-            "nsa_selected_attention_core",
-            "cat_attention_core",
-        }
-        and mask is None
-    ):
+    if spec.requires_attention_mask and mask is None:
         raise ValueError(
             "sparse K1 attention requires precomputed selected-token attention_mask"
         )
@@ -3903,8 +3946,12 @@ def _execute_softmax(spec: UnifiedMixerSpec, torch: Any, **operands: Any):
             scores = scores.masked_fill(~expanded_mask, float("-inf"))
         else:
             scores = scores + expanded_mask.float()
-    probabilities = torch.softmax(scores, dim=-1)
-    probabilities = torch.nan_to_num(probabilities, nan=0.0)
+    empty_rows = torch.isneginf(scores).all(dim=-1, keepdim=True)
+    safe_scores = torch.where(empty_rows, torch.zeros_like(scores), scores)
+    probabilities = torch.softmax(safe_scores, dim=-1)
+    probabilities = torch.where(
+        empty_rows, torch.zeros_like(probabilities), probabilities
+    )
     output = torch.matmul(probabilities, v).transpose(1, 2).to(value.dtype)
     return MixerResult(
         output,
@@ -8361,8 +8408,8 @@ def _execute_atma_gated_delta_decode(
     plan: CompiledMixerPlan, torch: Any, **operands: Any
 ):
     """Run ATMA's one-token gated-delta step against a slot-indexed state table."""
-    if plan.spec.name != "atma_gated_delta_decode_core":
-        raise RuntimeError("ATMA gated-delta adapter is bound to its decode recipe")
+    if not _is_atma_gated_delta_decode_spec(plan.spec):
+        raise RuntimeError("ATMA adapter requires its exact K2 semantic contract")
     query = operands.pop("query")
     key = operands.pop("key")
     value = operands.pop("value")
@@ -8382,6 +8429,7 @@ def _execute_atma_gated_delta_decode(
     if value.shape[:3] != (batch, 1, heads):
         raise ValueError("ATMA gated-delta value must use [B,1,H,Dv] layout")
     value_dim = value.shape[-1]
+    _validate_atma_decode_dimensions(batch, key_dim, value_dim)
     if state_table.ndim != 4 or state_table.shape[1:] != (
         heads,
         key_dim,
@@ -8445,6 +8493,8 @@ def _execute_atma_gated_delta_decode(
 def _execute_atma_gated_delta_reference(
     plan: CompiledMixerPlan, torch: Any, **operands: Any
 ):
+    if not _is_atma_gated_delta_decode_spec(plan.spec):
+        raise RuntimeError("ATMA reference requires its exact K2 semantic contract")
     query = operands.pop("query")
     key = operands.pop("key")
     value = operands.pop("value")
@@ -8493,6 +8543,23 @@ def _execute_atma_gated_delta_reference(
             "backward_supported": True,
         },
     )
+
+
+def _atma_decode_value_block(batch: int, value_dim: int) -> int:
+    """Return the pinned ATMA kernel's unmasked value tile width."""
+    return 64 if batch >= 256 and value_dim >= 64 else 32
+
+
+def _validate_atma_decode_dimensions(batch: int, key_dim: int, value_dim: int) -> int:
+    if key_dim <= 0 or key_dim & (key_dim - 1):
+        raise ValueError("ATMA key width must be a positive power of two")
+    block_v = _atma_decode_value_block(batch, value_dim)
+    if value_dim <= 0 or value_dim % block_v:
+        raise ValueError(
+            "ATMA value width must be divisible by the pinned unmasked "
+            f"{block_v}-wide value tile"
+        )
+    return block_v
 
 
 def _execute_fla_gated_delta(plan: CompiledMixerPlan, torch: Any, **operands: Any):
@@ -8860,6 +8927,7 @@ __all__ = [
     "ReadTiming",
     "RecurrentLayout",
     "StateNormalizer",
+    "StateEffect",
     "StateTransition",
     "StateUpdateRule",
     "UnifiedMixerSpec",

@@ -436,7 +436,10 @@ def execute_diagonal_ssm(
         )
         has_initial = False
     else:
-        initial_tensor = initial_state
+        # The kernels index the state as dense [B,C,N]. This copy remains in
+        # the autograd graph, so gradients still return to transposed or
+        # expanded caller storage through PyTorch's copy backward.
+        initial_tensor = initial_state.contiguous()
         has_initial = True
         if initial_tensor.shape != (batch, channels, state_width):
             raise ValueError("initial_state must have shape [B,C,N]")

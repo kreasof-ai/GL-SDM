@@ -1,6 +1,7 @@
 """Contract checks for the three-family unified mixer prototype."""
 
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,7 @@ from urm.compiler.unified_mixer import (
     ReadTiming,
     RecurrentLayout,
     StateTransition,
+    StateEffect,
     StateUpdateRule,
     UnifiedMixerSpec,
     compile_frontend_mixer,
@@ -119,6 +121,190 @@ def test_atma_gated_delta_decode_is_a_pinned_forward_only_k2_anchor():
         )
     with pytest.raises(ValueError, match="float32"):
         compile_mixer(recipe, backend=MixerBackend.LIBRARY, dtype="bfloat16")
+
+
+def test_atma_selection_is_semantic_and_independent_of_recipe_name():
+    torch = _torch()
+    recipe = named_mixer_recipe("atma_gated_delta_decode_core")
+    renamed = replace(recipe.spec, name="renamed_decode_operation")
+    original_plan = compile_mixer(recipe.spec, backend=MixerBackend.LIBRARY)
+    renamed_plan = compile_mixer(renamed, backend=MixerBackend.LIBRARY)
+    assert original_plan.anchor == renamed_plan.anchor == "atma_gated_delta_decode_adapter"
+
+    operands = {
+        "query": torch.randn(1, 1, 2, 8),
+        "key": torch.randn(1, 1, 2, 8),
+        "value": torch.randn(1, 1, 2, 4),
+        "gamma": torch.rand(1, 1, 2),
+        "beta": torch.rand(1, 1, 2),
+        "state_table": torch.randn(3, 2, 8, 4),
+        "slots": torch.tensor([1], dtype=torch.int64),
+    }
+    original = compile_mixer(recipe.spec).execute(**operands)
+    renamed_result = compile_mixer(renamed).execute(**operands)
+    torch.testing.assert_close(renamed_result.output, original.output)
+    torch.testing.assert_close(renamed_result.final_state, original.final_state)
+
+    changed_semantics = (
+        replace(recipe.spec, read_timing=ReadTiming.BEFORE_UPDATE),
+        replace(recipe.spec, update_rule=StateUpdateRule.ADDITIVE),
+        replace(recipe.spec, feature_map=FeatureMap.IDENTITY),
+        replace(recipe.spec, read_scale=0.5),
+    )
+    for spec in changed_semantics:
+        with pytest.raises(ValueError, match="exact gated-delta decode semantics"):
+            compile_mixer(spec, backend=MixerBackend.LIBRARY)
+
+
+def test_atma_decode_dimension_contract_matches_both_pinned_value_tiles():
+    from urm.compiler.unified_mixer import (
+        _atma_decode_value_block,
+        _validate_atma_decode_dimensions,
+    )
+
+    assert _validate_atma_decode_dimensions(1, 64, 64) == 32
+    assert _validate_atma_decode_dimensions(256, 64, 64) == 64
+    assert _atma_decode_value_block(1, 64) == 32
+    assert _atma_decode_value_block(256, 64) == 64
+    with pytest.raises(ValueError, match="power of two"):
+        _validate_atma_decode_dimensions(1, 48, 64)
+    with pytest.raises(ValueError, match="divisible by the pinned unmasked 32-wide"):
+        _validate_atma_decode_dimensions(1, 64, 33)
+
+
+def test_atma_decode_rejects_unsafe_dimensions_before_launch():
+    torch = _torch()
+    plan = compile_mixer(
+        named_mixer_recipe("atma_gated_delta_decode_core"),
+        backend=MixerBackend.LIBRARY,
+    )
+    for key_dim, value_dim, message in (
+        (48, 64, "power of two"),
+        (64, 33, "unmasked 32-wide"),
+    ):
+        with pytest.raises(ValueError, match=message):
+            plan.execute(
+                query=torch.zeros(1, 1, 1, key_dim),
+                key=torch.zeros(1, 1, 1, key_dim),
+                value=torch.zeros(1, 1, 1, value_dim),
+                gamma=torch.ones(1, 1, 1),
+                beta=torch.ones(1, 1, 1),
+                state_table=torch.zeros(2, 1, key_dim, value_dim),
+                slots=torch.tensor([0], dtype=torch.int64),
+            )
+
+
+def test_atma_pinned_decode_executes_both_unmasked_value_tile_branches():
+    torch = _torch()
+    if not torch.cuda.is_available():
+        pytest.skip("ATMA gated-delta decode requires CUDA")
+    pytest.importorskip("triton")
+    from urm.adapters.atma_gated_delta import atma_gated_delta_decode_step
+
+    atma_gated_delta_decode_step()
+    torch.manual_seed(1002)
+    spec = named_mixer_recipe("atma_gated_delta_decode_core").spec
+    reference_plan = compile_mixer(spec, intent=MixerIntent.INFERENCE)
+    native_upstream_plan = compile_mixer(
+        spec, backend=MixerBackend.LIBRARY, intent=MixerIntent.INFERENCE
+    )
+    for batch in (1, 256):
+        heads, key_dim, value_dim, capacity = 1, 64, 64, batch
+        inputs = {
+            "query": torch.randn(batch, 1, heads, key_dim, device="cuda"),
+            "key": torch.randn(batch, 1, heads, key_dim, device="cuda"),
+            "value": torch.randn(batch, 1, heads, value_dim, device="cuda"),
+            "gamma": torch.rand(batch, 1, heads, device="cuda"),
+            "beta": torch.rand(batch, 1, heads, device="cuda"),
+            "slots": torch.arange(batch, dtype=torch.int64, device="cuda"),
+        }
+        initial = torch.randn(
+            capacity, heads, key_dim, value_dim, device="cuda", dtype=torch.float32
+        ) * 0.01
+        reference = reference_plan.execute(
+            **inputs, state_table=initial.clone()
+        )
+        upstream = native_upstream_plan.execute(
+            **inputs, state_table=initial.clone()
+        )
+        torch.testing.assert_close(upstream.output, reference.output, atol=3e-6, rtol=3e-5)
+        torch.testing.assert_close(
+            upstream.final_state, reference.final_state, atol=3e-6, rtol=3e-5
+        )
+
+
+@pytest.mark.parametrize("mask_kind", ["boolean", "additive", "score_bias"])
+def test_k1_fully_masked_rows_have_zero_outputs_and_zero_gradients(mask_kind):
+    torch = _torch()
+    torch.manual_seed(811)
+    query = torch.randn(1, 2, 1, 3, requires_grad=True)
+    key = torch.randn(1, 2, 1, 3, requires_grad=True)
+    value = torch.randn(1, 2, 1, 4, requires_grad=True)
+    operands = {"query": query, "key": key, "value": value}
+    if mask_kind == "boolean":
+        mask = torch.tensor([[True, False], [False, False]]).view(1, 1, 2, 2)
+        operands["attention_mask"] = mask
+    elif mask_kind == "additive":
+        mask = torch.tensor([[0.0, float("-inf")], [float("-inf"), float("-inf")]])
+        operands["attention_mask"] = mask.view(1, 1, 2, 2)
+    else:
+        bias = torch.zeros(1, 1, 2, 2)
+        bias[..., 0, 1] = float("-inf")
+        bias[..., 1, :] = float("-inf")
+        operands["score_bias"] = bias.requires_grad_()
+
+    output = compile_mixer(
+        softmax_attention_spec("empty_rows", causal=False, score_bias=True),
+        intent=MixerIntent.TRAINING,
+    ).execute(**operands).output
+    torch.testing.assert_close(output[:, 1], torch.zeros_like(output[:, 1]))
+    output.sum().backward()
+    torch.testing.assert_close(query.grad[:, 1], torch.zeros_like(query.grad[:, 1]))
+    torch.testing.assert_close(key.grad[:, 1], torch.zeros_like(key.grad[:, 1]))
+    torch.testing.assert_close(value.grad[:, 1], torch.zeros_like(value.grad[:, 1]))
+    if mask_kind == "score_bias":
+        bias_grad = operands["score_bias"].grad
+        torch.testing.assert_close(bias_grad[..., 1, :], torch.zeros_like(bias_grad[..., 1, :]))
+
+
+def test_sparse_frontend_mask_requirement_survives_name_lowering():
+    from urm.ir import (
+        Domain,
+        MixerSpec,
+        Normalization,
+        RoutingKind,
+        SelectionGranularity,
+        SelectionScope,
+        SparseAttentionSpec,
+        SparseIndexerKind,
+    )
+
+    frontend = MixerSpec(
+        name="user_sparse_attention",
+        query_domain=Domain.SEQUENCE,
+        source_domain=Domain.SEQUENCE,
+        routing=RoutingKind.BLOCK_SPARSE,
+        normalization=Normalization.SOFTMAX,
+        sparse_attention=SparseAttentionSpec(
+            indexer=SparseIndexerKind.STATIC_MASK,
+            granularity=SelectionGranularity.BLOCK,
+            scope=SelectionScope.SHARED_ACROSS_HEADS,
+            block_size=1,
+        ),
+    )
+    plan = compile_frontend_mixer(frontend)
+    assert plan.spec.name == "user_sparse_attention"
+    assert plan.spec.requires_attention_mask
+    assert compile_mixer(plan.spec).spec.requires_attention_mask
+    operands = {
+        "query": _torch().randn(1, 2, 1, 3),
+        "key": _torch().randn(1, 2, 1, 3),
+        "value": _torch().randn(1, 2, 1, 4),
+    }
+    with pytest.raises(ValueError, match="requires a precomputed attention_mask"):
+        plan.execute(**operands)
+    with pytest.raises(ValueError, match="K3 sparse delta or K2 diagonal SSM"):
+        compile_frontend_mixer(frontend, backend=MixerBackend.NATIVE)
 
 
 def test_unified_mixer_runs_through_general_semantic_candidate_and_anchor_pipeline():
@@ -399,6 +585,14 @@ def _coverage_recipe_operands(torch, spec):
             operands["key"] = leaf(1, 2, 1, 3)
             operands["value"] = leaf(1, 2, 1, 4)
             operands["g"] = -leaf(1, 2, 2, 3).abs() * 0.01
+        if spec.requires_attention_mask and "attention_mask" not in operands:
+            operands["attention_mask"] = torch.ones(
+                1,
+                1,
+                operands["query"].shape[1],
+                operands["key"].shape[1],
+                dtype=torch.bool,
+            )
         if spec.accepts_score_bias:
             operands["score_bias"] = leaf(1, 1, 2, 2)
         return operands
@@ -2786,7 +2980,10 @@ def test_longformer_attention_core_matches_pinned_sliding_chunks_outputs_and_gra
         longformer_source_identity,
     )
 
-    identity = longformer_source_identity()
+    try:
+        identity = longformer_source_identity()
+    except ModuleNotFoundError as error:
+        pytest.skip(str(error))
     assert identity["revision"] == "caefee668e39cacdece7dd603a0bebf24df6d8ca"
 
     batch, sequence, heads, dim, window = 1, 128, 2, 16, 16
@@ -4216,6 +4413,79 @@ def test_native_k2_diagonal_step_discretization_matches_reference_and_backward()
         torch.testing.assert_close(
             inputs[1][name].grad, inputs[0][name].grad, atol=2e-6, rtol=2e-5
         )
+
+
+@pytest.mark.parametrize("layout", ["transposed", "expanded"])
+def test_native_diagonal_initial_state_strides_preserve_outputs_and_gradients(layout):
+    torch = _torch()
+    if not torch.cuda.is_available():
+        pytest.skip("native diagonal SSM requires CUDA")
+    pytest.importorskip("triton")
+    torch.manual_seed(997)
+    batch, sequence, channels, state_width = 2, 4, 3, 5
+    base_inputs = {
+        "x": torch.randn(batch, sequence, channels, device="cuda"),
+        "input_gate": torch.randn(batch, sequence, state_width, device="cuda"),
+        "read_gate": torch.randn(batch, sequence, state_width, device="cuda"),
+        "log_decay": -torch.rand(batch, sequence, state_width, device="cuda") * 0.1,
+    }
+    base_state = torch.randn(
+        (batch, state_width, channels)
+        if layout == "transposed"
+        else (1, channels, state_width),
+        device="cuda",
+    )
+    plans = (
+        compile_mixer(diagonal_ssm_spec(), intent=MixerIntent.TRAINING),
+        compile_mixer(
+            diagonal_ssm_spec(),
+            intent=MixerIntent.TRAINING,
+            backend=MixerBackend.NATIVE,
+        ),
+    )
+    results = []
+    leaves = []
+    for plan in plans:
+        inputs = {
+            name: value.detach().clone().requires_grad_()
+            for name, value in base_inputs.items()
+        }
+        if layout == "transposed":
+            state_source = base_state.detach().clone().requires_grad_()
+            initial_state = state_source.transpose(1, 2)
+        else:
+            state_source = base_state.detach().clone().requires_grad_()
+            initial_state = state_source.expand(batch, channels, state_width)
+        result = plan.execute(
+            **inputs,
+            initial_state=initial_state,
+            skip=torch.tensor(0.25, device="cuda"),
+        )
+        (result.output.square().sum() + result.final_state.square().sum()).backward()
+        results.append(result)
+        leaves.append((inputs, state_source))
+
+    torch.testing.assert_close(
+        results[1].output, results[0].output, atol=2e-6, rtol=2e-5
+    )
+    torch.testing.assert_close(
+        results[1].final_state, results[0].final_state, atol=2e-6, rtol=2e-5
+    )
+    for name in base_inputs:
+        torch.testing.assert_close(
+            leaves[1][0][name].grad,
+            leaves[0][0][name].grad,
+            atol=3e-6,
+            rtol=3e-5,
+            msg=lambda message: f"{layout} state, {name}: {message}",
+        )
+    torch.testing.assert_close(
+        leaves[1][1].grad,
+        leaves[0][1].grad,
+        atol=3e-6,
+        rtol=3e-5,
+        msg=f"{layout} initial-state gradient differs",
+    )
 
 
 def test_mamba2_ssm_core_reference_matches_pinned_upstream():
