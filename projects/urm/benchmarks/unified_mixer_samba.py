@@ -11,7 +11,8 @@ import torch
 
 from provenance import provenance, utc_now, write_artifact
 from urm.adapters.samba import load_samba_attention, samba_source_root
-from urm.compiler.unified_mixer import MixerBackend, MixerIntent, compile_mixer, named_mixer_recipe
+from urm.compiler.unified_mixer import MixerBackend, MixerIntent, compile_mixer
+from urm.frontend.mixer_recipes import named_mixer_recipe
 from unified_mixer_factorized_attention import _clone, _max_error, _profile
 
 

@@ -12,7 +12,8 @@ import torch
 
 from measurement import quantile
 from provenance import provenance, utc_now, write_artifact
-from urm.compiler.unified_mixer import MixerBackend, MixerIntent, compile_mixer, named_mixer_recipe
+from urm.compiler.unified_mixer import MixerBackend, MixerIntent, compile_mixer
+from urm.frontend.mixer_recipes import named_mixer_recipe
 from unified_mixer_factorized_attention import _clone, _max_error, _profile
 
 

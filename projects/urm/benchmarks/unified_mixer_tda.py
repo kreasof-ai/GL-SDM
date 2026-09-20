@@ -13,12 +13,8 @@ import torch
 from measurement import quantile
 from provenance import provenance, write_artifact
 from urm.adapters.tda import tda_attention_adapter, tda_source_identity
-from urm.compiler.unified_mixer import (
-    MixerBackend,
-    MixerIntent,
-    compile_mixer,
-    named_mixer_recipe,
-)
+from urm.compiler.unified_mixer import MixerBackend, MixerIntent, compile_mixer
+from urm.frontend.mixer_recipes import named_mixer_recipe
 
 BATCH, SEQUENCE, HEADS, DIM = 1, 64, 2, 32
 NAMES = ("query_a", "query_b", "key_a", "key_b", "value")

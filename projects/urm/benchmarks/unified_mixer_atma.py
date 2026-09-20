@@ -15,12 +15,8 @@ from kernel import polar_triton
 from model.blocks import polar_reduce
 
 from provenance import provenance, write_artifact
-from urm.compiler.unified_mixer import (
-    MixerBackend,
-    MixerIntent,
-    compile_mixer,
-    named_mixer_recipe,
-)
+from urm.compiler.unified_mixer import MixerBackend, MixerIntent, compile_mixer
+from urm.frontend.mixer_recipes import named_mixer_recipe
 
 EXPECTED_ATMA_REVISION = "28bb3de8afbe7c0b00115e0fbff36afc9ad49c11"
 RECIPES = ("polar_attention_core", "foveal_sparse_polar_attention_core")

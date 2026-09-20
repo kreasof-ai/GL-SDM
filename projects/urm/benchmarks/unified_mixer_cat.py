@@ -17,12 +17,8 @@ import torch
 from measurement import quantile
 from provenance import provenance, write_artifact
 from urm.adapters.gated_delta_rule import fla_version
-from urm.compiler.unified_mixer import (
-    MixerBackend,
-    MixerIntent,
-    compile_mixer,
-    named_mixer_recipe,
-)
+from urm.compiler.unified_mixer import MixerBackend, MixerIntent, compile_mixer
+from urm.frontend.mixer_recipes import named_mixer_recipe
 
 EXPECTED_FLA_REVISION = "864a87f6ce5be8828bef81eb22baafd41937cdf2"
 BATCH, CHUNK_SIZE, HEADS, DIM = 1, 8, 2, 16

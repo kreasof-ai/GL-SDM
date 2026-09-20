@@ -17,12 +17,8 @@ from fla.ops.hgrn import fused_recurrent_hgrn
 
 from measurement import quantile
 from provenance import provenance, write_artifact
-from urm.compiler.unified_mixer import (
-    MixerBackend,
-    MixerIntent,
-    compile_mixer,
-    named_mixer_recipe,
-)
+from urm.compiler.unified_mixer import MixerBackend, MixerIntent, compile_mixer
+from urm.frontend.mixer_recipes import named_mixer_recipe
 
 EXPECTED_FLA_REVISION = "864a87f6ce5be8828bef81eb22baafd41937cdf2"
 BATCH = 1
