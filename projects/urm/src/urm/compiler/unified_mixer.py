@@ -16,6 +16,7 @@ from typing import Any
 from urm.ir.mixer import (
     DecayGranularity,
     FeatureMap,
+    K1Operation,
     MixerBackend,
     MixerIntent,
     MixerKernelFamily,
@@ -68,6 +69,7 @@ class CompiledMixerPlan:
     recipe: MixerRecipe | None = None
     compiler_result: Any | None = None
     compile_dtype: str = "float32"
+    backend_selection: Any | None = None
 
     def to_dict(self) -> dict[str, object]:
         result: dict[str, object] = {
@@ -78,6 +80,24 @@ class CompiledMixerPlan:
             "anchor": self.anchor,
             "backend": self.backend.value,
             "compile_dtype": self.compile_dtype,
+            "backend_selection": (
+                {
+                    "requested_backend": self.backend_selection.requested_backend,
+                    "selected_backend": self.backend_selection.selected_backend,
+                    "request": {
+                        "operation": self.backend_selection.request.operation,
+                        "semantic_contract": self.backend_selection.request.semantic_contract,
+                        "device": self.backend_selection.request.device,
+                        "dtype": self.backend_selection.request.dtype,
+                        "layout": self.backend_selection.request.layout,
+                        "mode": self.backend_selection.request.mode,
+                    },
+                    "attempted_backends": list(self.backend_selection.attempted_backends),
+                    "fallback_used": self.backend_selection.fallback_used,
+                }
+                if self.backend_selection is not None
+                else None
+            ),
             "implementation": {
                 MixerBackend.REFERENCE: "torch_eager_reference_v1",
                 MixerBackend.LIBRARY: "trusted_library_anchor",
@@ -167,40 +187,40 @@ class CompiledMixerPlan:
             return _execute_hla_second_order(self, torch, **operands)
         if self.backend is MixerBackend.LIBRARY:
             if self.spec.family is MixerKernelFamily.SOFTMAX:
-                if self.spec.name == "fwpkm_memory_read_core":
+                if self.spec.k1_operation is K1Operation.SELECTED_READ:
                     return _execute_fwpkm_selected_read(self, torch, **operands)
-                if self.spec.name == "tda_attention_core":
+                if self.spec.k1_operation is K1Operation.THRESHOLDED:
                     return _execute_tda_attention_adapter(self, torch, **operands)
-                if self.spec.name == "tucker_attention_core":
+                if self.spec.k1_operation is K1Operation.PROJECTED:
                     return _execute_tucker_attention_adapter(self, torch, **operands)
-                if self.spec.name == "longformer_attention_core":
+                if self.spec.k1_operation is K1Operation.LOCAL_WINDOW:
                     return _execute_longformer_attention_adapter(
                         self, torch, **operands
                     )
-                if self.spec.name == "kata_attention_core":
+                if self.spec.k1_operation is K1Operation.POSITIVE_FEATURE:
                     return _execute_kata_attention_adapter(self, torch, **operands)
-                if self.spec.name == "differential_attention_core":
+                if self.spec.k1_operation is K1Operation.DIFFERENTIAL:
                     return _execute_differential_attention(
                         self.spec, torch, library=True, **operands
                     )
-                if self.spec.name in {
-                    "polar_attention_core",
-                    "foveal_sparse_polar_attention_core",
+                if self.spec.k1_operation in {
+                    K1Operation.POLAR,
+                    K1Operation.POLAR_SPARSE,
                 }:
                     return _execute_atma_polar(self, torch, **operands)
-                if self.spec.deltaformer_attention:
+                if self.spec.k1_operation is K1Operation.DELTA_TRANSFORM:
                     return _execute_fla_deltaformer(self, torch, **operands)
-                if self.spec.path_attention:
+                if self.spec.k1_operation is K1Operation.PATH_TRANSFORM:
                     return _execute_fla_path_attention(self, torch, **operands)
-                if self.spec.name == "attnres_depth_core":
+                if self.spec.k1_operation is K1Operation.DEPTH:
                     return _execute_fla_attnres(self, torch, **operands)
-                if self.spec.name == "fox":
+                if self.spec.k1_operation is K1Operation.FORGETTING:
                     return _execute_fla_forgetting_attention(self, torch, **operands)
-                if self.spec.name == "parallax_attention_core":
+                if self.spec.k1_operation is K1Operation.POSITIONAL:
                     return _execute_fla_parallax_attention(self, torch, **operands)
-                if self.spec.name == "wall_attention_core":
+                if self.spec.k1_operation is K1Operation.GATED:
                     return _execute_fla_wall_attention(self, torch, **operands)
-                if self.spec.name == "moba_selected_attention_core":
+                if self.spec.k1_operation is K1Operation.BLOCK_ROUTED:
                     return _execute_fla_moba_attention(self, torch, **operands)
                 return _execute_sdpa(self.spec, torch, **operands)
             if self.spec.family is MixerKernelFamily.RECURRENCE:
@@ -250,31 +270,51 @@ class CompiledMixerPlan:
                     return _execute_mamba_selective_scan(self, torch, **operands)
                 return _execute_fla_k2(self, torch, **operands)
         if self.backend is MixerBackend.NATIVE:
+            if self.spec.family is MixerKernelFamily.SOFTMAX:
+                from urm.backends.triton.softmax.online_backend import (
+                    TritonOnlineSoftmaxBackend,
+                )
+
+                output = TritonOnlineSoftmaxBackend().execute(self.spec, **operands)
+                return MixerResult(
+                    output,
+                    metadata={
+                        "anchor": self.anchor,
+                        "execution": "urm_native_tiled_online_softmax",
+                        "backward_supported": True,
+                    },
+                )
             if self.spec.family is MixerKernelFamily.RECURRENCE:
-                return _execute_native_diagonal_ssm(self, torch, **operands)
+                return _execute_native_diagonal_recurrence(self, torch, **operands)
             return _execute_native_sparse_delta(self, torch, **operands)
         if self.spec.family is MixerKernelFamily.SOFTMAX:
-            if self.spec.name == "kata_attention_core":
+            if self.spec.k1_operation is K1Operation.POSITIVE_FEATURE:
                 return _execute_kata_attention_reference(self.spec, torch, **operands)
-            if self.spec.name == "longformer_attention_core":
+            if self.spec.k1_operation is K1Operation.LOCAL_WINDOW:
                 return _execute_longformer_attention_reference(
                     self.spec, torch, **operands
                 )
-            if self.spec.name == "tucker_attention_core":
+            if self.spec.k1_operation is K1Operation.PROJECTED:
                 return _execute_tucker_attention_reference(self.spec, torch, **operands)
-            if self.spec.name == "differential_attention_core":
+            if self.spec.k1_operation is K1Operation.DIFFERENTIAL:
                 return _execute_differential_attention(
                     self.spec, torch, library=False, **operands
                 )
-            if self.spec.name == "tda_attention_core":
+            if self.spec.k1_operation is K1Operation.THRESHOLDED:
                 return _execute_tda_attention_reference(torch, **operands)
-            if self.spec.name in {
-                "polar_attention_core",
-                "foveal_sparse_polar_attention_core",
+            if self.spec.k1_operation in {
+                K1Operation.POLAR,
+                K1Operation.POLAR_SPARSE,
             }:
-                return _execute_polar_equation(self.spec.name, torch, **operands)
-            if self.spec.deltaformer_attention:
+                return _execute_polar_equation(
+                    self.spec.k1_operation, torch, **operands
+                )
+            if self.spec.k1_operation is K1Operation.DELTA_TRANSFORM:
                 return _execute_deltaformer_reference(torch, **operands)
+            if self.spec.k1_operation is K1Operation.POSITIONAL:
+                return _execute_parallax_reference(self.spec, torch, **operands)
+            if self.spec.k1_operation is K1Operation.GATED:
+                return _execute_wall_reference(self.spec, torch, **operands)
             return _execute_softmax(self.spec, torch, **operands)
         if self.spec.family is MixerKernelFamily.RECURRENCE:
             if self.spec.name in {"rnn_core", "gru_core", "m2rnn_core"}:
@@ -316,7 +356,7 @@ class CompiledMixerPlan:
             if self.spec.polynomial_basis is not PolynomialBasis.NONE:
                 return _execute_matrix_recurrence(self.spec, torch, **operands)
             if self.spec.recurrent_layout is RecurrentLayout.DIAGONAL:
-                return _execute_diagonal_ssm(self.spec, torch, **operands)
+                return _execute_diagonal_recurrence(self.spec, torch, **operands)
             return _execute_matrix_recurrence(self.spec, torch, **operands)
         return _execute_sparse_delta(self.spec, torch, **operands)
 
@@ -329,6 +369,8 @@ def compile_mixer(
     intent: MixerIntent | str = MixerIntent.INFERENCE,
     backend: MixerBackend | str = MixerBackend.REFERENCE,
     dtype: str = "float32",
+    device: str | None = None,
+    layout: str = "BTHD",
 ) -> CompiledMixerPlan:
     """Compile a K1/K2/K3 recipe through URM's typed compiler pipeline.
 
@@ -344,6 +386,7 @@ def compile_mixer(
     resolved_intent = MixerIntent(intent)
     resolved_backend = MixerBackend(backend)
     dtype = str(dtype)
+    backend_selection = None
     if dtype not in {"float32", "float16", "bfloat16"}:
         raise ValueError(f"unsupported mixer compile dtype {dtype!r}")
     if spec.state_effect is StateEffect.IN_PLACE_SLOT_TABLE and not (
@@ -353,15 +396,46 @@ def compile_mixer(
             "in-place slot-table K2 currently supports only the exact gated-delta "
             "decode semantics"
         )
+    if resolved_backend is MixerBackend.NATIVE and device not in (None, "cuda"):
+        raise ValueError("URM Triton native anchors require device='cuda'")
+    if (
+        resolved_backend is MixerBackend.NATIVE
+        and spec.family is MixerKernelFamily.SOFTMAX
+        and spec.is_normalized_softmax_attention()
+    ):
+        from urm.backends.registry import BackendRegistry as CapabilityRegistry
+        from urm.backends.triton.softmax.online_backend import (
+            TritonOnlineSoftmaxBackend,
+        )
+
+        implementation = TritonOnlineSoftmaxBackend()
+        if not implementation.supports_spec(spec):
+            raise ValueError(
+                "Triton online-softmax backend declines the complete K1 semantics"
+            )
+        backend_request = implementation.request(
+            device=device or "cuda",
+            dtype=dtype,
+            layout=layout,
+            mode=resolved_intent.value,
+        )
+        _, backend_selection = CapabilityRegistry([implementation]).select(
+            backend_request, backend=implementation.name
+        )
     if resolved_backend is MixerBackend.NATIVE and not (
         spec.family is MixerKernelFamily.SPARSE_DELTA
         or (
             spec.family is MixerKernelFamily.RECURRENCE
             and spec.recurrent_layout is RecurrentLayout.DIAGONAL
         )
+        or (
+            spec.family is MixerKernelFamily.SOFTMAX
+            and spec.is_normalized_softmax_attention()
+        )
     ):
         raise ValueError(
-            "URM-native unified anchors support K3 sparse delta or K2 diagonal SSM"
+            "URM-native anchors support K1 normalized softmax, K3 sparse delta, "
+            "or K2 diagonal SSM semantics"
         )
     if (
         resolved_backend is MixerBackend.LIBRARY
@@ -505,48 +579,39 @@ def compile_mixer(
         MixerKernelFamily.RECURRENCE: "urm.unified.k2.state_reference.v1",
         MixerKernelFamily.SPARSE_DELTA: "urm.unified.k3.sparse_delta_reference.v1",
     }[spec.family]
+    from urm.compiler.execution import NATIVE_K1_ONLINE_SOFTMAX_ANCHOR_NAME
+
     if resolved_backend is MixerBackend.LIBRARY:
         if spec.family is MixerKernelFamily.SOFTMAX:
-            anchor = (
-                "atma_polar_triton_adapter"
-                if spec.name == "polar_attention_core"
-                else "atma_polar_sparse_triton_adapter"
-                if spec.name == "foveal_sparse_polar_attention_core"
-                else "fla_parallel_deltaformer_adapter"
-                if spec.deltaformer_attention
-                else "fla_parallel_path_attention_adapter"
-                if spec.path_attention
-                else "fla_parallel_forgetting_attention_adapter"
-                if spec.name == "fox"
-                else "fla_parallel_parallax_adapter"
-                if spec.name == "parallax_attention_core"
-                else "fla_parallel_wall_attention_adapter"
-                if spec.name == "wall_attention_core"
-                else "fla_parallel_moba_adapter"
-                if spec.name == "moba_selected_attention_core"
-                else "fla_fused_attnres_adapter"
-                if spec.name == "attnres_depth_core"
-                else "tda_triton_attention_adapter"
-                if spec.name == "tda_attention_core"
-                else "tucker_triton_attention_adapter"
-                if spec.name == "tucker_attention_core"
-                else "longformer_sliding_chunks_adapter"
-                if spec.name == "longformer_attention_core"
-                else "kata_parallel_triton_adapter"
-                if spec.name == "kata_attention_core"
-                else "fwpkm_selected_softmax_triton_adapter"
-                if spec.name == "fwpkm_memory_read_core"
-                else "torch.nn.functional.scaled_dot_product_attention"
+            library_k1_anchors = {
+                K1Operation.POLAR: "atma_polar_triton_adapter",
+                K1Operation.POLAR_SPARSE: "atma_polar_sparse_triton_adapter",
+                K1Operation.DELTA_TRANSFORM: "fla_parallel_deltaformer_adapter",
+                K1Operation.PATH_TRANSFORM: "fla_parallel_path_attention_adapter",
+                K1Operation.FORGETTING: "fla_parallel_forgetting_attention_adapter",
+                K1Operation.POSITIONAL: "fla_parallel_parallax_adapter",
+                K1Operation.GATED: "fla_parallel_wall_attention_adapter",
+                K1Operation.BLOCK_ROUTED: "fla_parallel_moba_adapter",
+                K1Operation.DEPTH: "fla_fused_attnres_adapter",
+                K1Operation.THRESHOLDED: "tda_triton_attention_adapter",
+                K1Operation.PROJECTED: "tucker_triton_attention_adapter",
+                K1Operation.LOCAL_WINDOW: "longformer_sliding_chunks_adapter",
+                K1Operation.POSITIVE_FEATURE: "kata_parallel_triton_adapter",
+                K1Operation.SELECTED_READ: "fwpkm_selected_softmax_triton_adapter",
+            }
+            anchor = library_k1_anchors.get(
+                spec.k1_operation,
+                "torch.nn.functional.scaled_dot_product_attention",
             )
         else:
             anchor = library_k2_anchor
             assert anchor is not None
     elif resolved_backend is MixerBackend.NATIVE:
-        anchor = (
-            "urm_native_sparse_state_mixer_v0"
-            if spec.family is MixerKernelFamily.SPARSE_DELTA
-            else "urm_native_diagonal_ssm_v0"
-        )
+        anchor = {
+            MixerKernelFamily.SOFTMAX: NATIVE_K1_ONLINE_SOFTMAX_ANCHOR_NAME,
+            MixerKernelFamily.SPARSE_DELTA: "urm_native_sparse_state_mixer_v0",
+            MixerKernelFamily.RECURRENCE: "urm_native_diagonal_recurrence_v1",
+        }[spec.family]
     from urm.compiler.planner import CompilationIntent, ScheduleParams, UrmCompiler
 
     program = mixer_semantic_program(spec, dtype=dtype)
@@ -568,6 +633,7 @@ def compile_mixer(
         recipe=recipe,
         compiler_result=compilation,
         compile_dtype=dtype,
+        backend_selection=backend_selection,
     )
 
 
@@ -593,7 +659,7 @@ def mixer_semantic_program(spec: UnifiedMixerSpec, *, dtype: str = "float32"):
     bool_inputs: tuple[str, ...] = ()
     output_names: tuple[str, ...]
     if spec.family is MixerKernelFamily.SOFTMAX:
-        if spec.name in {"polar_attention_core", "foveal_sparse_polar_attention_core"}:
+        if spec.k1_operation in {K1Operation.POLAR, K1Operation.POLAR_SPARSE}:
             floating_inputs = (
                 "query",
                 "key",
@@ -606,25 +672,22 @@ def mixer_semantic_program(spec: UnifiedMixerSpec, *, dtype: str = "float32"):
                 "mag_beta_raw",
             )
             typed_inputs["n_keys"] = DType.FLOAT32
-            if spec.name == "foveal_sparse_polar_attention_core":
+            if spec.k1_operation is K1Operation.POLAR_SPARSE:
                 integer_inputs = ("page_indices", "page_counts")
             output_names = ("output", "auxiliary_output")
-        elif spec.deltaformer_attention:
+        elif spec.k1_operation is K1Operation.DELTA_TRANSFORM:
             floating_inputs = ("query", "key", "value", "beta")
-        elif spec.path_attention:
+        elif spec.k1_operation is K1Operation.PATH_TRANSFORM:
             floating_inputs = ("query", "key", "value", "w", "beta", "g")
-        elif spec.name == "attnres_depth_core":
+        elif spec.k1_operation is K1Operation.DEPTH:
             floating_inputs = ("query", "rms_weight", "residuals")
         else:
             floating_inputs = ("query", "key", "value")
-        if spec.name == "parallax_attention_core":
+        if spec.k1_operation is K1Operation.POSITIONAL:
             floating_inputs = ("query", "r", "key", "value")
-        elif spec.name == "wall_attention_core":
+        elif spec.k1_operation is K1Operation.GATED:
             floating_inputs = ("query", "key", "value", "g")
-        if spec.name not in {
-            "polar_attention_core",
-            "foveal_sparse_polar_attention_core",
-        }:
+        if spec.k1_operation not in {K1Operation.POLAR, K1Operation.POLAR_SPARSE}:
             bool_inputs = ("attention_mask",)
             if spec.accepts_score_bias:
                 floating_inputs += ("score_bias",)
@@ -1970,11 +2033,13 @@ def _execute_path_attention_reference(torch: Any, **operands: Any):
     )
 
 
-def _polar_allowed_mask(torch: Any, name: str, query: Any, operands: dict[str, Any]):
+def _polar_allowed_mask(
+    torch: Any, sparse: bool, query: Any, operands: dict[str, Any]
+):
     batch, heads, sequence, _ = query.shape
     positions = torch.arange(sequence, device=query.device)
     allowed = positions[None, :] <= positions[:, None]
-    if name == "foveal_sparse_polar_attention_core":
+    if sparse:
         page_indices = operands.pop("page_indices")
         page_counts = operands.pop("page_counts")
         page_size = int(operands.pop("page_size", 16))
@@ -2020,7 +2085,7 @@ def _polar_allowed_mask(torch: Any, name: str, query: Any, operands: dict[str, A
     ), positions
 
 
-def _execute_polar_equation(name: str, torch: Any, **operands: Any):
+def _execute_polar_equation(operation: K1Operation, torch: Any, **operands: Any):
     query = operands.pop("query")
     key = operands.pop("key")
     value = operands.pop("value")
@@ -2030,7 +2095,9 @@ def _execute_polar_equation(name: str, torch: Any, **operands: Any):
     null_slope_raw = operands.pop("null_slope_raw")
     len_gain_raw = operands.pop("len_gain_raw")
     mag_beta_raw = operands.pop("mag_beta_raw")
-    allowed, positions = _polar_allowed_mask(torch, name, query, operands)
+    allowed, positions = _polar_allowed_mask(
+        torch, operation is K1Operation.POLAR_SPARSE, query, operands
+    )
     if operands:
         raise TypeError(
             f"unexpected Polar attention operands: {', '.join(sorted(operands))}"
@@ -2091,7 +2158,7 @@ def _execute_polar_equation(name: str, torch: Any, **operands: Any):
 def _execute_atma_polar(plan: CompiledMixerPlan, torch: Any, **operands: Any):
     from kernel.polar_triton import polar_attention, polar_attention_sparse
 
-    name = plan.spec.name
+    operation = plan.spec.k1_operation
     query = operands.pop("query")
     key = operands.pop("key")
     value = operands.pop("value")
@@ -2101,7 +2168,7 @@ def _execute_atma_polar(plan: CompiledMixerPlan, torch: Any, **operands: Any):
     null_slope_raw = operands.pop("null_slope_raw")
     len_gain_raw = operands.pop("len_gain_raw")
     mag_beta_raw = operands.pop("mag_beta_raw")
-    if name == "polar_attention_core":
+    if operation is K1Operation.POLAR:
         output, auxiliary = polar_attention(
             query,
             key,
@@ -2152,11 +2219,11 @@ def _execute_atma_polar(plan: CompiledMixerPlan, torch: Any, **operands: Any):
 
 
 def _execute_softmax(spec: UnifiedMixerSpec, torch: Any, **operands: Any):
-    if spec.path_attention:
+    if spec.k1_operation is K1Operation.PATH_TRANSFORM:
         return _execute_path_attention_reference(torch, **operands)
-    if spec.name == "parallax_attention_core":
+    if spec.k1_operation is K1Operation.POSITIONAL:
         return _execute_parallax_reference(spec, torch, **operands)
-    if spec.name == "wall_attention_core":
+    if spec.k1_operation is K1Operation.GATED:
         return _execute_wall_reference(spec, torch, **operands)
     query = operands.pop("query")
     key = operands.pop("key")
@@ -4397,7 +4464,7 @@ def _execute_slot_attention_reference(
     )
 
 
-def _execute_diagonal_ssm(spec: UnifiedMixerSpec, torch: Any, **operands: Any):
+def _execute_diagonal_recurrence(spec: UnifiedMixerSpec, torch: Any, **operands: Any):
     x = operands.pop("x")
     if spec.diagonal_hgrn:
         input_gate = read_gate = None
@@ -7024,7 +7091,7 @@ def _execute_native_sparse_delta(plan: CompiledMixerPlan, torch: Any, **operands
     )
 
 
-def _execute_native_diagonal_ssm(plan: CompiledMixerPlan, torch: Any, **operands: Any):
+def _execute_native_diagonal_recurrence(plan: CompiledMixerPlan, torch: Any, **operands: Any):
     spec = plan.spec
     if (
         spec.family is not MixerKernelFamily.RECURRENCE
@@ -7094,18 +7161,18 @@ def _execute_native_diagonal_ssm(plan: CompiledMixerPlan, torch: Any, **operands
         state_width,
     ):
         raise ValueError("initial_state must use [B,C,N]")
-    from urm.backends.triton.recurrence.diagonal_ssm import execute_diagonal_ssm
-    from urm.compiler.execution import NATIVE_DIAGONAL_SSM_ANCHOR_NAME
+    from urm.backends.triton.recurrence.diagonal_recurrence import execute_diagonal_recurrence
+    from urm.compiler.execution import NATIVE_DIAGONAL_RECURRENCE_ANCHOR_NAME
 
     dtype = str(x.dtype).removeprefix("torch.")
     bound_anchor = _compile_native_diagonal_binding(
         spec, dtype=dtype, intent=plan.intent.value
     )
-    if bound_anchor != NATIVE_DIAGONAL_SSM_ANCHOR_NAME:
+    if bound_anchor != NATIVE_DIAGONAL_RECURRENCE_ANCHOR_NAME:
         raise RuntimeError(
             f"UrmCompiler selected {bound_anchor!r} for the native diagonal SSM plan"
         )
-    output, final_state = execute_diagonal_ssm(
+    output, final_state = execute_diagonal_recurrence(
         x=x,
         input_gate=input_gate,
         read_gate=read_gate,
@@ -7119,7 +7186,7 @@ def _execute_native_diagonal_ssm(plan: CompiledMixerPlan, torch: Any, **operands
         output,
         final_state=final_state,
         metadata={
-            "anchor": NATIVE_DIAGONAL_SSM_ANCHOR_NAME,
+            "anchor": NATIVE_DIAGONAL_RECURRENCE_ANCHOR_NAME,
             "execution": "urm_native_triton",
             "compiler_plan": plan.anchor,
             "urm_compiler_verified": True,
@@ -7134,17 +7201,17 @@ def _compile_native_diagonal_binding(
     spec: UnifiedMixerSpec, *, dtype: str, intent: str
 ) -> str:
     from urm.compiler.planner import CompilationIntent, ScheduleParams, UrmCompiler
-    from urm.compiler.execution import NATIVE_DIAGONAL_SSM_ANCHOR_NAME
+    from urm.compiler.execution import NATIVE_DIAGONAL_RECURRENCE_ANCHOR_NAME
 
     compilation = UrmCompiler().compile(
         mixer_semantic_program(spec, dtype=dtype),
         intent=CompilationIntent(intent),
         schedule_params=ScheduleParams(
-            anchor_overrides={"mixer": NATIVE_DIAGONAL_SSM_ANCHOR_NAME}
+            anchor_overrides={"mixer": NATIVE_DIAGONAL_RECURRENCE_ANCHOR_NAME}
         ),
     )
     selected = tuple(step.anchor for step in compilation.plan.steps if step.anchor)
-    if selected != (NATIVE_DIAGONAL_SSM_ANCHOR_NAME,):
+    if selected != (NATIVE_DIAGONAL_RECURRENCE_ANCHOR_NAME,):
         raise RuntimeError(
             "UrmCompiler produced an invalid native diagonal SSM plan: "
             f"anchors={selected}"

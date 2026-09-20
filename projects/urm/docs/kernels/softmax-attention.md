@@ -1,6 +1,6 @@
 # Softmax attention family
 
-Construction contract; proposed extensions are not current backend capabilities.
+K1 construction contract and current backend boundary.
 This is family 1 of the [coverage matrix](../planning/coverage.md).
 
 ## Operation
@@ -62,3 +62,14 @@ Validate Q/K/V gradients, supported bias gradients, all-masked rows, head sharin
 unequal lengths and precision extremes. Benchmark training, prefill and cached
 decode separately. First match the existing adapter envelope; expand only after
 the new capability passes [parity gates](../validation/parity.md).
+
+Current native status: Triton tiled online softmax with recomputed backward is
+implemented for FP32/FP16/BF16. GPU differential checks cover MHA-style and
+shared-KV attention, unequal query/key lengths, boolean and additive masks,
+empty rows, and score-bias gradients. On A10G BF16 B1/T64/Hq=4/D=V=32, its
+CUDA-graph kernel path passes pinned FlashAttention output/gradient parity and
+the 10% performance gate for MHA/MQA/GQA. Per-call Python dispatch is slower
+than the upstream callable on these short cases. Cache ownership, decode
+positions, dropout, sparse traversal efficiency, larger dimensions and
+end-to-end layer training/inference are unqualified; see the
+[measured profile](../planning/coverage.md).

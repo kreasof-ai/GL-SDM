@@ -15,6 +15,27 @@ class MixerKernelFamily(StrEnum):
     SPARSE_DELTA = "K3_sparse_delta_state"
 
 
+class K1Operation(StrEnum):
+    """K1 equations expressed without frontend architecture identities."""
+
+    SOFTMAX = "normalized_softmax_attention"
+    FORGETTING = "forgetting_gated_softmax_attention"
+    POLAR = "polar_attention"
+    POLAR_SPARSE = "sparse_polar_attention"
+    DIFFERENTIAL = "difference_of_softmax_attention"
+    THRESHOLDED = "thresholded_softmax_attention"
+    PROJECTED = "projected_softmax_attention"
+    LOCAL_WINDOW = "local_window_softmax_attention"
+    POSITIVE_FEATURE = "positive_feature_attention"
+    SELECTED_READ = "selected_memory_read"
+    BLOCK_ROUTED = "block_routed_softmax_attention"
+    POSITIONAL = "position_indexed_attention"
+    GATED = "gated_attention"
+    DEPTH = "depth_weighted_attention"
+    PATH_TRANSFORM = "path_transform_attention"
+    DELTA_TRANSFORM = "delta_transform_attention"
+
+
 class RecurrentLayout(StrEnum):
     MATRIX = "matrix_state"
     DIAGONAL = "diagonal_ssm_state"
@@ -127,10 +148,12 @@ class UnifiedMixerSpec:
     step_size_discretization: bool = False
     diagonal_hgrn: bool = False
     epsilon: float = 1e-6
+    k1_operation: K1Operation = K1Operation.SOFTMAX
 
     def __post_init__(self) -> None:
         for name, enum_type in (
             ("family", MixerKernelFamily),
+            ("k1_operation", K1Operation),
             ("recurrent_layout", RecurrentLayout),
             ("update_rule", StateUpdateRule),
             ("normalizer", StateNormalizer),
@@ -669,6 +692,16 @@ class UnifiedMixerSpec:
                 or self.state_effect is not StateEffect.FUNCTIONAL
             ):
                 raise ValueError("K1 accepts softmax attention semantics only")
+            if (
+                self.path_attention
+                and self.k1_operation
+                not in {K1Operation.SOFTMAX, K1Operation.PATH_TRANSFORM}
+            ) or (
+                self.deltaformer_attention
+                and self.k1_operation
+                not in {K1Operation.SOFTMAX, K1Operation.DELTA_TRANSFORM}
+            ):
+                raise ValueError("K1 operation conflicts with its semantic flags")
             if self.path_attention and self.accepts_score_bias:
                 raise ValueError(
                     "PaTH attention uses its own transformed score, not score_bias"
@@ -680,6 +713,8 @@ class UnifiedMixerSpec:
                     "DeltaFormer requires its own causal two-stage attention semantics"
                 )
         elif self.family is MixerKernelFamily.RECURRENCE:
+            if self.k1_operation is not K1Operation.SOFTMAX:
+                raise ValueError("k1_operation is valid only for K1 semantics")
             if self.requires_attention_mask:
                 raise ValueError("attention masks belong to K1")
             if self.accepts_score_bias or self.attention_scale is not None:
@@ -716,7 +751,8 @@ class UnifiedMixerSpec:
                 raise ValueError("factored transitions do not define denominator state")
         elif self.family is MixerKernelFamily.SPARSE_DELTA:
             if (
-                self.recurrent_layout is not RecurrentLayout.MATRIX
+                self.k1_operation is not K1Operation.SOFTMAX
+                or self.recurrent_layout is not RecurrentLayout.MATRIX
                 or self.update_rule is not StateUpdateRule.ADDITIVE
                 or self.normalizer is not StateNormalizer.NONE
                 or self.feature_map is not FeatureMap.IDENTITY
@@ -743,3 +779,17 @@ class UnifiedMixerSpec:
             for key, value in sorted(self.to_dict().items())
             if key != "name"
         )
+
+    def is_normalized_softmax_attention(self) -> bool:
+        """Whether this contract is exactly the reusable K1 softmax equation."""
+        if self.family is not MixerKernelFamily.SOFTMAX:
+            return False
+        expected = UnifiedMixerSpec(
+            name="normalized_softmax_attention",
+            family=MixerKernelFamily.SOFTMAX,
+            causal=self.causal,
+            attention_scale=self.attention_scale,
+            accepts_score_bias=self.accepts_score_bias,
+            requires_attention_mask=self.requires_attention_mask,
+        )
+        return self.semantic_signature() == expected.semantic_signature()

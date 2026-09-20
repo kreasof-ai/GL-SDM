@@ -44,7 +44,6 @@ def test_named_register_is_complete_and_source_pinned_or_explicitly_blocked():
             }
             assert row["prototype_scope"]
             assert row["mapping_status"] != "parity_qualified"
-            assert row["native_parity_status"] == "not_measured"
             assert set(row["mode_qualification"].values()) == {"unqualified"}
             assert row["prototype_validated_anchors"]
             assert set(row["prototype_validated_anchors"]) <= trusted_anchor_names
@@ -71,7 +70,6 @@ def test_named_register_is_complete_and_source_pinned_or_explicitly_blocked():
         if row["kernel_upstream_parity_status"] == "measured_pass":
             assert row["kernel_upstream_profile_status"] == "measured_pass"
             assert comparison is not None
-            assert row["native_parity_status"] == "not_measured"
             assert set(row["mode_qualification"].values()) == {"unqualified"}
             artifact_path = ROOT / comparison["artifact"]
             assert artifact_path.is_file()
@@ -96,6 +94,27 @@ def test_named_register_is_complete_and_source_pinned_or_explicitly_blocked():
                     ]
         else:
             assert comparison is None
+        native_profile = row.get("native_urm_profile")
+        if native_profile is not None:
+            artifact_path = ROOT / native_profile["artifact"]
+            assert artifact_path.is_file()
+            artifact = profile_cache.setdefault(
+                str(artifact_path),
+                json.loads(artifact_path.read_text(encoding="utf-8")),
+            )
+            assert row["native_parity_status"] == "measured_pass"
+            assert native_profile["upstream_parity_status"] == "measured_pass"
+            assert artifact["upstream"]["revision"] == native_profile["revision"]
+            case = artifact["cases"][native_profile["case"]]
+            assert case["parity"]["status"] == "pass"
+            assert row["id"] in case["architecture_ids"]
+            assert native_profile["performance_mode"] == "cuda_graph_replay"
+            for measurement in case["performance"]["measurements"].values():
+                graph = measurement["cuda_graph_replay"]
+                assert graph["paired_native_overhead_fraction"]["gate"]["pass"]
+                assert not measurement["paired_native_overhead_fraction"]["gate"][
+                    "pass"
+                ]
         for extra in row.get("additional_kernel_upstream_comparisons", []):
             artifact_path = ROOT / extra["artifact"]
             assert artifact_path.is_file()
@@ -127,6 +146,7 @@ def test_named_register_is_complete_and_source_pinned_or_explicitly_blocked():
         sum(row.get("prototype_status") == "kernel_prototype_only" for row in rows)
         == 76
     )
+    assert sum(row.get("native_urm_profile") is not None for row in rows) == 4
     recipe_ids = {
         architecture_id
         for recipe_name in MIXER_RECIPE_NAMES

@@ -7,6 +7,7 @@ from dataclasses import dataclass, replace
 from urm.ir.mixer import (
     DecayGranularity,
     FeatureMap,
+    K1Operation,
     MixerKernelFamily,
     PolynomialBasis,
     ReadTiming,
@@ -113,6 +114,7 @@ def softmax_attention_spec(
     scale: float | None = None,
     score_bias: bool = False,
     requires_attention_mask: bool = False,
+    operation: K1Operation = K1Operation.SOFTMAX,
 ) -> UnifiedMixerSpec:
     return UnifiedMixerSpec(
         name=name,
@@ -121,6 +123,7 @@ def softmax_attention_spec(
         attention_scale=scale,
         accepts_score_bias=score_bias,
         requires_attention_mask=requires_attention_mask,
+        k1_operation=operation,
     )
 
 
@@ -204,7 +207,15 @@ def named_mixer_recipe(name: str) -> MixerRecipe:
         }[alias]
         recipes[alias] = MixerRecipe(
             ids,
-            replace(attention, name=alias),
+            replace(
+                attention,
+                name=alias,
+                k1_operation=(
+                    K1Operation.FORGETTING
+                    if alias == "fox"
+                    else K1Operation.SOFTMAX
+                ),
+            ),
             (
                 "FoX causal softmax attention under per-token log-decay gates"
                 if alias == "fox"
@@ -229,7 +240,8 @@ def named_mixer_recipe(name: str) -> MixerRecipe:
     recipes["longformer_attention_core"] = MixerRecipe(
         ("arch-071",),
         softmax_attention_spec(
-            "longformer_attention_core", causal=False, score_bias=False
+            "longformer_attention_core", causal=False, score_bias=False,
+            operation=K1Operation.LOCAL_WINDOW,
         ),
         "bidirectional local-window softmax attention using Longformer's sliding-chunks K1 operator",
         (
@@ -240,7 +252,10 @@ def named_mixer_recipe(name: str) -> MixerRecipe:
     )
     recipes["kata_attention_core"] = MixerRecipe(
         ("arch-073",),
-        softmax_attention_spec("kata_attention_core", score_bias=False),
+        softmax_attention_spec(
+            "kata_attention_core", score_bias=False,
+            operation=K1Operation.POSITIVE_FEATURE,
+        ),
         "causal KATA normalized positive attention with summed squared group dot products",
         (
             "KATA Q/K/V projections and feature normalization",
@@ -270,7 +285,8 @@ def named_mixer_recipe(name: str) -> MixerRecipe:
     recipes["fwpkm_memory_read_core"] = MixerRecipe(
         ("arch-056",),
         softmax_attention_spec(
-            "fwpkm_memory_read_core", causal=False, scale=1.0, score_bias=False
+            "fwpkm_memory_read_core", causal=False, scale=1.0, score_bias=False,
+            operation=K1Operation.SELECTED_READ,
         ),
         "FwPKM product-key-selected memory read with normalized learned retrieval weights",
         (
@@ -340,7 +356,10 @@ def named_mixer_recipe(name: str) -> MixerRecipe:
     )
     recipes["differential_attention_core"] = MixerRecipe(
         ("arch-067",),
-        softmax_attention_spec("differential_attention_core", score_bias=False),
+        softmax_attention_spec(
+            "differential_attention_core", score_bias=False,
+            operation=K1Operation.DIFFERENTIAL,
+        ),
         "Differential Transformer V1 paired causal softmax reductions and learned subtraction weight",
         (
             "differential Q/K/V projections and RoPE",
@@ -349,7 +368,10 @@ def named_mixer_recipe(name: str) -> MixerRecipe:
     )
     recipes["tda_attention_core"] = MixerRecipe(
         ("arch-068",),
-        softmax_attention_spec("tda_attention_core", score_bias=False),
+        softmax_attention_spec(
+            "tda_attention_core", score_bias=False,
+            operation=K1Operation.THRESHOLDED,
+        ),
         "Threshold Differential Attention's pair of causal rectified score reductions",
         (
             "TDA threshold beta and lambda production",
@@ -358,7 +380,9 @@ def named_mixer_recipe(name: str) -> MixerRecipe:
     )
     recipes["polar_attention_core"] = MixerRecipe(
         ("arch-064",),
-        softmax_attention_spec("polar_attention_core", score_bias=False),
+        softmax_attention_spec(
+            "polar_attention_core", score_bias=False, operation=K1Operation.POLAR
+        ),
         "ATMA Polar causal direction and bounded-magnitude reduction with a learned null sink",
         (
             "Q/K/V projections, GQA expansion, canonical convolution, and output/count projections",
@@ -366,7 +390,10 @@ def named_mixer_recipe(name: str) -> MixerRecipe:
     )
     recipes["foveal_sparse_polar_attention_core"] = MixerRecipe(
         ("arch-065",),
-        softmax_attention_spec("foveal_sparse_polar_attention_core", score_bias=False),
+        softmax_attention_spec(
+            "foveal_sparse_polar_attention_core", score_bias=False,
+            operation=K1Operation.POLAR_SPARSE,
+        ),
         "ATMA Foveal local-window plus selected remote-page Polar reduction",
         (
             "geometric page routing and its gradients, projections, GQA expansion, and full attention layer",
@@ -389,6 +416,7 @@ def named_mixer_recipe(name: str) -> MixerRecipe:
             "moba_selected_attention_core",
             score_bias=False,
             requires_attention_mask=True,
+            operation=K1Operation.BLOCK_ROUTED,
         ),
         "MoBA causal attention over local and selected KV blocks",
         ("block-score route selection", "sparse traversal and full layer"),
@@ -429,7 +457,7 @@ def named_mixer_recipe(name: str) -> MixerRecipe:
     )
     recipes["dsa_attention_core"] = MixerRecipe(
         ("arch-007",),
-        softmax_attention_spec("dsa_attention_core", requires_attention_mask=True),
+            softmax_attention_spec("dsa_attention_core", requires_attention_mask=True),
         "causal softmax attention restricted to caller-supplied DSA token indices",
         (
             "DSA indexer objective and token selection",
@@ -439,7 +467,10 @@ def named_mixer_recipe(name: str) -> MixerRecipe:
     recipes["deltaformer_attention_core"] = MixerRecipe(
         ("arch-013",),
         replace(
-            softmax_attention_spec("deltaformer_attention_core", score_bias=False),
+            softmax_attention_spec(
+                "deltaformer_attention_core", score_bias=False,
+                operation=K1Operation.DELTA_TRANSFORM,
+            ),
             deltaformer_attention=True,
         ),
         "causal softmax attention after the DeltaFormer lower-triangular value correction",
@@ -491,14 +522,32 @@ def named_mixer_recipe(name: str) -> MixerRecipe:
     ):
         recipes[alias] = MixerRecipe(
             ids,
-            softmax_attention_spec(alias, score_bias=False)
+            softmax_attention_spec(
+                alias,
+                score_bias=False,
+                operation=(
+                    K1Operation.POSITIONAL
+                    if alias == "parallax_attention_core"
+                    else K1Operation.GATED
+                ),
+            )
             if alias in {"parallax_attention_core", "wall_attention_core"}
             else softmax_attention_spec(
-                alias, causal=alias != "tucker_attention_core", score_bias=False
+                alias,
+                causal=alias != "tucker_attention_core",
+                score_bias=False,
+                operation=(
+                    K1Operation.PROJECTED
+                    if alias == "tucker_attention_core"
+                    else K1Operation.SOFTMAX
+                ),
             )
             if alias in {"tpa_attention_core", "tucker_attention_core"}
             else replace(
-                softmax_attention_spec(alias, score_bias=False),
+                softmax_attention_spec(
+                    alias, score_bias=False,
+                    operation=K1Operation.PATH_TRANSFORM,
+                ),
                 path_attention=True,
             )
             if alias == "path_attention_core"
@@ -529,7 +578,10 @@ def named_mixer_recipe(name: str) -> MixerRecipe:
     )
     recipes["attnres_depth_core"] = MixerRecipe(
         ("arch-054",),
-        softmax_attention_spec("attnres_depth_core", causal=False, scale=1.0),
+        softmax_attention_spec(
+            "attnres_depth_core", causal=False, scale=1.0,
+            operation=K1Operation.DEPTH,
+        ),
         "softmax reduction along a caller-mapped layer/depth axis",
         ("depth-axis normalization and dependency graph",),
     )

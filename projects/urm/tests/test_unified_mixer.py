@@ -56,7 +56,7 @@ def test_backend_selection_is_explicit_and_family_checked():
     native_sparse = compile_mixer(sparse_delta_spec(), backend="native")
     assert attention.to_dict()["backend"] == "library"
     assert native_sparse.to_dict()["implementation"] == "urm_native_anchor"
-    with pytest.raises(ValueError, match="K3 sparse delta or K2 diagonal SSM"):
+    with pytest.raises(ValueError, match="K3 sparse delta"):
         compile_mixer(linear_attention_spec(), backend="native")
     fla_linear = compile_mixer(
         linear_attention_spec(), backend="library", dtype="bfloat16"
@@ -158,6 +158,80 @@ def test_atma_selection_is_semantic_and_independent_of_recipe_name():
         assert spec.semantic_signature() != recipe.spec.semantic_signature()
         with pytest.raises(ValueError, match="exact gated-delta decode semantics"):
             compile_mixer(spec, backend=MixerBackend.LIBRARY)
+
+
+def test_k1_operation_name_does_not_change_math_or_backend_eligibility():
+    torch = _torch()
+    from urm.ir import K1Operation
+
+    standard = named_mixer_recipe("mha").spec
+    renamed_standard = replace(standard, name="wall_attention_core")
+    assert renamed_standard.k1_operation is K1Operation.SOFTMAX
+    assert standard.semantic_signature() == renamed_standard.semantic_signature()
+    assert (
+        compile_mixer(standard, backend=MixerBackend.LIBRARY).anchor
+        == compile_mixer(renamed_standard, backend=MixerBackend.LIBRARY).anchor
+    )
+    native_plan = compile_mixer(standard, backend=MixerBackend.NATIVE)
+    renamed_native_plan = compile_mixer(
+        renamed_standard, backend=MixerBackend.NATIVE
+    )
+    assert native_plan.anchor == renamed_native_plan.anchor
+    assert native_plan.backend_selection == renamed_native_plan.backend_selection
+    selection = native_plan.to_dict()["backend_selection"]
+    assert selection["selected_backend"] == "triton_online_softmax"
+    assert selection["fallback_used"] is False
+    assert selection["request"] == {
+        "operation": "K1",
+        "semantic_contract": "normalized_softmax_attention_v1",
+        "device": "cuda",
+        "dtype": "float32",
+        "layout": "BTHD",
+        "mode": "inference",
+    }
+    with pytest.raises(ValueError, match="unsupported layout: BHDT"):
+        compile_mixer(standard, backend=MixerBackend.NATIVE, layout="BHDT")
+    with pytest.raises(ValueError, match="device='cuda'"):
+        compile_mixer(standard, backend=MixerBackend.NATIVE, device="cpu")
+    q = torch.randn(1, 4, 2, 8)
+    k = torch.randn(1, 4, 2, 8)
+    v = torch.randn(1, 4, 2, 6)
+    expected = compile_mixer(standard).execute(query=q, key=k, value=v).output
+    actual = compile_mixer(renamed_standard).execute(query=q, key=k, value=v).output
+    torch.testing.assert_close(actual, expected)
+
+    polar = named_mixer_recipe("polar_attention_core").spec
+    renamed_polar = replace(polar, name="mha")
+    assert renamed_polar.k1_operation is K1Operation.POLAR
+    assert not renamed_polar.is_normalized_softmax_attention()
+    assert compile_mixer(renamed_polar, backend=MixerBackend.LIBRARY).anchor == (
+        "atma_polar_triton_adapter"
+    )
+    with pytest.raises(ValueError, match="K1 normalized softmax"):
+        compile_mixer(renamed_polar, backend=MixerBackend.NATIVE)
+    operands = {
+        "query": torch.randn(1, 2, 4, 8),
+        "key": torch.randn(1, 2, 4, 8),
+        "value": torch.randn(1, 2, 4, 8),
+        "n_keys": torch.tensor([1, 2, 3, 4], dtype=torch.float32),
+        "v_null": torch.randn(2, 8),
+        "null_base": torch.randn(2),
+        "null_slope_raw": torch.randn(2),
+        "len_gain_raw": torch.randn(2),
+        "mag_beta_raw": torch.randn(2),
+    }
+    original = compile_mixer(polar).execute(**operands)
+    renamed_result = compile_mixer(renamed_polar).execute(**operands)
+    torch.testing.assert_close(renamed_result.output, original.output)
+    torch.testing.assert_close(renamed_result.auxiliary_output, original.auxiliary_output)
+
+
+def test_native_sparse_k1_requires_the_explicit_route_mask():
+    plan = compile_mixer(
+        named_mixer_recipe("sparse_attention_core"), backend=MixerBackend.NATIVE
+    )
+    with pytest.raises(ValueError, match="requires a precomputed attention_mask"):
+        plan.execute()
 
 
 def test_atma_decode_dimension_contract_matches_both_pinned_value_tiles():
@@ -307,8 +381,56 @@ def test_sparse_frontend_mask_requirement_survives_name_lowering():
     }
     with pytest.raises(ValueError, match="requires a precomputed attention_mask"):
         plan.execute(**operands)
-    with pytest.raises(ValueError, match="K3 sparse delta or K2 diagonal SSM"):
-        compile_frontend_mixer(frontend, backend=MixerBackend.NATIVE)
+    native = compile_frontend_mixer(frontend, backend=MixerBackend.NATIVE)
+    assert native.anchor == "urm_native_k1_online_softmax_v1"
+    with pytest.raises(ValueError, match="requires a precomputed attention_mask"):
+        native.execute(**operands)
+
+
+def test_frontend_sparse_mask_lowers_to_native_k1_when_cuda_is_available():
+    torch = _torch()
+    if not torch.cuda.is_available():
+        pytest.skip("native K1 requires CUDA")
+    from urm.ir import (
+        Domain,
+        MixerSpec,
+        Normalization,
+        RoutingKind,
+        SelectionGranularity,
+        SelectionScope,
+        SparseAttentionSpec,
+        SparseIndexerKind,
+    )
+
+    frontend = MixerSpec(
+        name="user_sparse_attention",
+        query_domain=Domain.SEQUENCE,
+        source_domain=Domain.SEQUENCE,
+        routing=RoutingKind.BLOCK_SPARSE,
+        normalization=Normalization.SOFTMAX,
+        sparse_attention=SparseAttentionSpec(
+            indexer=SparseIndexerKind.STATIC_MASK,
+            granularity=SelectionGranularity.BLOCK,
+            scope=SelectionScope.SHARED_ACROSS_HEADS,
+            block_size=1,
+        ),
+    )
+    spec = compile_frontend_mixer(frontend).spec
+    native = compile_frontend_mixer(frontend, backend=MixerBackend.NATIVE)
+    query = torch.randn(1, 3, 2, 8, device="cuda")
+    key = torch.randn(1, 4, 1, 8, device="cuda")
+    value = torch.randn(1, 4, 1, 6, device="cuda")
+    route = torch.tensor(
+        [[[[True, False, False, False], [True, True, False, False], [False, True, True, False]]]],
+        device="cuda",
+    )
+    expected = compile_mixer(spec).execute(
+        query=query, key=key, value=value, attention_mask=route
+    ).output
+    actual = native.execute(
+        query=query, key=key, value=value, attention_mask=route
+    ).output
+    torch.testing.assert_close(actual, expected, atol=2e-4, rtol=8e-4)
 
 
 def test_unified_mixer_runs_through_general_semantic_candidate_and_anchor_pipeline():

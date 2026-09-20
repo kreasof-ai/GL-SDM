@@ -1,4 +1,4 @@
-"""Fused Triton scan for diagonal selective state space models."""
+"""Fused Triton scan for diagonal affine state recurrences."""
 
 from __future__ import annotations
 
@@ -402,7 +402,7 @@ def _kernels():
     return triton, forward_kernel, backward_kernel
 
 
-def execute_diagonal_ssm(
+def execute_diagonal_recurrence(
     *,
     x: Any,
     input_gate: Any,
@@ -629,4 +629,4 @@ def _expand_gate(gate: Any, batch: int, sequence: int, channels: int):
     raise ValueError("diagonal SSM gates use [B,T,N] or [B,T,C,N]")
 
 
-__all__ = ["execute_diagonal_ssm"]
+__all__ = ["execute_diagonal_recurrence"]

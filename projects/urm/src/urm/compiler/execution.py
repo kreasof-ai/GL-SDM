@@ -315,7 +315,8 @@ SDM_SPARSE_STATE_FALLBACK_ANCHOR_NAME = (
 )
 NATIVE_SPARSE_STATE_MIXER_ANCHOR_NAME = "urm_native_sparse_state_mixer_v0"
 NATIVE_SPARSE_ROUTE_ANCHOR_NAME = "urm_native_sparse_route_selection_v0"
-NATIVE_DIAGONAL_SSM_ANCHOR_NAME = "urm_native_diagonal_ssm_v0"
+NATIVE_DIAGONAL_RECURRENCE_ANCHOR_NAME = "urm_native_diagonal_recurrence_v1"
+NATIVE_K1_ONLINE_SOFTMAX_ANCHOR_NAME = "urm_native_k1_online_softmax_v1"
 MAMBA_SELECTIVE_SCAN_ANCHOR_NAME = "mamba_selective_scan_adapter"
 MAMBA2_SSD_ANCHOR_NAME = "mamba2_ssd_adapter"
 FLA_LOG_LINEAR_ANCHOR_NAME = "fla_chunk_log_linear_attention_adapter"
@@ -589,6 +590,12 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
         supported_visitors=frozenset(),
     ),
     ExecutionAnchor(
+        kind=AnchorKind.ATTENTION,
+        name=NATIVE_K1_ONLINE_SOFTMAX_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
         kind=AnchorKind.RECURRENT_SCAN,
         name="fla_gated_delta_rule_adapter",
         backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
@@ -638,7 +645,7 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
     ),
     ExecutionAnchor(
         kind=AnchorKind.RECURRENT_SCAN,
-        name=NATIVE_DIAGONAL_SSM_ANCHOR_NAME,
+        name=NATIVE_DIAGONAL_RECURRENCE_ANCHOR_NAME,
         backward_verified_dtypes=frozenset({"float32"}),
         supported_visitors=frozenset(),
     ),

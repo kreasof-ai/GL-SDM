@@ -100,7 +100,7 @@ class TritonRoutedReductionBackend:
         if validate_indices:
             _validate_index_bounds(indices, values.shape[0])
 
-        from .triton.softmax.routed_reduce import launch_metadata, routed_reduce
+        from .routed_reduce import launch_metadata, routed_reduce
 
         output = routed_reduce(indices, weights, values)
         metadata: dict[str, object] = {

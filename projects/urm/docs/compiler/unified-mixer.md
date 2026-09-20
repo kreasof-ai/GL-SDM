@@ -138,14 +138,23 @@ commits to memory storage dtype at each token boundary.
 |---|---|---|
 | `reference` | K1/K2/K3 | PyTorch eager operations with autograd; correctness and prototyping |
 | `library` | K1 uses PyTorch SDPA plus named pinned FLA/ATMA adapters including MoBA, FoX, PaTH, Parallax, Wall, DeltaFormer, AttnRes, POLAR and Foveal; K2 uses pinned FLA linear-attention, HGRN, Retention, Lightning Attention, simple-GLA, GLA, delta-rule, gated-delta, ATMA slot-table gated-delta decode, GDN-2, MesaNet, Titans, Mamba-1 selective-scan, Mamba-2 SSD, Mamba-3 SISO, Gated Oja, COMBA, PGDN, PKDA, ABC and GSA anchors | K1 SDPA dispatches to Flash SDPA for supported shapes and dtypes. The MoBA parity/profile fixture builds its pinned FlashAttention dependency for BF16 D=32 causal and noncausal calls. FLA linear attention, un-decayed delta, and gated delta use fp16/bf16 chunk prefill/training. ATMA gated-delta decode uses its FP32 in-place slot-table Triton kernel and is forward-only; its 10% overhead gate is qualified under CUDA graph replay. HGRN uses float32 recurrent execution; Retention and Lightning Attention use static per-head decay in float32 chunk execution. Simple GLA/GLA use float32 recurrent/chunk execution; Simple GLA and GLA also have forward-only fp16/bf16 one-token decode. GDN-2, Mamba-1 and Mamba-2 use their exact pinned source operators in float32. MesaNet is qualified for BF16 B1/T64/H2/K=V=16 with 30 CG iterations and zero initial states. Titans uses FLA's eager PyTorch chunk operator at FP32 B1/T64/H1/D=16; it is not a fused GPU kernel. Mamba-3 SISO is qualified at BF16 B1/T64/H2/K=V=16 with zero initial states. COMBA, PGDN, PKDA, Gated Oja, ABC and GSA use pinned fp16/bf16 chunk operators. K2 upstream adapters require their exact source pins |
-| `native` | URM Triton diagonal SSM scan for K2 and sparse-state anchor for K3 | CUDA is required. Diagonal SSM currently supports float32. K3 supports float32/bfloat16 state, ordered unique routes, normalized route weights and native shape limits. The diagonal scan passes equation parity but is not speed-qualified against Mamba's CUDA scan |
+| `native` | Tiled Triton online softmax for K1, diagonal recurrence scan for K2 and sparse-state anchor for K3 | CUDA is required. K1 supports FP32/FP16/BF16 BTHD inputs, head sharing, causal/noncausal visibility, broadcast boolean/additive masks and FP32 score bias, with key/value widths up to 128; dropout and cache ownership/position offsets are unsupported. K2 diagonal scan currently supports float32. K3 supports float32/bfloat16 state, ordered unique routes, normalized route weights and native shape limits. K1 and K2 do not silently fall back to SDPA or source kernels |
 
-Plans record the selected semantic family, anchor and backend. The K3 native
+Plans record the selected semantic family, anchor and backend. The K1 native
+anchor uses tiled online softmax and a recomputed Triton backward, accumulates
+shared-KV gradients, and does not materialize the full score matrix. Its
+reference parity covers boolean and additive masks, empty rows, score-bias
+gradients, unequal sequence lengths and FP32/FP16/BF16; its measured A10G
+BF16 MHA/MQA/GQA CUDA-graph prefill passes the 10% kernel performance gate.
+Per-call Python dispatch misses that gate, and native decode/cache integration
+is unqualified. The K3 native
 anchor covers route-to-state execution; route score construction and selection
 remain separate inputs. Unsupported native/library requests fail with a
 diagnostic instead of falling back silently. K1 causal prefill preserves the
-SDPA causal fast path, while one-token cached decode avoids building a causal
-mask; other cached alignments use an explicit bottom-right mask.
+library SDPA causal fast path; one-token cached decode avoids building a causal
+mask in the library path. Native K1 currently consumes explicit K/V tensors and
+uses bottom-right causal alignment when query and key lengths differ; it does
+not own or mutate a cache.
 
 Every family now builds a typed `SemanticProgram` and passes it through
 `UrmCompiler`. The unified plan pins an explicit trusted anchor override and

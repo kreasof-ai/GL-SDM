@@ -28,6 +28,7 @@ from urm.frontend.spec import (
 from .mixer import (
     DecayGranularity,
     FeatureMap,
+    K1Operation,
     MixerBackend,
     MixerIntent,
     MixerKernelFamily,
@@ -53,6 +54,7 @@ __all__ = [
     "ExpertScoreKind",
     "ExpertSelection",
     "FeatureMap",
+    "K1Operation",
     "MixerBackend",
     "MixerIntent",
     "MixerKernelFamily",

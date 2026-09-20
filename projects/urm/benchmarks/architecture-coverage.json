@@ -130,8 +130,8 @@
       "wave": 1,
       "audit_status": "source_identified",
       "mapping_status": "proposed",
-      "native_parity_status": "not_measured",
-      "work_required": "Online softmax and complete Q/K/V backward; compare matching direct attention kernels",
+      "native_parity_status": "measured_pass",
+      "work_required": "Cache ownership/position offsets, decode, eager dispatch latency, and full-layer training/inference qualification",
       "mode_qualification": {
         "training": "unqualified",
         "prefill": "unqualified",
@@ -141,10 +141,11 @@
       "tolerances": "freeze_before_execution",
       "prototype_status": "kernel_prototype_only",
       "prototype_kernel": "K1_softmax_reduction",
-      "prototype_scope": "Causal softmax attention core; projections and cache ABI remain external.",
+      "prototype_scope": "Native tiled online-softmax core; validated on the declared BF16 prefill fixture. Full layer and cache ABI remain external.",
       "prototype_validated_anchors": [
         "urm.unified.k1.softmax_reference.v1",
-        "torch.nn.functional.scaled_dot_product_attention"
+        "torch.nn.functional.scaled_dot_product_attention",
+        "urm_native_k1_online_softmax_v1"
       ],
       "prototype_reference_test": "tests/test_unified_mixer.py::test_every_named_coverage_recipe_runs_forward_and_backward",
       "prototype_accelerated_test": "tests/test_unified_mixer.py::test_k1_sdpa_training_matches_reference_outputs_and_gradients",
@@ -174,6 +175,19 @@
         ],
         "performance_gate_fraction": 0.1,
         "scope": "causal K1 BF16 kernel slice vs direct FlashAttention; D=32; full-layer positional/projection stages excluded"
+      },
+      "native_reference_correctness_status": "measured_pass",
+      "native_urm_profile": {
+        "anchor": "urm_native_k1_online_softmax_v1",
+        "artifact": "results/unified-mixer/native-k1.json",
+        "case": "mha_prefill",
+        "revision": "1bda8f9290cd48d030f1516f0e680cd464ef3554",
+        "upstream_callable": "flash_attn.flash_attn_interface.flash_attn_func",
+        "upstream_parity_status": "measured_pass",
+        "performance_mode": "cuda_graph_replay",
+        "performance_gate_status": "measured_pass",
+        "ordinary_dispatch_gate_status": "measured_fail",
+        "scope": "BF16 causal B1/T64/Hq=4/Hkv=4/K=V=32; output and Q/K/V gradients; projections, cache ABI and full layer excluded"
       }
     },
     {
@@ -185,8 +199,8 @@
       "wave": 1,
       "audit_status": "source_identified",
       "mapping_status": "proposed",
-      "native_parity_status": "not_measured",
-      "work_required": "Shared KV layout and gradient reduction; cache decode workload",
+      "native_parity_status": "measured_pass",
+      "work_required": "Cache ownership/position offsets, decode, eager dispatch latency, and full-layer training/inference qualification",
       "mode_qualification": {
         "training": "unqualified",
         "prefill": "unqualified",
@@ -196,10 +210,11 @@
       "tolerances": "freeze_before_execution",
       "prototype_status": "kernel_prototype_only",
       "prototype_kernel": "K1_softmax_reduction",
-      "prototype_scope": "Shared-KV softmax attention core; cache decode and layer projections remain external.",
+      "prototype_scope": "Native tiled online-softmax core; validated on the declared BF16 prefill fixture. Full layer and cache ABI remain external.",
       "prototype_validated_anchors": [
         "urm.unified.k1.softmax_reference.v1",
-        "torch.nn.functional.scaled_dot_product_attention"
+        "torch.nn.functional.scaled_dot_product_attention",
+        "urm_native_k1_online_softmax_v1"
       ],
       "prototype_reference_test": "tests/test_unified_mixer.py::test_every_named_coverage_recipe_runs_forward_and_backward",
       "prototype_accelerated_test": "tests/test_unified_mixer.py::test_k1_sdpa_training_matches_reference_outputs_and_gradients",
@@ -229,6 +244,19 @@
         ],
         "performance_gate_fraction": 0.1,
         "scope": "causal K1 BF16 kernel slice vs direct FlashAttention; D=32; full-layer positional/projection stages excluded"
+      },
+      "native_reference_correctness_status": "measured_pass",
+      "native_urm_profile": {
+        "anchor": "urm_native_k1_online_softmax_v1",
+        "artifact": "results/unified-mixer/native-k1.json",
+        "case": "mqa_prefill",
+        "revision": "1bda8f9290cd48d030f1516f0e680cd464ef3554",
+        "upstream_callable": "flash_attn.flash_attn_interface.flash_attn_func",
+        "upstream_parity_status": "measured_pass",
+        "performance_mode": "cuda_graph_replay",
+        "performance_gate_status": "measured_pass",
+        "ordinary_dispatch_gate_status": "measured_fail",
+        "scope": "BF16 causal B1/T64/Hq=4/Hkv=1/K=V=32; output and Q/K/V gradients; projections, cache ABI and full layer excluded"
       }
     },
     {
@@ -240,8 +268,8 @@
       "wave": 1,
       "audit_status": "source_identified",
       "mapping_status": "proposed",
-      "native_parity_status": "not_measured",
-      "work_required": "Explicit head mapping and KV gradient accumulation",
+      "native_parity_status": "measured_pass",
+      "work_required": "Cache ownership/position offsets, decode, eager dispatch latency, and full-layer training/inference qualification",
       "mode_qualification": {
         "training": "unqualified",
         "prefill": "unqualified",
@@ -251,10 +279,11 @@
       "tolerances": "freeze_before_execution",
       "prototype_status": "kernel_prototype_only",
       "prototype_kernel": "K1_softmax_reduction",
-      "prototype_scope": "Grouped-KV softmax attention core; full layer projections remain external.",
+      "prototype_scope": "Native tiled online-softmax core; validated on the declared BF16 prefill fixture. Full layer and cache ABI remain external.",
       "prototype_validated_anchors": [
         "urm.unified.k1.softmax_reference.v1",
-        "torch.nn.functional.scaled_dot_product_attention"
+        "torch.nn.functional.scaled_dot_product_attention",
+        "urm_native_k1_online_softmax_v1"
       ],
       "prototype_reference_test": "tests/test_unified_mixer.py::test_every_named_coverage_recipe_runs_forward_and_backward",
       "prototype_accelerated_test": "tests/test_unified_mixer.py::test_k1_sdpa_training_matches_reference_outputs_and_gradients",
@@ -284,6 +313,19 @@
         ],
         "performance_gate_fraction": 0.1,
         "scope": "causal K1 BF16 kernel slice vs direct FlashAttention; D=32; full-layer positional/projection stages excluded"
+      },
+      "native_reference_correctness_status": "measured_pass",
+      "native_urm_profile": {
+        "anchor": "urm_native_k1_online_softmax_v1",
+        "artifact": "results/unified-mixer/native-k1.json",
+        "case": "gqa_prefill",
+        "revision": "1bda8f9290cd48d030f1516f0e680cd464ef3554",
+        "upstream_callable": "flash_attn.flash_attn_interface.flash_attn_func",
+        "upstream_parity_status": "measured_pass",
+        "performance_mode": "cuda_graph_replay",
+        "performance_gate_status": "measured_pass",
+        "ordinary_dispatch_gate_status": "measured_fail",
+        "scope": "BF16 causal B1/T64/Hq=4/Hkv=2/K=V=32; output and Q/K/V gradients; projections, cache ABI and full layer excluded"
       }
     },
     {
@@ -755,7 +797,7 @@
       "tolerances": "BF16 output and input gradients atol 2e-2 / rtol 2e-2; independent equation max output error 7.81e-3 and maximum gradient error 1.53e-5; pinned adapter output and gradients exact",
       "prototype_status": "kernel_prototype_only",
       "prototype_kernel": "K1_softmax_reduction",
-      "prototype_scope": "Parallax causal attention correction from caller-supplied q/r/k/v: E[v] * (1 + E[r\u00b7k]) - E[(r\u00b7k)v].",
+      "prototype_scope": "Parallax causal attention correction from caller-supplied q/r/k/v: E[v] * (1 + E[r·k]) - E[(r·k)v].",
       "prototype_validated_anchors": [
         "urm.unified.k1.softmax_reference.v1",
         "fla_parallel_parallax_adapter"
@@ -855,8 +897,8 @@
       "wave": 3,
       "audit_status": "source_identified",
       "mapping_status": "proposed",
-      "native_parity_status": "not_measured",
-      "work_required": "Qualify BitLinear quantization, the surrogate gradient, positional transforms and complete BitAttention training/cache modes; the current evidence covers only the shared K1 attention stage",
+      "native_parity_status": "measured_pass",
+      "work_required": "Cache ownership/position offsets, decode, eager dispatch latency, and full-layer training/inference qualification",
       "mode_qualification": {
         "training": "unqualified",
         "prefill": "unqualified",
@@ -868,10 +910,11 @@
       "kernel_upstream_profile_status": "measured_pass",
       "prototype_status": "kernel_prototype_only",
       "prototype_kernel": "K1_softmax_reduction",
-      "prototype_scope": "BitAttention calls the same causal FlashAttention kernel after its BitLinear Q/K/V projections and RoPE. The measured K1 stage at BF16 B1/T64/H=4/K=V=32 has exact output and input-gradient parity against the pinned FlashAttention source; plan overhead is +2.6% forward and -9.9% forward/backward. BitLinear precision/gradient behavior and the full layer remain external.",
+      "prototype_scope": "Native tiled online-softmax core; validated on the declared BF16 prefill fixture. Full layer and cache ABI remain external.",
       "prototype_validated_anchors": [
         "urm.unified.k1.softmax_reference.v1",
-        "torch.nn.functional.scaled_dot_product_attention"
+        "torch.nn.functional.scaled_dot_product_attention",
+        "urm_native_k1_online_softmax_v1"
       ],
       "prototype_reference_test": "tests/test_unified_mixer.py::test_every_named_coverage_recipe_runs_forward_and_backward",
       "prototype_accelerated_test": "tests/test_unified_mixer.py::test_k1_sdpa_can_require_the_flash_kernel_without_silent_fallback",
@@ -899,6 +942,19 @@
         ],
         "performance_gate_fraction": 0.1,
         "scope": "Shared BitAttention K1 kernel only: BF16 B1/T64, Hq=Hkv=4 and K=V=32. Direct pinned FlashAttention output and gradients are exact. Across 21 pairs, paired median plan overhead is +2.6% forward and -9.9% forward/backward. BitLinear projections, quantization gradient surrogate, RoPE and output projection are excluded."
+      },
+      "native_reference_correctness_status": "measured_pass",
+      "native_urm_profile": {
+        "anchor": "urm_native_k1_online_softmax_v1",
+        "artifact": "results/unified-mixer/native-k1.json",
+        "case": "mha_prefill",
+        "revision": "1bda8f9290cd48d030f1516f0e680cd464ef3554",
+        "upstream_callable": "flash_attn.flash_attn_interface.flash_attn_func",
+        "upstream_parity_status": "measured_pass",
+        "performance_mode": "cuda_graph_replay",
+        "performance_gate_status": "measured_pass",
+        "ordinary_dispatch_gate_status": "measured_fail",
+        "scope": "BF16 causal B1/T64/Hq=4/Hkv=4/K=V=32; output and Q/K/V gradients; projections, cache ABI and full layer excluded"
       }
     },
     {
@@ -2523,7 +2579,7 @@
       "prototype_scope": "Diagonal selective-state recurrence core; convolution, projections and activation gate remain external.",
       "prototype_validated_anchors": [
         "urm.unified.k2.state_reference.v1",
-        "urm_native_diagonal_ssm_v0",
+        "urm_native_diagonal_recurrence_v1",
         "mamba_selective_scan_adapter"
       ],
       "prototype_reference_test": "tests/test_unified_mixer.py::test_every_named_coverage_recipe_runs_forward_and_backward",
