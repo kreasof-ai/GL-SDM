@@ -27,8 +27,9 @@ against pinned FlashAttention revision
 `1bda8f9290cd48d030f1516f0e680cd464ef3554`. On an A10G with BF16 B1/T64,
 Hq=4, D=V=32, native output and Q/K/V gradients pass for MHA, MQA and GQA.
 Twenty-one paired CUDA-graph samples pass the 10% kernel gate: native forward
-is 24–25% faster and forward/backward is 29–39% faster by paired medians. The
-ordinary per-call path remains 28–119% slower because Python dispatch and
+is about 24% faster and forward/backward is 29–39% faster by paired medians.
+The ordinary per-call path remains 118–128% slower for forward and 29–36%
+slower for forward/backward because Python dispatch and
 allocation dominate these short cases. The locally narrowed FlashAttention
 extension supports only equal-length causal D=32 prefill, so decode and other
 head dimensions have no upstream profile. Full-layer, cache and end-to-end
