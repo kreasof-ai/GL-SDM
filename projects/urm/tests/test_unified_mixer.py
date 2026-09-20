@@ -97,6 +97,30 @@ def test_backend_selection_is_explicit_and_family_checked():
         )
 
 
+def test_atma_gated_delta_decode_is_a_pinned_forward_only_k2_anchor():
+    from urm.compiler.diagnostics import CompilerError
+
+    recipe = named_mixer_recipe("atma_gated_delta_decode_core")
+    plan = compile_mixer(
+        recipe,
+        backend=MixerBackend.LIBRARY,
+        intent=MixerIntent.INFERENCE,
+        dtype="float32",
+    )
+    assert plan.anchor == "atma_gated_delta_decode_adapter"
+    assert plan.to_dict()["named_coverage"]["architecture_ids"] == ["arch-026"]
+    assert recipe.spec.feature_map is FeatureMap.L2_NORMALIZE
+    with pytest.raises(CompilerError, match="forward-only"):
+        compile_mixer(
+            recipe,
+            backend=MixerBackend.LIBRARY,
+            intent=MixerIntent.TRAINING,
+            dtype="float32",
+        )
+    with pytest.raises(ValueError, match="float32"):
+        compile_mixer(recipe, backend=MixerBackend.LIBRARY, dtype="bfloat16")
+
+
 def test_unified_mixer_runs_through_general_semantic_candidate_and_anchor_pipeline():
     specs_and_backends = (
         (softmax_attention_spec(), MixerBackend.REFERENCE),
@@ -223,6 +247,17 @@ def _torch():
 def _coverage_recipe_operands(torch, spec):
     def leaf(*shape):
         return torch.randn(*shape, requires_grad=True)
+
+    if spec.name == "atma_gated_delta_decode_core":
+        return {
+            "query": leaf(1, 1, 1, 3),
+            "key": leaf(1, 1, 1, 3),
+            "value": leaf(1, 1, 1, 2),
+            "beta": torch.sigmoid(leaf(1, 1, 1)),
+            "gamma": torch.sigmoid(leaf(1, 1, 1)),
+            "state_table": leaf(3, 1, 3, 2) * 0.01,
+            "slots": torch.tensor([1], dtype=torch.int64),
+        }
 
     if spec.name == "h3_ssm_fft_core":
         return {

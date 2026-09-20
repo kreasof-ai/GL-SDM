@@ -353,6 +353,7 @@ XMA_GRU_ANCHOR_NAME = "xma_gru_triton_adapter"
 XMA_M2RNN_ANCHOR_NAME = "xma_m2rnn_triton_adapter"
 ATMA_POLAR_ANCHOR_NAME = "atma_polar_triton_adapter"
 ATMA_POLAR_SPARSE_ANCHOR_NAME = "atma_polar_sparse_triton_adapter"
+ATMA_GATED_DELTA_DECODE_ANCHOR_NAME = "atma_gated_delta_decode_adapter"
 MAMBA3_SISO_ANCHOR_NAME = "mamba3_siso_combined_adapter"
 TDA_TRITON_ANCHOR_NAME = "tda_triton_attention_adapter"
 TUCKER_TRITON_ANCHOR_NAME = "tucker_triton_attention_adapter"
@@ -567,6 +568,12 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
         kind=AnchorKind.ATTENTION,
         name=ATMA_POLAR_SPARSE_ANCHOR_NAME,
         backward_verified_dtypes=frozenset({"float32"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
+        name=ATMA_GATED_DELTA_DECODE_ANCHOR_NAME,
+        forward_only=True,
         supported_visitors=frozenset(),
     ),
     ExecutionAnchor(

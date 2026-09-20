@@ -96,6 +96,24 @@ def test_named_register_is_complete_and_source_pinned_or_explicitly_blocked():
                     ]
         else:
             assert comparison is None
+        for extra in row.get("additional_kernel_upstream_comparisons", []):
+            artifact_path = ROOT / extra["artifact"]
+            assert artifact_path.is_file()
+            artifact = profile_cache.setdefault(
+                str(artifact_path),
+                json.loads(artifact_path.read_text(encoding="utf-8")),
+            )
+            assert artifact["upstream"]["revision"] == extra["revision"]
+            case = artifact["case"]
+            assert row["id"] in case["architecture_ids"]
+            assert case["parity"]["status"] == "pass"
+            assert (
+                extra["performance_gate_fraction"]
+                == artifact["methodology"]["overhead_gate_fraction"]
+            )
+            profile = case["performance"]["cuda_graph_replay"]
+            assert profile["execution_mode"] == extra["performance_mode"]
+            assert profile["paired_compiled_overhead_fraction"]["gate"]["pass"]
         if row["kernel_upstream_parity_status"] == "upstream_unavailable":
             assert row["kernel_upstream_profile_status"] == "upstream_unavailable"
             assert row["kernel_upstream_blocker"]["reason"]

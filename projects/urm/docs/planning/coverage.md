@@ -107,6 +107,16 @@ forward/backward. Foveal also matches exactly with page size/local window 16
 and supplied remote routes; median overhead is +5.8%/+0.4%. These are timings
 around the pinned Triton kernels. Full-layer projections and Foveal route
 generation remain external.
+ATMA's separate K2 decode kernel is now bound as a forward-only compiler
+anchor. At FP32 B4/T1/H8/K=V=128, output and updated slot state match the
+independent recurrence within 4.5e-8 and the compiler adapter matches the
+pinned ATMA kernel exactly. Across 21 paired CUDA graph replays, median plan
+overhead is -0.7%, passing the 10% gate. Eager Python dispatch adds 22.7% on
+this short step, so this performance qualification applies to the CUDA-graph
+serving path documented by ATMA; eager low-batch dispatch remains outside the
+gate. Q/K/V and gate projections, RMSNorm, output projection and the full
+global block remain external. See
+[`atma-gated-delta-decode-k2.json`](../../results/unified-mixer/atma-gated-delta-decode-k2.json).
 MoBA's supplied-route BF16 B1/T128/H2/D=32, block-size-32 profile matches the
 pinned `parallel_moba` output and gradients exactly. The narrow FlashAttention
 build enables both causal local attention and noncausal routed-block calls;
@@ -368,7 +378,7 @@ equation inspections and corrections are in the [audit](unification-audit.md).
 | arch-003: Transformer GQA | [flash](https://github.com/Dao-AILab/flash-attention/tree/1bda8f9290cd48d030f1516f0e680cd464ef3554) | K1 | Explicit head mapping and KV gradient accumulation |
 | arch-015: Linear attention | [fla / `fla/ops/linear_attn`](https://github.com/fla-org/flash-linear-attention/tree/864a87f6ce5be8828bef81eb22baafd41937cdf2/fla/ops/linear_attn) | K2 additive | Feature maps and denominator state; prefill and recurrent decode |
 | arch-025: DeltaNet | [fla / `fla/ops/delta_rule`](https://github.com/fla-org/flash-linear-attention/tree/864a87f6ce5be8828bef81eb22baafd41937cdf2/fla/ops/delta_rule) | K2 delta | Stable triangular solve; initial/final-state and key gradients |
-| arch-026: Gated DeltaNet | [fla / `fla/ops/gated_delta_rule`](https://github.com/fla-org/flash-linear-attention/tree/864a87f6ce5be8828bef81eb22baafd41937cdf2/fla/ops/gated_delta_rule) | K2 delta | Decay-before-retrieval; full backward and recurrent inference |
+| arch-026: Gated DeltaNet | [fla / `fla/ops/gated_delta_rule`](https://github.com/fla-org/flash-linear-attention/tree/864a87f6ce5be8828bef81eb22baafd41937cdf2/fla/ops/gated_delta_rule), plus [ATMA `kernel/gated_delta_triton.py`](https://github.com/kreasof-ai/atma) | K2 delta | FLA chunk training/prefill plus ATMA's in-place slot-table decode are profiled; full-block frontend, low-batch eager dispatch, and full backward remain outside these kernel slices |
 | arch-047: Sparse Delta Memory | [sdm / `lingua/sparse_delta_memory`](https://github.com/facebookresearch/sparse-delta-memory/tree/183e7df809131b80ad4393741029d0f20fc3640b/lingua/sparse_delta_memory) | K3 delta | Native overlap VJP matches the equation reference in FP32/BF16 and both read timings. Pinned SDM's FP32 custom VJP exceeds tolerance when read/write routes overlap; its qualified profile uses disjoint reads. Product-key routing and full-layer composition remain external |
 
 ## Wave 2: Structured variants and composite memories

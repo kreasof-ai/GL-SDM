@@ -1509,7 +1509,7 @@
       "audit_status": "source_inventory",
       "mapping_status": "proposed",
       "native_parity_status": "not_measured",
-      "work_required": "Decay-before-retrieval; full backward and recurrent inference",
+      "work_required": "The FLA kernel slice covers chunk training/prefill; ATMA slot-table decode is now profiled as a forward-only K2 anchor. Full-block frontends and training backward through ATMA decode remain external.",
       "mode_qualification": {
         "training": "unqualified",
         "prefill": "unqualified",
@@ -1519,10 +1519,11 @@
       "tolerances": "freeze_before_execution",
       "prototype_status": "kernel_prototype_only",
       "prototype_kernel": "K2_state_recurrence",
-      "prototype_scope": "Head-decayed delta recurrence core; architecture gate/projection generation remains external.",
+      "prototype_scope": "Head-decayed delta recurrence core with FLA chunk training/prefill and a separately pinned ATMA in-place slot-table decode anchor; architecture gate/projection generation remains external.",
       "prototype_validated_anchors": [
         "urm.unified.k2.state_reference.v1",
-        "fla_gated_delta_rule_adapter"
+        "fla_gated_delta_rule_adapter",
+        "atma_gated_delta_decode_adapter"
       ],
       "prototype_reference_test": "tests/test_unified_mixer.py::test_every_named_coverage_recipe_runs_forward_and_backward",
       "prototype_accelerated_test": "tests/test_unified_mixer.py::test_k2_fla_library_anchor_matches_reference_when_installed",
@@ -1552,7 +1553,34 @@
         ],
         "performance_gate_fraction": 0.1,
         "scope": "compiled K2 kernel slice; architecture gate/projection stages remain external"
-      }
+      },
+      "additional_kernel_upstream_comparisons": [
+        {
+          "source": "atma",
+          "revision": "28bb3de8afbe7c0b00115e0fbff36afc9ad49c11",
+          "recipe": "atma_gated_delta_decode_core",
+          "artifact": "results/unified-mixer/atma-gated-delta-decode-k2.json",
+          "shape": {
+            "batch": 4,
+            "state_capacity": 8,
+            "sequence": 1,
+            "heads": 8,
+            "key_dim": 128,
+            "value_dim": 128,
+            "dtype": "float32"
+          },
+          "intent_modes": [
+            "inference_decode"
+          ],
+          "parity_components": [
+            "output",
+            "slot_state"
+          ],
+          "performance_gate_fraction": 0.1,
+          "performance_mode": "CUDA graph replay",
+          "scope": "ATMA's one-token in-place slot-table gated-delta Triton kernel. Output and state match the independent equation within 4.5e-8; compiler adapter matches ATMA exactly. Twenty-one paired CUDA graph replays pass the 10% overhead gate at -0.7%. Eager Python dispatch is +22.7%, so low-batch eager invocation is not performance-qualified. Gate/projection frontends, RMSNorm, output projection and full block remain external."
+        }
+      ]
     },
     {
       "id": "arch-027",
@@ -2710,7 +2738,7 @@
       "audit_status": "source_identified",
       "mapping_status": "proposed",
       "native_parity_status": "not_measured",
-    "work_required": "The pinned SDM FP32 custom VJP exceeds tolerance for overlapping read/write routes (results/unified-mixer/sdm-k3-overlap-diagnostic.json); the qualified source profile therefore uses disjoint reads, while native K3 overlap behavior is checked against the equation reference. Product-key routing and full-layer work remain external.",
+      "work_required": "The pinned SDM FP32 custom VJP exceeds tolerance for overlapping read/write routes (results/unified-mixer/sdm-k3-overlap-diagnostic.json); the qualified source profile therefore uses disjoint reads, while native K3 overlap behavior is checked against the equation reference. Product-key routing and full-layer work remain external.",
       "mode_qualification": {
         "training": "unqualified",
         "prefill": "unqualified",
@@ -2726,7 +2754,7 @@
         "urm_native_sparse_state_mixer_v0"
       ],
       "prototype_reference_test": "tests/test_unified_mixer.py::test_every_named_coverage_recipe_runs_forward_and_backward",
-    "prototype_accelerated_test": "tests/test_unified_mixer.py::test_k3_native_overlapping_routes_match_reference_vjp",
+      "prototype_accelerated_test": "tests/test_unified_mixer.py::test_k3_native_overlapping_routes_match_reference_vjp",
       "kernel_upstream_parity_status": "measured_pass",
       "kernel_upstream_profile_status": "measured_pass",
       "kernel_upstream_comparison": {

@@ -130,6 +130,7 @@ MIXER_RECIPE_NAMES = (
     "hgrn2_ssm_core",
     "delta_net",
     "gated_delta_net",
+    "atma_gated_delta_decode_core",
     "gdn2_core",
     "gated_oja_core",
     "comba_core",
@@ -901,9 +902,14 @@ class CompiledMixerPlan:
         recurrence uses the same layout plus ``beta`` and/or ``log_decay``;
         K2 diagonal SSM expects ``x``, ``input_gate``, ``read_gate``, and
         ``log_decay``. RWKV-4 expects ``w``/``u`` vectors, ``k``/``v`` in BTC
-        layout and stable ``state`` in B3SC layout. K3 expects ``memory``, explicit read/write route indices
-        and weights, and the update operands.  Returned recurrent state is
-        always available when the equation has state.
+        layout and stable ``state`` in B3SC layout. K3 expects ``memory``,
+        explicit read/write route indices and weights, and the update operands.
+        Returned recurrent state is always available when the equation has
+        state. ATMA gated-delta decode takes one-token Q/K/V, per-head
+        ``gamma``/``beta``, an fp32
+        ``state_table`` in [capacity, H, K, V] layout, and int64 ``slots``. The
+        caller must supply valid, distinct active slots; this anchor is
+        inference-only.
         """
         torch = _torch()
         primary_name = {
@@ -924,6 +930,11 @@ class CompiledMixerPlan:
                 f"compiled for {self.compile_dtype}, but {primary_name} uses "
                 f"{primary.dtype}"
             )
+        if (
+            self.backend is MixerBackend.LIBRARY
+            and self.spec.name == "atma_gated_delta_decode_core"
+        ):
+            return _execute_atma_gated_delta_decode(self, torch, **operands)
         if self.spec.name == "h3_ssm_fft_core":
             return _execute_h3_ssm_fft(self, torch, **operands)
         if self.spec.name == "hyena_fftconv_core":
@@ -1018,6 +1029,8 @@ class CompiledMixerPlan:
             if self.spec.family is MixerKernelFamily.RECURRENCE:
                 return _execute_native_diagonal_ssm(self, torch, **operands)
             return _execute_native_sparse_delta(self, torch, **operands)
+        if self.spec.name == "atma_gated_delta_decode_core":
+            return _execute_atma_gated_delta_reference(self, torch, **operands)
         if self.spec.family is MixerKernelFamily.SOFTMAX:
             if self.spec.name == "kata_attention_core":
                 return _execute_kata_attention_reference(self.spec, torch, **operands)
@@ -1131,7 +1144,9 @@ def compile_mixer(
         resolved_backend is MixerBackend.LIBRARY
         and spec.family is MixerKernelFamily.RECURRENCE
     ):
-        if spec.name == "h3_ssm_fft_core":
+        if spec.name == "atma_gated_delta_decode_core":
+            library_k2_anchor = "atma_gated_delta_decode_adapter"
+        elif spec.name == "h3_ssm_fft_core":
             library_k2_anchor = "h3_ssm_fft_convolution_adapter"
         elif spec.name == "hyena_fftconv_core":
             library_k2_anchor = "hyena_fft_convolution_adapter"
@@ -1215,6 +1230,7 @@ def compile_mixer(
             "h3_ssm_fft_convolution_adapter",
             "hyena_fft_convolution_adapter",
             "hla_second_order_triton_adapter",
+            "atma_gated_delta_decode_adapter",
         }:
             if dtype != "float32":
                 raise ValueError(
@@ -1385,7 +1401,22 @@ def mixer_semantic_program(spec: UnifiedMixerSpec, *, dtype: str = "float32"):
                 floating_inputs += ("score_bias",)
             output_names = ("output",)
     elif spec.family is MixerKernelFamily.RECURRENCE:
-        if spec.rwkv4_memory:
+        if spec.name == "atma_gated_delta_decode_core":
+            floating_inputs = (
+                "query",
+                "key",
+                "value",
+                "gamma",
+                "beta",
+                "state_table",
+            )
+            typed_inputs.update(
+                gamma=DType.FLOAT32,
+                beta=DType.FLOAT32,
+                state_table=DType.FLOAT32,
+            )
+            integer_inputs = ("slots",)
+        elif spec.rwkv4_memory:
             floating_inputs = ("w", "u", "k", "v", "state")
         elif spec.rwkv6_memory:
             floating_inputs = (
@@ -2371,6 +2402,22 @@ def named_mixer_recipe(name: str) -> MixerRecipe:
             ),
             external_stages,
         )
+
+    recipes["atma_gated_delta_decode_core"] = MixerRecipe(
+        ("arch-026",),
+        UnifiedMixerSpec(
+            "atma_gated_delta_decode_core",
+            MixerKernelFamily.RECURRENCE,
+            update_rule=StateUpdateRule.DELTA,
+            decay=DecayGranularity.HEAD,
+            feature_map=FeatureMap.L2_NORMALIZE,
+        ),
+        "ATMA's in-place, slot-indexed one-token gated-delta decode update",
+        (
+            "ATMA gate and Q/K/V projection production",
+            "RMSNorm, output gate/projection and full block integration",
+        ),
+    )
 
     for alias, arch_id, decay in (
         ("simple_gla", ("arch-018", "arch-052"), DecayGranularity.HEAD),
@@ -8306,6 +8353,144 @@ def _execute_fla_delta_rule(plan: CompiledMixerPlan, torch: Any, **operands: Any
             "upstream": identity,
             "execution_mode": "decode" if use_decode else "prefill",
             "backward_supported": not use_decode,
+        },
+    )
+
+
+def _execute_atma_gated_delta_decode(
+    plan: CompiledMixerPlan, torch: Any, **operands: Any
+):
+    """Run ATMA's one-token gated-delta step against a slot-indexed state table."""
+    if plan.spec.name != "atma_gated_delta_decode_core":
+        raise RuntimeError("ATMA gated-delta adapter is bound to its decode recipe")
+    query = operands.pop("query")
+    key = operands.pop("key")
+    value = operands.pop("value")
+    gamma = operands.pop("gamma")
+    beta = operands.pop("beta")
+    state_table = operands.pop("state_table")
+    slots = operands.pop("slots")
+    if operands:
+        raise TypeError(
+            f"unexpected ATMA gated-delta operands: {', '.join(sorted(operands))}"
+        )
+    if any(tensor.ndim != 4 for tensor in (query, key, value)):
+        raise ValueError("ATMA gated-delta query/key/value use [B,1,H,D] layout")
+    batch, sequence, heads, key_dim = query.shape
+    if sequence != 1 or key.shape != query.shape:
+        raise ValueError("ATMA gated-delta decode needs matching one-token query/key")
+    if value.shape[:3] != (batch, 1, heads):
+        raise ValueError("ATMA gated-delta value must use [B,1,H,Dv] layout")
+    value_dim = value.shape[-1]
+    if state_table.ndim != 4 or state_table.shape[1:] != (
+        heads,
+        key_dim,
+        value_dim,
+    ):
+        raise ValueError("ATMA state_table must use [capacity,H,K,V] layout")
+    if beta.shape != (batch, 1, heads) or gamma.shape != beta.shape:
+        raise ValueError("ATMA gamma and beta must use [B,1,H] layout")
+    if (
+        slots.shape != (batch,)
+        or slots.dtype != torch.int64
+        or not slots.is_contiguous()
+    ):
+        raise ValueError("ATMA slots must be contiguous int64 [B] indices")
+    if not all(
+        tensor.is_cuda
+        for tensor in (query, key, value, gamma, beta, state_table, slots)
+    ):
+        raise ValueError("ATMA gated-delta decode requires CUDA tensors")
+    if not all(
+        tensor.dtype == torch.float32
+        for tensor in (query, key, value, gamma, beta, state_table)
+    ):
+        raise TypeError("ATMA gated-delta decode is qualified for float32 tensors")
+    if not all(
+        tensor.device == query.device
+        for tensor in (key, value, gamma, beta, state_table, slots)
+    ):
+        raise ValueError("ATMA gated-delta inputs must share one CUDA device")
+
+    from urm.adapters.atma_gated_delta import AtmaGatedDeltaDecodeAdapter
+
+    with torch.no_grad():
+        output = AtmaGatedDeltaDecodeAdapter()(
+            query[:, 0].contiguous(),
+            key[:, 0].contiguous(),
+            value[:, 0].contiguous(),
+            gamma[:, 0].contiguous(),
+            beta[:, 0].contiguous(),
+            state_table,
+            slots,
+        )
+    return MixerResult(
+        output.unsqueeze(1),
+        final_state=state_table,
+        metadata={
+            "anchor": plan.anchor,
+            "execution": "trusted_library_anchor",
+            "upstream": {
+                "repository": "kreasof-ai/atma",
+                "revision": "28bb3de8afbe7c0b00115e0fbff36afc9ad49c11",
+                "callable": "kernel.gated_delta_triton.gated_delta_decode_step",
+            },
+            "execution_mode": "decode",
+            "state_update": "in_place_slot_table",
+            "backward_supported": False,
+        },
+    )
+
+
+def _execute_atma_gated_delta_reference(
+    plan: CompiledMixerPlan, torch: Any, **operands: Any
+):
+    query = operands.pop("query")
+    key = operands.pop("key")
+    value = operands.pop("value")
+    gamma = operands.pop("gamma")
+    beta = operands.pop("beta")
+    state_table = operands.pop("state_table")
+    slots = operands.pop("slots")
+    if operands:
+        raise TypeError(
+            "unexpected ATMA gated-delta reference operands: "
+            f"{', '.join(sorted(operands))}"
+        )
+    if query.ndim != 4 or query.shape[1] != 1 or key.shape != query.shape:
+        raise ValueError("ATMA gated-delta reference expects matching [B,1,H,K] Q/K")
+    batch, _, heads, key_dim = query.shape
+    if value.ndim != 4 or value.shape[:3] != (batch, 1, heads):
+        raise ValueError("ATMA gated-delta reference value must use [B,1,H,V]")
+    value_dim = value.shape[-1]
+    if state_table.shape[1:] != (heads, key_dim, value_dim):
+        raise ValueError("ATMA reference state_table must use [capacity,H,K,V]")
+    if beta.shape != (batch, 1, heads) or gamma.shape != beta.shape:
+        raise ValueError("ATMA reference gamma and beta must use [B,1,H]")
+    if slots.shape != (batch,) or slots.dtype != torch.int64:
+        raise ValueError("ATMA reference slots must use int64 [B]")
+
+    q = torch.nn.functional.normalize(query[:, 0].float(), dim=-1)
+    k = torch.nn.functional.normalize(key[:, 0].float(), dim=-1)
+    v = value[:, 0].float()
+    gamma = gamma[:, 0].float()
+    write = beta[:, 0].float()
+    selected = state_table.index_select(0, slots)
+    decayed = gamma[..., None, None] * selected
+    prediction = torch.einsum("bhkv,bhk->bhv", decayed, k)
+    update = write[..., None] * (v - prediction)
+    updated = decayed + k[..., None] * update[..., None, :]
+    output = torch.einsum("bhkv,bhk->bhv", updated, q).unsqueeze(1)
+    final_state = state_table.index_copy(0, slots, updated)
+    return MixerResult(
+        output,
+        final_state=final_state,
+        metadata={
+            "anchor": plan.anchor,
+            "execution": "urm_reference_atma_gated_delta_state_table",
+            "execution_mode": "decode",
+            "state_update": "functional_slot_table",
+            "backward_supported": True,
         },
     )
 
