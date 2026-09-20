@@ -22,7 +22,6 @@ frontend specification → semantic IR → verified rewrites → planning
 | `src/urm/runtime/` | Backend protocols and explicit runtime registry |
 | `src/urm/backends/`, `src/urm/adapters/` | Native implementations and external-library boundaries |
 | `src/urm/oracles/` | NumPy correctness references, including sparse-slot algebra and VJP |
-| `src/urm/experimental/`, `src/urm/experiments/` | Uncertified prototypes, outside production selection |
 | `tests/`, `benchmarks/` | Contract regressions and maintained acceptance harnesses |
 | `results/` | Retained acceptance evidence and provenance consumed by regressions |
 | `archive/` | Historical reports, exploratory measurements and superseded demonstrations |
@@ -30,9 +29,8 @@ frontend specification → semantic IR → verified rewrites → planning
 `urm.ir`, `urm.backend`, and `urm.reference` remain compatibility imports.
 Existing semantic IR and executable binders retain their public paths. The
 distribution name `urm-kernel-lab` is retained for installation compatibility.
-Sparse routed delta-update implementations use the architecture-neutral name
-`sparse_delta`. Legacy `dual_form_sdm` paths are compatibility aliases only and
-are not advertised in the production backend catalog.
+Unvalidated sparse-delta and route-parallel experiments live under `archive/`.
+Production selection uses the validated sparse-state mixer backend.
 
 ## Implementation scope
 
@@ -49,10 +47,9 @@ coverage or a promise of three universal kernel source files.
 - [Compiler acceptance requirements](docs/validation/acceptance.md)
 - [Archive index and migration manifest](archive/README.md)
 
-The experimental dual-form implementations have known decay, backward and
-cross-block correctness defects. The NumPy formulation is independently checked;
-it is not certification of those GPU implementations or of BF16 reassociation.
-Historical MFU claims do not establish current end-to-end performance.
+Archived sparse-delta prototypes have known decay, backward and cross-block
+correctness defects. Historical MFU claims do not establish current end-to-end
+performance.
 
 ## CPU verification
 

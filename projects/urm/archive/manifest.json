@@ -680,6 +680,76 @@
       "original": "docs/compiler/architecture.md",
       "archived": "archive/docs/compiler/architecture-before-full-version.md",
       "sha256": "348c315b1b5b7b5861fe9cadca5ef29bc842370f3a9add941021bef29848f2c1"
+    },
+    {
+      "original": "src/urm/experimental/sparse_delta.py",
+      "archived": "archive/experiments/sparse_delta.py",
+      "sha256": "f0f57cbb839ee10826b77929b79dd0546e6f77580b86fe1352916908d643cb8c"
+    },
+    {
+      "original": "src/urm/experimental/triton_sparse_delta.py",
+      "archived": "archive/experiments/triton_sparse_delta.py",
+      "sha256": "1699fe53890ab49b4e1bde5818cfd39a529e9d3c002d8a0e576e4bac56555409"
+    },
+    {
+      "original": "src/urm/experimental/sparse_state_triangular.py",
+      "archived": "archive/experiments/sparse_state_triangular.py",
+      "sha256": "4e179dcf40fae8a343caaca26def975a898f9dc4cec44811f19c07f4f3455d40"
+    },
+    {
+      "original": "src/urm/experiments/route_parallel.py",
+      "archived": "archive/experiments/route_parallel.py",
+      "sha256": "2e919438e0d0cc695909f4cd14ccea720d09298bd2484280dc3d3145ad9f6d2f"
+    },
+    {
+      "original": "src/urm/experiments/route_parallel.cu",
+      "archived": "archive/experiments/route_parallel.cu",
+      "sha256": "efd068cfa2db1caafbe2d7f090995eb5fa25a1154c4fc7a625566b76a866bc79"
+    },
+    {
+      "original": "tests/test_sparse_delta_experimental.py",
+      "archived": "archive/tests/test_sparse_delta_experimental.py",
+      "sha256": "b17ab1ea0ec6f32f02c41083e23aec07c3023542ab47c1e4ced47acb374bd64c"
+    },
+    {
+      "original": "tests/test_sparse_state_triangular.py",
+      "archived": "archive/tests/test_sparse_state_triangular.py",
+      "sha256": "29c124eb5cad0137ee5fc985798fec327e2cf836642efdfead82eae919ef44ff"
+    },
+    {
+      "original": "tests/test_route_parallel_experiment.py",
+      "archived": "archive/tests/test_route_parallel_experiment.py",
+      "sha256": "6149de919e64ecd382d5ac42ebec77bf894ccd898fc614652914a4140d63efe6"
+    },
+    {
+      "original": "benchmarks/sparse_state_triangular.py",
+      "archived": "archive/benchmarks/sparse_state_triangular.py",
+      "sha256": "feb294b9be269667cc152e0245b994fc5a7a54ede5ba4a9bded216558e76917b"
+    },
+    {
+      "original": "benchmarks/route_parallel_baseline.py",
+      "archived": "archive/benchmarks/route_parallel_baseline.py",
+      "sha256": "2a7a03de8ef7b4ad10a8aa6f040a35c8425cfdcee6d269be0568b7a514685bed"
+    },
+    {
+      "original": "benchmarks/route_parallel_capture.py",
+      "archived": "archive/benchmarks/route_parallel_capture.py",
+      "sha256": "81677e7ba586934e9edaa262731f32a72f3be3f2793870203862ae66c295b43f"
+    },
+    {
+      "original": "benchmarks/route_parallel_counters.py",
+      "archived": "archive/benchmarks/route_parallel_counters.py",
+      "sha256": "e20d23cf0850efc017157bae3d889e4f5efb3728c49f954e01512f2527bbe7dd"
+    },
+    {
+      "original": "benchmarks/route_parallel_experiment.py",
+      "archived": "archive/benchmarks/route_parallel_experiment.py",
+      "sha256": "dd2bd08c935697d1ac766be0b8de2050db5c488e768f1667fe7da16dba192ff3"
+    },
+    {
+      "original": "benchmarks/route_parallel_projection.py",
+      "archived": "archive/benchmarks/route_parallel_projection.py",
+      "sha256": "5e388eac8481360067264b90a2f8e08804e03a10c5c9feb922d411d84879c235"
     }
   ],
   "code_relocations": [
@@ -694,18 +764,6 @@
     {
       "original": "src/urm/reference.py",
       "current": "src/urm/oracles/routed.py"
-    },
-    {
-      "original": "src/urm/backends/dual_form_sdm.py",
-      "current": "src/urm/experimental/sparse_delta.py"
-    },
-    {
-      "original": "src/urm/backends/sparse_state_triangular.py",
-      "current": "src/urm/experimental/sparse_state_triangular.py"
-    },
-    {
-      "original": "src/urm/triton_kernels/dual_form_sdm.py",
-      "current": "src/urm/experimental/triton_sparse_delta.py"
     }
   ]
 }

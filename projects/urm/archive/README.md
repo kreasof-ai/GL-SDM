@@ -16,10 +16,11 @@ Do not run archived benchmarks as current acceptance gates. No accepted result i
 made stronger by moving it here, and negative results remain part of the record.
 
 Maintained acceptance harnesses, schemas, and evidence used by current regression
-tests remain in `benchmarks/` and `results/`. Executable prototypes live under
-`urm.experimental` and `urm.experiments`, with compatibility imports where needed.
-Future artifacts should declare source revision, semantic contract, numerical
-policy, backend/version, shape, gradient coverage, measurement boundary and status.
+tests remain in `benchmarks/` and `results/`. The former `urm.experimental` and
+`urm.experiments` packages are archived here and have no production imports or
+compatibility aliases. Future artifacts should declare source revision, semantic
+contract, numerical policy, backend/version, shape, gradient coverage,
+measurement boundary and status.
 
 ## Superseded construction references
 

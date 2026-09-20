@@ -55,7 +55,11 @@ def test_numpy_backend_catalog_does_not_load_experimental_kernels():
             (
                 "import sys; import urm.backends; import urm.compiler.planner; "
                 "assert 'torch' not in sys.modules; "
-                "assert 'urm.experimental.sparse_delta' not in sys.modules"
+                "assert 'urm.experimental' not in sys.modules; "
+                "import importlib.util; "
+                "assert importlib.util.find_spec('urm.experimental') is None; "
+                "assert importlib.util.find_spec('urm.backends.dual_form_sdm') is None; "
+                "assert importlib.util.find_spec('urm.triton_kernels.dual_form_sdm') is None"
             ),
         ],
         env=env,
@@ -63,3 +67,23 @@ def test_numpy_backend_catalog_does_not_load_experimental_kernels():
         capture_output=True,
         text=True,
     )
+
+
+def test_dual_form_names_are_absent_from_production_backend_catalog():
+    import urm.backends as backends
+    import urm.triton_kernels as triton_kernels
+
+    for module, names in (
+        (backends, ("DualFormSDMFunction", "dual_form_sdm")),
+        (
+            triton_kernels,
+            (
+                "TritonDualFormSDMFunction",
+                "triton_dual_form_sdm",
+                "_triton_dual_form_fwd_kernel",
+                "_triton_dual_form_bwd_kernel",
+            ),
+        ),
+    ):
+        for name in names:
+            assert not hasattr(module, name)
