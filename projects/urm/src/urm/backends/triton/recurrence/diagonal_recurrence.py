@@ -54,6 +54,7 @@ def _kernels():
         READ_BEFORE: tl.constexpr,
         BLOCK_T: tl.constexpr,
         BLOCK_N: tl.constexpr,
+        CHUNK_T: tl.constexpr,
     ):
         row = tl.program_id(0)
         batch = row // C
@@ -129,75 +130,84 @@ def _kernels():
                 state_mask,
             )
         else:
-            token = tl.arange(0, BLOCK_T)
-            token_mask = token < T
+            # Chunked forward scan: loop over sequence chunks of CHUNK_T tokens,
+            # running a parallel associative_scan within each chunk and carrying the
+            # state in registers across chunks. This bounds register pressure (the
+            # tile is [CHUNK_T, BLOCK_N] instead of [T, BLOCK_N]) while keeping the
+            # whole sequence in one program.
             state_offset = state_index[None, :]
-            x = tl.load(
-                X + batch * X_SB + token * X_ST + channel * X_SC,
-                token_mask,
-                other=0.0,
-            ).to(tl.float32)
-            input_gate = tl.load(
-                INPUT_GATE
-                + batch * IG_SB
-                + token[:, None] * IG_ST
-                + channel * IG_SC
-                + state_offset * IG_SN,
-                token_mask[:, None] & state_mask[None, :],
-                other=0.0,
-            ).to(tl.float32)
-            read_gate = tl.load(
-                READ_GATE
-                + batch * RG_SB
-                + token[:, None] * RG_ST
-                + channel * RG_SC
-                + state_offset * RG_SN,
-                token_mask[:, None] & state_mask[None, :],
-                other=0.0,
-            ).to(tl.float32)
-            log_decay = tl.load(
-                LOG_DECAY
-                + batch * LD_SB
-                + token[:, None] * LD_ST
-                + channel * LD_SC
-                + state_offset * LD_SN,
-                token_mask[:, None] & state_mask[None, :],
-                other=0.0,
-            ).to(tl.float32)
-            if HAS_STEP_SIZE:
-                step = tl.load(
-                    STEP_SIZE + batch * STEP_SB + token * STEP_ST + channel * STEP_SC,
+            for chunk_start in range(0, T, CHUNK_T):
+                token = chunk_start + tl.arange(0, CHUNK_T)
+                token_mask = token < T
+                x = tl.load(
+                    X + batch * X_SB + token * X_ST + channel * X_SC,
                     token_mask,
-                    other=1.0,
+                    other=0.0,
                 ).to(tl.float32)
-            else:
-                step = tl.full((BLOCK_T,), 1.0, tl.float32)
-            decay = tl.exp(log_decay * step[:, None])
-            decay = tl.where(token_mask[:, None], decay, 1.0)
-            update = (x * step)[:, None] * input_gate
-            update = tl.where(token_mask[:, None], update, 0.0)
-            prefix_decay, prefix_update = tl.associative_scan(
-                (decay, update), axis=0, combine_fn=compose_affine
-            )
-            state_sequence = prefix_decay * state[None, :] + prefix_update
-            output = tl.sum(state_sequence * read_gate, axis=1) + x * skip
-            output_offset = batch * T * C + token * C + channel
-            tl.store(OUTPUT + output_offset, output, token_mask)
-            tl.store(
-                STATES
-                + batch * T * C * N
-                + token[:, None] * C * N
-                + channel * N
-                + state_offset,
-                state_sequence,
-                token_mask[:, None] & state_mask[None, :],
-            )
-            final_state = tl.sum(
-                tl.where((token == T - 1)[:, None], state_sequence, 0.0), axis=0
-            )
+                input_gate = tl.load(
+                    INPUT_GATE
+                    + batch * IG_SB
+                    + token[:, None] * IG_ST
+                    + channel * IG_SC
+                    + state_offset * IG_SN,
+                    token_mask[:, None] & state_mask[None, :],
+                    other=0.0,
+                ).to(tl.float32)
+                read_gate = tl.load(
+                    READ_GATE
+                    + batch * RG_SB
+                    + token[:, None] * RG_ST
+                    + channel * RG_SC
+                    + state_offset * RG_SN,
+                    token_mask[:, None] & state_mask[None, :],
+                    other=0.0,
+                ).to(tl.float32)
+                log_decay = tl.load(
+                    LOG_DECAY
+                    + batch * LD_SB
+                    + token[:, None] * LD_ST
+                    + channel * LD_SC
+                    + state_offset * LD_SN,
+                    token_mask[:, None] & state_mask[None, :],
+                    other=0.0,
+                ).to(tl.float32)
+                if HAS_STEP_SIZE:
+                    step = tl.load(
+                        STEP_SIZE + batch * STEP_SB + token * STEP_ST + channel * STEP_SC,
+                        token_mask,
+                        other=1.0,
+                    ).to(tl.float32)
+                else:
+                    step = tl.full((CHUNK_T,), 1.0, tl.float32)
+                decay = tl.exp(log_decay * step[:, None])
+                decay = tl.where(token_mask[:, None], decay, 1.0)
+                update = (x * step)[:, None] * input_gate
+                update = tl.where(token_mask[:, None], update, 0.0)
+                prefix_decay, prefix_update = tl.associative_scan(
+                    (decay, update), axis=0, combine_fn=compose_affine
+                )
+                state_sequence = prefix_decay * state[None, :] + prefix_update
+                output = tl.sum(state_sequence * read_gate, axis=1) + x * skip
+                output_offset = batch * T * C + token * C + channel
+                tl.store(OUTPUT + output_offset, output, token_mask)
+                tl.store(
+                    STATES
+                    + batch * T * C * N
+                    + token[:, None] * C * N
+                    + channel * N
+                    + state_offset,
+                    state_sequence,
+                    token_mask[:, None] & state_mask[None, :],
+                )
+                # Carry the post-update state of the last valid token to the next chunk.
+                last_valid = tl.sum(tl.where(token_mask, 1, 0), 0) - 1
+                state = tl.sum(
+                    tl.where((tl.arange(0, CHUNK_T) == last_valid)[:, None], state_sequence, 0.0),
+                    axis=0,
+                )
             tl.store(
                 FINAL + batch * C * N + channel * N + state_index,
-                final_state,
+                state,
                 state_mask,
             )
 
@@ -639,11 +649,38 @@ def execute_diagonal_recurrence(
     skip_tensor = skip_tensor.contiguous()
     block_n = triton.next_power_of_2(state_width)
     block_t = triton.next_power_of_2(sequence)
+    # Chunk the forward scan to bound register pressure: the per-chunk tile is
+    # [chunk_t, block_n] instead of [block_t, block_n]. 128 balances parallelism
+    # against the sequential carry across chunks.
+    chunk_t = min(block_t, 128)
     warps = 4 if block_n <= 128 else 8
+
+    # Cache the autograd.Function subclass per launch configuration: defining the
+    # class runs `__build_class__` every call, which is pure dispatch overhead on
+    # the ordinary-invocation path the production budget measures.
+    scan_cls = _scan_class(
+        sequence, channels, state_width, has_initial, has_step_size, skip_scalar,
+        read_before, block_t, block_n, chunk_t, warps,
+    )
+    return scan_cls.apply(
+        x, input_gate, read_gate, log_decay, initial_tensor, step_tensor, skip_tensor
+    )
+
+
+@lru_cache(maxsize=128)
+def _scan_class(
+    sequence, channels, state_width, has_initial, has_step_size, skip_scalar,
+    read_before, block_t, block_n, chunk_t, warps,
+):
+    import torch
+
+    triton, forward_kernel, backward_kernel, backward_kernel_parallel = _kernels()
+    batch = None  # batch varies per call; read from x inside forward/backward
 
     class _DiagonalScan(torch.autograd.Function):
         @staticmethod
         def forward(ctx, x, input_gate, read_gate, log_decay, initial, step, skip):
+            batch = x.shape[0]
             output = torch.empty(
                 (batch, sequence, channels), device=x.device, dtype=x.dtype
             )
@@ -680,6 +717,7 @@ def execute_diagonal_recurrence(
                 read_before,
                 block_t,
                 block_n,
+                chunk_t,
                 num_warps=warps,
             )
             ctx.save_for_backward(
@@ -696,6 +734,7 @@ def execute_diagonal_recurrence(
             x, input_gate, read_gate, log_decay, initial, step, skip, states = (
                 ctx.saved_tensors
             )
+            batch = x.shape[0]
             if grad_output is None:
                 grad_output = torch.zeros_like(x)
             grad_output = grad_output.contiguous()
@@ -812,15 +851,7 @@ def execute_diagonal_recurrence(
                 grad_skip,
             )
 
-    return _DiagonalScan.apply(
-        x,
-        input_gate,
-        read_gate,
-        log_decay,
-        initial_tensor,
-        step_tensor,
-        skip_tensor,
-    )
+    return _DiagonalScan
 
 
 def _expand_gate(gate: Any, batch: int, sequence: int, channels: int):
