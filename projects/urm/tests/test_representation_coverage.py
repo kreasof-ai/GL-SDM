@@ -52,6 +52,7 @@ VERIFIED = {
     "longformer_attention_core",
     "m2rnn_core",
     "mamba1_ssm_core",
+    "mesa_net_core",
     "mha",
     "mla_attention_core",
     "mom_selected_memory_core",
@@ -67,7 +68,9 @@ VERIFIED = {
     "simple_gla",
     "sparse_attention_core",
     "sparse_delta_memory",
+    "titans_linear_memory_core",
     "tpa_attention_core",
+    "ttt_linear_core",
     "tucker_attention_core",
 }
 

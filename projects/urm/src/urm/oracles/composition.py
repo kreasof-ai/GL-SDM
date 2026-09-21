@@ -400,6 +400,31 @@ def _execute_k2_operator(spec: UnifiedMixerSpec, **operands):
         out, state = nl.second_order_cumsum(
             operands.pop("query"), operands.pop("key"), operands.pop("value"),
         )
+    elif op is RecurrenceOperator.REGULARIZED_SOLVE:
+        out, state = nl.regularized_solve(
+            operands.pop("query"), operands.pop("key"), operands.pop("value"),
+            operands.pop("log_decay"), operands.pop("beta"), operands.pop("lamb"),
+            h_kk_init=operands.pop("h_kk_init", None),
+            h_kv_init=operands.pop("h_kv_init", None),
+        )
+    elif op is RecurrenceOperator.LAYERNORM_INNER_STATE:
+        out, state = nl.layernorm_inner_state(
+            operands.pop("query"), operands.pop("key"), operands.pop("value"),
+            operands.pop("w"), operands.pop("b"), operands.pop("eta"),
+            initial_state=operands.pop("initial_state", None),
+            initial_state_bias=operands.pop("initial_state_bias", None),
+            chunk_size=int(operands.pop("chunk_size", 16)),
+            eps=float(operands.pop("eps", 1e-6)),
+        )
+    elif op is RecurrenceOperator.MOMENTUM_INNER_STATE:
+        out, state = nl.momentum_inner_state(
+            operands.pop("query"), operands.pop("key"), operands.pop("value"),
+            operands.pop("w"), operands.pop("b"), operands.pop("theta"),
+            operands.pop("alpha"), operands.pop("eta"),
+            initial_state=operands.pop("initial_state", None),
+            chunk_size=int(operands.pop("chunk_size", 16)),
+            eps=float(operands.pop("eps", 1e-6)),
+        )
     else:
         raise UnderspecifiedComposition(
             f"no canonical executor yet for recurrence operator {op.value}"

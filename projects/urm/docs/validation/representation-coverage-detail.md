@@ -8,7 +8,7 @@ is recorded as declined with the precise reason. Once a recipe lowers and
 matches, any later optimization of the canonical K1/K2/K3 kernel lifts it
 automatically - there is no per-architecture re-derivation.
 
-**43 of 74 named recipes lower into a canonical core and match their independent equation.** 0 lower but are not yet verified; 31 decline (under-specified or exotic).
+**46 of 74 named recipes lower into a canonical core and match their independent equation.** 0 lower but are not yet verified; 28 decline (under-specified or exotic).
 
 ## Verified (lower + match independent equation)
 
@@ -52,7 +52,10 @@ automatically - there is no per-architecture re-derivation.
 | `gated_delta_net` | RECURRENCE | 1.49e-06 | 3.23e-07 |
 | `gdn2_core` | RECURRENCE | 2.58e-06 | 1.87e-06 |
 | `kda_core` | RECURRENCE | 8.26e-07 | 5.53e-07 |
+| `mesa_net_core` | RECURRENCE | 2.80e-07 | 2.86e-07 |
 | `mamba1_ssm_core` | RECURRENCE | 9.02e-08 | 7.27e-08 |
+| `titans_linear_memory_core` | RECURRENCE | 1.18e-04 | 2.95e-05 |
+| `ttt_linear_core` | RECURRENCE | 2.14e-04 | 1.29e-04 |
 | `rnn_core` | RECURRENCE | 5.77e-08 | 2.61e-08 |
 | `gru_core` | RECURRENCE | 9.15e-08 | 7.25e-08 |
 | `m2rnn_core` | RECURRENCE | 1.29e-07 | 6.41e-08 |
@@ -91,10 +94,7 @@ automatically - there is no per-architecture re-derivation.
 | `rwkv4_memory_core` | RECURRENCE | exotic composition flags: ['rwkv4_memory'] |
 | `rwkv6_memory_core` | RECURRENCE | exotic composition flags: ['rwkv6_memory'] |
 | `momentum_delta_core` | RECURRENCE | exotic composition flags: ['momentum_delta'] |
-| `mesa_net_core` | RECURRENCE | no canonical executor yet for recurrence operator regularized_solve_state |
 | `rwkv7_transition_core` | RECURRENCE | only pointwise decay transitions are canonical |
 | `mamba2_ssm_core` | RECURRENCE | exotic composition flags: ['mamba2_ssm'] |
 | `mamba3_siso_core` | RECURRENCE | no canonical executor yet for recurrence operator trapezoidal_ssm_rotary |
-| `titans_linear_memory_core` | RECURRENCE | no canonical executor yet for recurrence operator momentum_inner_loss_state |
-| `ttt_linear_core` | RECURRENCE | no canonical executor yet for recurrence operator layernorm_inner_loss_state |
 | `log_linear_attention_core` | RECURRENCE | exotic composition flags: ['log_linear_attention'] |
