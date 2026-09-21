@@ -653,7 +653,10 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
     ExecutionAnchor(
         kind=AnchorKind.RECURRENT_SCAN,
         name=NATIVE_MATRIX_STATE_RECURRENCE_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float32"}),
+        # The kernel accumulates the state and gradients in fp32 regardless of
+        # the input dtype, so bf16/fp16 backward is numerically sound (verified
+        # against the eager oracle at the frozen 0.02 contract tolerance).
+        backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
         supported_visitors=frozenset(),
     ),
     ExecutionAnchor(

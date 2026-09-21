@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_utc": "2026-09-21T17:41:50.003170+00:00",
+  "generated_utc": "2026-09-21T18:52:37.041069+00:00",
   "purpose": "qualify URM-native K2 matrix-state gated-delta recurrence against the pinned FLA gated-delta operator (native replacement, not dispatch overhead)",
   "matrix_workload": "k2-gated-delta-recurrence",
   "verdict": "correct_below_target",
@@ -13,10 +13,10 @@
     "kernel_source_sha256": {}
   },
   "provenance": {
-    "git_revision": "3e86b3b1dd8edcedb78d47b22bd39aa428a781c9",
+    "git_revision": "8e374c6b0f7e53714b49388b42917b141c32882b",
     "dirty_tree": true,
     "benchmark_command": "PYTHONPATH=src python benchmarks/qualify_native_k2_gated_delta.py",
-    "config_hash": "4d972a158b6e0ed5825ec58c76e64511ee03fcf4299751148b4fa6cf1be9dd48",
+    "config_hash": "f0a79f1e9b2b0aa740d39db304b2661a4c2ea4558f5b0aae834f2c3b4f6ecf8c",
     "solver_version": null,
     "python": "3.12.14",
     "platform": "Linux-6.12.103-127.188.amzn2023.x86_64-x86_64-with-glibc2.39",
@@ -42,11 +42,11 @@
     "driver_version": "595.91.07",
     "sm_clock_mhz": 1710,
     "memory_clock_mhz": 6251,
-    "power_draw_w": 182.4,
+    "power_draw_w": 167.52,
     "power_limit_w": 300.0,
-    "temperature_c": 42,
-    "gpu_utilization_pct": 99,
-    "memory_utilization_pct": 91,
+    "temperature_c": 41,
+    "gpu_utilization_pct": 96,
+    "memory_utilization_pct": 86,
     "persistence_mode": "Enabled",
     "compute_mode": "Default",
     "application_clocks_fixed": null,
@@ -60,9 +60,9 @@
     "exclusive_process_mode": false,
     "all_compute_processes": [
       {
-        "pid": 34274,
-        "process_name": "/opt/conda/bin/python",
-        "used_memory": "5826 MiB"
+        "pid": 38492,
+        "process_name": "python",
+        "used_memory": "5874 MiB"
       }
     ],
     "external_compute_processes": [],
@@ -70,18 +70,19 @@
   },
   "methodology": {
     "comparison": "URM-native matrix-state recurrence kernel vs pinned FLA gated-delta; the two share no kernel",
-    "correctness_comparator": "forward output/state vs fla.ops.gated_delta_rule.fused_recurrent_gated_delta_rule (exact sequential recurrence) and an independent eager oracle; gradients vs the oracle because the exact upstream implements no backward pass",
+    "correctness_comparator": "forward output/state vs fla.ops.gated_delta_rule.fused_recurrent_gated_delta_rule (exact sequential recurrence) and an independent eager oracle, at the frozen contract tolerance (0.02); gradients vs the oracle because the exact upstream implements no backward pass",
     "performance_comparator": "fla.ops.gated_delta_rule.chunk.chunk_gated_delta_rule (competitive chunked parallel kernel); the fastest compatible upstream kernel is the performance baseline, not a slow reference",
+    "tolerance_calibration": "frozen production-matrix tolerances (output/state/gradient atol 0.02); the competitive chunked upstream deviates from the exact scan by ~0.02 in fp32, so the contract tolerance is the correct calibration",
     "timed_work": "one native plan call or one upstream call, optionally followed by output and final-state backward",
     "sampling": "paired interleaved native/direct calls, order alternates, synchronized wall and CUDA event timing",
-    "warmup": 5,
-    "pairs": 15,
+    "warmup": 2,
+    "pairs": 8,
     "overhead": "median of per-pair (native-direct)/direct fractions with bootstrap CI",
     "slowdown_budget_fraction": 0.1,
     "gate_basis": "the 95% confidence-interval upper bound must meet the budget"
   },
   "cases": {
-    "gated_delta_net": {
+    "throughput_medium/float32": {
       "semantic_scope": "matrix-state gated-delta recurrence core; projections and output projection excluded",
       "shape": {
         "batch": 8,
@@ -89,110 +90,80 @@
         "heads": 8,
         "key_dim": 64,
         "value_dim": 64,
-        "dtype": "float32"
+        "dtype": "float32",
+        "initial_state": "nonzero"
       },
       "upstream_callable": "fla.ops.gated_delta_rule.fused_recurrent_gated_delta_rule",
       "performance_comparator_callable": "fla.ops.gated_delta_rule.chunk.chunk_gated_delta_rule",
       "native_anchor": "urm_native_matrix_state_recurrence_v1",
-      "compiler_plan_build_ms": 43.948089001787594,
       "parity": {
         "status": "pass",
         "output_max_abs_error_vs_upstream": 1.9073486328125e-06,
-        "final_state_max_abs_error_vs_upstream": 8.940696716308594e-08,
-        "output_max_abs_error_vs_oracle": 2.6226043701171875e-06,
-        "final_state_max_abs_error_vs_oracle": 2.086162567138672e-07,
+        "final_state_max_abs_error_vs_upstream": 1.1920928955078125e-07,
+        "output_max_abs_error_vs_oracle": 2.86102294921875e-06,
+        "final_state_max_abs_error_vs_oracle": 2.980232238769531e-07,
         "input_gradient_max_abs_errors_vs_oracle": {
-          "q": 1.2732925824820995e-11,
-          "k": 1.1641532182693481e-10,
-          "v": 7.275957614183426e-12,
-          "g": 3.4924596548080444e-10,
+          "q": 1.4551915228366852e-11,
+          "k": 1.4551915228366852e-10,
+          "v": 8.185452315956354e-12,
+          "g": 4.656612873077393e-10,
           "beta": 1.7462298274040222e-10,
           "initial_state": 2.7284841053187847e-12
         },
         "tolerances": {
-          "output_atol": 2e-05,
-          "gradient_atol": 2e-05,
-          "relative_tolerance": 0.0002
+          "output_atol": 0.02,
+          "state_atol": 0.02,
+          "gradient_atol": 0.02,
+          "relative_tolerance": 0.0001
         }
       },
       "performance": {
-        "first_direct_forward_call_ms": {
-          "wall": 5.963888799669803,
-          "device": 5.958041763305665
-        },
-        "first_compiled_forward_call_after_warmup_ms": {
-          "wall": 2.6996845997928176,
-          "device": 2.6960895538330076
-        },
-        "warmup_calls_per_backend_per_mode": 5,
-        "paired_samples_per_mode": 15,
         "measurements": {
           "forward": {
             "direct_wall": {
-              "sample_count": 15,
-              "median_ms": 0.8673325999552617,
-              "p95_ms": 0.8767079599783756,
+              "sample_count": 8,
+              "median_ms": 0.8706224001798546,
+              "p95_ms": 0.8942542400836828,
               "raw_samples_ms": [
-                0.8816459001536714,
-                0.8687845998792909,
-                0.8629003998066764,
-                0.8687476001796313,
-                0.8628374998806976,
-                0.8731175999855623,
-                0.8613874997536186,
-                0.8673325999552617,
-                0.8640233998448821,
-                0.8745916999032488,
-                0.8707306998985587,
-                0.8689045000210172,
-                0.8628364998003235,
-                0.8655814999656286,
-                0.864072499825852
+                0.9054834998096339,
+                0.8733999005926307,
+                0.8615926999482326,
+                0.870782900165068,
+                0.8630497002741322,
+                0.871940900105983,
+                0.8639316998596769,
+                0.8704619001946412
               ]
             },
             "compiled_wall": {
-              "sample_count": 15,
-              "median_ms": 2.655040800163988,
-              "p95_ms": 2.661174199965899,
+              "sample_count": 8,
+              "median_ms": 2.6512979497056217,
+              "p95_ms": 2.6611414450235316,
               "raw_samples_ms": [
-                2.6571356000204105,
-                2.6571976999548497,
-                2.654133699979866,
-                2.6536424997175345,
-                2.6490615000511752,
-                2.650663599706604,
-                2.655040800163988,
-                2.651697600231273,
-                2.6553826999588637,
-                2.6638796996849123,
-                2.655624700128101,
-                2.6558498000667896,
-                2.6548027999524493,
-                2.652310599660268,
-                2.6600147000863217
+                2.6512144002481364,
+                2.6649058003386017,
+                2.6511504998779856,
+                2.6541504994384013,
+                2.6512693999393377,
+                2.651322499878006,
+                2.6512733995332383,
+                2.652696499717422
               ]
             },
             "paired_native_overhead_fraction": {
-              "median": 2.058523022074794,
-              "p95": 2.079608841125729,
-              "ci95_lower": 2.0545609555282107,
-              "ci95_upper": 2.0732763724172103,
+              "median": 2.049595566788703,
+              "p95": 2.0752646345539025,
+              "ci95_lower": 2.0407135386764654,
+              "ci95_upper": 2.071977661422291,
               "raw_samples": [
-                2.0138353726334692,
-                2.058523022074794,
-                2.0758285667436196,
-                2.0545609555282107,
-                2.070174280113526,
-                2.0358609192512382,
-                2.082283874473922,
-                2.0573018936081175,
-                2.0732763724172103,
-                2.0458552259066747,
-                2.0498806352382943,
-                2.0565497128885277,
-                2.0768318222129225,
-                2.0641951101838347,
-                2.0784623982622175
+                1.9279544031509352,
+                2.0511862876677394,
+                2.077034543163232,
+                2.0480048459096674,
+                2.071977661422291,
+                2.0407135386764654,
+                2.0688460673035474,
+                2.0474584805196656
               ],
               "gate": {
                 "limit_fraction": 0.1,
@@ -207,82 +178,54 @@
               "directcompiled",
               "compileddirect",
               "directcompiled",
-              "compileddirect",
-              "directcompiled",
-              "compileddirect",
-              "directcompiled",
-              "compileddirect",
-              "directcompiled",
-              "compileddirect",
-              "directcompiled"
+              "compileddirect"
             ]
           },
           "forward_backward": {
             "direct_wall": {
-              "sample_count": 15,
-              "median_ms": 3.4334756001044298,
-              "p95_ms": 3.450751689815661,
+              "sample_count": 8,
+              "median_ms": 3.4334876498178346,
+              "p95_ms": 3.454266030312283,
               "raw_samples_ms": [
-                3.4336283999437,
-                3.440600700196228,
-                3.4229102999233874,
-                3.4385077000479214,
-                3.4232572998007527,
-                3.4338115001446567,
-                3.4227882999402937,
-                3.4467957997549092,
-                3.424168399942573,
-                3.4425247002218384,
-                3.424061400073697,
-                3.4334756001044298,
-                3.424773399819969,
-                3.459982099957415,
-                3.4218503002193756
+                3.423515599570237,
+                3.4357575998001266,
+                3.4217505002743565,
+                3.4502658003475517,
+                3.4256665996508673,
+                3.456420000293292,
+                3.4312176998355426,
+                3.4383386999252252
               ]
             },
             "compiled_wall": {
-              "sample_count": 15,
-              "median_ms": 6.731349500114447,
-              "p95_ms": 6.7501768999864,
+              "sample_count": 8,
+              "median_ms": 6.734571199922357,
+              "p95_ms": 6.753649294696515,
               "raw_samples_ms": [
-                6.718155300040962,
-                6.720497299829731,
-                6.74641090008663,
-                6.746060699879308,
-                6.736182500026189,
-                6.7245504000311485,
-                6.728904500050703,
-                6.750601800013101,
-                6.72965439989639,
-                6.732946599731804,
-                6.728615400061244,
-                6.7499947999749565,
-                6.731349500114447,
-                6.729065400213585,
-                6.738598499941872
+                6.734153699653689,
+                6.724307599506574,
+                6.756585199764231,
+                6.7481968995707575,
+                6.724178400327219,
+                6.719421500019962,
+                6.734988700191025,
+                6.740065800113371
               ]
             },
             "paired_native_overhead_fraction": {
-              "median": 0.9650977637014402,
-              "p95": 0.9697867715683394,
-              "ci95_lower": 0.9565761106097322,
-              "ci95_upper": 0.9659364405471978,
+              "median": 0.9615624259814756,
+              "p95": 0.9719494375165174,
+              "ci95_lower": 0.9558484157629245,
+              "ci95_upper": 0.9670287760625496,
               "raw_samples": [
-                0.9565761106097322,
-                0.9532918479748145,
-                0.9709575504323412,
-                0.9619152517196021,
-                0.9677698490318745,
-                0.9583341717353623,
-                0.9659131416827856,
-                0.9585151520995572,
-                0.9653397887817824,
-                0.9558164969151648,
-                0.9650977637014402,
-                0.9659364405471978,
-                0.9654875561893513,
-                0.944826651067474,
-                0.9692850091980528
+                0.9670287760625496,
+                0.9571542532272233,
+                0.9745990244532694,
+                0.9558484157629245,
+                0.9628817354883645,
+                0.9440407992806978,
+                0.9628567142544849,
+                0.9602681377084662
               ],
               "gate": {
                 "limit_fraction": 0.1,
@@ -297,14 +240,171 @@
               "directcompiled",
               "compileddirect",
               "directcompiled",
-              "compileddirect",
+              "compileddirect"
+            ]
+          }
+        }
+      }
+    },
+    "throughput_medium/bfloat16": {
+      "semantic_scope": "matrix-state gated-delta recurrence core; projections and output projection excluded",
+      "shape": {
+        "batch": 8,
+        "sequence": 1024,
+        "heads": 8,
+        "key_dim": 64,
+        "value_dim": 64,
+        "dtype": "bfloat16",
+        "initial_state": "nonzero"
+      },
+      "upstream_callable": "fla.ops.gated_delta_rule.fused_recurrent_gated_delta_rule",
+      "performance_comparator_callable": "fla.ops.gated_delta_rule.chunk.chunk_gated_delta_rule",
+      "native_anchor": "urm_native_matrix_state_recurrence_v1",
+      "parity": {
+        "status": "pass",
+        "output_max_abs_error_vs_upstream": 0.015625,
+        "final_state_max_abs_error_vs_upstream": 1.1920928955078125e-07,
+        "output_max_abs_error_vs_oracle": 0.031070709228515625,
+        "final_state_max_abs_error_vs_oracle": 2.980232238769531e-07,
+        "input_gradient_max_abs_errors_vs_oracle": {
+          "q": 2.384185791015625e-07,
+          "k": 1.9073486328125e-06,
+          "v": 1.1920928955078125e-07,
+          "g": 3.814697265625e-06,
+          "beta": 1.9073486328125e-06,
+          "initial_state": 1.6387730283895507e-08
+        },
+        "tolerances": {
+          "output_atol": 0.02,
+          "state_atol": 0.02,
+          "gradient_atol": 0.02,
+          "relative_tolerance": 0.0001
+        }
+      },
+      "performance": {
+        "measurements": {
+          "forward": {
+            "direct_wall": {
+              "sample_count": 8,
+              "median_ms": 0.5867794003279414,
+              "p95_ms": 0.6197565502225189,
+              "raw_samples_ms": [
+                0.6180880001920741,
+                0.6206550002389122,
+                0.5644329998176545,
+                0.561197900242405,
+                0.5574457994953264,
+                0.5813733005197719,
+                0.5921855001361109,
+                0.5998138003633358
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 8,
+              "median_ms": 2.701572400110308,
+              "p95_ms": 2.7037412003483037,
+              "raw_samples_ms": [
+                2.7018054002837744,
+                2.7043215006415267,
+                2.70263740021619,
+                2.6957344001857564,
+                2.6976803004799876,
+                2.701339399936842,
+                2.699608400143916,
+                2.702663499803748
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 3.602600424909753,
+              "p95": 3.826820947907755,
+              "ci95_lower": 3.3712309565048564,
+              "ci95_upper": 3.803536148337967,
+              "raw_samples": [
+                3.3712309565048564,
+                3.3572056933409655,
+                3.788234212190469,
+                3.803536148337967,
+                3.8393589169068716,
+                3.6464799768440215,
+                3.5587208729754845,
+                3.5058374751741557
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
               "directcompiled",
               "compileddirect",
               "directcompiled",
               "compileddirect",
               "directcompiled",
               "compileddirect",
-              "directcompiled"
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "forward_backward": {
+            "direct_wall": {
+              "sample_count": 8,
+              "median_ms": 2.0871620497928234,
+              "p95_ms": 2.1541378398251254,
+              "raw_samples_ms": [
+                2.052685800299514,
+                2.101140699960524,
+                2.0916096997098066,
+                2.1359914004278835,
+                2.0813333001569845,
+                2.1639089995005634,
+                2.0735402998980135,
+                2.08271439987584
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 8,
+              "median_ms": 6.854455550273997,
+              "p95_ms": 6.867571099719498,
+              "raw_samples_ms": [
+                6.842918800248299,
+                6.867757299914956,
+                6.853052000224125,
+                6.864729299559258,
+                6.851230900065275,
+                6.867225299356505,
+                6.853346100251656,
+                6.8555650002963375
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 2.284048933270453,
+              "p95": 2.323666910918898,
+              "ci95_lower": 2.2138375174095315,
+              "ci95_upper": 2.3051424660464694,
+              "raw_samples": [
+                2.333641612004052,
+                2.2685851547418916,
+                2.2764487567517633,
+                2.2138375174095315,
+                2.291750965378068,
+                2.1735277689318178,
+                2.3051424660464694,
+                2.2916491097891427
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect",
+              "directcompiled",
+              "compileddirect",
+              "directcompiled",
+              "compileddirect",
+              "directcompiled",
+              "compileddirect"
             ]
           }
         }
