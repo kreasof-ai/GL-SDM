@@ -11,7 +11,9 @@ against the pinned upstream revision recorded in each artifact.
 pinned upstream callable. Upstream sources compared: atma, bdh, conformer, differential, fla, flash, fwpkm, h3, hla_higher_order, hopfield, kata, longformer, mamba, pattention, safari, samba, sdm, sparse_transformer, tda, tpa, tucker, xma.
 
 - **Parity** is the artifact's output/gradient/state correctness verdict
-  against the exact upstream callable (`pass` = within the frozen tolerances).
+  against the exact upstream callable. A row shows `pass` only when every
+  case named in the register passes within the frozen tolerances; a failed
+  case shows `fail`, and missing or incomplete evidence shows `incomplete`.
 - **Overhead** is the paired median of per-pair `(compiled - direct) / direct`
   dispatch fractions: negative is faster than the upstream call, positive is
   slower. Forward and forward+backward are reported separately; the

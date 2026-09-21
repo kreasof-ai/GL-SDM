@@ -37,12 +37,53 @@ def _coarse_family(proposed_lowering: str | None) -> str:
     return "other"
 
 
-def _aggregate_case(data: dict | None, recipe: str | None) -> tuple[str | None, float | None, float | None]:
-    """Return (parity_status, worst forward overhead, worst fwd+bwd overhead)."""
-    if not data or "cases" not in data:
-        return None, None, None
+def _select_cases(data: dict | None, comparison: dict) -> tuple[list[dict], str | None]:
+    """Resolve the exact artifact cases this comparison is qualified on.
+
+    The register names the cases explicitly: ``recipe`` for a single case or
+    ``recipes`` for a multi-case artifact. There is no fallback to "all cases" -
+    an unnamed or missing case is an evidence error, never a silent substitution
+    of unrelated cases. Returns ``(cases, error)``; ``error`` is set when the
+    evidence is missing or malformed so the caller cannot emit a pass claim.
+    """
+    if not data or not isinstance(data.get("cases"), dict):
+        return [], "artifact_missing"
     cases = data["cases"]
-    selected = [cases[recipe]] if recipe in cases else list(cases.values())
+    named = comparison.get("recipes")
+    if named is None:
+        recipe = comparison.get("recipe")
+        named = [recipe] if recipe is not None else []
+    if not named:
+        return [], "no_cases_named"
+    selected: list[dict] = []
+    for name in named:
+        case = cases.get(name)
+        if not isinstance(case, dict):
+            return [], f"case_missing:{name}"
+        selected.append(case)
+    return selected, None
+
+
+def _aggregate_status(statuses: list[str | None]) -> str:
+    """Combine per-case parity verdicts into one order-independent status.
+
+    A single failed case fails the comparison; otherwise any case that is not a
+    clean pass (missing, incomplete, or an unexpected verdict) makes the rollup
+    incomplete. Only when every named case passes does the comparison pass.
+    """
+    if any(status == "fail" for status in statuses):
+        return "fail"
+    if statuses and all(status == "pass" for status in statuses):
+        return "pass"
+    return "incomplete"
+
+
+def _aggregate_case(data: dict | None, comparison: dict) -> tuple[str, float | None, float | None]:
+    """Return (parity_status, worst forward overhead, worst fwd+bwd overhead)."""
+    selected, error = _select_cases(data, comparison)
+    if error is not None:
+        # Missing or malformed evidence must never surface as a pass.
+        return "incomplete", None, None
     statuses: list[str | None] = []
     forwards: list[float] = []
     forward_backwards: list[float] = []
@@ -61,11 +102,10 @@ def _aggregate_case(data: dict | None, recipe: str | None) -> tuple[str | None, 
             forwards.append(forward)
         if forward_backward is not None:
             forward_backwards.append(forward_backward)
-    parity = "pass" if statuses and all(s == "pass" for s in statuses) else (statuses[0] if statuses else None)
     # Report the least-favorable (highest) overhead so a multi-case artifact is
     # not flattered by its best case.
     return (
-        parity,
+        _aggregate_status(statuses),
         max(forwards) if forwards else None,
         max(forward_backwards) if forward_backwards else None,
     )
@@ -88,7 +128,7 @@ def build_rows() -> list[dict[str, object]]:
             continue
         artifact = comparison.get("artifact")
         data = _load(PROJECT_ROOT / artifact) if artifact else None
-        parity, forward, forward_backward = _aggregate_case(data, comparison.get("recipe"))
+        parity, forward, forward_backward = _aggregate_case(data, comparison)
         rows.append(
             {
                 "architecture": architecture["architecture"],
@@ -126,7 +166,9 @@ def render_markdown(rows: list[dict[str, object]]) -> str:
         f"pinned upstream callable. Upstream sources compared: {', '.join(sources)}.",
         "",
         "- **Parity** is the artifact's output/gradient/state correctness verdict",
-        "  against the exact upstream callable (`pass` = within the frozen tolerances).",
+        "  against the exact upstream callable. A row shows `pass` only when every",
+        "  case named in the register passes within the frozen tolerances; a failed",
+        "  case shows `fail`, and missing or incomplete evidence shows `incomplete`.",
         "- **Overhead** is the paired median of per-pair `(compiled - direct) / direct`",
         "  dispatch fractions: negative is faster than the upstream call, positive is",
         "  slower. Forward and forward+backward are reported separately; the",
