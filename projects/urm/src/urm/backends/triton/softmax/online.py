@@ -528,6 +528,12 @@ def execute_online_softmax(
     block_v = max(16, triton.next_power_of_2(value_dim))
     num_warps = 8 if block_m >= 128 else 4
     num_stages = 3
+    # Backward config: same tiling as the forward (the recompute-and-accumulate
+    # backward benefits from the multi-stage pipeline here, unlike the FA reference
+    # whose structure differs).
+    bwd_block_n = block_n
+    bwd_num_warps = num_warps
+    bwd_num_stages = num_stages
 
     class _OnlineSoftmax(torch.autograd.Function):
         @staticmethod
@@ -646,11 +652,11 @@ def execute_online_softmax(
                 ctx.scale,
                 q.dtype is torch.float32,
                 block_m,
-                block_n,
+                bwd_block_n,
                 block_d,
                 block_v,
-                num_warps=num_warps,
-                num_stages=num_stages,
+                num_warps=bwd_num_warps,
+                num_stages=bwd_num_stages,
             )
             return (
                 grad_q.to(q.dtype),

@@ -14,13 +14,13 @@
       "cases": {
         "mha": {
           "forward": {
-            "median_overhead": 0.8283489190624362,
-            "ci95_upper": 0.8303676184028765,
+            "median_overhead": 0.17941196543975624,
+            "ci95_upper": 0.18438215392670715,
             "gate_pass": false
           },
           "forward_backward": {
-            "median_overhead": 1.1215250258265421,
-            "ci95_upper": 1.1243348743449806,
+            "median_overhead": 0.5140711638544501,
+            "ci95_upper": 0.5163476290981479,
             "gate_pass": false
           }
         }
@@ -28,8 +28,21 @@
     },
     "k1-gqa": {
       "workload": "k1-gqa",
-      "verdict": "unsupported",
-      "reason": "no qualification runner / comparator in this environment"
+      "verdict": "qualified",
+      "cases": {
+        "mha": {
+          "forward": {
+            "median_overhead": -0.14848116122750937,
+            "ci95_upper": -0.14272691639613666,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": 0.07109293684432799,
+            "ci95_upper": 0.07173435578629613,
+            "gate_pass": true
+          }
+        }
+      }
     },
     "k1-masked-variant": {
       "workload": "k1-masked-variant",
@@ -38,17 +51,17 @@
     },
     "k2-diagonal-recurrence": {
       "workload": "k2-diagonal-recurrence",
-      "verdict": "qualified",
+      "verdict": "correct_below_target",
       "cases": {
         "hgrn_ssm_core": {
           "forward": {
-            "median_overhead": 0.051900513573582545,
-            "ci95_upper": 0.08080410027781071,
-            "gate_pass": true
+            "median_overhead": 0.06307310876805296,
+            "ci95_upper": 0.12369460689631684,
+            "gate_pass": false
           },
           "forward_backward": {
-            "median_overhead": 0.024870745439674588,
-            "ci95_upper": 0.04643086973996344,
+            "median_overhead": -0.0052379671111091155,
+            "ci95_upper": 0.020691394476274445,
             "gate_pass": true
           }
         }
@@ -60,13 +73,13 @@
       "cases": {
         "gated_delta_net": {
           "forward": {
-            "median_overhead": 2.054313113969638,
-            "ci95_upper": 2.0722461063126665,
+            "median_overhead": 2.06365855108295,
+            "ci95_upper": 2.07241098981742,
             "gate_pass": false
           },
           "forward_backward": {
-            "median_overhead": 0.9624264491629035,
-            "ci95_upper": 0.9674745371477786,
+            "median_overhead": 0.9626835953196534,
+            "ci95_upper": 0.9641680012417232,
             "gate_pass": false
           }
         }
