@@ -421,13 +421,26 @@ def _broadcast_strides_4d(tensor: Any | None, target: tuple[int, int, int, int])
 
 
 def _gradient_strides_4d(tensor: Any | None):
+    """Strides for accumulating a gradient that broadcast in the forward pass.
+
+    Forward reads broadcast singleton dimensions with a zero stride. The
+    gradient of a broadcast dimension must reduce (sum) every broadcast
+    contribution back into that single element, so its write stride must also
+    be zero. Preserving the raw stride would index past the allocation and
+    scatter contributions instead of accumulating them.
+    """
     if tensor is None:
         return (0, 0, 0, 0)
     if tensor.ndim == 2:
-        return (0, 0, *tensor.stride())
-    if tensor.ndim == 3:
-        return (tensor.stride(0), 0, *tensor.stride()[1:])
-    return tuple(tensor.stride())
+        shape = (1, 1, *tensor.shape)
+        strides = (0, 0, *tensor.stride())
+    elif tensor.ndim == 3:
+        shape = (tensor.shape[0], 1, *tensor.shape[1:])
+        strides = (tensor.stride(0), 0, *tensor.stride()[1:])
+    else:
+        shape = tuple(tensor.shape)
+        strides = tuple(tensor.stride())
+    return tuple(0 if size == 1 else stride for size, stride in zip(shape, strides, strict=True))
 
 
 def execute_online_softmax(
