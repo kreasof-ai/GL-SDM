@@ -399,7 +399,171 @@ def _kernels():
                 state_mask,
             )
 
-    return triton, forward_kernel, backward_kernel
+    @triton.jit
+    def backward_kernel_parallel(
+        X,
+        INPUT_GATE,
+        READ_GATE,
+        LOG_DECAY,
+        INITIAL,
+        STEP_SIZE,
+        SKIP,
+        GRAD_OUTPUT,
+        STATES,
+        GRAD_X,
+        GRAD_INPUT_GATE,
+        GRAD_READ_GATE,
+        GRAD_LOG_DECAY,
+        GRAD_INITIAL,
+        GRAD_STEP_SIZE,
+        GRAD_FINAL,
+        T: tl.constexpr,
+        C: tl.constexpr,
+        N: tl.constexpr,
+        X_SB: tl.constexpr,
+        X_ST: tl.constexpr,
+        X_SC: tl.constexpr,
+        IG_SB: tl.constexpr,
+        IG_ST: tl.constexpr,
+        IG_SC: tl.constexpr,
+        IG_SN: tl.constexpr,
+        RG_SB: tl.constexpr,
+        RG_ST: tl.constexpr,
+        RG_SC: tl.constexpr,
+        RG_SN: tl.constexpr,
+        LD_SB: tl.constexpr,
+        LD_ST: tl.constexpr,
+        LD_SC: tl.constexpr,
+        LD_SN: tl.constexpr,
+        GIG_SB: tl.constexpr,
+        GIG_ST: tl.constexpr,
+        GIG_SC: tl.constexpr,
+        GIG_SN: tl.constexpr,
+        GRG_SB: tl.constexpr,
+        GRG_ST: tl.constexpr,
+        GRG_SC: tl.constexpr,
+        GRG_SN: tl.constexpr,
+        GLD_SB: tl.constexpr,
+        GLD_ST: tl.constexpr,
+        GLD_SC: tl.constexpr,
+        GLD_SN: tl.constexpr,
+        STEP_SB: tl.constexpr,
+        STEP_ST: tl.constexpr,
+        STEP_SC: tl.constexpr,
+        GST_SB: tl.constexpr,
+        GST_ST: tl.constexpr,
+        GST_SC: tl.constexpr,
+        HAS_INITIAL: tl.constexpr,
+        HAS_STEP_SIZE: tl.constexpr,
+        SKIP_SCALAR: tl.constexpr,
+        HAS_GRAD_FINAL: tl.constexpr,
+        BLOCK_T: tl.constexpr,
+        BLOCK_N: tl.constexpr,
+    ):
+        # Parallel reverse-scan backward for the read-after-update (READ_BEFORE=False)
+        # diagonal recurrence. The state cotangent sc_t satisfies the reverse affine
+        # recurrence sc_t = decay_{t+1} * sc_{t+1} + grad_output_t * read_gate_t, which
+        # tl.associative_scan(reverse=True) evaluates in parallel over the sequence.
+        row = tl.program_id(0)
+        batch = row // C
+        channel = row % C
+        token = tl.arange(0, BLOCK_T)
+        state_index = tl.arange(0, BLOCK_N)
+        token_mask = token < T
+        state_mask = state_index < N
+        mask2 = token_mask[:, None] & state_mask[None, :]
+        # Per-token loads over the whole sequence tile.
+        x = tl.load(X + batch * X_SB + token * X_ST + channel * X_SC, token_mask, other=0.0).to(tl.float32)
+        grad_output = tl.load(
+            GRAD_OUTPUT + batch * T * C + token * C + channel, token_mask, other=0.0
+        ).to(tl.float32)
+        ig = tl.load(
+            INPUT_GATE + batch * IG_SB + token[:, None] * IG_ST + channel * IG_SC + state_index[None, :] * IG_SN,
+            mask2, other=0.0,
+        ).to(tl.float32)
+        rg = tl.load(
+            READ_GATE + batch * RG_SB + token[:, None] * RG_ST + channel * RG_SC + state_index[None, :] * RG_SN,
+            mask2, other=0.0,
+        ).to(tl.float32)
+        ld = tl.load(
+            LOG_DECAY + batch * LD_SB + token[:, None] * LD_ST + channel * LD_SC + state_index[None, :] * LD_SN,
+            mask2, other=0.0,
+        ).to(tl.float32)
+        if HAS_STEP_SIZE:
+            step = tl.load(
+                STEP_SIZE + batch * STEP_SB + token * STEP_ST + channel * STEP_SC, token_mask, other=1.0
+            ).to(tl.float32)
+        else:
+            step = tl.full((BLOCK_T,), 1.0, tl.float32)
+        decay = tl.exp(ld * step[:, None])
+        decay = tl.where(mask2, decay, 1.0)
+        # state_after_t = STATES[t]; state_before_t = STATES[t-1] (or initial at t=0).
+        state_after = tl.load(
+            STATES + batch * T * C * N + token[:, None] * C * N + channel * N + state_index[None, :],
+            mask2, other=0.0,
+        ).to(tl.float32)
+        prev_offset = batch * T * C * N + (token[:, None] - 1) * C * N + channel * N + state_index[None, :]
+        state_before = tl.load(
+            STATES + prev_offset, (token[:, None] > 0) & state_mask[None, :], other=0.0
+        ).to(tl.float32)
+        if HAS_INITIAL:
+            init = tl.load(INITIAL + batch * C * N + channel * N + state_index, state_mask, other=0.0).to(tl.float32)
+            state_before = tl.where((token[:, None] == 0) & state_mask[None, :], init[None, :], state_before)
+        # decay_{t+1}: shift log_decay and step forward by one token.
+        ld_next = tl.load(
+            LOG_DECAY + batch * LD_SB + (token[:, None] + 1) * LD_ST + channel * LD_SC + state_index[None, :] * LD_SN,
+            (token[:, None] + 1 < T) & state_mask[None, :], other=0.0,
+        ).to(tl.float32)
+        if HAS_STEP_SIZE:
+            step_next = tl.load(
+                STEP_SIZE + batch * STEP_SB + (token + 1) * STEP_ST + channel * STEP_SC,
+                token + 1 < T, other=1.0,
+            ).to(tl.float32)
+        else:
+            step_next = tl.full((BLOCK_T,), 1.0, tl.float32)
+        decay_next = tl.exp(ld_next * step_next[:, None])
+        # Reverse scan for sc. g_t = grad_output_t * read_gate_t.
+        g_t = grad_output[:, None] * rg
+        if HAS_GRAD_FINAL:
+            gf = tl.load(GRAD_FINAL + batch * C * N + channel * N + state_index, state_mask, other=0.0).to(tl.float32)
+        else:
+            gf = tl.zeros((BLOCK_N,), tl.float32)
+        is_last = (token == (T - 1))[:, None]
+        a = tl.where(is_last, 0.0, decay_next)
+        b = tl.where(is_last, gf[None, :] + g_t, g_t)
+        a = tl.where(mask2, a, 1.0)
+        b = tl.where(mask2, b, 0.0)
+        _, sc = tl.associative_scan((a, b), axis=0, combine_fn=compose_affine, reverse=True)
+        # Per-token gradients from the state cotangent sc_t.
+        skip_index = 0 if SKIP_SCALAR else channel
+        skip = tl.load(SKIP + skip_index).to(tl.float32)
+        grad_read = grad_output[:, None] * state_after
+        grad_input = sc * (x * step)[:, None]
+        grad_decay = sc * decay * state_before * step[:, None]
+        grad_x = tl.sum(sc * ig * step[:, None], 1) + grad_output * skip
+        tl.store(
+            GRAD_INPUT_GATE + batch * GIG_SB + token[:, None] * GIG_ST + channel * GIG_SC + state_index[None, :] * GIG_SN,
+            grad_input, mask2,
+        )
+        tl.store(
+            GRAD_READ_GATE + batch * GRG_SB + token[:, None] * GRG_ST + channel * GRG_SC + state_index[None, :] * GRG_SN,
+            grad_read, mask2,
+        )
+        tl.store(
+            GRAD_LOG_DECAY + batch * GLD_SB + token[:, None] * GLD_ST + channel * GLD_SC + state_index[None, :] * GLD_SN,
+            grad_decay, mask2,
+        )
+        tl.store(GRAD_X + batch * T * C + token * C + channel, grad_x, token_mask)
+        if HAS_STEP_SIZE:
+            grad_step = tl.sum(sc * (decay * ld * state_before + x[:, None] * ig), 1)
+            tl.store(
+                GRAD_STEP_SIZE + batch * GST_SB + token * GST_ST + channel * GST_SC, grad_step, token_mask
+            )
+        if HAS_INITIAL:
+            carry0 = tl.sum(tl.where((token == 0)[:, None], sc * decay, 0.0), axis=0)
+            tl.store(GRAD_INITIAL + batch * C * N + channel * N + state_index, carry0, state_mask)
+
+    return triton, forward_kernel, backward_kernel, backward_kernel_parallel
 
 
 def execute_diagonal_recurrence(
@@ -416,7 +580,7 @@ def execute_diagonal_recurrence(
     """Run the fused recurrence and return output plus the final FP32 state."""
     import torch
 
-    triton, forward_kernel, backward_kernel = _kernels()
+    triton, forward_kernel, backward_kernel, backward_kernel_parallel = _kernels()
     if x.device.type != "cuda":
         raise ValueError("native diagonal SSM requires CUDA tensors")
     if x.dtype is not torch.float32:
@@ -554,43 +718,85 @@ def execute_diagonal_recurrence(
                 if grad_final is None
                 else grad_final.contiguous()
             )
-            backward_kernel[(batch * channels,)](
-                x,
-                input_gate,
-                read_gate,
-                log_decay,
-                initial,
-                step,
-                skip,
-                grad_output,
-                states,
-                grad_x,
-                grad_input_gate,
-                grad_read_gate,
-                grad_log_decay,
-                grad_initial,
-                grad_step,
-                grad_final_tensor,
-                sequence,
-                channels,
-                state_width,
-                *x.stride(),
-                *input_gate.stride(),
-                *read_gate.stride(),
-                *log_decay.stride(),
-                *grad_input_gate.stride(),
-                *grad_read_gate.stride(),
-                *grad_log_decay.stride(),
-                *step.stride(),
-                *grad_step.stride(),
-                ctx.has_initial,
-                ctx.has_step_size,
-                ctx.skip_scalar,
-                ctx.read_before,
-                grad_final is not None,
-                block_n,
-                num_warps=warps,
-            )
+            if not ctx.read_before:
+                # Parallel reverse-scan backward (read-after-update): evaluates the
+                # state-cotangent recurrence with tl.associative_scan instead of a
+                # sequential reverse loop.
+                backward_kernel_parallel[(batch * channels,)](
+                    x,
+                    input_gate,
+                    read_gate,
+                    log_decay,
+                    initial,
+                    step,
+                    skip,
+                    grad_output,
+                    states,
+                    grad_x,
+                    grad_input_gate,
+                    grad_read_gate,
+                    grad_log_decay,
+                    grad_initial,
+                    grad_step,
+                    grad_final_tensor,
+                    sequence,
+                    channels,
+                    state_width,
+                    *x.stride(),
+                    *input_gate.stride(),
+                    *read_gate.stride(),
+                    *log_decay.stride(),
+                    *grad_input_gate.stride(),
+                    *grad_read_gate.stride(),
+                    *grad_log_decay.stride(),
+                    *step.stride(),
+                    *grad_step.stride(),
+                    ctx.has_initial,
+                    ctx.has_step_size,
+                    ctx.skip_scalar,
+                    grad_final is not None,
+                    block_t,
+                    block_n,
+                    num_warps=warps,
+                )
+            else:
+                backward_kernel[(batch * channels,)](
+                    x,
+                    input_gate,
+                    read_gate,
+                    log_decay,
+                    initial,
+                    step,
+                    skip,
+                    grad_output,
+                    states,
+                    grad_x,
+                    grad_input_gate,
+                    grad_read_gate,
+                    grad_log_decay,
+                    grad_initial,
+                    grad_step,
+                    grad_final_tensor,
+                    sequence,
+                    channels,
+                    state_width,
+                    *x.stride(),
+                    *input_gate.stride(),
+                    *read_gate.stride(),
+                    *log_decay.stride(),
+                    *grad_input_gate.stride(),
+                    *grad_read_gate.stride(),
+                    *grad_log_decay.stride(),
+                    *step.stride(),
+                    *grad_step.stride(),
+                    ctx.has_initial,
+                    ctx.has_step_size,
+                    ctx.skip_scalar,
+                    ctx.read_before,
+                    grad_final is not None,
+                    block_n,
+                    num_warps=warps,
+                )
             grad_skip_full = grad_output * x
             if ctx.skip_scalar:
                 grad_skip = grad_skip_full.sum().reshape_as(skip)
