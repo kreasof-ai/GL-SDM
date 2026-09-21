@@ -381,6 +381,104 @@ def momentum_delta(query, key, value, p, log_alpha, log_mu, beta, eta,
     return np.stack(outputs, axis=1), (state, momentum)
 
 
+def gated_oja(query, key, value, gate, beta, initial_state=None, scale=None):
+    """Gated Oja value-channel recurrence (a transposed Hebbian/delta rule).
+
+    State ``M`` is ``[K, V]`` per (batch, head). Per token: ``M *= exp(gate)``
+    (value-channel decay); ``prediction = M @ v`` (contract the value axis);
+    ``correction = beta * (k - prediction)``; ``M += correction ⊗ v``; read
+    ``(q*scale)^T M``. The retrieval contracts the value axis (transposed delta).
+    query/key [B,T,H,K]; value/gate [B,T,H,V]; beta [B,T,H].
+    """
+    q = np.asarray(query, dtype=np.float64)
+    k = np.asarray(key, dtype=np.float64)
+    v = np.asarray(value, dtype=np.float64)
+    gate = np.asarray(gate, dtype=np.float64)
+    beta = np.asarray(beta, dtype=np.float64)
+    batch, sequence, heads, key_dim = q.shape
+    value_dim = v.shape[-1]
+    state = (
+        np.zeros((batch, heads, key_dim, value_dim))
+        if initial_state is None
+        else np.asarray(initial_state, dtype=np.float64).copy()
+    )
+    if scale is None:
+        scale = key_dim ** -0.5
+    outputs = []
+    for token in range(sequence):
+        state = state * np.exp(gate[:, token])[:, :, None, :]
+        prediction = np.einsum("bhkv,bhv->bhk", state, v[:, token])
+        correction = beta[:, token][..., None] * (k[:, token] - prediction)
+        state = state + correction[..., None] * v[:, token][:, :, None, :]
+        outputs.append(np.einsum("bhk,bhkv->bhv", q[:, token] * scale, state))
+    return np.stack(outputs, axis=1), state
+
+
+def slot_attention_two_stage(query, key, value, slot_weights, log_decay,
+                             initial_key_state=None, initial_value_state=None,
+                             group_size=1):
+    """ABC/GSA two-stage slot-addressed recurrence.
+
+    Stage 1 accumulates a key state ``[K, S]`` (key ⊗ slot_weights, decayed) and
+    routes slots by a softmax over ``q^T key_state``. Stage 2 accumulates a value
+    state ``[S, V]`` (slot_weights ⊗ value, decayed) and reads it by the slot
+    probabilities. query [B,T,Hq,K]; key/slot_weights/log_decay [B,T,Hk,*];
+    value [B,T,Hk,V]. Returns (output, (key_state, value_state)) at the
+    key-head granularity.
+    """
+    q = np.asarray(query, dtype=np.float64)
+    k = np.asarray(key, dtype=np.float64)
+    v = np.asarray(value, dtype=np.float64)
+    sw = np.asarray(slot_weights, dtype=np.float64)
+    g = np.asarray(log_decay, dtype=np.float64)
+    batch, sequence, query_heads, key_dim = q.shape
+    key_heads = k.shape[2]
+    slots = sw.shape[-1]
+    value_dim = v.shape[-1]
+    # Repeat group heads so key/value/slot match the query head count.
+    rep_k = np.repeat(k, group_size, axis=2)
+    rep_v = np.repeat(v, group_size, axis=2)
+    rep_s = np.repeat(sw, group_size, axis=2)
+    rep_g = np.repeat(g, group_size, axis=2)
+    key_state = (
+        np.zeros((batch, query_heads, key_dim, slots))
+        if initial_key_state is None
+        else np.repeat(np.asarray(initial_key_state, dtype=np.float64), group_size, axis=1)
+    )
+    value_state = (
+        np.zeros((batch, query_heads, slots, value_dim))
+        if initial_value_state is None
+        else np.repeat(np.asarray(initial_value_state, dtype=np.float64), group_size, axis=1)
+    )
+    scale = key_dim ** -0.5
+    slot_scores = []
+    for token in range(sequence):
+        decay = np.exp(rep_g[:, token])  # [B,H,S]
+        # key_state [B,H,K,S]: decay broadcasts over K (per-slot), the write is
+        # key [B,H,K] outer slot_weights [B,H,S].
+        key_state = key_state * decay[:, :, None, :] + rep_k[:, token][..., None] * rep_s[:, token][:, :, None, :]
+        slot_scores.append(
+            ((q[:, token] * scale)[..., None] * key_state).sum(axis=-2)
+        )
+    slot_probability = np.stack(slot_scores, axis=1)
+    slot_probability = np.exp(slot_probability - slot_probability.max(axis=-1, keepdims=True))
+    slot_probability = slot_probability / slot_probability.sum(axis=-1, keepdims=True)
+    outputs = []
+    for token in range(sequence):
+        decay = np.exp(rep_g[:, token])
+        value_state = value_state * decay[..., None] + (
+            rep_s[:, token][..., None] * rep_v[:, token][:, :, None, :]
+        )
+        outputs.append(
+            (slot_probability[:, token][..., None] * value_state).sum(axis=-2)
+        )
+    output = np.stack(outputs, axis=1)
+    # Fold the group dimension back to the key-head granularity.
+    final_key_state = key_state.reshape(batch, key_heads, group_size, key_dim, slots)[:, :, 0]
+    final_value_state = value_state.reshape(batch, key_heads, group_size, slots, value_dim)[:, :, 0]
+    return output, (final_key_state, final_value_state)
+
+
 def regularized_solve(query, key, value, log_decay, beta, lamb,
                       h_kk_init=None, h_kv_init=None):
     """MesaNet dual covariance-state recurrence with a per-token regularized solve.

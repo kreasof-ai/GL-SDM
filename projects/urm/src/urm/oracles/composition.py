@@ -445,6 +445,40 @@ def _execute_k2_operator(spec: UnifiedMixerSpec, **operands):
             initial_momentum=operands.pop("initial_normalizer_state", None),
             scale=spec.read_scale,
         )
+    elif op is RecurrenceOperator.GATED_OJA_VALUE_CHANNEL:
+        out, state = nl.gated_oja(
+            operands.pop("query"), operands.pop("key"), operands.pop("value"),
+            operands.pop("gv"), operands.pop("beta"),
+            initial_state=operands.pop("initial_state", None),
+            scale=spec.read_scale,
+        )
+    elif op is RecurrenceOperator.SLOT_ATTENTION_TWO_STAGE:
+        query = operands.pop("query")
+        key = operands.pop("key")
+        value = operands.pop("value")
+        if spec.name == "abc_core":
+            # ABC derives slot_weights and log_decay from slot_logits via a
+            # cumulative log-sum-exp over time.
+            slot_logits = np.asarray(operands.pop("slot_logits"), dtype=np.float64)
+            cumulative = np.apply_along_axis(
+                lambda x: np.logaddexp.accumulate(x), 1, slot_logits
+            )
+            log_decay = (
+                np.concatenate((cumulative[:, :1], cumulative[:, :-1]), axis=1)
+                - cumulative
+            )
+            slot_weights = np.exp(slot_logits - cumulative)
+        else:
+            slot_weights = operands.pop("slot_weights")
+            log_decay = operands.pop("log_decay")
+        # group_size is derived from the head counts, not passed as an operand.
+        group_size = np.asarray(query).shape[2] // np.asarray(key).shape[2]
+        out, state = nl.slot_attention_two_stage(
+            query, key, value, slot_weights, log_decay,
+            initial_key_state=operands.pop("initial_key_state", None),
+            initial_value_state=operands.pop("initial_value_state", None),
+            group_size=group_size,
+        )
     else:
         raise UnderspecifiedComposition(
             f"no canonical executor yet for recurrence operator {op.value}"

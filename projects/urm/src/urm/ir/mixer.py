@@ -62,6 +62,8 @@ class RecurrenceOperator(StrEnum):
     LAYERNORM_INNER_STATE = "layernorm_inner_loss_state"
     MOMENTUM_INNER_STATE = "momentum_inner_loss_state"
     MOMENTUM_DELTA_STATE = "momentum_delta_two_matrix_state"
+    GATED_OJA_VALUE_CHANNEL = "gated_oja_value_channel"
+    SLOT_ATTENTION_TWO_STAGE = "slot_attention_two_stage"
     TRAPEZOIDAL_SSM = "trapezoidal_ssm_rotary"
     REGULARIZED_SOLVE = "regularized_solve_state"
     SECOND_ORDER_CUMSUM = "second_order_cumsum"

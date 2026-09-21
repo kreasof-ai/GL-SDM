@@ -26,6 +26,7 @@ from urm.oracles.composition import UnderspecifiedComposition, execute_canonical
 # Recipes verified to lower into a canonical core and match their independent
 # equation. Regenerate via `python benchmarks/representation_coverage.py`.
 VERIFIED = {
+    "abc_core",
     "based_attention_core",
     "cat_attention_core",
     "comba_core",
@@ -35,10 +36,12 @@ VERIFIED = {
     "dsa_attention_core",
     "foveal_attention_core",
     "gated_delta_net",
+    "gated_oja_core",
     "gdn2_core",
     "gla",
     "gqa",
     "gru_core",
+    "gsa_core",
     "h3_ssm_fft_core",
     "hgrn2_ssm_core",
     "hgrn_ssm_core",

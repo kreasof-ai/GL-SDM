@@ -184,6 +184,29 @@ def _rng_operands(spec, seed=0):
                 "eta": rng.uniform(0.01, 0.3, size=(b, t, h, 1)),
                 "chunk_size": 4,
             }
+        if op is RecurrenceOperator.SLOT_ATTENTION_TWO_STAGE:
+            b, t, hk, hq, k, s, v = 1, 6, 1, 2, 4, 3, 3  # group_size = hq//hk = 2
+            base = {
+                "query": rng.normal(size=(b, t, hq, k)),
+                "key": rng.normal(size=(b, t, hk, k)),
+                "value": rng.normal(size=(b, t, hk, v)),
+            }
+            if spec.name == "abc_core":
+                # ABC derives slot_weights and log_decay from slot_logits.
+                base["slot_logits"] = rng.normal(size=(b, t, hk, s))
+            else:
+                base["slot_weights"] = rng.uniform(0.1, 1.0, size=(b, t, hk, s))
+                base["log_decay"] = -rng.uniform(0, 0.4, size=(b, t, hk, s))
+            return base
+        if op is RecurrenceOperator.GATED_OJA_VALUE_CHANNEL:
+            b, t, h, k, v = 1, 6, 2, 4, 3
+            return {
+                "query": rng.normal(size=(b, t, h, k)),
+                "key": rng.normal(size=(b, t, h, k)),
+                "value": rng.normal(size=(b, t, h, v)),
+                "gv": -rng.uniform(0, 0.4, size=(b, t, h, v)),
+                "beta": rng.uniform(0.1, 0.9, size=(b, t, h)),
+            }
         if op is RecurrenceOperator.MOMENTUM_DELTA_STATE:
             b, t, h, k, v = 1, 6, 2, 4, 3
             return {
