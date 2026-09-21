@@ -64,7 +64,17 @@ def _online_softmax_forward_tiled(
     running_sum = tl.zeros((BLOCK_M,), tl.float32)
     running_value = tl.zeros((BLOCK_M, BLOCK_V), tl.float32)
 
-    for key_start in range(tl.cdiv(TK, BLOCK_N)):
+    # Causal early termination: key blocks beyond this query block's diagonal are
+    # fully masked, so skip them. The last visible key index for the last query in
+    # this block is (query_start + BLOCK_M - 1) + (TK - TQ); the loop bound is the
+    # first key block past it.
+    if CAUSAL:
+        last_visible = query_start + BLOCK_M - 1 + (TK - TQ)
+        key_limit = tl.minimum(last_visible + 1, TK)
+        key_blocks = tl.cdiv(key_limit, BLOCK_N)
+    else:
+        key_blocks = tl.cdiv(TK, BLOCK_N)
+    for key_start in range(key_blocks):
         keys = key_start * BLOCK_N + key_offsets
         key_valid = keys < TK
         key = tl.load(
@@ -255,7 +265,13 @@ def _online_softmax_backward_tiled(
     safe_logsumexp = tl.where(row_valid, logsumexp, 0.0)
     delta = tl.sum(grad_output.to(tl.float32) * output.to(tl.float32), axis=1)
     grad_query = tl.zeros((BLOCK_M, BLOCK_D), tl.float32)
-    for key_start in range(tl.cdiv(TK, BLOCK_N)):
+    # Causal early termination (same as the forward): skip fully-masked key blocks.
+    if CAUSAL:
+        last_visible = query_start + BLOCK_M - 1 + (TK - TQ)
+        key_blocks = tl.cdiv(tl.minimum(last_visible + 1, TK), BLOCK_N)
+    else:
+        key_blocks = tl.cdiv(TK, BLOCK_N)
+    for key_start in range(key_blocks):
         keys = key_start * BLOCK_N + key_offsets
         key_valid = keys < TK
         key = tl.load(
