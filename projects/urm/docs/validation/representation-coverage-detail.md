@@ -8,7 +8,7 @@ is recorded as declined with the precise reason. Once a recipe lowers and
 matches, any later optimization of the canonical K1/K2/K3 kernel lifts it
 automatically - there is no per-architecture re-derivation.
 
-**32 of 74 named recipes lower into a canonical core and match their independent equation.** 0 lower but are not yet verified; 42 decline (under-specified or exotic).
+**35 of 74 named recipes lower into a canonical core and match their independent equation.** 0 lower but are not yet verified; 39 decline (under-specified or exotic).
 
 ## Verified (lower + match independent equation)
 
@@ -23,9 +23,11 @@ automatically - there is no per-architecture re-derivation.
 | `nsa_selected_attention_core` | SOFTMAX | 1.33e-07 | - |
 | `dsa_attention_core` | SOFTMAX | 1.33e-07 | - |
 | `mla_attention_core` | SOFTMAX | 1.33e-07 | - |
+| `parallax_attention_core` | SOFTMAX | 3.55e-07 | - |
 | `foveal_attention_core` | SOFTMAX | 1.33e-07 | - |
 | `pattention_core` | SOFTMAX | 1.42e-07 | - |
 | `tpa_attention_core` | SOFTMAX | 1.33e-07 | - |
+| `tucker_attention_core` | SOFTMAX | 1.98e-07 | - |
 | `longformer_attention_core` | SOFTMAX | 9.18e-08 | - |
 | `conformer_attention_core` | SOFTMAX | 1.45e-07 | - |
 | `hopfield_attention_core` | SOFTMAX | 1.42e-07 | - |
@@ -44,6 +46,7 @@ automatically - there is no per-architecture re-derivation.
 | `hgrn2_ssm_core` | RECURRENCE | 6.96e-07 | 1.89e-07 |
 | `delta_net` | RECURRENCE | 4.09e-06 | 1.68e-06 |
 | `gated_delta_net` | RECURRENCE | 1.49e-06 | 3.23e-07 |
+| `gdn2_core` | RECURRENCE | 2.58e-06 | 1.87e-06 |
 | `mamba1_ssm_core` | RECURRENCE | 9.02e-08 | 7.27e-08 |
 | `sparse_delta_memory` | SPARSE_DELTA | 6.10e-08 | 1.59e-07 |
 
@@ -65,16 +68,13 @@ automatically - there is no per-architecture re-derivation.
 | `bdh_attention_core` | RECURRENCE | additive/no-decay is under-specified in the IR (collision group) |
 | `path_attention_core` | SOFTMAX | K1 canonical path does not yet cover path_transform_attention |
 | `deltaformer_attention_core` | SOFTMAX | K1 canonical path does not yet cover delta_transform_attention |
-| `parallax_attention_core` | SOFTMAX | K1 canonical path does not yet cover position_indexed_attention |
 | `attnres_depth_core` | SOFTMAX | K1 canonical path does not yet cover depth_weighted_attention |
-| `tucker_attention_core` | SOFTMAX | K1 canonical path does not yet cover projected_softmax_attention |
 | `kata_attention_core` | SOFTMAX | K1 canonical path does not yet cover positive_feature_attention |
 | `fwpkm_memory_read_core` | SOFTMAX | K1 canonical path does not yet cover selected_memory_read |
 | `h3_ssm_fft_core` | RECURRENCE | additive/no-decay is under-specified in the IR (collision group) |
 | `hyena_fftconv_core` | RECURRENCE | additive/no-decay is under-specified in the IR (collision group) |
 | `hla_second_order_core` | RECURRENCE | additive/no-decay is under-specified in the IR (collision group) |
 | `atma_gated_delta_decode_core` | RECURRENCE | only functional state is canonical |
-| `gdn2_core` | RECURRENCE | exotic composition flags: ['gdn2_ssm'] |
 | `gated_oja_core` | RECURRENCE | exotic composition flags: ['gated_oja'] |
 | `comba_core` | RECURRENCE | exotic composition flags: ['comba_rule'] |
 | `pgdn_core` | RECURRENCE | exotic composition flags: ['preconditioned_gated_delta'] |

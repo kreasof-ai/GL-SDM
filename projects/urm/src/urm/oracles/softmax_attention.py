@@ -83,6 +83,41 @@ def attention(query, key, value, *, scale=None, causal=True, score_bias=None,
     return np.einsum("hts,hsv->htv", probs, v_b)
 
 
+def attention_probs(query, key, value, *, scale=None, causal=True,
+                    score_bias=None, attention_mask=None):
+    """The canonical K1 normalized weight matrix ``P`` (before the V reduce).
+
+    Exposed so composed K1 operations (differential, parallax, ...) can build on
+    the single canonical reduction without re-deriving its masking/softmax.
+    Returns the ``[Hq, Tq, Tk]`` probabilities.
+    """
+    q, k, v = _inputs(query, key, value)
+    q_heads, q_len, key_dim = q.shape
+    kv_heads, k_len, _ = k.shape
+    if scale is None:
+        scale = key_dim ** -0.5
+    group = q_heads // kv_heads
+    k_b = np.repeat(k, group, axis=0) if group != 1 else k
+    scores = np.einsum("htk,hsk->hts", q, k_b) * scale
+    if score_bias is not None:
+        scores = scores + np.asarray(score_bias, dtype=np.float64)
+    if causal:
+        q_pos = np.arange(q_len)[:, None] + (k_len - q_len)
+        k_pos = np.arange(k_len)[None, :]
+        scores = np.where((k_pos <= q_pos)[None], scores, -np.inf)
+    if attention_mask is not None:
+        mask = np.asarray(attention_mask)
+        if mask.dtype == bool:
+            scores = np.where(mask, scores, -np.inf)
+        else:
+            scores = scores + mask.astype(np.float64)
+    row_max = np.max(scores, axis=-1, keepdims=True)
+    row_max = np.where(np.isfinite(row_max), row_max, 0.0)
+    exp = np.where(np.isfinite(scores), np.exp(scores - row_max), 0.0)
+    denom = exp.sum(axis=-1, keepdims=True)
+    return np.divide(exp, denom, out=np.zeros_like(exp), where=denom != 0)
+
+
 def attention_vjp(query, key, value, output_cotangent, *, scale=None, causal=True,
                   score_bias=None, attention_mask=None):
     """Analytical adjoint returning query/key/value cotangents (dense K/V).

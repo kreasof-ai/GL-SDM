@@ -57,6 +57,21 @@ def _rng_operands(spec, seed=0):
                 "value": rng.normal(size=(b, t, h, v)),
                 "lambda_weight": rng.uniform(0.1, 0.9, size=(h,)),
             }
+        if spec.k1_operation is K1Operation.PROJECTED:
+            r = 3  # low-rank query width
+            return {
+                "query": rng.normal(size=(b, t, r)),
+                "B_pre": rng.normal(size=(h, r, k)),
+                "key": rng.normal(size=(b, t, k)),
+                "value": rng.normal(size=(b, t, v)),
+            }
+        if spec.k1_operation is K1Operation.POSITIONAL:
+            return {
+                "query": rng.normal(size=(b, t, h, k)),
+                "r": rng.normal(size=(b, t, h, k)),
+                "key": rng.normal(size=(b, t, h, k)),
+                "value": rng.normal(size=(b, t, h, k)),
+            }
         ops = {
             "query": rng.normal(size=(b, t, h, k)),
             "key": rng.normal(size=(b, t, h, k)),
@@ -98,7 +113,11 @@ def _rng_operands(spec, seed=0):
         }
         from urm.ir.mixer import DecayGranularity, StateUpdateRule
 
-        if spec.update_rule is StateUpdateRule.DELTA:
+        if spec.gdn2_ssm:
+            # Dual-gate delta: erase/write gates replace beta.
+            ops["erase_gate"] = rng.uniform(0.1, 0.9, size=(b, t, h, k))
+            ops["write_gate"] = rng.uniform(0.1, 0.9, size=(b, t, h, v))
+        elif spec.update_rule is StateUpdateRule.DELTA:
             ops["beta"] = rng.uniform(0.1, 0.9, size=(b, t, h))
         if spec.static_head_decay:
             ops["log_decay"] = -rng.uniform(0, 0.4, size=(h,))

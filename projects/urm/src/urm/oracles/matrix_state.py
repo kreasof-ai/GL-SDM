@@ -61,7 +61,7 @@ def _decay_factor(g_t):
 
 def recurrent(memory, keys, queries, values, beta, log_decay, *, scale=1.0,
               read_before_update=False, is_delta=True, normalizer=False,
-              epsilon=1e-6):
+              epsilon=1e-6, erase_gate=None, write_gate=None):
     """Independent token recurrence returning readings and final memory.
 
     ``is_delta=True`` applies the delta-rule correction ``delta = beta (v - k^T
@@ -69,9 +69,22 @@ def recurrent(memory, keys, queries, values, beta, log_decay, *, scale=1.0,
     (beta is ignored). ``normalizer=True`` tracks a denominator state ``z_t``
     (the same decay, accumulating the keys) and reads ``y = scale * (q^T M) /
     max(q^T z, epsilon)`` - the query/key-normalized (linear-attention) form.
-    Returns ``(out, m)`` or ``(out, (m, z))`` when ``normalizer`` is set.
+
+    ``erase_gate``/``write_gate`` (each ``[T]``) generalize the delta rule to the
+    dual-gate form ``update = write_gate * v - erase_gate * (k^T Z)``; the plain
+    delta rule is the special case ``erase_gate = write_gate = beta``. Returns
+    ``(out, m)`` or ``(out, (m, z))`` when ``normalizer`` is set.
     """
     m, k, q, v, b, g = _inputs(memory, keys, queries, values, beta, log_decay)
+    dual_gate = erase_gate is not None or write_gate is not None
+    if dual_gate:
+        # erase_gate is [T, K] (per key channel), write_gate is [T, V] (per value
+        # channel). The retrieval uses erase⊙k, the write value uses write⊙v, and
+        # the outer product uses the unscaled key k.
+        erase = np.asarray(erase_gate, dtype=np.float64)
+        write = np.asarray(write_gate, dtype=np.float64)
+        if erase.shape != k.shape or write.shape != v.shape:
+            raise ValueError("erase_gate must be [T,K] and write_gate [T,V]")
     m = m.copy()
     norm = np.zeros(m.shape[0]) if normalizer else None  # [K] denominator state
     out = np.empty_like(v)
@@ -86,7 +99,9 @@ def recurrent(memory, keys, queries, values, beta, log_decay, *, scale=1.0,
             out[t] = scale * (q[t] @ z)
             if normalizer:
                 out[t] = out[t] / max(denom, epsilon)
-        if is_delta:
+        if dual_gate:
+            delta = write[t] * v[t] - (erase[t] * k[t]) @ z
+        elif is_delta:
             delta = b[t] * (v[t] - k[t] @ z)
         else:
             delta = v[t]

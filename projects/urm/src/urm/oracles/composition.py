@@ -45,8 +45,15 @@ class UnderspecifiedComposition(ValueError):
 # - SOFTMAX: the plain reduction.
 # - LOCAL_WINDOW: a sliding-window mask composed with the reduction.
 # - DIFFERENTIAL: two reductions combined by a learned per-head scalar.
+# - PROJECTED: a low-rank query projection (query @ B_pre) feeding the reduction.
 _COVERED_K1_OPERATIONS = frozenset(
-    {K1Operation.SOFTMAX, K1Operation.LOCAL_WINDOW, K1Operation.DIFFERENTIAL}
+    {
+        K1Operation.SOFTMAX,
+        K1Operation.LOCAL_WINDOW,
+        K1Operation.DIFFERENTIAL,
+        K1Operation.PROJECTED,
+        K1Operation.POSITIONAL,
+    }
 )
 
 
@@ -112,7 +119,7 @@ def _require_canonical_k2(spec: UnifiedMixerSpec) -> None:
         raise UnderspecifiedComposition("only functional state is canonical")
     exotic = [
         name for name in (
-            "mamba2_ssm", "log_linear_attention", "gdn2_ssm",
+            "mamba2_ssm", "log_linear_attention",
             "kda_delta", "gated_delta_product", "generalized_delta_iplr",
             "generalized_delta_dplr", "rwkv4_memory", "rwkv6_memory",
             "momentum_delta", "gated_oja", "comba_rule", "preconditioned_gated_delta",
@@ -123,6 +130,13 @@ def _require_canonical_k2(spec: UnifiedMixerSpec) -> None:
     ]
     if exotic:
         raise UnderspecifiedComposition(f"exotic composition flags: {exotic}")
+    # The dual-gate delta (gdn2) is the delta rule with independent erase/write
+    # gates; it requires key-channel decay and the delta update rule.
+    if spec.gdn2_ssm and not (
+        spec.update_rule is StateUpdateRule.DELTA
+        and spec.decay is DecayGranularity.KEY_CHANNEL
+    ):
+        raise UnderspecifiedComposition("gdn2 requires delta + key-channel decay")
     # Static head decay is a reparameterization of head decay with a
     # time-constant schedule; it requires head-granularity decay.
     if spec.static_head_decay and spec.decay is not DecayGranularity.HEAD:
@@ -217,11 +231,52 @@ def _execute_k1(spec: UnifiedMixerSpec, **operands):
         out_b = _k1_reduction(query_b, key_b, value, spec)
         return {"output": out_a - combine * out_b}
 
+    if spec.k1_operation is K1Operation.POSITIONAL:
+        # Parallax: softmax probabilities P, secondary scores S = r.k, output
+        # (P V)(1 + sum(P*S)) - (P*S) V. A composition on the canonical reduction.
+        query = np.asarray(operands.pop("query"), dtype=np.float64)
+        secondary = np.asarray(operands.pop("r"), dtype=np.float64)
+        key = np.asarray(operands.pop("key"), dtype=np.float64)
+        value = np.asarray(operands.pop("value"), dtype=np.float64)
+        if operands:
+            raise TypeError(f"unexpected positional K1 operands: {sorted(operands)}")
+        batch = query.shape[0]
+        outputs = []
+        for b in range(batch):
+            qb = query[b].transpose(1, 0, 2)
+            kb = key[b].transpose(1, 0, 2)
+            vb = value[b].transpose(1, 0, 2)
+            rb = secondary[b].transpose(1, 0, 2)
+            probs = softmax_attention.attention_probs(
+                qb, kb, vb, scale=spec.attention_scale, causal=spec.causal
+            )
+            # Secondary scores with the same GQA head sharing.
+            group = qb.shape[0] // kb.shape[0]
+            k_b = np.repeat(kb, group, axis=0) if group != 1 else kb
+            v_b = np.repeat(vb, group, axis=0) if group != 1 else vb
+            secondary_scores = np.einsum("htk,hsk->hts", rb, k_b)
+            correction = probs * secondary_scores
+            ordinary = np.einsum("hts,hsv->htv", probs, v_b)
+            correction_mean = correction.sum(axis=-1, keepdims=True)
+            correction_out = np.einsum("hts,hsv->htv", correction, v_b)
+            out = ordinary * (1.0 + correction_mean) - correction_out
+            outputs.append(out.transpose(1, 0, 2))
+        return {"output": np.stack(outputs, axis=0)}
+
     query = np.asarray(operands.pop("query"), dtype=np.float64)
     key = np.asarray(operands.pop("key"), dtype=np.float64)
     value = np.asarray(operands.pop("value"), dtype=np.float64)
     mask = operands.pop("attention_mask", None)
     bias = operands.pop("score_bias", None)
+    if spec.k1_operation is K1Operation.PROJECTED:
+        # Reparameterize: expand the low-rank query by B_pre, then plain softmax.
+        # query [B,T,R], B_pre [H,R,K] -> expanded query [B,T,H,K].
+        b_pre = np.asarray(operands.pop("B_pre"), dtype=np.float64)
+        query = np.einsum("btr,hrk->bthk", query, b_pre)
+        if key.ndim == 3:
+            key = key[:, :, None, :]
+        if value.ndim == 3:
+            value = value[:, :, None, :]
     if spec.k1_operation is K1Operation.LOCAL_WINDOW:
         window = operands.pop("attention_window", None)
         if not isinstance(window, int) or window <= 0:
@@ -316,16 +371,27 @@ def _execute_k2(spec: UnifiedMixerSpec, **operands):
     beta = operands.pop("beta", None)
     log_decay = operands.pop("log_decay", None)
     initial_state = operands.pop("initial_state", None)
+    erase_gate = operands.pop("erase_gate", None)
+    write_gate = operands.pop("write_gate", None)
     if operands:
         raise TypeError(f"unexpected K2 operands: {sorted(operands)}")
-    if spec.update_rule is StateUpdateRule.DELTA and beta is None:
+    if spec.gdn2_ssm and (erase_gate is None or write_gate is None):
+        raise ValueError("gdn2 dual-gate delta requires erase_gate and write_gate")
+    if spec.update_rule is StateUpdateRule.DELTA and beta is None and not spec.gdn2_ssm:
         raise ValueError("delta update requires beta")
     if spec.decay is not DecayGranularity.NONE and log_decay is None:
         raise ValueError("decay requires log_decay")
 
     batch, sequence, q_heads, key_dim = query.shape
     value_heads, value_dim = value.shape[2], value.shape[3]
-    scale = spec.read_scale if spec.read_scale is not None else 1.0
+    # Read-scale convention: the plain matrix-state reference defaults to 1.0,
+    # but the dual-gate (gdn2) reference defaults to key_dim**-0.5.
+    if spec.read_scale is not None:
+        scale = spec.read_scale
+    elif spec.gdn2_ssm:
+        scale = key_dim ** -0.5
+    else:
+        scale = 1.0
     # Feature construction: polynomial basis (quadratic expansion) or a feature
     # map applied to identity features. The polynomial basis changes the feature
     # dimension, so the state width follows the expanded key dimension.
@@ -367,9 +433,14 @@ def _execute_k2(spec: UnifiedMixerSpec, **operands):
             is_delta = spec.update_rule is StateUpdateRule.DELTA
             beta_col = (
                 np.asarray(beta[b, :, vh], dtype=np.float64).reshape(sequence)
-                if is_delta
+                if is_delta and not spec.gdn2_ssm
                 else np.ones(sequence)
             )
+            erase_col = write_col = None
+            if spec.gdn2_ssm:
+                # erase_gate [B,T,Hv,K], write_gate [B,T,Hv,V]
+                erase_col = np.asarray(erase_gate[b, :, vh], dtype=np.float64)
+                write_col = np.asarray(write_gate[b, :, vh], dtype=np.float64)
             out, m = matrix_state.recurrent(
                 m0,
                 kf[b, :, qh],
@@ -382,6 +453,8 @@ def _execute_k2(spec: UnifiedMixerSpec, **operands):
                 is_delta=is_delta,
                 normalizer=normalizer,
                 epsilon=spec.epsilon,
+                erase_gate=erase_col,
+                write_gate=write_col,
             )
             outputs[b, :, vh] = out
             final_states[b, vh] = m[0] if normalizer else m
