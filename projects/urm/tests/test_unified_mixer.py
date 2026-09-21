@@ -234,6 +234,130 @@ def test_native_sparse_k1_requires_the_explicit_route_mask():
         plan.execute()
 
 
+# Recipes whose K2 equations are not yet expressed as reusable semantic
+# operations: their library/native dispatch still reads ``spec.name``, so
+# renaming them changes the selected anchor or the dtype rejection. These are
+# the remaining architecture-specific branches, explicitly marked unfinished.
+# Each must be lowered into explicit reusable operations (see the compiler
+# charter) before it can join the name-invariant set asserted below.
+_NAME_DEPENDENT_RECIPES_UNFINISHED = frozenset(
+    {
+        "abc_core",
+        "bdh_attention_core",
+        "gru_core",
+        "h3_ssm_fft_core",
+        "hla_second_order_core",
+        "hyena_fftconv_core",
+        "m2rnn_core",
+        "mamba3_siso_core",
+        "mesa_net_core",
+        "rnn_core",
+        "rwkv7_transition_core",
+        "titans_linear_memory_core",
+        "ttt_linear_core",
+    }
+)
+
+
+@pytest.mark.parametrize("recipe_name", sorted(MIXER_RECIPE_NAMES))
+def test_recipe_anchor_selection_is_name_invariant(recipe_name):
+    """Renaming a recipe must not change the selected anchor or its rejection.
+
+    This is the name-invariance acceptance criterion: the executed mathematics
+    is fixed by the semantic fields, never by ``spec.name``. Recipes still
+    dispatched by name are enumerated in ``_NAME_DEPENDENT_RECIPES_UNFINISHED``
+    and excluded here until their equations are lowered into reusable
+    operations; any *new* name-dependent recipe fails this test.
+    """
+    if recipe_name in _NAME_DEPENDENT_RECIPES_UNFINISHED:
+        pytest.skip(
+            f"{recipe_name} is still dispatched by spec.name (unfinished); "
+            "see _NAME_DEPENDENT_RECIPES_UNFINISHED"
+        )
+    spec = named_mixer_recipe(recipe_name).spec
+    renamed = replace(spec, name="zz_renamed_operation")
+    assert spec.semantic_signature() == renamed.semantic_signature()
+    for backend in (MixerBackend.REFERENCE, MixerBackend.LIBRARY, MixerBackend.NATIVE):
+        for dtype in ("float32", "bfloat16"):
+
+            def _outcome(candidate):
+                try:
+                    return compile_mixer(candidate, backend=backend, dtype=dtype).anchor
+                except Exception as error:  # noqa: BLE001 - rejection identity matters
+                    return f"declined:{type(error).__name__}"
+
+            assert _outcome(spec) == _outcome(renamed), (
+                f"{recipe_name} changed its {backend}/{dtype} outcome when renamed; "
+                "dispatch must depend on semantic fields, not spec.name"
+            )
+
+
+def test_name_dependent_recipes_are_explicitly_enumerated():
+    """The unfinished name-dependent set must match reality exactly.
+
+    If a recipe's equation is lowered into reusable operations, remove it from
+    ``_NAME_DEPENDENT_RECIPES_UNFINISHED`` so the name-invariance test above
+    starts enforcing it. If a new name-dependent recipe appears, this test
+    fails until it is either fixed or explicitly marked unfinished.
+    """
+    actually_name_dependent = set()
+    for name in MIXER_RECIPE_NAMES:
+        spec = named_mixer_recipe(name).spec
+        renamed = replace(spec, name="zz_renamed_operation")
+        for backend in (MixerBackend.REFERENCE, MixerBackend.LIBRARY, MixerBackend.NATIVE):
+            for dtype in ("float32", "bfloat16"):
+
+                def _outcome(candidate):
+                    try:
+                        return compile_mixer(
+                            candidate, backend=backend, dtype=dtype
+                        ).anchor
+                    except Exception as error:  # noqa: BLE001
+                        return f"declined:{type(error).__name__}"
+
+                if _outcome(spec) != _outcome(renamed):
+                    actually_name_dependent.add(name)
+    assert actually_name_dependent == set(_NAME_DEPENDENT_RECIPES_UNFINISHED)
+
+
+def test_missing_route_mask_diagnostic_does_not_require_torch():
+    """The missing-mask check must run before importing any optional backend.
+
+    Regression: ``execute`` imported PyTorch before validating operands, so a
+    minimal-dependency environment reported "requires PyTorch" instead of the
+    actionable missing-mask diagnostic.
+    """
+    import os
+
+    root = Path(__file__).resolve().parents[1]
+    env = {**os.environ, "PYTHONPATH": str(root / "src")}
+    code = (
+        "import sys\n"
+        "sys.modules['torch'] = None\n"  # importing torch now raises ImportError
+        "from urm.compiler.unified_mixer import MixerBackend, compile_mixer\n"
+        "from urm.frontend.mixer_recipes import named_mixer_recipe\n"
+        "plan = compile_mixer(\n"
+        "    named_mixer_recipe('sparse_attention_core'), backend=MixerBackend.NATIVE\n"
+        ")\n"
+        "try:\n"
+        "    plan.execute()\n"
+        "except ValueError as error:\n"
+        "    assert 'requires a precomputed attention_mask' in str(error), str(error)\n"
+        "except Exception as error:\n"
+        "    raise AssertionError(f'unexpected {type(error).__name__}: {error}')\n"
+        "else:\n"
+        "    raise AssertionError('execute() should have rejected the missing mask')\n"
+    )
+    result = subprocess.run(
+        [subprocess.sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert result.returncode == 0, result.stderr + "\n" + result.stdout
+
+
 def test_atma_decode_dimension_contract_matches_both_pinned_value_tiles():
     from urm.compiler.unified_mixer import (
         _atma_decode_value_block,

@@ -148,11 +148,14 @@ class CompiledMixerPlan:
         caller must supply valid, distinct active slots; this anchor is
         inference-only.
         """
-        torch = _torch()
+        # Dependency-independent operand validation runs before importing any
+        # optional backend so missing-mask diagnostics stay identical whether
+        # or not PyTorch is installed.
         if self.spec.requires_attention_mask and operands.get("attention_mask") is None:
             raise ValueError(
                 "this K1 operation requires a precomputed attention_mask route"
             )
+        torch = _torch()
         primary_name = {
             MixerKernelFamily.SOFTMAX: "query",
             MixerKernelFamily.RECURRENCE: (
