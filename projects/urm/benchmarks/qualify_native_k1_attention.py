@@ -83,16 +83,19 @@ def _compiled(plan, inputs):
     ).output
 
 
-def _time_one(call, inputs, *, backward: bool):
-    for tensor in inputs.values():
-        tensor.grad = None
+def _time_one(call, inputs, *, backward: bool, block: int = 1):
+    """Time a block of ``block`` invocations (sync at boundaries) to amortize
+    per-call mistiming overhead; returns per-call wall time."""
     torch.cuda.synchronize()
     start_wall = time.perf_counter()
-    output = call(inputs)
-    if backward:
-        output.float().square().mean().backward()
+    for _ in range(block):
+        for tensor in inputs.values():
+            tensor.grad = None
+        output = call(inputs)
+        if backward:
+            output.float().square().mean().backward()
     torch.cuda.synchronize()
-    return time.perf_counter() - start_wall
+    return (time.perf_counter() - start_wall) / block
 
 
 def _summary(samples):
@@ -104,13 +107,13 @@ def _summary(samples):
     }
 
 
-def _measure_pair(direct, compiled, direct_inputs, compiled_inputs, pairs, warmup):
-    cold_direct = _time_one(direct, direct_inputs, backward=False)
-    cold_compiled = _time_one(compiled, compiled_inputs, backward=False)
+def _measure_pair(direct, compiled, direct_inputs, compiled_inputs, pairs, warmup, block):
+    cold_direct = _time_one(direct, direct_inputs, backward=False, block=block)
+    cold_compiled = _time_one(compiled, compiled_inputs, backward=False, block=block)
     for _ in range(warmup):
         for backward in (False, True):
-            _time_one(direct, direct_inputs, backward=backward)
-            _time_one(compiled, compiled_inputs, backward=backward)
+            _time_one(direct, direct_inputs, backward=backward, block=block)
+            _time_one(compiled, compiled_inputs, backward=backward, block=block)
     measurements = {}
     for mode, backward in (("forward", False), ("forward_backward", True)):
         direct_wall, compiled_wall, overhead, order = [], [], [], []
@@ -119,9 +122,9 @@ def _measure_pair(direct, compiled, direct_inputs, compiled_inputs, pairs, warmu
             order.append(first + second)
             for name in (first, second):
                 if name == "direct":
-                    direct_wall.append(_time_one(direct, direct_inputs, backward=backward))
+                    direct_wall.append(_time_one(direct, direct_inputs, backward=backward, block=block))
                 else:
-                    compiled_wall.append(_time_one(compiled, compiled_inputs, backward=backward))
+                    compiled_wall.append(_time_one(compiled, compiled_inputs, backward=backward, block=block))
             pair_index = len(overhead)
             overhead.append(
                 (compiled_wall[pair_index] - direct_wall[pair_index]) / direct_wall[pair_index]
@@ -153,7 +156,7 @@ def _measure_pair(direct, compiled, direct_inputs, compiled_inputs, pairs, warmu
     }
 
 
-def run(pairs, warmup, batch, qlen, klen, qheads, kvheads, key_dim, value_dim, dtype, output_path):
+def run(pairs, warmup, batch, qlen, klen, qheads, kvheads, key_dim, value_dim, dtype, output_path, block=1):
     if not torch.cuda.is_available():
         raise RuntimeError("native K1 attention qualification requires CUDA")
     scale = key_dim**-0.5
@@ -167,7 +170,7 @@ def run(pairs, warmup, batch, qlen, klen, qheads, kvheads, key_dim, value_dim, d
         named_mixer_recipe("mha"),
         backend=MixerBackend.NATIVE,
         intent=MixerIntent.TRAINING,
-        dtype=dtype,
+        dtype=str(dtype).removeprefix("torch."),
     )
     plan_build_ms = (time.perf_counter() - plan_started) * 1000
     native_anchor = plan.anchor
@@ -212,7 +215,7 @@ def run(pairs, warmup, batch, qlen, klen, qheads, kvheads, key_dim, value_dim, d
     perf_inputs_c = {n: t.detach().clone().requires_grad_() for n, t in operands.items()}
     performance = _measure_pair(
         lambda i: _direct(i, scale, causal), lambda i: _compiled(plan, i),
-        perf_inputs_d, perf_inputs_c, pairs, warmup,
+        perf_inputs_d, perf_inputs_c, pairs, warmup, block,
     )
     fwd_gate = performance["measurements"]["forward"]["paired_native_overhead_fraction"]["gate"]["pass"]
     fb_gate = performance["measurements"]["forward_backward"]["paired_native_overhead_fraction"]["gate"]["pass"]
@@ -239,7 +242,7 @@ def run(pairs, warmup, batch, qlen, klen, qheads, kvheads, key_dim, value_dim, d
         "provenance": provenance(
             "PYTHONPATH=src python benchmarks/qualify_native_k1_attention.py",
             {"recipe": "mha", "pairs": pairs, "warmup": warmup,
-             "shape": [batch, qlen, klen, qheads, kvheads, key_dim, value_dim], "dtype": dtype},
+             "shape": [batch, qlen, klen, qheads, kvheads, key_dim, value_dim], "dtype": str(dtype).removeprefix("torch.")},
         ),
         "hardware": {
             "gpu": torch.cuda.get_device_name(0),
@@ -265,7 +268,7 @@ def run(pairs, warmup, batch, qlen, klen, qheads, kvheads, key_dim, value_dim, d
                 "semantic_scope": "normalized causal attention core; projections excluded",
                 "shape": {"batch": batch, "query_length": qlen, "key_length": klen,
                           "query_heads": qheads, "kv_heads": kvheads,
-                          "key_dim": key_dim, "value_dim": value_dim, "dtype": dtype},
+                          "key_dim": key_dim, "value_dim": value_dim, "dtype": str(dtype).removeprefix("torch.")},
                 "native_anchor": native_anchor,
                 "compiler_plan_build_ms": plan_build_ms,
                 "parity": {
@@ -299,11 +302,12 @@ def main() -> None:
     parser.add_argument("--key-dim", type=int, default=64)
     parser.add_argument("--value-dim", type=int, default=64)
     parser.add_argument("--dtype", default="bfloat16")
+    parser.add_argument("--block", type=int, default=10)
     parser.add_argument("--output", type=Path, default=Path("results/qualification/native-k1-mha.json"))
     args = parser.parse_args()
     dtype = getattr(torch, args.dtype)
     payload = run(args.pairs, args.warmup, args.batch, args.qlen, args.klen,
-                  args.qheads, args.kvheads, args.key_dim, args.value_dim, dtype, args.output)
+                  args.qheads, args.kvheads, args.key_dim, args.value_dim, dtype, args.output, args.block)
     case = payload["cases"]["mha"]
     fwd = case["performance"]["measurements"]["forward"]["paired_native_overhead_fraction"]
     fb = case["performance"]["measurements"]["forward_backward"]["paired_native_overhead_fraction"]
