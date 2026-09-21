@@ -60,6 +60,7 @@ def _online_softmax_forward_tiled(
         query_valid[:, None] & (key_dims[None, :] < D),
         other=0.0,
     )
+    LOG2E: tl.constexpr = 1.4426950408889634
     running_max = tl.full((BLOCK_M,), float("-inf"), tl.float32)
     running_sum = tl.zeros((BLOCK_M,), tl.float32)
     running_value = tl.zeros((BLOCK_M, BLOCK_V), tl.float32)
@@ -84,11 +85,15 @@ def _online_softmax_forward_tiled(
             key_valid[:, None] & (key_dims[None, :] < D),
             other=0.0,
         )
+        # exp2 trick: fold log2(e) into the score scale and use exp2, which maps to
+        # a single hardware ex2 instruction (faster than exp's multi-instruction
+        # expansion). The logsumexp is converted back to natural log at the end so
+        # the backward pass is unaffected.
         scores = tl.dot(
             query,
             tl.trans(key),
             input_precision="ieee" if INPUT_FP32 else "tf32",
-        ) * SCALE
+        ) * (SCALE * LOG2E)
         score_valid = query_valid[:, None] & key_valid[None, :]
         scores = tl.where(score_valid, scores, float("-inf"))
         if HAS_MASK:
@@ -106,7 +111,7 @@ def _online_softmax_forward_tiled(
                 mask_values = tl.load(
                     MASK + mask_offset, score_valid, other=0.0
                 )
-                scores += mask_values.to(tl.float32)
+                scores += mask_values.to(tl.float32) * LOG2E
         if HAS_BIAS:
             bias_offset = (
                 batch * BIAS_SB
@@ -117,7 +122,7 @@ def _online_softmax_forward_tiled(
             bias_values = tl.load(
                 BIAS + bias_offset, score_valid, other=0.0
             )
-            scores += bias_values.to(tl.float32)
+            scores += bias_values.to(tl.float32) * LOG2E
         if HAS_MASK and MASK_IS_BOOL:
             scores = tl.where(mask_values, scores, float("-inf"))
         if CAUSAL:
@@ -128,11 +133,11 @@ def _online_softmax_forward_tiled(
         block_max = tl.max(scores, axis=1)
         next_max = tl.maximum(running_max, block_max)
         old_scale = tl.where(
-            running_sum > 0.0, tl.exp(running_max - next_max), 0.0
+            running_sum > 0.0, tl.exp2(running_max - next_max), 0.0
         )
         safe_max = tl.where(next_max == float("-inf"), 0.0, next_max)
         probabilities = tl.where(
-            scores == float("-inf"), 0.0, tl.exp(scores - safe_max[:, None])
+            scores == float("-inf"), 0.0, tl.exp2(scores - safe_max[:, None])
         )
         values = tl.load(
             V
@@ -163,9 +168,11 @@ def _online_softmax_forward_tiled(
         output,
         query_valid[:, None] & (value_dims[None, :] < DV),
     )
+    # running_max is in the log2 domain (scores were scaled by log2e); convert the
+    # logsumexp back to natural log for the backward pass.
     logsumexp = tl.where(
         running_sum > 0.0,
-        running_max + tl.log(tl.maximum(running_sum, 1.0e-30)),
+        (running_max + tl.log2(tl.maximum(running_sum, 1.0e-30))) / LOG2E,
         float("-inf"),
     )
     tl.store(
