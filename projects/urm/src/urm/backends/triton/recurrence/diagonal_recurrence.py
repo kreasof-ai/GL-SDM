@@ -52,6 +52,7 @@ def _kernels():
         STEP_SC: tl.constexpr,
         SKIP_SCALAR: tl.constexpr,
         READ_BEFORE: tl.constexpr,
+        GATES_ONE: tl.constexpr,
         BLOCK_T: tl.constexpr,
         BLOCK_N: tl.constexpr,
         CHUNK_T: tl.constexpr,
@@ -76,24 +77,28 @@ def _kernels():
                 x = tl.load(X + batch * X_SB + token * X_ST + channel * X_SC).to(
                     tl.float32
                 )
-                input_gate = tl.load(
-                    INPUT_GATE
-                    + batch * IG_SB
-                    + token * IG_ST
-                    + channel * IG_SC
-                    + state_index * IG_SN,
-                    state_mask,
-                    other=0.0,
-                ).to(tl.float32)
-                read_gate = tl.load(
-                    READ_GATE
-                    + batch * RG_SB
-                    + token * RG_ST
-                    + channel * RG_SC
-                    + state_index * RG_SN,
-                    state_mask,
-                    other=0.0,
-                ).to(tl.float32)
+                if GATES_ONE:
+                    input_gate = tl.full((BLOCK_N,), 1.0, tl.float32)
+                    read_gate = tl.full((BLOCK_N,), 1.0, tl.float32)
+                else:
+                    input_gate = tl.load(
+                        INPUT_GATE
+                        + batch * IG_SB
+                        + token * IG_ST
+                        + channel * IG_SC
+                        + state_index * IG_SN,
+                        state_mask,
+                        other=0.0,
+                    ).to(tl.float32)
+                    read_gate = tl.load(
+                        READ_GATE
+                        + batch * RG_SB
+                        + token * RG_ST
+                        + channel * RG_SC
+                        + state_index * RG_SN,
+                        state_mask,
+                        other=0.0,
+                    ).to(tl.float32)
                 log_decay = tl.load(
                     LOG_DECAY
                     + batch * LD_SB
@@ -144,24 +149,28 @@ def _kernels():
                     token_mask,
                     other=0.0,
                 ).to(tl.float32)
-                input_gate = tl.load(
-                    INPUT_GATE
-                    + batch * IG_SB
-                    + token[:, None] * IG_ST
-                    + channel * IG_SC
-                    + state_offset * IG_SN,
-                    token_mask[:, None] & state_mask[None, :],
-                    other=0.0,
-                ).to(tl.float32)
-                read_gate = tl.load(
-                    READ_GATE
-                    + batch * RG_SB
-                    + token[:, None] * RG_ST
-                    + channel * RG_SC
-                    + state_offset * RG_SN,
-                    token_mask[:, None] & state_mask[None, :],
-                    other=0.0,
-                ).to(tl.float32)
+                if GATES_ONE:
+                    input_gate = tl.full((CHUNK_T, BLOCK_N), 1.0, tl.float32)
+                    read_gate = tl.full((CHUNK_T, BLOCK_N), 1.0, tl.float32)
+                else:
+                    input_gate = tl.load(
+                        INPUT_GATE
+                        + batch * IG_SB
+                        + token[:, None] * IG_ST
+                        + channel * IG_SC
+                        + state_offset * IG_SN,
+                        token_mask[:, None] & state_mask[None, :],
+                        other=0.0,
+                    ).to(tl.float32)
+                    read_gate = tl.load(
+                        READ_GATE
+                        + batch * RG_SB
+                        + token[:, None] * RG_ST
+                        + channel * RG_SC
+                        + state_offset * RG_SN,
+                        token_mask[:, None] & state_mask[None, :],
+                        other=0.0,
+                    ).to(tl.float32)
                 log_decay = tl.load(
                     LOG_DECAY
                     + batch * LD_SB
@@ -467,6 +476,7 @@ def _kernels():
         HAS_STEP_SIZE: tl.constexpr,
         SKIP_SCALAR: tl.constexpr,
         HAS_GRAD_FINAL: tl.constexpr,
+        GATES_ONE: tl.constexpr,
         BLOCK_T: tl.constexpr,
         BLOCK_N: tl.constexpr,
     ):
@@ -487,14 +497,18 @@ def _kernels():
         grad_output = tl.load(
             GRAD_OUTPUT + batch * T * C + token * C + channel, token_mask, other=0.0
         ).to(tl.float32)
-        ig = tl.load(
-            INPUT_GATE + batch * IG_SB + token[:, None] * IG_ST + channel * IG_SC + state_index[None, :] * IG_SN,
-            mask2, other=0.0,
-        ).to(tl.float32)
-        rg = tl.load(
-            READ_GATE + batch * RG_SB + token[:, None] * RG_ST + channel * RG_SC + state_index[None, :] * RG_SN,
-            mask2, other=0.0,
-        ).to(tl.float32)
+        if GATES_ONE:
+            ig = tl.full((BLOCK_T, BLOCK_N), 1.0, tl.float32)
+            rg = tl.full((BLOCK_T, BLOCK_N), 1.0, tl.float32)
+        else:
+            ig = tl.load(
+                INPUT_GATE + batch * IG_SB + token[:, None] * IG_ST + channel * IG_SC + state_index[None, :] * IG_SN,
+                mask2, other=0.0,
+            ).to(tl.float32)
+            rg = tl.load(
+                READ_GATE + batch * RG_SB + token[:, None] * RG_ST + channel * RG_SC + state_index[None, :] * RG_SN,
+                mask2, other=0.0,
+            ).to(tl.float32)
         ld = tl.load(
             LOG_DECAY + batch * LD_SB + token[:, None] * LD_ST + channel * LD_SC + state_index[None, :] * LD_SN,
             mask2, other=0.0,
@@ -586,8 +600,15 @@ def execute_diagonal_recurrence(
     step_size: Any | None,
     skip: Any,
     read_before: bool,
+    gates_one: bool = False,
 ) -> tuple[Any, Any]:
-    """Run the fused recurrence and return output plus the final FP32 state."""
+    """Run the fused recurrence and return output plus the final FP32 state.
+
+    ``gates_one`` marks the all-ones gate case (HGRN): the kernels skip loading
+    input_gate/read_gate and treat them as 1.0, avoiding both the gate memory
+    traffic and the caller's per-call ones-tensor creation on the
+    ordinary-invocation path.
+    """
     import torch
 
     triton, forward_kernel, backward_kernel, backward_kernel_parallel = _kernels()
@@ -605,9 +626,9 @@ def execute_diagonal_recurrence(
     ):
         raise ValueError("native diagonal SSM gates must be float32")
     if initial_state is None:
-        initial_tensor = torch.zeros(
-            (batch, channels, state_width), device=x.device, dtype=x.dtype
-        )
+        # The kernel never loads the initial state when has_initial is False, so a
+        # minimal cached placeholder avoids a per-call [B,C,N] zeros allocation.
+        initial_tensor = _placeholder(x.device, batch, channels, state_width)
         has_initial = False
     else:
         # The kernels index the state as dense [B,C,N]. This copy remains in
@@ -624,9 +645,9 @@ def execute_diagonal_recurrence(
     log_decay = _expand_gate(log_decay, batch, sequence, channels)
     has_step_size = step_size is not None
     if step_size is None:
-        step_tensor = torch.ones(
-            (batch, sequence, channels), device=x.device, dtype=x.dtype
-        )
+        # HAS_STEP_SIZE is False, so the kernel never loads step; a minimal cached
+        # placeholder avoids a per-call [B,T,C] ones allocation.
+        step_tensor = _placeholder(x.device, batch, sequence, channels)
     else:
         if step_size.shape not in ((batch, sequence), (batch, sequence, channels)):
             raise ValueError("step_size must use [B,T] or [B,T,C]")
@@ -642,7 +663,7 @@ def execute_diagonal_recurrence(
         for tensor in (input_gate, read_gate, log_decay, initial_tensor, step_tensor)
     ):
         raise ValueError("native diagonal SSM tensors must share a device")
-    skip_tensor = torch.as_tensor(skip, device=x.device, dtype=torch.float32)
+    skip_tensor = _skip_tensor(skip, x.device)
     skip_scalar = skip_tensor.numel() == 1
     if not skip_scalar and tuple(skip_tensor.shape) != (channels,):
         raise ValueError("skip must be a scalar or channel vector")
@@ -660,7 +681,7 @@ def execute_diagonal_recurrence(
     # the ordinary-invocation path the production budget measures.
     scan_cls = _scan_class(
         sequence, channels, state_width, has_initial, has_step_size, skip_scalar,
-        read_before, block_t, block_n, chunk_t, warps,
+        read_before, gates_one, block_t, block_n, chunk_t, warps,
     )
     return scan_cls.apply(
         x, input_gate, read_gate, log_decay, initial_tensor, step_tensor, skip_tensor
@@ -670,7 +691,7 @@ def execute_diagonal_recurrence(
 @lru_cache(maxsize=128)
 def _scan_class(
     sequence, channels, state_width, has_initial, has_step_size, skip_scalar,
-    read_before, block_t, block_n, chunk_t, warps,
+    read_before, gates_one, block_t, block_n, chunk_t, warps,
 ):
     import torch
 
@@ -715,6 +736,7 @@ def _scan_class(
                 *step.stride(),
                 skip_scalar,
                 read_before,
+                gates_one,
                 block_t,
                 block_n,
                 chunk_t,
@@ -727,6 +749,7 @@ def _scan_class(
             ctx.has_step_size = has_step_size
             ctx.read_before = read_before
             ctx.skip_scalar = skip_scalar
+            ctx.gates_one = gates_one
             return output, final
 
         @staticmethod
@@ -794,6 +817,7 @@ def _scan_class(
                     ctx.has_step_size,
                     ctx.skip_scalar,
                     grad_final is not None,
+                    gates_one,
                     block_t,
                     block_n,
                     num_warps=warps,
@@ -841,10 +865,14 @@ def _scan_class(
                 grad_skip = grad_skip_full.sum().reshape_as(skip)
             else:
                 grad_skip = grad_skip_full.sum(dim=(0, 1)).reshape_as(skip)
+            # When gates_one, the gates are the constant 1.0 (not differentiable
+            # inputs), so their gradients are None. This also prevents autograd from
+            # accumulating the gate gradients into a tensor the caller aliased as a
+            # gate placeholder.
             return (
                 grad_x,
-                grad_input_gate,
-                grad_read_gate,
+                None if ctx.gates_one else grad_input_gate,
+                None if ctx.gates_one else grad_read_gate,
                 grad_log_decay,
                 grad_initial if ctx.has_initial else None,
                 grad_step if ctx.has_step_size else None,
@@ -864,6 +892,35 @@ def _expand_gate(gate: Any, batch: int, sequence: int, channels: int):
             raise ValueError("diagonal SSM gate must use channel width one or C")
         return gate.expand(batch, sequence, channels, gate.shape[-1])
     raise ValueError("diagonal SSM gates use [B,T,N] or [B,T,C,N]")
+
+
+@lru_cache(maxsize=64)
+def _placeholder(device: Any, *shape: int):
+    """A cached uninitialized placeholder for tensors the kernel never reads.
+
+    The kernel unpacks these tensors' strides but skips the loads (the matching
+    HAS_* flag is false), so their contents are irrelevant. Caching avoids a
+    per-call allocation on the ordinary-invocation path. Contents are never read,
+    so sharing one buffer across calls is safe.
+    """
+    import torch
+
+    return torch.empty(shape if shape else (1,), device=device, dtype=torch.float32)
+
+
+@lru_cache(maxsize=64)
+def _skip_tensor_cached(device: Any, value: float):
+    import torch
+
+    return torch.full((1,), value, device=device, dtype=torch.float32)
+
+
+def _skip_tensor(skip: Any, device: Any):
+    import torch
+
+    if isinstance(skip, (int, float)):
+        return _skip_tensor_cached(device, float(skip))
+    return torch.as_tensor(skip, device=device, dtype=torch.float32)
 
 
 __all__ = ["execute_diagonal_recurrence"]

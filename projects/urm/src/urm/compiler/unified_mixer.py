@@ -7280,15 +7280,18 @@ def _execute_native_diagonal_recurrence(plan: CompiledMixerPlan, torch: Any, **o
         raise TypeError(
             f"unexpected native diagonal SSM operands: {', '.join(sorted(operands))}"
         )
+    gates_one = False
     if spec.diagonal_hgrn:
         if x.ndim != 3 or log_decay.shape != x.shape:
             raise ValueError("HGRN expects x and log_decay with shape [B,T,C]")
         batch_hgrn, sequence_hgrn, channels_hgrn = x.shape
-        input_gate = torch.ones(
-            (batch_hgrn, sequence_hgrn, 1), device=x.device, dtype=torch.float32
-        )
-        read_gate = input_gate
         log_decay = log_decay.unsqueeze(-1)
+        # HGRN gates are all-ones; the kernel treats them as 1.0 when gates_one is
+        # set, so we pass log_decay as a stride-valid placeholder and never build a
+        # ones tensor on the ordinary-invocation path.
+        input_gate = log_decay
+        read_gate = log_decay
+        gates_one = True
         if initial_state is not None:
             if initial_state.shape == (batch_hgrn, channels_hgrn):
                 initial_state = initial_state.unsqueeze(-1)
@@ -7347,6 +7350,7 @@ def _execute_native_diagonal_recurrence(plan: CompiledMixerPlan, torch: Any, **o
         step_size=step_size,
         skip=skip,
         read_before=spec.read_timing is ReadTiming.BEFORE_UPDATE,
+        gates_one=gates_one,
     )
     return MixerResult(
         output,
