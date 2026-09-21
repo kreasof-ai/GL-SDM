@@ -32,6 +32,8 @@ comparator through the reference and library anchors, but has no native
 generated candidate yet** — the native backend lowers only diagonal K2
 recurrence today. Qualifying `k2-gated-delta-recurrence` requires a native
 matrix-state lowering; that is a measured blocker, not a qualified capability.
+See [representation coverage](../validation/representation-coverage.md) for the
+evidence separating representational coverage from native generation.
 
 The case grid spans small latency-sensitive and larger throughput-oriented
 batches, short/medium/long sequences, representative head/value/state widths,

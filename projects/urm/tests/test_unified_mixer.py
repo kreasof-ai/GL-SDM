@@ -362,6 +362,70 @@ def test_production_matrix_native_status_matches_compiler():
             )
 
 
+def test_representation_coverage_claims_match_compiler():
+    """Pin the representation-coverage evidence to the live compiler.
+
+    ``docs/validation/representation-coverage.md`` records, for each mandatory
+    workload class, whether it is expressible and which reference/library/native
+    anchors the compiler selects. This test re-derives those anchors so the
+    documented coverage cannot drift from reality.
+    """
+    expected = {
+        # (recipe, family): {backend: anchor substring or None for decline}
+        "k1_mha": (
+            softmax_attention_spec(),
+            {
+                MixerBackend.REFERENCE: "urm.unified.k1.softmax_reference.v1",
+                MixerBackend.LIBRARY: "scaled_dot_product_attention",
+                MixerBackend.NATIVE: "urm_native_k1_online_softmax_v1",
+            },
+        ),
+        "k2_diagonal": (
+            diagonal_ssm_spec("hgrn_ssm_core", hgrn=True),
+            {
+                MixerBackend.REFERENCE: "urm.unified.k2.state_reference.v1",
+                MixerBackend.LIBRARY: "fla_fused_recurrent_hgrn_adapter",
+                MixerBackend.NATIVE: "urm_native_diagonal_recurrence_v1",
+            },
+        ),
+        "k2_gated_delta": (
+            delta_rule_spec("gated_delta", decay=DecayGranularity.HEAD),
+            {
+                MixerBackend.REFERENCE: "urm.unified.k2.state_reference.v1",
+                MixerBackend.LIBRARY: "fla_gated_delta_rule_adapter",
+                MixerBackend.NATIVE: None,  # native generation gap, not representational
+            },
+        ),
+        "k3_sparse": (
+            sparse_delta_spec(),
+            {
+                MixerBackend.REFERENCE: "urm.unified.k3.sparse_delta_reference.v1",
+                MixerBackend.LIBRARY: None,  # external adapter boundary, not in-process
+                MixerBackend.NATIVE: "urm_native_sparse_state_mixer_v0",
+            },
+        ),
+    }
+    for label, (spec, backends) in expected.items():
+        for backend, anchor_fragment in backends.items():
+            dtypes = ("float32", "bfloat16") if backend is MixerBackend.LIBRARY else ("float32",)
+            outcome = None
+            for dt in dtypes:
+                try:
+                    outcome = compile_mixer(spec, backend=backend, intent="training", dtype=dt).anchor
+                    break
+                except Exception:  # noqa: BLE001 - decline identity is the signal
+                    outcome = None
+            if anchor_fragment is None:
+                assert outcome is None, (
+                    f"{label}/{backend.value} was expected to decline but selected {outcome}"
+                )
+            else:
+                assert outcome is not None and anchor_fragment in outcome, (
+                    f"{label}/{backend.value} expected anchor containing "
+                    f"{anchor_fragment!r}, got {outcome!r}"
+                )
+
+
 @pytest.mark.parametrize("recipe_name", sorted(_NAME_DEPENDENT_RECIPES_UNFINISHED))
 def test_native_backend_declines_name_dependent_recipes(recipe_name):
     """The native production path must never silently name-dispatch.

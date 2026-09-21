@@ -24,6 +24,8 @@ Read in this order:
 8. [Construction roadmap](planning/lowering-roadmap.md): implementation milestones.
 9. [Acceptance requirements](validation/acceptance.md) and
    [parity plan](validation/parity.md): numerical, integration and performance gates.
+   [Representation coverage](validation/representation-coverage.md) records the
+   evidence separating K1/K2/K3 expressibility from native generation.
 
 Kernel contracts are architecture-independent. Names such as `sparse_delta`
 describe mathematical operations; named models belong in presets, adapters and
