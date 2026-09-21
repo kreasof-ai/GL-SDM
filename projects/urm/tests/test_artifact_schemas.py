@@ -713,6 +713,28 @@ def test_committed_epilogue_selection_agrees_with_exhaustive() -> None:
     assert z3["verification_failures"] == []
 
 
+def test_upstream_comparison_table_matches_committed_artifacts() -> None:
+    """The consolidated upstream comparison doc must regenerate exactly.
+
+    The table is a rollup over the committed per-architecture artifacts; this
+    keeps the documentation from drifting from the validated measurements.
+    """
+    import upstream_comparison_table
+
+    documented = (
+        PROJECT_ROOT / "docs" / "validation" / "upstream-comparison.md"
+    ).read_text(encoding="utf-8")
+    regenerated = upstream_comparison_table.render_markdown(
+        upstream_comparison_table.build_rows()
+    )
+    assert documented == regenerated, (
+        "docs/validation/upstream-comparison.md is out of sync with the "
+        "committed artifacts; regenerate it with "
+        "`python benchmarks/upstream_comparison_table.py > "
+        "docs/validation/upstream-comparison.md`"
+    )
+
+
 def test_attention_headline_overhead_matches_documented_values() -> None:
     """Docs quote artifact-derived numbers; this test pins them together."""
     artifact = _artifact("attention/dense-causal.json")

@@ -8,6 +8,9 @@ silently dropped because it does not fit the first three kernels.
 
 The [machine-readable register](../../benchmarks/architecture-coverage.json) records
 IDs, source revisions, proposed lowerings, mode qualification and remaining work.
+The [upstream comparison table](../validation/upstream-comparison.md) consolidates
+the validated coverage, parity, and dispatch-overhead numbers against each pinned
+upstream source.
 Revisions captured through 2026-09-20 are audit/comparison candidates; they do not replace
 older frozen acceptance pins. Every run must additionally pin its actual callable,
 dependencies, shapes and tolerances. Paired GPU kernel-slice comparisons are now
