@@ -174,6 +174,19 @@ def render_markdown(rows: list[dict[str, object]]) -> str:
         "  slower. Forward and forward+backward are reported separately; the",
         "  least-favorable case is shown for multi-case artifacts.",
         "",
+        "**These are dispatch-overhead numbers, not native-kernel replacement",
+        "numbers.** For most rows the compiled plan invokes the pinned upstream",
+        "kernel through URM's library adapter, so the overhead measures only the",
+        "compiler's dispatch cost on top of that shared upstream kernel (typically",
+        "a few percent). It does **not** measure how fast a URM-*native* kernel is",
+        "relative to the upstream kernel. Native-replacement qualification - where",
+        "the URM-native kernel does the computation itself - is tracked separately",
+        "and is much stricter; see `docs/planning/production-matrix.md` and",
+        "`results/qualification/`. For example, the native K2 diagonal recurrence",
+        "is numerically correct but currently ~55% slower than FLA's competitive",
+        "chunked HGRN kernel, even though the HGRN dispatch-overhead row below is",
+        "only +1.1%.",
+        "",
     ]
     for family in ("K1", "K2", "K3", "other"):
         family_rows = by_family.get(family)
