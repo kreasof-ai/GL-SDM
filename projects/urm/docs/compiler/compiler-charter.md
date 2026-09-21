@@ -21,8 +21,7 @@ architecture/NAS specification
                                              planner.py)
   -> trusted execution anchors + visitors   (compiler/execution.py)
   -> FA / FLA / grouped GEMM / scan / SDM /
-     collectives / generated kernels        (urm/adapters, urm/backends,
-                                             compiler/anchors)
+     collectives / generated kernels        (urm/adapters, urm/backends)
 ```
 
 The normative kernel-generation pipeline lives in
@@ -93,9 +92,9 @@ such and retained; a semantic that cannot be expressed at all is a URM failure.
     The native composite Sparse Memory anchor serializes both exact schedules
     and an explicit route materialization boundary rather than hiding an
     upstream API or an untyped fused callback.
-    `compile_sparse_memory_plan()` is the sole executable binder for that
-    composite: it verifies the compiler-selected anchor and serialized launch
-    configuration against the runtime launchers before dispatch. The
+    `runtime.sparse_memory.compile_sparse_memory_plan()` is the sole executable
+    binder for that composite: it verifies the compiler-selected anchor and
+    serialized launch configuration against the runtime launchers before dispatch. The
     model-level benchmark consumes this plan rather than constructing a backend
     directly. Opaque `torch.library` operators needed to make the pinned
     comparator visible to `torch.compile` stay external-adapter glue; they are

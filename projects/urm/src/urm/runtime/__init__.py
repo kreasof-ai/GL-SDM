@@ -1,4 +1,4 @@
-"""Runtime contracts; executable plans remain owned by the compiler anchors."""
+"""Runtime contracts and executable bindings for compiler-produced plans."""
 
 from .registry import Backend, BackendRegistry, BackendResult
 

@@ -18,15 +18,16 @@ frontend specification → semantic IR → verified rewrites → planning
 |---|---|
 | `src/urm/frontend/` | Declarative model specification (`MixerSpec`) |
 | `src/urm/compiler/` | Semantic IR, effects, rewrites, legality, planning and verification |
-| `src/urm/compiler/anchors/` | Bind compiler-selected plans to executable implementations |
-| `src/urm/runtime/` | Backend protocols and explicit runtime registry |
+| `src/urm/runtime/` | Backend protocols, explicit runtime registry, and executable plan binding |
 | `src/urm/backends/`, `src/urm/adapters/` | Native implementations and external-library boundaries |
 | `src/urm/oracles/` | NumPy correctness references, including sparse-slot algebra and VJP |
 | `tests/`, `benchmarks/` | Contract regressions and maintained acceptance harnesses |
 | `results/` | Retained acceptance evidence and provenance consumed by regressions |
 | `archive/` | Historical reports, exploratory measurements and superseded demonstrations |
 
-`urm.ir`, `urm.backend`, and `urm.reference` remain compatibility imports.
+`urm.ir` is the canonical IR module; the former `urm.backend` and `urm.reference`
+wildcard compatibility shims were removed. Import `BackendRegistry` from
+`urm.runtime` and the NumPy oracle (`execute`, `merge_writes`) from `urm.oracles`.
 Existing semantic IR and executable binders retain their public paths. The
 distribution name `urm-kernel-lab` is retained for installation compatibility.
 Unvalidated sparse-delta and route-parallel experiments live under `archive/`.
