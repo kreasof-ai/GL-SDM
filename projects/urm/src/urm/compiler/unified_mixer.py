@@ -288,6 +288,10 @@ class CompiledMixerPlan:
                     },
                 )
             if self.spec.family is MixerKernelFamily.RECURRENCE:
+                if self.spec.recurrent_layout is RecurrentLayout.MATRIX:
+                    return _execute_native_matrix_state_recurrence(
+                        self, torch, **operands
+                    )
                 return _execute_native_diagonal_recurrence(self, torch, **operands)
             return _execute_native_sparse_delta(self, torch, **operands)
         if self.spec.family is MixerKernelFamily.SOFTMAX:
@@ -432,13 +436,18 @@ def compile_mixer(
             and spec.recurrent_layout is RecurrentLayout.DIAGONAL
         )
         or (
+            spec.family is MixerKernelFamily.RECURRENCE
+            and spec.recurrent_layout is RecurrentLayout.MATRIX
+            and _native_matrix_state_supported(spec)
+        )
+        or (
             spec.family is MixerKernelFamily.SOFTMAX
             and spec.is_normalized_softmax_attention()
         )
     ):
         raise ValueError(
             "URM-native anchors support K1 normalized softmax, K3 sparse delta, "
-            "or K2 diagonal SSM semantics"
+            "K2 diagonal SSM semantics, or the plain K2 matrix-state recurrence"
         )
     if (
         resolved_backend is MixerBackend.LIBRARY
@@ -610,11 +619,22 @@ def compile_mixer(
             anchor = library_k2_anchor
             assert anchor is not None
     elif resolved_backend is MixerBackend.NATIVE:
-        anchor = {
-            MixerKernelFamily.SOFTMAX: NATIVE_K1_ONLINE_SOFTMAX_ANCHOR_NAME,
-            MixerKernelFamily.SPARSE_DELTA: "urm_native_sparse_state_mixer_v0",
-            MixerKernelFamily.RECURRENCE: "urm_native_diagonal_recurrence_v1",
-        }[spec.family]
+        from urm.compiler.execution import (
+            NATIVE_DIAGONAL_RECURRENCE_ANCHOR_NAME,
+            NATIVE_MATRIX_STATE_RECURRENCE_ANCHOR_NAME,
+        )
+
+        if spec.family is MixerKernelFamily.RECURRENCE:
+            anchor = (
+                NATIVE_MATRIX_STATE_RECURRENCE_ANCHOR_NAME
+                if spec.recurrent_layout is RecurrentLayout.MATRIX
+                else NATIVE_DIAGONAL_RECURRENCE_ANCHOR_NAME
+            )
+        else:
+            anchor = {
+                MixerKernelFamily.SOFTMAX: NATIVE_K1_ONLINE_SOFTMAX_ANCHOR_NAME,
+                MixerKernelFamily.SPARSE_DELTA: "urm_native_sparse_state_mixer_v0",
+            }[spec.family]
     from urm.compiler.planner import CompilationIntent, ScheduleParams, UrmCompiler
 
     program = mixer_semantic_program(spec, dtype=dtype)
@@ -1120,6 +1140,87 @@ def _is_atma_gated_delta_decode_spec(spec: UnifiedMixerSpec) -> bool:
         state_effect=StateEffect.IN_PLACE_SLOT_TABLE,
     )
     return replace(spec, name=expected.name) == expected
+
+
+def _native_matrix_state_supported(spec: UnifiedMixerSpec) -> bool:
+    """Whether the native matrix-state recurrence kernel computes this spec's equation.
+
+    The native generator lowers only the plain matrix-state recurrence
+    ``Z_t = decay*M, M_t = Z_t + k delta^T, y_t = scale * q^T M_t``. A spec
+    qualifies only when every semantic field is at the plain default and the
+    supported axes stay in range: additive/delta update, head/key-channel decay,
+    before/after read timing, identity feature map, no normalizer, pointwise
+    decay transition, no polynomial basis, functional state effect, and every
+    exotic composition flag off.
+
+    The additive/no-decay configuration is declined even though it looks plain:
+    the IR does not yet distinguish a plain additive recurrence from the exotic
+    additive equations that share its fields (a GRU's tanh/gate nonlinearity, an
+    FFT long convolution, a second-order correction, and similar are not
+    represented in the spec at all). Dispatching those on the spec alone would
+    silently compute the wrong equation, so the native kernel declines the whole
+    additive/no-decay group until the IR carries those equations explicitly.
+    Every other supported configuration is collision-free: no name-dependent
+    recipe shares its semantic signature.
+    """
+    if spec.family is not MixerKernelFamily.RECURRENCE:
+        return False
+    if spec.recurrent_layout is not RecurrentLayout.MATRIX:
+        return False
+    if spec.update_rule not in (StateUpdateRule.ADDITIVE, StateUpdateRule.DELTA):
+        return False
+    if spec.decay not in (
+        DecayGranularity.NONE,
+        DecayGranularity.HEAD,
+        DecayGranularity.KEY_CHANNEL,
+    ):
+        return False
+    # additive + no decay is the under-specified collision group; decline it.
+    if (
+        spec.update_rule is StateUpdateRule.ADDITIVE
+        and spec.decay is DecayGranularity.NONE
+    ):
+        return False
+    if spec.feature_map is not FeatureMap.IDENTITY:
+        return False
+    if spec.normalizer is not StateNormalizer.NONE:
+        return False
+    if spec.transition is not StateTransition.POINTWISE:
+        return False
+    if spec.polynomial_basis is not PolynomialBasis.NONE:
+        return False
+    if spec.read_timing not in (ReadTiming.BEFORE_UPDATE, ReadTiming.AFTER_UPDATE):
+        return False
+    if spec.state_effect is not StateEffect.FUNCTIONAL:
+        return False
+    # Every exotic composition flag must be off; these change the equation.
+    if any(
+        (
+            spec.static_head_decay,
+            spec.static_head_decay_chunk,
+            spec.mamba2_ssm,
+            spec.log_linear_attention,
+            spec.gdn2_ssm,
+            spec.kda_delta,
+            spec.gated_delta_product,
+            spec.generalized_delta_iplr,
+            spec.generalized_delta_dplr,
+            spec.rwkv4_memory,
+            spec.rwkv6_memory,
+            spec.momentum_delta,
+            spec.gated_oja,
+            spec.comba_rule,
+            spec.preconditioned_gated_delta,
+            spec.preconditioned_kda,
+            spec.slot_attention,
+            spec.step_size_discretization,
+            spec.diagonal_hgrn,
+            spec.path_attention,
+            spec.deltaformer_attention,
+        )
+    ):
+        return False
+    return True
 
 
 def _is_fla_gdn2_spec(spec: UnifiedMixerSpec) -> bool:
@@ -7217,6 +7318,118 @@ def _compile_native_diagonal_binding(
     if selected != (NATIVE_DIAGONAL_RECURRENCE_ANCHOR_NAME,):
         raise RuntimeError(
             "UrmCompiler produced an invalid native diagonal SSM plan: "
+            f"anchors={selected}"
+        )
+    return selected[0]
+
+
+def _execute_native_matrix_state_recurrence(
+    plan: CompiledMixerPlan, torch: Any, **operands: Any
+):
+    """Execute the native matrix-state K2 recurrence selected by semantic fields."""
+    spec = plan.spec
+    if not _native_matrix_state_supported(spec):
+        raise RuntimeError(
+            "the native matrix-state anchor implements only the plain K2 "
+            "matrix-state recurrence (delta/additive update, head/key-channel "
+            "decay, identity feature map, no normalizer, pointwise transition)"
+        )
+    query = operands.pop("query")
+    key = operands.pop("key")
+    value = operands.pop("value")
+    initial_state = operands.pop("initial_state", None)
+    beta = operands.pop("beta", None)
+    log_decay = operands.pop("log_decay", None)
+    if operands:
+        raise TypeError(
+            "unexpected native matrix-state operands: "
+            + ", ".join(sorted(operands))
+        )
+    if query.ndim != 4 or key.ndim != 4 or value.ndim != 4:
+        raise ValueError("native matrix-state query/key/value use BTHD rank-4 layout")
+    if key.shape != query.shape:
+        raise ValueError("native matrix-state query and key must have identical shapes")
+    batch, sequence, heads, key_dim = query.shape
+    if value.shape[:3] != (batch, sequence, heads):
+        raise ValueError("native matrix-state value must use [B,T,H,V] matching query")
+    if spec.update_rule is StateUpdateRule.DELTA and beta is None:
+        raise ValueError("the delta update rule requires beta")
+    if spec.decay is not DecayGranularity.NONE and log_decay is None:
+        raise ValueError("this matrix-state recurrence requires log_decay")
+    from urm.backends.triton.recurrence.matrix_state import (
+        execute_matrix_state_recurrence,
+    )
+    from urm.compiler.execution import NATIVE_MATRIX_STATE_RECURRENCE_ANCHOR_NAME
+
+    dtype = str(query.dtype).removeprefix("torch.")
+    bound_anchor = _compile_native_matrix_state_binding(
+        spec, dtype=dtype, intent=plan.intent.value
+    )
+    if bound_anchor != NATIVE_MATRIX_STATE_RECURRENCE_ANCHOR_NAME:
+        raise RuntimeError(
+            f"UrmCompiler selected {bound_anchor!r} for the native matrix-state plan"
+        )
+    # Match the reference oracle's read-scale convention for the plain
+    # matrix-state recurrence: read_scale, else attention_scale, else 1.0. (FLA
+    # defaults to key_dim**-0.5, but the URM reference for the plain delta/additive
+    # recurrence defaults to 1.0; the qualification runner aligns conventions.)
+    if spec.read_scale is not None:
+        scale = spec.read_scale
+    elif spec.attention_scale is not None:
+        scale = spec.attention_scale
+    else:
+        scale = 1.0
+    # The kernel holds the state as [B,H,K,V]; state_v_first recipes expose it as
+    # [B,H,V,K], so transpose at the boundary (matching the reference oracle).
+    kernel_initial = initial_state
+    if initial_state is not None and spec.state_v_first:
+        kernel_initial = initial_state.transpose(-1, -2).contiguous()
+    output, final_state = execute_matrix_state_recurrence(
+        query=query,
+        key=key,
+        value=value,
+        log_decay=log_decay,
+        beta=beta,
+        initial_state=kernel_initial,
+        scale=scale,
+        decay_granularity=spec.decay.value,
+        is_delta=spec.update_rule is StateUpdateRule.DELTA,
+        read_before=spec.read_timing is ReadTiming.BEFORE_UPDATE,
+    )
+    if spec.state_v_first:
+        final_state = final_state.transpose(-1, -2).contiguous()
+    return MixerResult(
+        output,
+        final_state=final_state,
+        metadata={
+            "anchor": NATIVE_MATRIX_STATE_RECURRENCE_ANCHOR_NAME,
+            "execution": "urm_native_triton",
+            "compiler_plan": plan.anchor,
+            "urm_compiler_verified": True,
+            "runtime_compiler_binding": "cached_semantic_shape",
+            "runtime_binding_cache_size": _compile_native_matrix_state_binding.cache_info().currsize,
+        },
+    )
+
+
+@lru_cache(maxsize=128)
+def _compile_native_matrix_state_binding(
+    spec: UnifiedMixerSpec, *, dtype: str, intent: str
+) -> str:
+    from urm.compiler.planner import CompilationIntent, ScheduleParams, UrmCompiler
+    from urm.compiler.execution import NATIVE_MATRIX_STATE_RECURRENCE_ANCHOR_NAME
+
+    compilation = UrmCompiler().compile(
+        mixer_semantic_program(spec, dtype=dtype),
+        intent=CompilationIntent(intent),
+        schedule_params=ScheduleParams(
+            anchor_overrides={"mixer": NATIVE_MATRIX_STATE_RECURRENCE_ANCHOR_NAME}
+        ),
+    )
+    selected = tuple(step.anchor for step in compilation.plan.steps if step.anchor)
+    if selected != (NATIVE_MATRIX_STATE_RECURRENCE_ANCHOR_NAME,):
+        raise RuntimeError(
+            "UrmCompiler produced an invalid native matrix-state plan: "
             f"anchors={selected}"
         )
     return selected[0]

@@ -23,7 +23,7 @@ selected anchor or the explicit decline:
 |---|---|---|---|---|---|
 | Dense MHA/GQA/MQA | K1 | yes | `urm.unified.k1.softmax_reference.v1` | `torch.nn.functional.scaled_dot_product_attention` | `urm_native_k1_online_softmax_v1` |
 | Diagonal recurrence (HGRN / Mamba-1) | K2 | yes | `urm.unified.k2.state_reference.v1` | `fla_fused_recurrent_hgrn_adapter` | `urm_native_diagonal_recurrence_v1` |
-| Matrix-state gated-delta (Gated DeltaNet) | K2 | yes | `urm.unified.k2.state_reference.v1` | `fla_gated_delta_rule_adapter` | **declines** (`ValueError`) |
+| Matrix-state gated-delta (Gated DeltaNet) | K2 | yes | `urm.unified.k2.state_reference.v1` | `fla_gated_delta_rule_adapter` | `urm_native_matrix_state_recurrence_v1` |
 | Sparse Delta Memory | K3 | yes | `urm.unified.k3.sparse_delta_reference.v1` | declines (native/reference only) | `urm_native_sparse_state_mixer_v0` |
 
 Reproduce with the probe in the section below; the anchors above are the live
@@ -40,26 +40,34 @@ compiler output, not prose.
   `chunk_gated_delta_rule` to bf16 tolerance once the read-scale convention is
   aligned (URM reference defaults to scale 1.0; FLA to `K^-0.5`).
 
-- **The single native-generation gap is K2 matrix-state.** The native K2 anchor
-  (`urm_native_diagonal_recurrence_v1`) lowers only the diagonal SSM subset.
-  Matrix-state gated-delta is represented and reference/library-correct but the
-  native generator does not yet emit a matrix-state kernel. This is a native
-  *generation* gap, not a representational one: the IR already carries the
-  equation.
+- **The K2 matrix-state native-generation gap is closed for the plain class.**
+  A general native matrix-state kernel
+  (`urm/backends/triton/recurrence/matrix_state.py`, anchor
+  `urm_native_matrix_state_recurrence_v1`) covers the plain delta/additive
+  recurrence across decay granularities (head/key-channel) and read timings,
+  selected from semantic fields. It matches the reference oracle to fp32
+  tolerance across the full axis grid
+  (`test_native_matrix_state_recurrence_matches_reference`) and matches the
+  pinned FLA `fused_recurrent_gated_delta_rule` exactly (output to 1.2e-7,
+  final state exact). It natively covers seven recipes: `gated_delta_net`,
+  `delta_net`, `gla`, `hgrn2_ssm_core`, `lightnet_gla_core`, `rodimus_gla_core`,
+  `simple_gla`.
 
-- **A general native matrix-state kernel now exists and is validated**
-  (`urm/backends/triton/recurrence/matrix_state.py`): one reusable kernel covers
-  the plain delta/additive recurrence across decay granularities (none/head/
-  key-channel) and read timings, selected from semantic fields. It matches the
-  reference oracle to fp32 tolerance across the full axis grid (12 cases in
-  `test_native_matrix_state_recurrence_matches_reference`). It is **not yet
-  wired into auto-dispatch**, because the spec under-determines some exotic
-  equations: a plain-looking spec such as `gla` shares every semantic field with
-  a name-dependent one such as `gru_core` (a GRU's tanh/gate nonlinearity is not
-  represented in the spec at all), so auto-dispatching on the spec alone would
-  silently compute the wrong equation for the name-dependent recipes. Safe
-  auto-dispatch is blocked on the name-dependence fix (making those equations
-  explicit in the IR); see the production matrix.
+- **The remaining matrix-state gap is the additive/no-decay collision group.**
+  The IR does not yet distinguish a plain additive recurrence from the exotic
+  additive equations that share its semantic fields: `gru_core`, `rnn_core`,
+  `m2rnn_core`, `h3_ssm_fft_core`, `hyena_fftconv_core`, `hla_second_order_core`,
+  `mamba3_siso_core`, `mesa_net_core`, `titans_linear_memory_core`,
+  `ttt_linear_core`, and `bdh_attention_core` all present as
+  `additive / no-decay / identity-feature / no-normalizer`, yet compute GRU
+  tanh/gate nonlinearities, FFT long convolutions, second-order corrections, and
+  similar. Dispatching them on the spec alone would silently compute the wrong
+  equation, so the native generator declines the whole additive/no-decay group
+  (pinned by
+  `test_native_matrix_state_declines_underdetermined_recipes`). Closing this
+  requires the name-dependence fix: carrying those equations explicitly in the
+  IR so different equations have distinguishable semantic representations
+  (acceptance-contract section 4).
 
 - **K3 has no upstream library adapter** by design (the pinned SDM checkout is
   invoked through the external adapter boundary, not the in-process library

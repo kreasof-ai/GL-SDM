@@ -393,7 +393,7 @@ def test_representation_coverage_claims_match_compiler():
             {
                 MixerBackend.REFERENCE: "urm.unified.k2.state_reference.v1",
                 MixerBackend.LIBRARY: "fla_gated_delta_rule_adapter",
-                MixerBackend.NATIVE: None,  # native generation gap, not representational
+                MixerBackend.NATIVE: "urm_native_matrix_state_recurrence_v1",
             },
         ),
         "k3_sparse": (
@@ -4806,6 +4806,111 @@ def test_native_matrix_state_recurrence_matches_reference(
     torch.testing.assert_close(
         native_final, reference.final_state, atol=2e-5, rtol=2e-4
     )
+
+
+# Recipes the native matrix-state generator covers: the plain delta/additive
+# recurrence with head/key-channel decay, collision-free against name-dependent
+# recipes. This list is pinned so any regression in the semantic gate is loud.
+NATIVE_MATRIX_STATE_RECIPES = (
+    "delta_net",
+    "gated_delta_net",
+    "gla",
+    "hgrn2_ssm_core",
+    "lightnet_gla_core",
+    "rodimus_gla_core",
+    "simple_gla",
+)
+
+# Name-dependent matrix-state recipes whose equations the IR under-specifies
+# (additive/no-decay collision group). The native generator must decline these
+# rather than silently compute the plain equation.
+NAME_DEPENDENT_MATRIX_STATE_RECIPES = (
+    "bdh_attention_core",
+    "gru_core",
+    "h3_ssm_fft_core",
+    "hla_second_order_core",
+    "hyena_fftconv_core",
+    "m2rnn_core",
+    "mamba3_siso_core",
+    "mesa_net_core",
+    "rnn_core",
+    "titans_linear_memory_core",
+    "ttt_linear_core",
+)
+
+
+@pytest.mark.parametrize("recipe_name", NATIVE_MATRIX_STATE_RECIPES)
+def test_native_matrix_state_dispatch_matches_reference(recipe_name):
+    """Each covered recipe executes natively and matches the reference oracle.
+
+    This is the anti-deception gate: the native matrix-state kernel must compute
+    the same equation as the reference for every recipe the semantic gate
+    accepts, so an over-broad gate fails loudly instead of silently substituting.
+    """
+    torch = _torch()
+    if not torch.cuda.is_available():
+        pytest.skip("native matrix-state recurrence requires CUDA")
+    pytest.importorskip("triton")
+    from urm.compiler.unified_mixer import (
+        MixerBackend,
+        _native_matrix_state_supported,
+        compile_mixer,
+    )
+
+    spec = named_mixer_recipe(recipe_name).spec
+    assert _native_matrix_state_supported(spec), recipe_name
+    torch.manual_seed(11)
+    batch, sequence, heads, key_dim, value_dim = 2, 6, 3, 8, 5
+    query = torch.randn(batch, sequence, heads, key_dim, device="cuda")
+    key = torch.nn.functional.normalize(
+        torch.randn(batch, sequence, heads, key_dim, device="cuda"), dim=-1
+    )
+    value = torch.randn(batch, sequence, heads, value_dim, device="cuda")
+    operands = {"query": query, "key": key, "value": value}
+    if spec.update_rule is StateUpdateRule.DELTA:
+        operands["beta"] = torch.rand(batch, sequence, heads, device="cuda")
+    if spec.decay is DecayGranularity.HEAD:
+        operands["log_decay"] = (
+            -torch.rand(batch, sequence, heads, device="cuda") * 0.2
+        )
+    elif spec.decay is DecayGranularity.KEY_CHANNEL:
+        operands["log_decay"] = (
+            -torch.rand(batch, sequence, heads, key_dim, device="cuda") * 0.2
+        )
+    native = compile_mixer(
+        spec, backend=MixerBackend.NATIVE, intent="training", dtype="float32"
+    ).execute(**operands)
+    reference = compile_mixer(
+        spec, backend=MixerBackend.REFERENCE, intent="training", dtype="float32"
+    ).execute(**operands)
+    torch.testing.assert_close(native.output, reference.output, atol=2e-5, rtol=2e-4)
+    torch.testing.assert_close(
+        native.final_state, reference.final_state, atol=2e-5, rtol=2e-4
+    )
+
+
+@pytest.mark.parametrize("recipe_name", NAME_DEPENDENT_MATRIX_STATE_RECIPES)
+def test_native_matrix_state_declines_underdetermined_recipes(recipe_name):
+    """The native generator declines recipes whose equation the IR under-specifies.
+
+    These additive/no-decay recipes share semantic fields with a plain additive
+    recurrence but compute different equations (GRU nonlinearity, FFT long
+    convolution, second-order correction, and similar). Dispatching them on the
+    spec alone would silently substitute the wrong equation, so the native path
+    must decline until the IR carries those equations explicitly.
+    """
+    torch = _torch()
+    pytest.importorskip("triton")
+    from urm.compiler.unified_mixer import (
+        MixerBackend,
+        _native_matrix_state_supported,
+        compile_mixer,
+    )
+
+    spec = named_mixer_recipe(recipe_name).spec
+    assert not _native_matrix_state_supported(spec), recipe_name
+    with pytest.raises(ValueError):
+        compile_mixer(spec, backend=MixerBackend.NATIVE, intent="training", dtype="float32")
 
 
 def test_native_k2_diagonal_step_discretization_matches_reference_and_backward():

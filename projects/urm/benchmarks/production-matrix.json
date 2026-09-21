@@ -150,9 +150,8 @@
       "family": "K2",
       "operation": "structured_recurrence",
       "architecture": "Matrix-state gated-delta recurrence (Gated DeltaNet-class)",
-      "native_anchor": null,
-      "native_status": "native_generation_gap",
-      "native_gap_reason": "Representational coverage is proven: the K2 IR expresses the matrix-state gated-delta equation and the reference anchor matches the pinned FLA comparator to bf16 tolerance (see docs/validation/representation-coverage.md). The gap is native generation only - the native K2 anchor lowers the diagonal SSM subset, so no native matrix-state kernel is emitted yet. Qualifying this workload requires emitting a native matrix-state lowering, not extending the IR.",
+      "native_anchor": "urm_native_matrix_state_recurrence_v1",
+      "native_status": "candidate_exists",
       "comparator": {
         "source": "fla",
         "repository": "https://github.com/fla-org/flash-linear-attention",

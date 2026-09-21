@@ -8,7 +8,7 @@ establish that URM computes these operations natively. A unified generator
 that merely dispatches would be a thin wrapper - native coverage is what
 distinguishes a generator from a wrapper.
 
-**17 of 74 named recipes compile to a native kernel (22%).** The remaining 57 decline to
+**24 of 74 named recipes compile to a native kernel (32%).** The remaining 50 decline to
 the reference or an upstream adapter.
 
 ## Natively generated (URM computes these)
@@ -20,6 +20,7 @@ unified-generator value proposition.
 | Native generator | Recipes covered | Count |
 |---|---|---|
 | K1 online softmax (`urm_native_k1_online_softmax_v1`) | `cat_attention_core`, `conformer_attention_core`, `dsa_attention_core`, `foveal_attention_core`, `gqa`, `hopfield_attention_core`, `mha`, `mla_attention_core`, `mqa`, `nsa_selected_attention_core`, `pattention_core`, `samba_attention_core`, `sparse_attention_core`, `tpa_attention_core` | 14 |
+| urm_native_matrix_state_recurrence_v1 (`urm_native_matrix_state_recurrence_v1`) | `delta_net`, `gated_delta_net`, `gla`, `hgrn2_ssm_core`, `lightnet_gla_core`, `rodimus_gla_core`, `simple_gla` | 7 |
 | K2 diagonal recurrence (`urm_native_diagonal_recurrence_v1`) | `hgrn_ssm_core`, `mamba1_ssm_core` | 2 |
 | K3 sparse state (`urm_native_sparse_state_mixer_v0`) | `sparse_delta_memory` | 1 |
 
@@ -29,7 +30,7 @@ These recipes compile only through the reference oracle or an upstream
 library adapter. They are the native-generation backlog, grouped here as a
 flat list; the production matrix orders the mandatory subset.
 
-`abc_core`, `atma_gated_delta_decode_core`, `attnres_depth_core`, `based_attention_core`, `bdh_attention_core`, `comba_core`, `delta_net`, `deltaformer_attention_core`, `differential_attention_core`, `foveal_sparse_polar_attention_core`, `fox`, `fwpkm_memory_read_core`, `gated_delta_net`, `gated_delta_product_core`, `gated_oja_core`, `gdn2_core`, `generalized_delta_dplr_core`, `generalized_delta_iplr_core`, `gla`, `gru_core`, `gsa_core`, `h3_ssm_fft_core`, `hgrn2_ssm_core`, `hla_second_order_core`, `hyena_fftconv_core`, `kata_attention_core`, `kda_core`, `lightnet_gla_core`, `lightning_attention_core`, `linear_attention`, `log_linear_attention_core`, `longformer_attention_core`, `m2rnn_core`, `mamba2_ssm_core`, `mamba3_siso_core`, `mesa_net_core`, `moba_selected_attention_core`, `mom_selected_memory_core`, `momentum_delta_core`, `parallax_attention_core`, `path_attention_core`, `pgdn_core`, `pkda_core`, `polar_attention_core`, `rebased_attention_core`, `retention_core`, `rnn_core`, `rodimus_gla_core`, `rwkv4_memory_core`, `rwkv6_memory_core`, `rwkv7_transition_core`, `simple_gla`, `tda_attention_core`, `titans_linear_memory_core`, `ttt_linear_core`, `tucker_attention_core`, `wall_attention_core`.
+`abc_core`, `atma_gated_delta_decode_core`, `attnres_depth_core`, `based_attention_core`, `bdh_attention_core`, `comba_core`, `deltaformer_attention_core`, `differential_attention_core`, `foveal_sparse_polar_attention_core`, `fox`, `fwpkm_memory_read_core`, `gated_delta_product_core`, `gated_oja_core`, `gdn2_core`, `generalized_delta_dplr_core`, `generalized_delta_iplr_core`, `gru_core`, `gsa_core`, `h3_ssm_fft_core`, `hla_second_order_core`, `hyena_fftconv_core`, `kata_attention_core`, `kda_core`, `lightning_attention_core`, `linear_attention`, `log_linear_attention_core`, `longformer_attention_core`, `m2rnn_core`, `mamba2_ssm_core`, `mamba3_siso_core`, `mesa_net_core`, `moba_selected_attention_core`, `mom_selected_memory_core`, `momentum_delta_core`, `parallax_attention_core`, `path_attention_core`, `pgdn_core`, `pkda_core`, `polar_attention_core`, `rebased_attention_core`, `retention_core`, `rnn_core`, `rwkv4_memory_core`, `rwkv6_memory_core`, `rwkv7_transition_core`, `tda_attention_core`, `titans_linear_memory_core`, `ttt_linear_core`, `tucker_attention_core`, `wall_attention_core`.
 
 ## Reading this table
 

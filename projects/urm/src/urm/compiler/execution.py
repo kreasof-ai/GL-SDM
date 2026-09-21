@@ -652,6 +652,12 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
     ),
     ExecutionAnchor(
         kind=AnchorKind.RECURRENT_SCAN,
+        name=NATIVE_MATRIX_STATE_RECURRENCE_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float32"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.RECURRENT_SCAN,
         name=MAMBA_SELECTIVE_SCAN_ANCHOR_NAME,
         backward_verified_dtypes=frozenset({"float32"}),
         supported_visitors=frozenset(),
