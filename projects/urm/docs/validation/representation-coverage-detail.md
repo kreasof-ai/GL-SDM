@@ -8,7 +8,7 @@ is recorded as declined with the precise reason. Once a recipe lowers and
 matches, any later optimization of the canonical K1/K2/K3 kernel lifts it
 automatically - there is no per-architecture re-derivation.
 
-**59 of 74 named recipes lower into a canonical core and match their independent equation.** 0 lower but are not yet verified; 15 decline (under-specified or exotic).
+**61 of 74 named recipes lower into a canonical core and match their independent equation.** 0 lower but are not yet verified; 13 decline (under-specified or exotic).
 
 ## Verified (lower + match independent equation)
 
@@ -17,9 +17,11 @@ automatically - there is no per-architecture re-derivation.
 | `mha` | SOFTMAX | 1.33e-07 | - |
 | `mqa` | SOFTMAX | 1.33e-07 | - |
 | `gqa` | SOFTMAX | 1.33e-07 | - |
+| `wall_attention_core` | SOFTMAX | 9.16e-08 | - |
 | `sparse_attention_core` | SOFTMAX | 1.33e-07 | - |
 | `cat_attention_core` | SOFTMAX | 1.33e-07 | - |
 | `differential_attention_core` | SOFTMAX | 1.89e-07 | - |
+| `tda_attention_core` | SOFTMAX | 9.84e-08 | - |
 | `nsa_selected_attention_core` | SOFTMAX | 1.33e-07 | - |
 | `dsa_attention_core` | SOFTMAX | 1.33e-07 | - |
 | `mla_attention_core` | SOFTMAX | 1.33e-07 | - |
@@ -86,8 +88,6 @@ automatically - there is no per-architecture re-derivation.
 | `polar_attention_core` | SOFTMAX | K1 canonical path does not yet cover polar_attention |
 | `foveal_sparse_polar_attention_core` | SOFTMAX | K1 canonical path does not yet cover sparse_polar_attention |
 | `fox` | SOFTMAX | K1 canonical path does not yet cover forgetting_gated_softmax_attention |
-| `wall_attention_core` | SOFTMAX | K1 canonical path does not yet cover gated_attention |
-| `tda_attention_core` | SOFTMAX | K1 canonical path does not yet cover thresholded_softmax_attention |
 | `moba_selected_attention_core` | SOFTMAX | K1 canonical path does not yet cover block_routed_softmax_attention |
 | `bdh_attention_core` | RECURRENCE | no canonical executor yet for recurrence operator external_opaque |
 | `path_attention_core` | SOFTMAX | K1 canonical path does not yet cover path_transform_attention |

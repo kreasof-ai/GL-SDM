@@ -55,6 +55,8 @@ _COVERED_K1_OPERATIONS = frozenset(
         K1Operation.PROJECTED,
         K1Operation.POSITIONAL,
         K1Operation.POSITIVE_FEATURE,
+        K1Operation.GATED,
+        K1Operation.THRESHOLDED,
     }
 )
 
@@ -272,6 +274,74 @@ def _execute_k1(spec: UnifiedMixerSpec, **operands):
             out = ordinary * (1.0 + correction_mean) - correction_out
             outputs.append(out.transpose(1, 0, 2))
         return {"output": np.stack(outputs, axis=0)}
+
+    if spec.k1_operation is K1Operation.GATED:
+        # Wall decay-weighted attention: scores[t,s] = sum_d q[t,d]*k[s,d] *
+        # exp(prefix[t]-prefix[s]) (a per-position decay), then softmax.
+        query = np.asarray(operands.pop("query"), dtype=np.float64)
+        key = np.asarray(operands.pop("key"), dtype=np.float64)
+        value = np.asarray(operands.pop("value"), dtype=np.float64)
+        log_decay = np.asarray(operands.pop("g"), dtype=np.float64)
+        if operands:
+            raise TypeError(f"unexpected gated K1 operands: {sorted(operands)}")
+        batch, q_len, q_heads, key_dim = query.shape
+        kv_heads = key.shape[2]
+        group = q_heads // kv_heads
+        prefix = np.cumsum(log_decay, axis=1)  # [B,T,H,K]
+        outputs = []
+        for b in range(batch):
+            qb = query[b].transpose(1, 0, 2)  # [Hq,Tq,K]
+            kb = np.repeat(key[b].transpose(1, 0, 2), group, axis=0)
+            vb = np.repeat(value[b].transpose(1, 0, 2), group, axis=0)
+            pb = prefix[b].transpose(1, 2, 0)  # [H,K,T]
+            scale = spec.attention_scale or key_dim ** -0.5
+            # decay[h, t, s] = exp(sum_k prefix[h,k,t] - prefix[h,k,s])
+            decay = np.exp(pb[:, :, :, None] - pb[:, :, None, :])  # [H,K,T,T]
+            # scores[h,t,s] = sum_k q[h,t,k]*k[h,s,k]*decay[h,k,t,s]
+            scores = np.einsum("htk,hsk,hkts->hts", qb, kb, decay) * scale
+            if spec.causal:
+                q_pos = np.arange(q_len)[:, None]
+                k_pos = np.arange(key.shape[1])[None, :]
+                scores = np.where((k_pos <= q_pos)[None], scores, -np.inf)
+            row_max = np.max(scores, axis=-1, keepdims=True)
+            row_max = np.where(np.isfinite(row_max), row_max, 0.0)
+            exp = np.where(np.isfinite(scores), np.exp(scores - row_max), 0.0)
+            denom = exp.sum(axis=-1, keepdims=True)
+            probs = np.divide(exp, denom, out=np.zeros_like(exp), where=denom != 0)
+            outputs.append(np.einsum("hts,hsv->htv", probs, vb).transpose(1, 0, 2))
+        return {"output": np.stack(outputs, axis=0)}
+
+    if spec.k1_operation is K1Operation.THRESHOLDED:
+        # TDA thresholded differential attention: L2-normalized Q/K, thresholded
+        # squared-relu scores (unnormalized), two branches combined by lambda.
+        query_a = np.asarray(operands.pop("query_a"), dtype=np.float64)
+        query_b = np.asarray(operands.pop("query_b"), dtype=np.float64)
+        key_a = np.asarray(operands.pop("key_a"), dtype=np.float64)
+        key_b = np.asarray(operands.pop("key_b"), dtype=np.float64)
+        value = np.asarray(operands.pop("value"), dtype=np.float64)
+        beta = np.asarray(operands.pop("beta"), dtype=np.float64)
+        lambda_weight = np.asarray(operands.pop("lambda_weight"), dtype=np.float64)
+        if operands:
+            raise TypeError(f"unexpected thresholded K1 operands: {sorted(operands)}")
+        batch, sequence, heads, dim = query_a.shape
+
+        def l2norm(x):
+            return x / np.linalg.norm(x, axis=-1, keepdims=True)
+
+        positions = np.arange(1, sequence + 1, dtype=np.float64)
+        threshold = float(beta) * np.sqrt(2.0 * np.log(positions) / dim)
+        causal = np.tril(np.ones((sequence, sequence), dtype=bool))
+
+        def attend(q, kk):
+            qn, kn = l2norm(q), l2norm(kk)
+            scores = np.einsum("bthd,bshd->bhts", qn, kn)
+            scores = np.where(causal[None, None], scores, 0.0)
+            rectified = np.maximum(scores - threshold[None, None, :, None], 0.0)
+            weights = np.square(rectified)
+            return np.einsum("bhts,bshv->bthv", weights, value)
+
+        coefficient = np.clip(float(lambda_weight), 0.0, 1.0)
+        return {"output": attend(query_a, key_a) - coefficient * attend(query_b, key_b)}
 
     if spec.k1_operation is K1Operation.POSITIVE_FEATURE:
         # KATA: grouped SPD positive-feature scores with L1 normalization (not

@@ -79,6 +79,23 @@ def _rng_operands(spec, seed=0):
                 "value": rng.normal(size=(b, t, h, v)),
                 "num_groups": 2,
             }
+        if spec.k1_operation is K1Operation.GATED:
+            return {
+                "query": rng.normal(size=(b, t, h, k)),
+                "key": rng.normal(size=(b, t, h, k)),
+                "value": rng.normal(size=(b, t, h, v)),
+                "g": -rng.uniform(0, 0.3, size=(b, t, h, k)),
+            }
+        if spec.k1_operation is K1Operation.THRESHOLDED:
+            return {
+                "query_a": rng.normal(size=(b, t, h, k)),
+                "query_b": rng.normal(size=(b, t, h, k)),
+                "key_a": rng.normal(size=(b, t, h, k)),
+                "key_b": rng.normal(size=(b, t, h, k)),
+                "value": rng.normal(size=(b, t, h, v)),
+                "beta": np.asarray(0.5),
+                "lambda_weight": np.asarray(0.5),
+            }
         ops = {
             "query": rng.normal(size=(b, t, h, k)),
             "key": rng.normal(size=(b, t, h, k)),

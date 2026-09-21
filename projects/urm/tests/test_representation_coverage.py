@@ -81,10 +81,12 @@ VERIFIED = {
     "simple_gla",
     "sparse_attention_core",
     "sparse_delta_memory",
+    "tda_attention_core",
     "titans_linear_memory_core",
     "tpa_attention_core",
     "ttt_linear_core",
     "tucker_attention_core",
+    "wall_attention_core",
 }
 
 
