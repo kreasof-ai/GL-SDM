@@ -60,27 +60,45 @@ def _decay_factor(g_t):
 
 
 def recurrent(memory, keys, queries, values, beta, log_decay, *, scale=1.0,
-              read_before_update=False, is_delta=True):
+              read_before_update=False, is_delta=True, normalizer=False,
+              epsilon=1e-6):
     """Independent token recurrence returning readings and final memory.
 
     ``is_delta=True`` applies the delta-rule correction ``delta = beta (v - k^T
     Z)``; ``is_delta=False`` is the additive linear update ``M = Z + k v^T``
-    (beta is ignored).
+    (beta is ignored). ``normalizer=True`` tracks a denominator state ``z_t``
+    (the same decay, accumulating the keys) and reads ``y = scale * (q^T M) /
+    max(q^T z, epsilon)`` - the query/key-normalized (linear-attention) form.
+    Returns ``(out, m)`` or ``(out, (m, z))`` when ``normalizer`` is set.
     """
     m, k, q, v, b, g = _inputs(memory, keys, queries, values, beta, log_decay)
     m = m.copy()
+    norm = np.zeros(m.shape[0]) if normalizer else None  # [K] denominator state
     out = np.empty_like(v)
     for t in range(len(v)):
-        z = _decay_factor(g[t]) * m
+        decay = _decay_factor(g[t])
+        z = decay * m
+        if normalizer:
+            norm_decay = decay[:, 0] if decay.ndim == 2 else decay
+            norm = norm_decay * norm
         if read_before_update:
+            denom = (q[t] @ norm) if normalizer else None
             out[t] = scale * (q[t] @ z)
+            if normalizer:
+                out[t] = out[t] / max(denom, epsilon)
         if is_delta:
             delta = b[t] * (v[t] - k[t] @ z)
         else:
             delta = v[t]
         m = z + k[t][:, None] * delta[None, :]
+        if normalizer:
+            norm = norm + k[t]
         if not read_before_update:
             out[t] = scale * (q[t] @ m)
+            if normalizer:
+                out[t] = out[t] / max(q[t] @ norm, epsilon)
+    if normalizer:
+        return out, (m, norm)
     return out, m
 
 

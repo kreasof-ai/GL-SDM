@@ -26,11 +26,14 @@ from urm.oracles.composition import UnderspecifiedComposition, execute_canonical
 # Recipes verified to lower into a canonical core and match their independent
 # equation. Regenerate via `python benchmarks/representation_coverage.py`.
 VERIFIED = {
-    "cat_attention_core", "conformer_attention_core", "delta_net",
-    "dsa_attention_core", "foveal_attention_core", "gated_delta_net", "gla",
-    "gqa", "hgrn2_ssm_core", "hopfield_attention_core", "lightnet_gla_core",
-    "mha", "mla_attention_core", "mom_selected_memory_core", "mqa",
-    "nsa_selected_attention_core", "pattention_core", "rodimus_gla_core",
+    "based_attention_core", "cat_attention_core", "conformer_attention_core",
+    "delta_net", "differential_attention_core", "dsa_attention_core",
+    "foveal_attention_core", "gated_delta_net", "gla", "gqa", "hgrn2_ssm_core",
+    "hgrn_ssm_core", "hopfield_attention_core", "lightnet_gla_core",
+    "lightning_attention_core", "linear_attention", "longformer_attention_core",
+    "mamba1_ssm_core", "mha", "mla_attention_core", "mom_selected_memory_core",
+    "mqa", "nsa_selected_attention_core", "pattention_core",
+    "rebased_attention_core", "retention_core", "rodimus_gla_core",
     "samba_attention_core", "simple_gla", "sparse_attention_core",
     "sparse_delta_memory", "tpa_attention_core",
 }

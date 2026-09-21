@@ -45,19 +45,51 @@ def _rng_operands(spec, seed=0):
     """Build small finite NumPy operands for a canonically representable spec."""
     rng = np.random.default_rng(seed)
     if spec.family is MixerKernelFamily.SOFTMAX:
+        from urm.ir.mixer import K1Operation
+
         b, t, h, k, v = 1, 5, 2, 4, 4
+        if spec.k1_operation is K1Operation.DIFFERENTIAL:
+            return {
+                "query_a": rng.normal(size=(b, t, h, k)),
+                "query_b": rng.normal(size=(b, t, h, k)),
+                "key_a": rng.normal(size=(b, t, h, k)),
+                "key_b": rng.normal(size=(b, t, h, k)),
+                "value": rng.normal(size=(b, t, h, v)),
+                "lambda_weight": rng.uniform(0.1, 0.9, size=(h,)),
+            }
         ops = {
             "query": rng.normal(size=(b, t, h, k)),
             "key": rng.normal(size=(b, t, h, k)),
             "value": rng.normal(size=(b, t, h, v)),
         }
-        if spec.requires_attention_mask:
+        if spec.k1_operation is K1Operation.LOCAL_WINDOW:
+            ops["attention_window"] = 2
+        elif spec.requires_attention_mask:
             # A boolean mask with every query exposing at least one visible key.
             mask = np.ones((b, 1, t, t), dtype=bool)
             mask[..., 0, :] = True
             ops["attention_mask"] = mask
         return ops
     if spec.family is MixerKernelFamily.RECURRENCE:
+        from urm.ir.mixer import RecurrentLayout
+
+        if spec.recurrent_layout is RecurrentLayout.DIAGONAL:
+            b, t, c, n = 1, 6, 4, 2
+            if spec.diagonal_hgrn:
+                # HGRN: state width 1, per-channel decay [B,T,C].
+                return {
+                    "x": rng.normal(size=(b, t, c)),
+                    "log_decay": -rng.uniform(0, 0.4, size=(b, t, c)),
+                }
+            ops = {
+                "x": rng.normal(size=(b, t, c)),
+                "log_decay": -rng.uniform(0, 0.4, size=(b, t, n)),
+            }
+            ops["input_gate"] = rng.uniform(0.1, 1.0, size=(b, t, n))
+            ops["read_gate"] = rng.uniform(0.1, 1.0, size=(b, t, n))
+            if spec.step_size_discretization:
+                ops["step_size"] = rng.uniform(0.1, 1.0, size=(b, t, c))
+            return ops
         b, t, h, k, v = 1, 6, 2, 4, 3
         ops = {
             "query": rng.normal(size=(b, t, h, k)),
@@ -68,7 +100,9 @@ def _rng_operands(spec, seed=0):
 
         if spec.update_rule is StateUpdateRule.DELTA:
             ops["beta"] = rng.uniform(0.1, 0.9, size=(b, t, h))
-        if spec.decay is DecayGranularity.HEAD:
+        if spec.static_head_decay:
+            ops["log_decay"] = -rng.uniform(0, 0.4, size=(h,))
+        elif spec.decay is DecayGranularity.HEAD:
             ops["log_decay"] = -rng.uniform(0, 0.4, size=(b, t, h))
         elif spec.decay is DecayGranularity.KEY_CHANNEL:
             ops["log_decay"] = -rng.uniform(0, 0.4, size=(b, t, h, k))
@@ -105,6 +139,10 @@ def _reference_execute(spec, operands):
     )
     torch_ops = {}
     for k, v in operands.items():
+        # Python scalars (e.g. attention_window) pass through unchanged.
+        if isinstance(v, (int, float, bool)):
+            torch_ops[k] = v
+            continue
         arr = np.asarray(v)
         # Route indices stay integer; everything else is float32.
         if arr.dtype.kind in "iu":
