@@ -8,7 +8,7 @@ is recorded as declined with the precise reason. Once a recipe lowers and
 matches, any later optimization of the canonical K1/K2/K3 kernel lifts it
 automatically - there is no per-architecture re-derivation.
 
-**55 of 74 named recipes lower into a canonical core and match their independent equation.** 0 lower but are not yet verified; 19 decline (under-specified or exotic).
+**57 of 74 named recipes lower into a canonical core and match their independent equation.** 0 lower but are not yet verified; 17 decline (under-specified or exotic).
 
 ## Verified (lower + match independent equation)
 
@@ -58,6 +58,8 @@ automatically - there is no per-architecture re-derivation.
 | `kda_core` | RECURRENCE | 8.26e-07 | 5.53e-07 |
 | `generalized_delta_iplr_core` | RECURRENCE | 4.08e-07 | 5.03e-07 |
 | `generalized_delta_dplr_core` | RECURRENCE | 1.71e-07 | 1.28e-07 |
+| `rwkv4_memory_core` | RECURRENCE | 7.46e-08 | 1.42e-07 |
+| `rwkv6_memory_core` | RECURRENCE | 1.68e-07 | 1.89e-07 |
 | `momentum_delta_core` | RECURRENCE | 5.61e-08 | 1.37e-07 |
 | `mesa_net_core` | RECURRENCE | 2.80e-07 | 2.86e-07 |
 | `rwkv7_transition_core` | RECURRENCE | 3.42e-07 | 1.28e-07 |
@@ -94,7 +96,5 @@ automatically - there is no per-architecture re-derivation.
 | `pgdn_core` | RECURRENCE | exotic composition flags: ['preconditioned_gated_delta'] |
 | `pkda_core` | RECURRENCE | exotic composition flags: ['preconditioned_kda'] |
 | `gated_delta_product_core` | RECURRENCE | exotic composition flags: ['gated_delta_product'] |
-| `rwkv4_memory_core` | RECURRENCE | exotic composition flags: ['rwkv4_memory'] |
-| `rwkv6_memory_core` | RECURRENCE | exotic composition flags: ['rwkv6_memory'] |
 | `mamba2_ssm_core` | RECURRENCE | exotic composition flags: ['mamba2_ssm'] |
 | `log_linear_attention_core` | RECURRENCE | exotic composition flags: ['log_linear_attention'] |

@@ -72,6 +72,8 @@ VERIFIED = {
     "retention_core",
     "rnn_core",
     "rodimus_gla_core",
+    "rwkv4_memory_core",
+    "rwkv6_memory_core",
     "rwkv7_transition_core",
     "samba_attention_core",
     "simple_gla",

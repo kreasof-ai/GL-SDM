@@ -184,6 +184,24 @@ def _rng_operands(spec, seed=0):
                 "eta": rng.uniform(0.01, 0.3, size=(b, t, h, 1)),
                 "chunk_size": 4,
             }
+        if op is RecurrenceOperator.RWKV6_BONUS_CORRECTED:
+            b, t, h, k, v = 1, 6, 2, 4, 3
+            return {
+                "query": rng.normal(size=(b, t, h, k)),
+                "key": rng.normal(size=(b, t, h, k)),
+                "value": rng.normal(size=(b, t, h, v)),
+                "log_decay": -rng.uniform(0, 0.4, size=(b, t, h, k)),
+                "bonus": rng.normal(size=(h, k)),
+            }
+        if op is RecurrenceOperator.RWKV4_SCALAR_STATE:
+            b, t, c = 1, 6, 4
+            return {
+                "w": -rng.uniform(0.1, 1.0, size=(c,)),
+                "u": rng.normal(size=(c,)),
+                "k": rng.normal(size=(b, t, c)),
+                "v": rng.normal(size=(b, t, c)),
+                "state": rng.normal(size=(b, 3, 1, c)) * 0.1,
+            }
         if op is RecurrenceOperator.SLOT_ATTENTION_TWO_STAGE:
             b, t, hk, hq, k, s, v = 1, 6, 1, 2, 4, 3, 3  # group_size = hq//hk = 2
             base = {

@@ -458,6 +458,17 @@ def _execute_k2_operator(spec: UnifiedMixerSpec, **operands):
             initial_state=operands.pop("initial_state", None),
             scale=spec.read_scale,
         )
+    elif op is RecurrenceOperator.RWKV4_SCALAR_STATE:
+        out, state = nl.rwkv4_scalar_state(
+            operands.pop("w"), operands.pop("u"), operands.pop("k"),
+            operands.pop("v"), operands.pop("state"),
+        )
+    elif op is RecurrenceOperator.RWKV6_BONUS_CORRECTED:
+        out, state = nl.rwkv6_bonus_corrected(
+            operands.pop("query"), operands.pop("key"), operands.pop("value"),
+            operands.pop("log_decay"), operands.pop("bonus"),
+            initial_state=operands.pop("initial_state", None),
+        )
     elif op is RecurrenceOperator.SLOT_ATTENTION_TWO_STAGE:
         query = operands.pop("query")
         key = operands.pop("key")

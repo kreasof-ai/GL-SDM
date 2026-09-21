@@ -64,6 +64,8 @@ class RecurrenceOperator(StrEnum):
     MOMENTUM_DELTA_STATE = "momentum_delta_two_matrix_state"
     GATED_OJA_VALUE_CHANNEL = "gated_oja_value_channel"
     SLOT_ATTENTION_TWO_STAGE = "slot_attention_two_stage"
+    RWKV4_SCALAR_STATE = "rwkv4_scalar_state"
+    RWKV6_BONUS_CORRECTED = "rwkv6_bonus_corrected"
     TRAPEZOIDAL_SSM = "trapezoidal_ssm_rotary"
     REGULARIZED_SOLVE = "regularized_solve_state"
     SECOND_ORDER_CUMSUM = "second_order_cumsum"

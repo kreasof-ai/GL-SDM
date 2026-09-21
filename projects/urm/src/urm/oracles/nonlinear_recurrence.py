@@ -479,6 +479,81 @@ def slot_attention_two_stage(query, key, value, slot_weights, log_decay,
     return output, (final_key_state, final_value_state)
 
 
+def rwkv4_scalar_state(w, u, key, value, state_input):
+    """RWKV-4 scalar-state recurrence with log-space (exp-space) numerics.
+
+    State per channel is ``(alpha, denominator_state, log_scale)``; the recurrence
+    accumulates in a rescaled exp space for numerical stability. ``w``/``u`` are
+    ``[C]`` decay/bonus; ``key``/``value`` are ``[B,T,C]``; ``state_input`` is
+    ``[B,3,1,C]`` (alpha, denominator, log_scale). Returns (output, final_state)
+    with final_state ``[B,3,1,C]``.
+    """
+    w = np.asarray(w, dtype=np.float64)
+    u = np.asarray(u, dtype=np.float64)
+    key = np.asarray(key, dtype=np.float64)
+    value = np.asarray(value, dtype=np.float64)
+    state_input = np.asarray(state_input, dtype=np.float64)
+    batch, sequence, channels = key.shape
+    decay = -np.exp(w)
+    bonus = u
+    alpha = state_input[:, 0, 0, :].copy()
+    denominator_state = state_input[:, 1, 0, :].copy()
+    log_scale = state_input[:, 2, 0, :].copy()
+    outputs = []
+    for token in range(sequence):
+        key_t = key[:, token]
+        value_t = value[:, token]
+        bonus_key = bonus + key_t
+        read_scale = np.maximum(log_scale, bonus_key)
+        read_state_scale = np.exp(log_scale - read_scale)
+        read_value_scale = np.exp(bonus_key - read_scale)
+        output_t = (read_state_scale * alpha + read_value_scale * value_t) / (
+            read_state_scale * denominator_state + read_value_scale
+        )
+        outputs.append(output_t)
+        decayed_scale = decay + log_scale
+        log_scale_next = np.maximum(decayed_scale, key_t)
+        old_scale = np.exp(decayed_scale - log_scale_next)
+        new_scale = np.exp(key_t - log_scale_next)
+        alpha = old_scale * alpha + new_scale * value_t
+        denominator_state = old_scale * denominator_state + new_scale
+        log_scale = log_scale_next
+    final_state = np.stack((alpha, denominator_state, log_scale), axis=1)[:, :, None, :]
+    return np.stack(outputs, axis=1), final_state
+
+
+def rwkv6_bonus_corrected(query, key, value, log_decay, bonus, initial_state=None):
+    """RWKV-6 bonus-corrected additive matrix-state recurrence.
+
+    Per token: ``decayed = state * exp(log_decay)`` (key-channel); the read uses
+    ``state + (k*bonus)⊗v`` (a bonus correction on the pre-update state); the
+    state updates to ``decayed + k⊗v``. query/key [B,T,H,K]; value [B,T,H,V];
+    log_decay [B,T,H,K]; bonus [H,K]. Returns (output, state).
+    """
+    q = np.asarray(query, dtype=np.float64)
+    k = np.asarray(key, dtype=np.float64)
+    v = np.asarray(value, dtype=np.float64)
+    g = np.asarray(log_decay, dtype=np.float64)
+    bonus = np.asarray(bonus, dtype=np.float64)
+    batch, sequence, heads, key_dim = q.shape
+    value_dim = v.shape[-1]
+    state = (
+        np.zeros((batch, heads, key_dim, value_dim))
+        if initial_state is None
+        else np.asarray(initial_state, dtype=np.float64).copy()
+    )
+    scale = key_dim ** -0.5
+    outputs = []
+    for token in range(sequence):
+        decay = np.exp(g[:, token])
+        decayed_state = state * decay[..., None]
+        bonus_write = (k[:, token] * bonus[None])[..., None] * v[:, token][:, :, None, :]
+        read_state = state + bonus_write
+        outputs.append(np.einsum("bhk,bhkv->bhv", q[:, token] * scale, read_state))
+        state = decayed_state + k[:, token][..., None] * v[:, token][:, :, None, :]
+    return np.stack(outputs, axis=1), state
+
+
 def regularized_solve(query, key, value, log_decay, beta, lamb,
                       h_kk_init=None, h_kv_init=None):
     """MesaNet dual covariance-state recurrence with a per-token regularized solve.
