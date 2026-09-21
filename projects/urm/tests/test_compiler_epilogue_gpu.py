@@ -1,11 +1,11 @@
-"""GPU tests for the experimental fused row-scale routed-reduction anchor.
+"""GPU tests for the fused row-scale routed-reduction backend.
 
-Proves the CODA-inspired compiler-generated capability: forward equivalence,
+Proves the CODA-inspired compiler-selected capability: forward equivalence,
 complete backward (weights, values AND row scale), property coverage on
 degenerate and non-power-of-two shapes, repeated routes, zero scales, and dtype
 envelopes.
-Routed-reduction v1 remains untouched; these tests exercise only the
-experimental anchor under urm/compiler/anchors/.
+Routed-reduction v1 remains untouched; these tests exercise only the fused
+row-scale backend under urm/backends/triton/softmax/.
 """
 
 from __future__ import annotations
@@ -17,10 +17,10 @@ pytest.importorskip("triton")
 
 if not torch.cuda.is_available():
     pytest.skip(
-        "CUDA required for the fused-epilogue prototype tests", allow_module_level=True
+        "CUDA required for the fused-epilogue backend tests", allow_module_level=True
     )
 
-from urm.compiler.anchors import (
+from urm.backends.triton.softmax.routed_scale_epilogue import (
     ROUTED_REDUCTION_ROW_SCALE_EPILOGUE_VERSION,
     routed_reduce_row_scale,
 )
@@ -165,7 +165,9 @@ def test_deterministic_repeatable_forward() -> None:
 
 
 def test_metadata_reports_epilogue_capability() -> None:
-    from urm.compiler.anchors import routed_reduce_row_scale_metadata
+    from urm.backends.triton.softmax.routed_scale_epilogue import (
+        routed_reduce_row_scale_metadata,
+    )
 
     meta = routed_reduce_row_scale_metadata(route_width=8, value_dim=512)
     assert meta["epilogue"] == "row_scale"

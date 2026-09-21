@@ -174,7 +174,7 @@ def run_case(
 ) -> dict[str, object]:
     import torch
 
-    from urm.compiler.anchors import routed_reduce_row_scale
+    from urm.backends.triton.softmax.routed_scale_epilogue import routed_reduce_row_scale
     from urm.backends.triton.softmax.routed_reduce import routed_reduce
 
     indices, weights, values, scale = make_inputs(case)
@@ -244,7 +244,7 @@ def run_case(
 def correctness_by_dtype() -> dict[str, object]:
     import torch
 
-    from urm.compiler.anchors import routed_reduce_row_scale
+    from urm.backends.triton.softmax.routed_scale_epilogue import routed_reduce_row_scale
 
     report: dict[str, object] = {}
     for dtype_name, dtype in (
@@ -344,7 +344,7 @@ def evaluate_fullrow_variant() -> dict[str, object]:
     import torch
     import triton
 
-    from urm.compiler.anchors.routed_reduction_epilogue import (
+    from urm.backends.triton.softmax.routed_scale_epilogue import (
         _forward_launch,
         _rrs_forward_kernel,
     )

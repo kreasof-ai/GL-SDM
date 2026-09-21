@@ -1,16 +1,19 @@
-"""Executable compiler-produced native Sparse Memory plans."""
+"""Runtime binding of compiled Sparse Memory plans to their native backend.
+
+The compiler produces a validated :class:`~urm.compiler.sparse_memory_plan.SparseMemoryPlan`;
+this module owns the executable binding: it constructs the native GPU backend,
+checks the serialized schedule against the backend's actual launch schedule,
+and exposes the bound executable. Importing the GPU backend is deferred until a
+plan is compiled, so importing this module stays dependency-light.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from urm.compiler.execution import NATIVE_SPARSE_MEMORY_ANCHOR_NAME
-from urm.compiler.planner import CompilationIntent, CompilationResult, UrmCompiler
-from urm.compiler.semantic import (
-    SDMExecutionMode,
-    SparseMemoryMixerSpec,
-    sparse_delta_memory_program,
-)
+from urm.compiler.planner import CompilationResult, UrmCompiler
+from urm.compiler.semantic import SparseMemoryMixerSpec
+from urm.compiler.sparse_memory_plan import plan_sparse_memory
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,44 +68,7 @@ def compile_sparse_memory_plan(
     compiler: UrmCompiler | None = None,
 ) -> CompiledSparseMemoryPlan:
     """Compile, verify, and bind the exact native Sparse Memory schedule."""
-    program = sparse_delta_memory_program(
-        name="compiled_sparse_memory",
-        parallel=spec.parallel,
-        sequence=spec.sequence,
-        slots_per_partition=spec.slots_per_partition,
-        value_dim=spec.value_dim,
-        writes=spec.writes,
-        reads=spec.reads,
-        dtype=spec.dtype,
-        mode=spec.mode,
-        operation=spec.operation,
-        read_timing=spec.read_timing,
-    )
-    intent = (
-        CompilationIntent.TRAINING
-        if spec.mode is SDMExecutionMode.TRAINING
-        else CompilationIntent.INFERENCE
-    )
-    compilation = (compiler or UrmCompiler()).compile(program, intent=intent)
-    dispatch = [
-        step for step in compilation.plan.steps if step.kind == "anchor_dispatch"
-    ]
-    if len(dispatch) != 1 or dispatch[0].anchor != NATIVE_SPARSE_MEMORY_ANCHOR_NAME:
-        selected = [step.anchor for step in dispatch]
-        raise RuntimeError(
-            "compiler did not produce the native Sparse Memory executable: "
-            f"selected={selected}"
-        )
-    config = dict(dispatch[0].launch_config or {})
-    required = {
-        "schedule_family": "native_route_then_partition_scan",
-        "route_materialization": "explicit_logical_outputs",
-        "fusion": "none",
-    }
-    if any(config.get(key) != value for key, value in required.items()):
-        raise RuntimeError(
-            f"compiler emitted incompatible Sparse Memory plan: {config}"
-        )
+    plan = plan_sparse_memory(spec, compiler=compiler)
 
     from urm.backends.triton.sparse_state.memory import TritonSparseMemoryBackend
 
@@ -130,16 +96,16 @@ def compile_sparse_memory_plan(
         "route_num_stages": read_schedule["num_stages"],
     }
     mismatches = {
-        key: {"serialized": config.get(key), "runtime": value}
+        key: {"serialized": plan.launch_config.get(key), "runtime": value}
         for key, value in expected.items()
-        if config.get(key) != value
+        if plan.launch_config.get(key) != value
     }
     if mismatches:
         raise RuntimeError(
             "serialized Sparse Memory schedule does not match production launch: "
             f"{mismatches}"
         )
-    return CompiledSparseMemoryPlan(compilation, backend, config)
+    return CompiledSparseMemoryPlan(plan.compilation, backend, plan.launch_config)
 
 
 __all__ = ["CompiledSparseMemoryPlan", "compile_sparse_memory_plan"]

@@ -1,6 +1,7 @@
-"""Experimental fused row-scale epilogue for routed weighted reduction.
+"""Triton fused row-scale epilogue backend for routed weighted reduction.
 
-Semantic expression (after the verified rewrite
+Semantic contract (the K1 routed reduction composed with a per-row scale,
+produced by the verified rewrite
 ``fold_row_scale_into_routed_reduction_epilogue``):
 
     output[q, d] = row_scale[q] * sum_k weights[q, k] * values[indices[q, k], d]
@@ -11,8 +12,10 @@ is never materialized as an externally visible tensor.
 
 Contract notes:
 
-- v1 is untouched: this module is a separate experimental anchor selected only
-  when the planner requests the typed ``FINAL_SCALE_CONVERT`` visitor.
+- This is the qualified GPU implementation of the fused row-scale routed
+  reduction. The plain v1 reduction lives in
+  :mod:`urm.backends.triton.softmax.routed_reduce`; this backend is selected
+  only when the planner requests the typed ``FINAL_SCALE_CONVERT`` visitor.
 - Forward equivalence is proven against explicit references in tests.
 - Backward covers ALL inputs - weights, values AND row_scale. The row-scale
   gradient needs un-scaled tiles, which are recomputed here (per the rewrite's
@@ -20,10 +23,16 @@ Contract notes:
 - Accumulation stays fp32; outputs and gradients cast to input dtypes.
 
 Schedule ownership: :class:`RoutedEpilogueLaunchConfig` is the SINGLE source
-of truth for this anchor's execution configuration. Every field is honored by
-the launchers below - the solver may only select fields that visibly reach
-the Triton launch. ``benchmarks/epilogue_schedules.py`` calls these exact
-implementations; there is no second set of kernels.
+of truth for this backend's execution configuration. Every field is honored by
+the launchers below - the compiler's solver may only select fields that
+visibly reach the Triton launch. ``benchmarks/epilogue_schedules.py`` calls
+these exact implementations; there is no second set of kernels.
+
+Layering note: this backend reads the compiler's *schedule-space descriptions*
+(``urm.compiler.schedule_space`` constants/enums and ``urm.compiler.search``
+probe types) when validating a launch config or building a compile probe. The
+compiler never imports this module; execution stays behind the backend
+boundary.
 """
 
 from __future__ import annotations

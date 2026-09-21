@@ -21,7 +21,7 @@ if not torch.cuda.is_available():
         "CUDA required for compiler->kernel launch integration", allow_module_level=True
     )
 
-from urm.compiler.anchors.routed_reduction_epilogue import (
+from urm.backends.triton.softmax.routed_scale_epilogue import (
     RoutedEpilogueLaunchConfig,
     execute_plan_step,
     make_triton_compile_probe,

@@ -742,7 +742,7 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
         kind=AnchorKind.ROUTED_REDUCTION,
         name="routed_reduction_v1",
         # The frozen v1 kernel has no epilogue capability: a requested row-scale
-        # epilogue must route to the experimental anchor instead.
+        # epilogue must route to the fused row-scale backend instead.
         backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
         supported_visitors=frozenset({VisitorKind.SIDE_OUTPUT}),
         consumes_launch_config=False,
@@ -751,13 +751,12 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
     ExecutionAnchor(
         kind=AnchorKind.ROUTED_REDUCTION,
         name="routed_reduction_row_scale_epilogue_v0",
-        # Compiler-generated fused-epilogue capability from the validated tranche.
-        # Backward covers weights, values AND row scale via tile recomputation;
-        # certification evidence lives in the rewrite contract and in
-        # tests/test_compiler_epilogue_gpu.py. It becomes fully trusted only
-        # while its differential and performance gates hold; v1 remains the
+        # Qualified fused-epilogue routed-reduction backend. Backward covers
+        # weights, values AND row scale via tile recomputation; certification
+        # evidence lives in the rewrite contract and in
+        # tests/test_compiler_epilogue_gpu.py. The GPU implementation lives in
+        # backends/triton/softmax/routed_scale_epilogue.py; v1 remains the
         # default without visitors.
-        experimental=True,
         result_locality=LocalityConstraint(min=Locality.TILE, max=Locality.DEVICE),
         backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
         honored_obligations=frozenset({"recompute_backward"}),

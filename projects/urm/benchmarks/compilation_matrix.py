@@ -233,7 +233,7 @@ def main() -> None:
             raise RuntimeError(
                 "Probe mode 'required' failed: CUDA is unavailable on this host"
             )
-        from urm.compiler.anchors.routed_reduction_epilogue import (
+        from urm.backends.triton.softmax.routed_scale_epilogue import (
             make_triton_compile_probe,
         )
 
@@ -245,7 +245,7 @@ def main() -> None:
             import triton  # noqa: F401
 
             if torch.cuda.is_available():
-                from urm.compiler.anchors.routed_reduction_epilogue import (
+                from urm.backends.triton.softmax.routed_scale_epilogue import (
                     make_triton_compile_probe,
                 )
 

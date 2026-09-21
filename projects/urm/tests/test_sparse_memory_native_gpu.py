@@ -20,7 +20,7 @@ from urm.backends.triton.sparse_state.memory import TritonSparseMemoryBackend
 from urm.backends.triton.sparse_state.route_backend import CertifiedSparseRouteScores
 from urm.backends.triton.sparse_state.backend import SparseState
 from urm.backends.pytorch.sparse_state import torch_sparse_state_mixer
-from urm.compiler.anchors.sparse_memory import compile_sparse_memory_plan
+from urm.runtime.sparse_memory import compile_sparse_memory_plan
 from urm.compiler.semantic import (
     DType,
     SDMExecutionMode,

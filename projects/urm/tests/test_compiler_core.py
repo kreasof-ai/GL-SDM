@@ -416,7 +416,9 @@ def test_anchor_selection_prefers_v1_and_declines_without_epilogue_anchor() -> N
     )
     assert fused.ok and fused.anchor is not None
     assert fused.anchor.name == "routed_reduction_row_scale_epilogue_v0"
-    assert fused.anchor.experimental
+    # The fused row-scale backend is a qualified production anchor, not an
+    # experimental registration.
+    assert not fused.anchor.experimental
 
     # An unregistered visitor kind is declined explicitly, never fudged.
     exotic = (

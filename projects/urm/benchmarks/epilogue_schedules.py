@@ -1,10 +1,10 @@
-"""Schedule-parameterized launches backed by the PRODUCTION anchor.
+"""Schedule-parameterized launches backed by the production backend.
 
 This module is a thin adapter over
-``src/urm/compiler/anchors/routed_reduction_epilogue.py``. It exists so the
+``src/urm/backends/triton/softmax/routed_scale_epilogue.py``. It exists so the
 benchmark grid can address kernels by :class:`SchedulePoint`; the kernels
 themselves live only in the production source tree, so a measured schedule
-can never disagree with what the compiled anchor actually executes.
+can never disagree with what the compiled backend actually executes.
 """
 
 from __future__ import annotations
@@ -13,14 +13,14 @@ from collections.abc import Mapping
 
 import torch
 
-from urm.compiler.anchors.routed_reduction_epilogue import (
+from urm.backends.triton.softmax.routed_scale_epilogue import (
     RoutedEpilogueLaunchConfig,
     execute_plan_step,
 )
-from urm.compiler.anchors.routed_reduction_epilogue import (
+from urm.backends.triton.softmax.routed_scale_epilogue import (
     launch_backward as _production_backward,
 )
-from urm.compiler.anchors.routed_reduction_epilogue import (
+from urm.backends.triton.softmax.routed_scale_epilogue import (
     launch_forward as _production_forward,
 )
 
@@ -80,7 +80,9 @@ def backward_launch(point, indices, weights, values, row_scale, grad_output):
 
 def compile_feedback_for(handle) -> dict[str, int | None]:
     """Best-effort register/shared-memory metadata from a compiled kernel."""
-    from urm.compiler.anchors.routed_reduction_epilogue import _extract_resource_usage
+    from urm.backends.triton.softmax.routed_scale_epilogue import (
+        _extract_resource_usage,
+    )
 
     kres = _extract_resource_usage("kernel", handle)
     return {

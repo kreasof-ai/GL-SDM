@@ -248,7 +248,7 @@ def _make_bundle(case, torch):
         CertifiedSparseStateRoutes,
         SparseState,
     )
-    from urm.compiler.anchors.sparse_memory import compile_sparse_memory_plan
+    from urm.runtime.sparse_memory import compile_sparse_memory_plan
     from urm.compiler.semantic import (
         DType,
         SDMExecutionMode,
