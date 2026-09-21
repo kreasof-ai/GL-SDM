@@ -259,6 +259,88 @@ def momentum_inner_state(query, key, value, w, b, theta, alpha, eta,
     return np.stack(outputs, axis=1), memory
 
 
+def trapezoidal_ssm(query, key, value, adt, dt, trap, query_bias, key_bias,
+                    angles, d_skip=None, gate=None, initial_states=None):
+    """Mamba-3 SISO rotary angle accumulator with a trapezoidal four-state SSM.
+
+    State: (angle_state, ssm_state, key_state, value_state). Per token the rotary
+    angle integrates tanh(angles)*pi*dt (wrapped to [0,2pi)), Q/K are rotated, and
+    the SSM state takes a trapezoidal (previous + current K/V) update with
+    continuous-time decay exp(adt). query/key [B,T,Hq,K] (K even); value
+    [B,T,Hv,V]; adt/dt/trap [B,Hv,T]; query_bias/key_bias [Hv,K]; angles
+    [B,T,Hv,A]. Returns (output, (angle, ssm, key, value)).
+    """
+    q = np.asarray(query, dtype=np.float64)
+    k = np.asarray(key, dtype=np.float64)
+    v = np.asarray(value, dtype=np.float64)
+    adt = np.asarray(adt, dtype=np.float64)
+    dt = np.asarray(dt, dtype=np.float64)
+    trap = np.asarray(trap, dtype=np.float64)
+    query_bias = np.asarray(query_bias, dtype=np.float64)
+    key_bias = np.asarray(key_bias, dtype=np.float64)
+    angles = np.asarray(angles, dtype=np.float64)
+    batch, sequence, query_heads, key_dim = q.shape
+    value_heads, value_dim = v.shape[2], v.shape[3]
+    angle_dim = angles.shape[-1]
+    if query_heads != value_heads:
+        repeat = value_heads // query_heads
+        q = np.repeat(q, repeat, axis=2)
+        k = np.repeat(k, repeat, axis=2)
+    if initial_states is None:
+        angle_state = np.zeros((batch, value_heads, angle_dim))
+        ssm_state = np.zeros((batch, value_heads, value_dim, key_dim))
+        key_state = np.zeros((batch, value_heads, key_dim))
+        value_state = np.zeros((batch, value_heads, value_dim))
+    else:
+        angle_state, ssm_state, key_state, value_state = (
+            np.asarray(x, dtype=np.float64).copy() for x in initial_states
+        )
+
+    def rotary(tensor, cosine, sine):
+        paired = tensor.reshape(batch, value_heads, key_dim // 2, 2)
+        first, second = paired[..., 0], paired[..., 1]
+        if cosine.shape[-1] < key_dim // 2:
+            pad = key_dim // 2 - cosine.shape[-1]
+            cosine = np.pad(cosine, ((0, 0),) * (cosine.ndim - 1) + ((0, pad),), constant_values=1.0)
+            sine = np.pad(sine, ((0, 0),) * (sine.ndim - 1) + ((0, pad),), constant_values=0.0)
+        return np.stack(
+            (first * cosine - second * sine, first * sine + second * cosine), axis=-1
+        ).reshape(batch, value_heads, key_dim)
+
+    def sigmoid(x):
+        return 1.0 / (1.0 + np.exp(-x))
+
+    outputs = []
+    for token in range(sequence):
+        angle_state = angle_state + (
+            np.tanh(angles[:, token]) * np.pi
+        ) * dt[:, :, token][..., None]
+        angle_state = angle_state - (2.0 * np.pi) * np.floor(angle_state / (2.0 * np.pi))
+        cosine, sine = np.cos(angle_state), np.sin(angle_state)
+        q_t = rotary(q[:, token] + query_bias[None], cosine, sine)
+        k_t = rotary(k[:, token] + key_bias[None], cosine, sine)
+        v_t = v[:, token]
+        trap_t = sigmoid(trap[:, :, token])
+        dt_t = dt[:, :, token]
+        alpha = np.exp(adt[:, :, token])
+        beta = (1.0 - trap_t) * dt_t * alpha
+        gamma = trap_t * dt_t
+        ssm_state = (
+            alpha[..., None, None] * ssm_state
+            + beta[..., None, None] * (key_state[..., None, :] * value_state[..., None])
+            + gamma[..., None, None] * (k_t[..., None, :] * v_t[..., None])
+        )
+        output = np.einsum("bhvd,bhd->bhv", ssm_state, q_t)
+        if d_skip is not None:
+            output = output + np.asarray(d_skip, dtype=np.float64)[None, :, None] * v_t
+        if gate is not None:
+            g = np.asarray(gate, dtype=np.float64)[:, token]
+            output = output * (g * sigmoid(g))  # silu
+        outputs.append(output)
+        key_state, value_state = k_t, v_t
+    return np.stack(outputs, axis=1), (angle_state, ssm_state, key_state, value_state)
+
+
 def regularized_solve(query, key, value, log_decay, beta, lamb,
                       h_kk_init=None, h_kv_init=None):
     """MesaNet dual covariance-state recurrence with a per-token regularized solve.

@@ -184,6 +184,19 @@ def _rng_operands(spec, seed=0):
                 "eta": rng.uniform(0.01, 0.3, size=(b, t, h, 1)),
                 "chunk_size": 4,
             }
+        if op is RecurrenceOperator.TRAPEZOIDAL_SSM:
+            b, t, h, kd, vd, a = 1, 6, 2, 4, 3, 2  # K even, 2*A <= K
+            return {
+                "query": rng.normal(size=(b, t, h, kd)),
+                "key": rng.normal(size=(b, t, h, kd)),
+                "value": rng.normal(size=(b, t, h, vd)),
+                "adt": -rng.uniform(0, 0.5, size=(b, h, t)),
+                "dt": rng.uniform(0.01, 0.5, size=(b, h, t)),
+                "trap": rng.normal(size=(b, h, t)),
+                "query_bias": rng.normal(size=(h, kd)),
+                "key_bias": rng.normal(size=(h, kd)),
+                "angles": rng.normal(size=(b, t, h, a)),
+            }
         if spec.recurrent_layout is RecurrentLayout.DIAGONAL:
             b, t, c, n = 1, 6, 4, 2
             if spec.diagonal_hgrn:

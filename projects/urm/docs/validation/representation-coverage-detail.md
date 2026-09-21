@@ -8,7 +8,7 @@ is recorded as declined with the precise reason. Once a recipe lowers and
 matches, any later optimization of the canonical K1/K2/K3 kernel lifts it
 automatically - there is no per-architecture re-derivation.
 
-**46 of 74 named recipes lower into a canonical core and match their independent equation.** 0 lower but are not yet verified; 28 decline (under-specified or exotic).
+**47 of 74 named recipes lower into a canonical core and match their independent equation.** 0 lower but are not yet verified; 27 decline (under-specified or exotic).
 
 ## Verified (lower + match independent equation)
 
@@ -54,6 +54,7 @@ automatically - there is no per-architecture re-derivation.
 | `kda_core` | RECURRENCE | 8.26e-07 | 5.53e-07 |
 | `mesa_net_core` | RECURRENCE | 2.80e-07 | 2.86e-07 |
 | `mamba1_ssm_core` | RECURRENCE | 9.02e-08 | 7.27e-08 |
+| `mamba3_siso_core` | RECURRENCE | 2.07e-07 | 4.36e-07 |
 | `titans_linear_memory_core` | RECURRENCE | 1.18e-04 | 2.95e-05 |
 | `ttt_linear_core` | RECURRENCE | 2.14e-04 | 1.29e-04 |
 | `rnn_core` | RECURRENCE | 5.77e-08 | 2.61e-08 |
@@ -96,5 +97,4 @@ automatically - there is no per-architecture re-derivation.
 | `momentum_delta_core` | RECURRENCE | exotic composition flags: ['momentum_delta'] |
 | `rwkv7_transition_core` | RECURRENCE | only pointwise decay transitions are canonical |
 | `mamba2_ssm_core` | RECURRENCE | exotic composition flags: ['mamba2_ssm'] |
-| `mamba3_siso_core` | RECURRENCE | no canonical executor yet for recurrence operator trapezoidal_ssm_rotary |
 | `log_linear_attention_core` | RECURRENCE | exotic composition flags: ['log_linear_attention'] |

@@ -52,6 +52,7 @@ VERIFIED = {
     "longformer_attention_core",
     "m2rnn_core",
     "mamba1_ssm_core",
+    "mamba3_siso_core",
     "mesa_net_core",
     "mha",
     "mla_attention_core",

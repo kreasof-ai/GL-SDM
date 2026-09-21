@@ -425,6 +425,14 @@ def _execute_k2_operator(spec: UnifiedMixerSpec, **operands):
             chunk_size=int(operands.pop("chunk_size", 16)),
             eps=float(operands.pop("eps", 1e-6)),
         )
+    elif op is RecurrenceOperator.TRAPEZOIDAL_SSM:
+        out, state = nl.trapezoidal_ssm(
+            operands.pop("query"), operands.pop("key"), operands.pop("value"),
+            operands.pop("adt"), operands.pop("dt"), operands.pop("trap"),
+            operands.pop("query_bias"), operands.pop("key_bias"), operands.pop("angles"),
+            d_skip=operands.pop("d_skip", None), gate=operands.pop("gate", None),
+            initial_states=operands.pop("initial_states", None),
+        )
     else:
         raise UnderspecifiedComposition(
             f"no canonical executor yet for recurrence operator {op.value}"
