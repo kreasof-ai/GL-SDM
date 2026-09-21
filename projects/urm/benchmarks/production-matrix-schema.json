@@ -64,6 +64,9 @@
           ]
         },
         "architecture": { "type": "string", "minLength": 1 },
+        "native_anchor": { "type": ["string", "null"] },
+        "native_status": { "enum": ["candidate_exists", "native_generation_gap"] },
+        "native_gap_reason": { "type": "string", "minLength": 1 },
         "comparator": {
           "type": "object",
           "required": ["source", "repository", "revision", "callable"],

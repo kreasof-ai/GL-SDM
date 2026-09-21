@@ -16,6 +16,8 @@
       "family": "K1",
       "operation": "normalized_routed_reduction",
       "architecture": "Transformer MHA",
+      "native_anchor": "urm_native_k1_online_softmax_v1",
+      "native_status": "candidate_exists",
       "comparator": {
         "source": "flash",
         "repository": "https://github.com/Dao-AILab/flash-attention",
@@ -48,6 +50,8 @@
       "family": "K1",
       "operation": "normalized_routed_reduction",
       "architecture": "Transformer GQA",
+      "native_anchor": "urm_native_k1_online_softmax_v1",
+      "native_status": "candidate_exists",
       "comparator": {
         "source": "flash",
         "repository": "https://github.com/Dao-AILab/flash-attention",
@@ -79,6 +83,8 @@
       "family": "K1",
       "operation": "normalized_routed_reduction",
       "architecture": "Transformer MHA (composed masked variant)",
+      "native_anchor": "urm_native_k1_online_softmax_v1",
+      "native_status": "candidate_exists",
       "comparator": {
         "source": "flash",
         "repository": "https://github.com/Dao-AILab/flash-attention",
@@ -108,13 +114,15 @@
       "id": "k2-diagonal-recurrence",
       "family": "K2",
       "operation": "structured_recurrence",
-      "architecture": "Diagonal gated recurrence (GLA-class)",
+      "architecture": "Diagonal SSM recurrence (HGRN / Mamba-1 class)",
+      "native_anchor": "urm_native_diagonal_recurrence_v1",
+      "native_status": "candidate_exists",
       "comparator": {
         "source": "fla",
         "repository": "https://github.com/fla-org/flash-linear-attention",
         "revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
-        "callable": "fla.ops.gla.chunk.chunk_gla",
-        "rationale": "competitive chunked linear-attention recurrence"
+        "callable": "fla.ops.hgrn.chunk_hgrn",
+        "rationale": "competitive diagonal gated recurrence; the native diagonal-SSM anchor (hgrn_ssm_core, mamba1_ssm_core) is the generation candidate"
       },
       "modes": ["training_forward", "training_forward_backward", "prefill", "decode"],
       "dtypes": ["bfloat16", "float32"],
@@ -142,6 +150,9 @@
       "family": "K2",
       "operation": "structured_recurrence",
       "architecture": "Matrix-state gated-delta recurrence (Gated DeltaNet-class)",
+      "native_anchor": null,
+      "native_status": "native_generation_gap",
+      "native_gap_reason": "The native backend currently lowers only diagonal K2 recurrence (RecurrentLayout.DIAGONAL). Matrix-state gated-delta is expressible and matches the FLA comparator through the reference and library anchors, but has no native generated candidate yet; qualifying it requires a native matrix-state lowering.",
       "comparator": {
         "source": "fla",
         "repository": "https://github.com/fla-org/flash-linear-attention",
@@ -175,6 +186,8 @@
       "family": "K3",
       "operation": "sparse_state",
       "architecture": "Sparse Delta Memory",
+      "native_anchor": "urm_native_sparse_state_mixer_v0",
+      "native_status": "candidate_exists",
       "comparator": {
         "source": "sdm",
         "repository": "https://github.com/facebookresearch/sparse-delta-memory",

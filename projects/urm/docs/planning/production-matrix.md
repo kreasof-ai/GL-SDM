@@ -14,14 +14,24 @@ candidates and are not relaxed after seeing results.
 
 ## Mandatory workloads
 
-| Workload | Family | Operation | Comparator | Modes | Slowdown budget |
-|---|---|---|---|---|---|
-| `k1-mha` | K1 | normalized routed reduction | FlashAttention `flash_attn_func` | train fwd/bwd, prefill, decode | ≤10% |
-| `k1-gqa` | K1 | normalized routed reduction | FlashAttention `flash_attn_func` | train fwd/bwd, prefill, decode | ≤10% |
-| `k1-masked-variant` | K1 | normalized routed reduction | FlashAttention masked/varlen path | train fwd/bwd, prefill | ≤15% |
-| `k2-diagonal-recurrence` | K2 | structured recurrence | FLA `chunk_gla` | train fwd/bwd, prefill, decode | ≤10% |
-| `k2-gated-delta-recurrence` | K2 | structured recurrence | FLA `chunk_gated_delta_rule` | train fwd/bwd, prefill, decode | ≤10% |
-| `k3-sparse-state` | K3 | sparse state | SDM `gated_write_read` | train fwd/bwd, decode | ≤10% |
+| Workload | Family | Operation | Native candidate | Comparator | Modes | Slowdown budget |
+|---|---|---|---|---|---|---|
+| `k1-mha` | K1 | normalized routed reduction | `urm_native_k1_online_softmax_v1` | FlashAttention `flash_attn_func` | train fwd/bwd, prefill, decode | ≤10% |
+| `k1-gqa` | K1 | normalized routed reduction | `urm_native_k1_online_softmax_v1` | FlashAttention `flash_attn_func` | train fwd/bwd, prefill, decode | ≤10% |
+| `k1-masked-variant` | K1 | normalized routed reduction | `urm_native_k1_online_softmax_v1` | FlashAttention masked/varlen path | train fwd/bwd, prefill | ≤15% |
+| `k2-diagonal-recurrence` | K2 | structured recurrence | `urm_native_diagonal_recurrence_v1` | FLA `chunk_hgrn` | train fwd/bwd, prefill, decode | ≤10% |
+| `k2-gated-delta-recurrence` | K2 | structured recurrence | **none — native generation gap** | FLA `chunk_gated_delta_rule` | train fwd/bwd, prefill, decode | ≤10% |
+| `k3-sparse-state` | K3 | sparse state | `urm_native_sparse_state_mixer_v0` | SDM `gated_write_read` | train fwd/bwd, decode | ≤10% |
+
+The native-candidate column is pinned to the compiler by
+`test_production_matrix_native_status_matches_compiler`, so the envelope cannot
+overclaim native generation coverage. The K2 diagonal recurrence candidate is
+the native diagonal-SSM anchor (`hgrn_ssm_core`, `mamba1_ssm_core`). The K2
+matrix-state gated-delta workload is **expressible and matches the FLA
+comparator through the reference and library anchors, but has no native
+generated candidate yet** — the native backend lowers only diagonal K2
+recurrence today. Qualifying `k2-gated-delta-recurrence` requires a native
+matrix-state lowering; that is a measured blocker, not a qualified capability.
 
 The case grid spans small latency-sensitive and larger throughput-oriented
 batches, short/medium/long sequences, representative head/value/state widths,
@@ -72,7 +82,18 @@ Arbitrary nonlinear recurrences are not claimed to admit efficient parallel scan
 ## Current qualification state
 
 None of the mandatory workloads is yet qualified for production training,
-prefill, and decode. The [upstream comparison table](../validation/upstream-comparison.md)
-records kernel-slice parity and dispatch overhead for the wider catalog; those
-are kernel-slice results, not production qualification. This matrix defines what
-must be true for that to change.
+prefill, and decode. Native generation coverage today is narrower than the
+envelope:
+
+- **K1** has a native online-softmax candidate covering MHA/MQA/GQA and several
+  masked/sparse variants, validated on a BF16 prefill kernel slice.
+- **K2** has a native candidate only for **diagonal** recurrence (HGRN /
+  Mamba-1 class). The matrix-state gated-delta workload is a native generation
+  gap.
+- **K3** has a native sparse-state candidate for Sparse Delta Memory.
+
+The [upstream comparison table](../validation/upstream-comparison.md) records
+kernel-slice parity and dispatch overhead for the wider catalog; those are
+kernel-slice results, not production qualification. This matrix defines what
+must be true for that to change, and its native-status column is kept honest by
+a compiler-backed test.

@@ -320,6 +320,48 @@ def test_name_dependent_recipes_are_explicitly_enumerated():
     assert actually_name_dependent == set(_NAME_DEPENDENT_RECIPES_UNFINISHED)
 
 
+def test_production_matrix_native_status_matches_compiler():
+    """The frozen matrix's native-status claims must match the compiler.
+
+    A workload marked ``candidate_exists`` must have a native path for a
+    representative recipe; one marked ``native_generation_gap`` must not. This
+    keeps the release envelope from overclaiming native generation coverage.
+    """
+    import json
+    from pathlib import Path
+
+    matrix = json.loads(
+        (Path(__file__).parents[1] / "benchmarks" / "production-matrix.json").read_text()
+    )
+    # Representative recipe exercising each matrix workload's native path.
+    representative = {
+        "k1-mha": "mha",
+        "k1-gqa": "gqa",
+        "k1-masked-variant": "mha",
+        "k2-diagonal-recurrence": "hgrn_ssm_core",
+        "k2-gated-delta-recurrence": "gated_delta_net",
+        "k3-sparse-state": "sparse_delta_memory",
+    }
+    for workload in matrix["workloads"]:
+        recipe = representative[workload["id"]]
+        spec = named_mixer_recipe(recipe).spec
+        try:
+            compile_mixer(spec, backend=MixerBackend.NATIVE, dtype="float32")
+            native_ok = True
+        except Exception:  # noqa: BLE001 - any decline means no native candidate
+            native_ok = False
+        if workload["native_status"] == "candidate_exists":
+            assert native_ok, (
+                f"{workload['id']} claims a native candidate but {recipe} has no "
+                "native path"
+            )
+        else:
+            assert not native_ok, (
+                f"{workload['id']} is marked a native gap but {recipe} now compiles "
+                "natively; promote it to candidate_exists"
+            )
+
+
 @pytest.mark.parametrize("recipe_name", sorted(_NAME_DEPENDENT_RECIPES_UNFINISHED))
 def test_native_backend_declines_name_dependent_recipes(recipe_name):
     """The native production path must never silently name-dispatch.
