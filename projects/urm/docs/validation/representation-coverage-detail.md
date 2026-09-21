@@ -8,7 +8,7 @@ is recorded as declined with the precise reason. Once a recipe lowers and
 matches, any later optimization of the canonical K1/K2/K3 kernel lifts it
 automatically - there is no per-architecture re-derivation.
 
-**61 of 74 named recipes lower into a canonical core and match their independent equation.** 0 lower but are not yet verified; 13 decline (under-specified or exotic).
+**62 of 74 named recipes lower into a canonical core and match their independent equation.** 0 lower but are not yet verified; 12 decline (under-specified or exotic).
 
 ## Verified (lower + match independent equation)
 
@@ -25,6 +25,7 @@ automatically - there is no per-architecture re-derivation.
 | `nsa_selected_attention_core` | SOFTMAX | 1.33e-07 | - |
 | `dsa_attention_core` | SOFTMAX | 1.33e-07 | - |
 | `mla_attention_core` | SOFTMAX | 1.33e-07 | - |
+| `deltaformer_attention_core` | SOFTMAX | 1.64e-07 | - |
 | `parallax_attention_core` | SOFTMAX | 3.55e-07 | - |
 | `foveal_attention_core` | SOFTMAX | 1.33e-07 | - |
 | `pattention_core` | SOFTMAX | 1.42e-07 | - |
@@ -91,7 +92,6 @@ automatically - there is no per-architecture re-derivation.
 | `moba_selected_attention_core` | SOFTMAX | K1 canonical path does not yet cover block_routed_softmax_attention |
 | `bdh_attention_core` | RECURRENCE | no canonical executor yet for recurrence operator external_opaque |
 | `path_attention_core` | SOFTMAX | K1 canonical path does not yet cover path_transform_attention |
-| `deltaformer_attention_core` | SOFTMAX | K1 canonical path does not yet cover delta_transform_attention |
 | `attnres_depth_core` | SOFTMAX | K1 canonical path does not yet cover depth_weighted_attention |
 | `fwpkm_memory_read_core` | SOFTMAX | K1 canonical path does not yet cover selected_memory_read |
 | `atma_gated_delta_decode_core` | RECURRENCE | only functional state is canonical |

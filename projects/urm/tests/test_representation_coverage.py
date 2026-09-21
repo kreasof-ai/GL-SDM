@@ -32,6 +32,7 @@ VERIFIED = {
     "comba_core",
     "conformer_attention_core",
     "delta_net",
+    "deltaformer_attention_core",
     "differential_attention_core",
     "dsa_attention_core",
     "foveal_attention_core",

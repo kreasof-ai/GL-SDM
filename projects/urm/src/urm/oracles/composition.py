@@ -57,6 +57,7 @@ _COVERED_K1_OPERATIONS = frozenset(
         K1Operation.POSITIVE_FEATURE,
         K1Operation.GATED,
         K1Operation.THRESHOLDED,
+        K1Operation.DELTA_TRANSFORM,
     }
 )
 
@@ -342,6 +343,46 @@ def _execute_k1(spec: UnifiedMixerSpec, **operands):
 
         coefficient = np.clip(float(lambda_weight), 0.0, 1.0)
         return {"output": attend(query_a, key_a) - coefficient * attend(query_b, key_b)}
+
+    if spec.k1_operation is K1Operation.DELTA_TRANSFORM:
+        # Deltaformer: strict-causal softmax probabilities P, a triangular value
+        # solve (I + beta*P) v' = v, then output = softmax(causal scores) @ v'.
+        query = np.asarray(operands.pop("query"), dtype=np.float64)
+        key = np.asarray(operands.pop("key"), dtype=np.float64)
+        value = np.asarray(operands.pop("value"), dtype=np.float64)
+        beta = np.asarray(operands.pop("beta"), dtype=np.float64)
+        if operands:
+            raise TypeError(f"unexpected delta-transform K1 operands: {sorted(operands)}")
+        batch, sequence, heads, key_dim = query.shape
+        outputs = []
+        for b in range(batch):
+            qb = query[b].transpose(1, 0, 2)  # [H,T,K]
+            kb = key[b].transpose(1, 0, 2)
+            vb = value[b].transpose(1, 0, 2)  # [H,T,V]
+            # beta is [B,T,H]; transpose to [H,T] per batch.
+            bb = beta[b].transpose(1, 0)  # [H,T]
+            scores = np.einsum("htk,hsk->hts", qb, kb) * (key_dim ** -0.5)
+            positions = np.arange(sequence)
+            strict_causal = positions[None, :] < positions[:, None]
+            masked = np.where(strict_causal[None], scores, -np.inf)
+            row_max = masked.max(axis=-1, keepdims=True)
+            row_max = np.where(np.isfinite(row_max), row_max, 0.0)
+            unnormalized = np.where(strict_causal[None], np.exp(scores - row_max), 0.0)
+            probs = unnormalized / unnormalized.sum(axis=-1, keepdims=True).clip(min=1e-20)
+            # Triangular value solve per head.
+            eye = np.eye(sequence)
+            beta_h = bb  # [H,T]
+            out_h = np.empty((heads, sequence, vb.shape[-1]))
+            causal = positions[None, :] <= positions[:, None]
+            causal_scores = np.where(causal[None], scores, -np.inf)
+            attention = np.exp(causal_scores - np.max(causal_scores, axis=-1, keepdims=True))
+            attention = attention / attention.sum(axis=-1, keepdims=True)
+            for h in range(heads):
+                system = eye + beta_h[h][..., None] * probs[h]
+                transformed = np.linalg.solve(system, vb[h])
+                out_h[h] = attention[h] @ transformed
+            outputs.append(out_h.transpose(1, 0, 2))
+        return {"output": np.stack(outputs, axis=0)}
 
     if spec.k1_operation is K1Operation.POSITIVE_FEATURE:
         # KATA: grouped SPD positive-feature scores with L1 normalization (not

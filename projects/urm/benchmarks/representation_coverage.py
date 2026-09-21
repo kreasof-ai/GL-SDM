@@ -96,6 +96,13 @@ def _rng_operands(spec, seed=0):
                 "beta": np.asarray(0.5),
                 "lambda_weight": np.asarray(0.5),
             }
+        if spec.k1_operation is K1Operation.DELTA_TRANSFORM:
+            return {
+                "query": rng.normal(size=(b, t, h, k)),
+                "key": rng.normal(size=(b, t, h, k)),
+                "value": rng.normal(size=(b, t, h, v)),
+                "beta": rng.uniform(0.1, 0.9, size=(b, t, h)),
+            }
         ops = {
             "query": rng.normal(size=(b, t, h, k)),
             "key": rng.normal(size=(b, t, h, k)),
