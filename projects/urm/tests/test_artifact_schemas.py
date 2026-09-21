@@ -790,6 +790,28 @@ def test_aggregate_case_uses_only_named_cases() -> None:
     )
 
 
+def test_native_coverage_table_matches_compiler() -> None:
+    """The native-coverage doc must regenerate exactly from the live compiler.
+
+    Native coverage - not dispatch parity - is the honest measure of the unified
+    generator's reach, so this table is pinned to the compiler to prevent drift
+    or overclaiming.
+    """
+    import native_coverage_table
+
+    documented = (
+        PROJECT_ROOT / "docs" / "validation" / "native-coverage.md"
+    ).read_text(encoding="utf-8")
+    regenerated = native_coverage_table.render_markdown(
+        native_coverage_table.measure_native_coverage()
+    )
+    assert documented == regenerated, (
+        "docs/validation/native-coverage.md is out of sync with the compiler; "
+        "regenerate it with `python benchmarks/native_coverage_table.py > "
+        "docs/validation/native-coverage.md`"
+    )
+
+
 def test_production_matrix_validates_against_schema() -> None:
     """The frozen production replacement matrix must stay well-formed."""
     schema = _load(PROJECT_ROOT / "benchmarks" / "production-matrix-schema.json")

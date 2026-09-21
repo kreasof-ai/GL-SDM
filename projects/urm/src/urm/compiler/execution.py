@@ -316,6 +316,7 @@ SDM_SPARSE_STATE_FALLBACK_ANCHOR_NAME = (
 NATIVE_SPARSE_STATE_MIXER_ANCHOR_NAME = "urm_native_sparse_state_mixer_v0"
 NATIVE_SPARSE_ROUTE_ANCHOR_NAME = "urm_native_sparse_route_selection_v0"
 NATIVE_DIAGONAL_RECURRENCE_ANCHOR_NAME = "urm_native_diagonal_recurrence_v1"
+NATIVE_MATRIX_STATE_RECURRENCE_ANCHOR_NAME = "urm_native_matrix_state_recurrence_v1"
 NATIVE_K1_ONLINE_SOFTMAX_ANCHOR_NAME = "urm_native_k1_online_softmax_v1"
 MAMBA_SELECTIVE_SCAN_ANCHOR_NAME = "mamba_selective_scan_adapter"
 MAMBA2_SSD_ANCHOR_NAME = "mamba2_ssd_adapter"

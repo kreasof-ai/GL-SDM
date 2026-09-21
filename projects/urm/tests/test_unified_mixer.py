@@ -4730,6 +4730,84 @@ def test_k2_diagonal_ssm_returns_state_and_gradients():
         assert tensor.grad is not None
 
 
+@pytest.mark.parametrize(
+    "update_rule,decay,decay_granularity,is_delta",
+    [
+        (StateUpdateRule.DELTA, DecayGranularity.HEAD, "head", True),
+        (StateUpdateRule.DELTA, DecayGranularity.KEY_CHANNEL, "key_channel", True),
+        (StateUpdateRule.DELTA, DecayGranularity.NONE, "none", True),
+        (StateUpdateRule.ADDITIVE, DecayGranularity.NONE, "none", False),
+        (StateUpdateRule.ADDITIVE, DecayGranularity.HEAD, "head", False),
+        (StateUpdateRule.ADDITIVE, DecayGranularity.KEY_CHANNEL, "key_channel", False),
+    ],
+)
+@pytest.mark.parametrize("read_timing", [ReadTiming.BEFORE_UPDATE, ReadTiming.AFTER_UPDATE])
+def test_native_matrix_state_recurrence_matches_reference(
+    update_rule, decay, decay_granularity, is_delta, read_timing
+):
+    """The native matrix-state generator matches the reference oracle.
+
+    This is the reusable native K2 matrix-state capability: one kernel covering
+    the plain delta/additive recurrence across decay granularities and read
+    timing, selected from semantic fields. It validates the generator that the
+    compiler will dispatch once the IR fully specifies these equations (the
+    name-dependence blocker); it is not yet wired into auto-dispatch because the
+    spec under-determines some exotic equations (e.g. GRU vs GLA share fields).
+    """
+    torch = _torch()
+    if not torch.cuda.is_available():
+        pytest.skip("native matrix-state recurrence requires CUDA")
+    pytest.importorskip("triton")
+    from urm.backends.triton.recurrence.matrix_state import (
+        execute_matrix_state_recurrence,
+    )
+    from urm.compiler.unified_mixer import _execute_matrix_recurrence
+
+    torch.manual_seed(17)
+    batch, sequence, heads, key_dim, value_dim = 2, 6, 3, 8, 5
+    spec = UnifiedMixerSpec(
+        name="matrix_state_probe",
+        family=MixerKernelFamily.RECURRENCE,
+        update_rule=update_rule,
+        decay=decay,
+        read_timing=read_timing,
+    )
+    query = torch.randn(batch, sequence, heads, key_dim, device="cuda")
+    key = torch.nn.functional.normalize(
+        torch.randn(batch, sequence, heads, key_dim, device="cuda"), dim=-1
+    )
+    value = torch.randn(batch, sequence, heads, value_dim, device="cuda")
+    log_decay = None
+    if decay_granularity == "head":
+        log_decay = -torch.rand(batch, sequence, heads, device="cuda") * 0.2
+    elif decay_granularity == "key_channel":
+        log_decay = -torch.rand(batch, sequence, heads, key_dim, device="cuda") * 0.2
+    beta = torch.rand(batch, sequence, heads, device="cuda") if is_delta else None
+
+    native_out, native_final = execute_matrix_state_recurrence(
+        query=query,
+        key=key,
+        value=value,
+        log_decay=log_decay,
+        beta=beta,
+        initial_state=None,
+        scale=1.0,
+        decay_granularity=decay_granularity,
+        is_delta=is_delta,
+        read_before=read_timing is ReadTiming.BEFORE_UPDATE,
+    )
+    operands = {"query": query, "key": key, "value": value}
+    if log_decay is not None:
+        operands["log_decay"] = log_decay
+    if beta is not None:
+        operands["beta"] = beta
+    reference = _execute_matrix_recurrence(spec, torch, **operands)
+    torch.testing.assert_close(native_out, reference.output, atol=2e-5, rtol=2e-4)
+    torch.testing.assert_close(
+        native_final, reference.final_state, atol=2e-5, rtol=2e-4
+    )
+
+
 def test_native_k2_diagonal_step_discretization_matches_reference_and_backward():
     torch = _torch()
     if not torch.cuda.is_available():

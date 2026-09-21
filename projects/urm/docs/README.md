@@ -26,6 +26,9 @@ Read in this order:
    [parity plan](validation/parity.md): numerical, integration and performance gates.
    [Representation coverage](validation/representation-coverage.md) records the
    evidence separating K1/K2/K3 expressibility from native generation.
+   [Native coverage](validation/native-coverage.md) is the honest measure of the
+   unified generator's reach - what URM computes with its own kernels versus
+   what it can only dispatch to upstream.
 
 Kernel contracts are architecture-independent. Names such as `sparse_delta`
 describe mathematical operations; named models belong in presets, adapters and

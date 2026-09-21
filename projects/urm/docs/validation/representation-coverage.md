@@ -47,6 +47,20 @@ compiler output, not prose.
   *generation* gap, not a representational one: the IR already carries the
   equation.
 
+- **A general native matrix-state kernel now exists and is validated**
+  (`urm/backends/triton/recurrence/matrix_state.py`): one reusable kernel covers
+  the plain delta/additive recurrence across decay granularities (none/head/
+  key-channel) and read timings, selected from semantic fields. It matches the
+  reference oracle to fp32 tolerance across the full axis grid (12 cases in
+  `test_native_matrix_state_recurrence_matches_reference`). It is **not yet
+  wired into auto-dispatch**, because the spec under-determines some exotic
+  equations: a plain-looking spec such as `gla` shares every semantic field with
+  a name-dependent one such as `gru_core` (a GRU's tanh/gate nonlinearity is not
+  represented in the spec at all), so auto-dispatching on the spec alone would
+  silently compute the wrong equation for the name-dependent recipes. Safe
+  auto-dispatch is blocked on the name-dependence fix (making those equations
+  explicit in the IR); see the production matrix.
+
 - **K3 has no upstream library adapter** by design (the pinned SDM checkout is
   invoked through the external adapter boundary, not the in-process library
   path); its native and reference anchors both exist.
