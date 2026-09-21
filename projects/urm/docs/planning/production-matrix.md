@@ -91,7 +91,8 @@ envelope:
   masked/sparse variants, validated on a BF16 prefill kernel slice.
 - **K2** has a native candidate only for **diagonal** recurrence (HGRN /
   Mamba-1 class). The matrix-state gated-delta workload is a native generation
-  gap.
+  gap (representational coverage is proven; see
+  [representation coverage](../validation/representation-coverage.md)).
 - **K3** has a native sparse-state candidate for Sparse Delta Memory.
 
 The [upstream comparison table](../validation/upstream-comparison.md) records
@@ -99,3 +100,28 @@ kernel-slice parity and dispatch overhead for the wider catalog; those are
 kernel-slice results, not production qualification. This matrix defines what
 must be true for that to change, and its native-status column is kept honest by
 a compiler-backed test.
+
+### Measured: k2-diagonal-recurrence
+
+The first native-replacement qualification has been run for the K2 diagonal
+workload ([artifact](../../results/qualification/native-k2-hgrn.json), runner
+`benchmarks/qualify_native_k2_hgrn.py`), comparing the existing native diagonal
+recurrence kernel against the pinned FLA HGRN operators on A10G:
+
+| Check | Result |
+|---|---|
+| Correctness vs exact upstream (`fused_recurrent_hgrn`) | pass (output err 1.4e-6) |
+| Correctness vs independent eager oracle | pass (output err 3.8e-6) |
+| Input gradients vs upstream | pass (max err 1e-8) |
+| Forward vs competitive `chunk_hgrn` | +55% (CI upper bound over budget) |
+| Fwd+Bwd vs competitive `chunk_hgrn` | +53% (CI upper bound over budget) |
+| **Verdict** | **`correct_below_target`** |
+
+The native kernel is numerically correct but not yet performance-competitive
+with FLA's chunked parallel kernel. The measured blocker: the native kernel
+runs a per-(batch, channel) scan and does not yet chunk the sequence the way
+the competitive comparator does, so it is uniformly ~55% slower. Qualifying
+this workload requires closing that performance gap; correctness is already
+established. Measured on torch 2.14 / triton 3.8 (this runtime), not the
+validated torch 2.8 line; the environment is captured in the artifact
+provenance.
