@@ -61,7 +61,8 @@ def _decay_factor(g_t):
 
 def recurrent(memory, keys, queries, values, beta, log_decay, *, scale=1.0,
               read_before_update=False, is_delta=True, normalizer=False,
-              epsilon=1e-6, erase_gate=None, write_gate=None, retrieval_keys=None):
+              epsilon=1e-6, erase_gate=None, write_gate=None, retrieval_keys=None,
+              left_transitions=None):
     """Independent token recurrence returning readings and final memory.
 
     ``is_delta=True`` applies the delta-rule correction ``delta = beta (v - k^T
@@ -94,8 +95,12 @@ def recurrent(memory, keys, queries, values, beta, log_decay, *, scale=1.0,
     norm = np.zeros(m.shape[0]) if normalizer else None  # [K] denominator state
     out = np.empty_like(v)
     for t in range(len(v)):
-        decay = _decay_factor(g[t])
-        z = decay * m
+        if left_transitions is not None:
+            # Factored (low-rank) transition: Z = left_t @ M instead of diagonal decay.
+            z = np.asarray(left_transitions[t], dtype=np.float64) @ m
+        else:
+            decay = _decay_factor(g[t])
+            z = decay * m
         if normalizer:
             norm_decay = decay[:, 0] if decay.ndim == 2 else decay
             norm = norm_decay * norm

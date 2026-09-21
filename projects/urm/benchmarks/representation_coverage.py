@@ -263,10 +263,15 @@ def _rng_operands(spec, seed=0):
             ops["write_gate"] = rng.uniform(0.1, 0.9, size=(b, t, h, v))
         elif spec.update_rule is StateUpdateRule.DELTA:
             ops["beta"] = rng.uniform(0.1, 0.9, size=(b, t, h))
+        if spec.generalized_delta_iplr or spec.generalized_delta_dplr:
+            ops["transition_alpha"] = rng.normal(size=(b, t, h, k)) * 0.3
+            ops["transition_beta"] = rng.normal(size=(b, t, h, k)) * 0.3
         if spec.comba_rule:
             # comba names its prediction key "p" and its (head) log decay "g".
             ops["p"] = rng.normal(size=(b, t, h, k))
             ops["g"] = -rng.uniform(0, 0.4, size=(b, t, h))
+        elif spec.generalized_delta_dplr:
+            ops["log_decay"] = -rng.uniform(0, 0.4, size=(b, t, h, k))
         elif spec.static_head_decay:
             ops["log_decay"] = -rng.uniform(0, 0.4, size=(h,))
         elif spec.decay is DecayGranularity.HEAD:
