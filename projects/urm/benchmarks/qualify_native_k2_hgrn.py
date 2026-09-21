@@ -26,7 +26,7 @@ from pathlib import Path
 
 import fla
 import torch
-from fla.ops.hgrn import fused_recurrent_hgrn
+from fla.ops.hgrn import chunk_hgrn, fused_recurrent_hgrn
 
 from measurement import (
     bootstrap_ci,
@@ -100,7 +100,24 @@ def _inputs(seed: int, batch: int, sequence: int, channels: int) -> dict[str, to
 
 
 def _direct(inputs):
+    """Exact upstream reference path (sequential fused recurrence)."""
     output, state = fused_recurrent_hgrn(
+        inputs["x"], inputs["log_decay"],
+        initial_state=inputs["initial_state"], output_final_state=True,
+    )
+    return output, state
+
+
+def _competitive(inputs):
+    """Competitive upstream performance baseline (chunked parallel kernel).
+
+    Per the comparison policy, the performance baseline is the fastest
+    compatible upstream kernel, not a slow reference. ``chunk_hgrn`` is FLA's
+    chunked parallel HGRN; it uses a different accumulation order than the exact
+    sequential recurrence, so it is the performance comparator while
+    ``fused_recurrent_hgrn`` remains the exact correctness comparator.
+    """
+    output, state = chunk_hgrn(
         inputs["x"], inputs["log_decay"],
         initial_state=inputs["initial_state"], output_final_state=True,
     )
@@ -252,8 +269,9 @@ def run(pairs: int, warmup: int, batch: int, sequence: int, channels: int, outpu
     except AssertionError:
         correctness_pass = False
 
-    # --- Performance only after correctness.
-    performance = _measure_pair(_direct, lambda i: _compiled(plan, i), direct_inputs, compiled_inputs, pairs, warmup)
+    # --- Performance only after correctness, against the competitive comparator.
+    competitive_inputs = {n: t.detach().clone().requires_grad_() for n, t in operands.items()}
+    performance = _measure_pair(_competitive, lambda i: _compiled(plan, i), competitive_inputs, compiled_inputs, pairs, warmup)
     fwd_gate = performance["measurements"]["forward"]["paired_native_overhead_fraction"]["gate"]["pass"]
     fb_gate = performance["measurements"]["forward_backward"]["paired_native_overhead_fraction"]["gate"]["pass"]
 
@@ -291,7 +309,9 @@ def run(pairs: int, warmup: int, batch: int, sequence: int, channels: int, outpu
         },
         "gpu_operating_conditions": capture_gpu_operating_conditions(),
         "methodology": {
-            "comparison": "URM-native diagonal recurrence kernel vs direct pinned FLA fused_recurrent_hgrn; the two share no kernel",
+            "comparison": "URM-native diagonal recurrence kernel vs pinned FLA HGRN; the two share no kernel",
+            "correctness_comparator": "fla.ops.hgrn.fused_recurrent_hgrn (exact sequential recurrence) plus an independent eager oracle",
+            "performance_comparator": "fla.ops.hgrn.chunk_hgrn (competitive chunked parallel kernel); the fastest compatible upstream kernel is the performance baseline, not a slow reference",
             "timed_work": "one native plan call or one upstream call, optionally followed by output and final-state backward",
             "sampling": "paired interleaved native/direct calls, order alternates, synchronized wall and CUDA event timing",
             "warmup": warmup,
@@ -305,6 +325,7 @@ def run(pairs: int, warmup: int, batch: int, sequence: int, channels: int, outpu
                 "semantic_scope": "diagonal gated recurrence core; projections and output projection excluded",
                 "shape": {"batch": batch, "sequence": sequence, "channels": channels, "dtype": "float32"},
                 "upstream_callable": "fla.ops.hgrn.fused_recurrent_hgrn",
+                "performance_comparator_callable": "fla.ops.hgrn.chunk_hgrn",
                 "native_anchor": native_anchor,
                 "compiler_plan_build_ms": plan_build_ms,
                 "parity": {
