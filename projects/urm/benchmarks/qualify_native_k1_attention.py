@@ -47,7 +47,11 @@ RELATIVE_TOLERANCE = 0.02
 
 
 def _oracle_attention(q, k, v, scale, causal):
-    """Independent eager attention oracle (fp32 accumulation)."""
+    """Independent eager attention oracle (fp32 accumulation), GQA-aware."""
+    if q.shape[2] != k.shape[2]:
+        repeats = q.shape[2] // k.shape[2]
+        k = k.repeat_interleave(repeats, dim=2)
+        v = v.repeat_interleave(repeats, dim=2)
     scores = torch.einsum("bthd,bshd->bhts", q.float(), k.float()) * scale
     if causal:
         t, s = q.shape[1], k.shape[1]
@@ -70,10 +74,15 @@ def _inputs(seed, batch, qlen, klen, qheads, kvheads, key_dim, value_dim, dtype)
 
 
 def _direct(inputs, scale, causal):
-    """Competitive upstream: SDPA fused attention (BHTD layout)."""
+    """Competitive upstream: SDPA fused attention (BHTD layout), GQA-aware."""
     qh = inputs["query"].transpose(1, 2)
     kh = inputs["key"].transpose(1, 2)
     vh = inputs["value"].transpose(1, 2)
+    if qh.shape[1] != kh.shape[1]:
+        # Grouped-query: repeat KV heads to match query heads.
+        repeats = qh.shape[1] // kh.shape[1]
+        kh = kh.repeat_interleave(repeats, dim=1)
+        vh = vh.repeat_interleave(repeats, dim=1)
     return F.scaled_dot_product_attention(qh, kh, vh, is_causal=causal, scale=scale).transpose(1, 2)
 
 

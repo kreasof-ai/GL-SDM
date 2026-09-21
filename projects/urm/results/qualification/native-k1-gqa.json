@@ -1,0 +1,301 @@
+{
+  "schema_version": 1,
+  "generated_utc": "2026-09-21T16:35:59.395775+00:00",
+  "purpose": "qualify URM-native K1 online-softmax attention against a competitive fused-attention upstream (native replacement, not dispatch overhead)",
+  "matrix_workload": "k1-mha",
+  "verdict": "correct_below_target",
+  "native_anchor": "urm_native_k1_online_softmax_v1",
+  "comparator": {
+    "frozen_in_matrix": "flash_attn_func (Dao-AILab/flash-attention)",
+    "used": "torch.nn.functional.scaled_dot_product_attention (fused mem-efficient backend)",
+    "scope_note": "flash_attn is not installable in this torch 2.14/cu130 + nvcc 12.9 environment; SDPA is the available competitive fused-attention upstream. Budgets and tolerances unchanged."
+  },
+  "provenance": {
+    "git_revision": "d6902a7bb32ab82661f32adf6b6cc7a74275eba8",
+    "dirty_tree": true,
+    "benchmark_command": "PYTHONPATH=src python benchmarks/qualify_native_k1_attention.py",
+    "config_hash": "25ffcceed21e1091ffe9c34267e3877c041de00e463bcd62c7230fe80b66506f",
+    "solver_version": null,
+    "python": "3.12.14",
+    "platform": "Linux-6.12.103-127.188.amzn2023.x86_64-x86_64-with-glibc2.39",
+    "pytorch": "2.14.0+cu130",
+    "triton": "3.8.0",
+    "cuda": "13.0",
+    "driver": "595.91.07",
+    "gpu": "NVIDIA A10G",
+    "gpu_uuid": "GPU-2f8a1bca-8d9b-5f2e-f29b-03c3236380f3"
+  },
+  "hardware": {
+    "gpu": "NVIDIA A10G",
+    "compute_capability": [
+      8,
+      6
+    ],
+    "torch": "2.14.0+cu130",
+    "cuda": "13.0"
+  },
+  "gpu_operating_conditions": {
+    "gpu_name": "NVIDIA A10G",
+    "gpu_uuid": "GPU-2f8a1bca-8d9b-5f2e-f29b-03c3236380f3",
+    "driver_version": "595.91.07",
+    "sm_clock_mhz": 1710,
+    "memory_clock_mhz": 6251,
+    "power_draw_w": 206.19,
+    "power_limit_w": 300.0,
+    "temperature_c": 41,
+    "gpu_utilization_pct": 99,
+    "memory_utilization_pct": 86,
+    "persistence_mode": "Enabled",
+    "compute_mode": "Default",
+    "application_clocks_fixed": null,
+    "application_clocks_status": "deprecated_or_unsupported",
+    "clock_locking": {
+      "requested": false,
+      "applied": false,
+      "verified": false,
+      "restored": false
+    },
+    "exclusive_process_mode": false,
+    "all_compute_processes": [
+      {
+        "pid": 29531,
+        "process_name": "python",
+        "used_memory": "2882 MiB"
+      }
+    ],
+    "external_compute_processes": [],
+    "unavailable_reason": null
+  },
+  "methodology": {
+    "comparison": "URM-native K1 online-softmax kernel vs SDPA fused attention; the two share no kernel",
+    "correctness_comparator": "SDPA plus an independent eager attention oracle",
+    "performance_comparator": "SDPA fused attention (competitive production kernel)",
+    "timed_work": "one native plan call or one upstream call, optionally followed by output backward",
+    "sampling": "paired interleaved native/direct calls, order alternates, synchronized wall timing",
+    "warmup": 5,
+    "pairs": 15,
+    "overhead": "median of per-pair (native-direct)/direct fractions with bootstrap CI",
+    "slowdown_budget_fraction": 0.1,
+    "gate_basis": "the 95% confidence-interval upper bound must meet the budget"
+  },
+  "cases": {
+    "mha": {
+      "semantic_scope": "normalized causal attention core; projections excluded",
+      "shape": {
+        "batch": 8,
+        "query_length": 1024,
+        "key_length": 1024,
+        "query_heads": 32,
+        "kv_heads": 8,
+        "key_dim": 64,
+        "value_dim": 64,
+        "dtype": "bfloat16"
+      },
+      "native_anchor": "urm_native_k1_online_softmax_v1",
+      "compiler_plan_build_ms": 56.37932399986312,
+      "parity": {
+        "status": "pass",
+        "output_max_abs_error_vs_upstream": 0.00390625,
+        "output_max_abs_error_vs_oracle": 0.009642839431762695,
+        "input_gradient_max_abs_errors_vs_upstream": {
+          "query": 9.313225746154785e-10,
+          "key": 7.450580596923828e-09,
+          "value": 1.4901161193847656e-08
+        },
+        "tolerances": {
+          "output_atol": 0.02,
+          "gradient_atol": 0.02,
+          "relative_tolerance": 0.02
+        }
+      },
+      "performance": {
+        "first_direct_forward_call_ms": 0.9088701001019217,
+        "first_compiled_forward_call_after_warmup_ms": 1.3093281999317696,
+        "warmup_calls_per_backend_per_mode": 5,
+        "paired_samples_per_mode": 15,
+        "measurements": {
+          "forward": {
+            "direct_wall": {
+              "sample_count": 15,
+              "median_ms": 0.905120000243187,
+              "p95_ms": 0.9154309700170415,
+              "raw_samples_ms": [
+                0.9166363000986166,
+                0.9031779998622369,
+                0.9038930998940486,
+                0.9149143999820808,
+                0.9063839999726042,
+                0.9074080000573304,
+                0.9019029999763006,
+                0.9056081999005983,
+                0.9029700002429308,
+                0.9034358998178504,
+                0.905120000243187,
+                0.9051550001458963,
+                0.9043090001796372,
+                0.9063891000550939,
+                0.9034111997607397
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 15,
+              "median_ms": 1.2882807001005858,
+              "p95_ms": 1.311091049828974,
+              "raw_samples_ms": [
+                1.3030409998464165,
+                1.2876946999313077,
+                1.2916427000163822,
+                1.2966688002052251,
+                1.329874499788275,
+                1.2860416998591973,
+                1.290835799954948,
+                1.2868624999100575,
+                1.2878506000561174,
+                1.2848487000155728,
+                1.2882807001005858,
+                1.2876297001639614,
+                1.2883518000307959,
+                1.2863176001701504,
+                1.2926037001307122
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 0.4233258570735941,
+              "p95": 0.44203424493359306,
+              "ci95_lower": 0.4209925440729298,
+              "ci95_upper": 0.4289772763701638,
+              "raw_samples": [
+                0.42154636436090126,
+                0.4257374516736697,
+                0.4289772763701638,
+                0.4172569589358537,
+                0.46723077617044306,
+                0.41726951908947746,
+                0.4312357315463717,
+                0.4209925440729298,
+                0.4262385236604096,
+                0.4221802568113823,
+                0.4233258570735941,
+                0.42255160713514944,
+                0.42468094398581696,
+                0.41916711056207884,
+                0.4308032715036595
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect",
+              "directcompiled",
+              "compileddirect",
+              "directcompiled",
+              "compileddirect",
+              "directcompiled",
+              "compileddirect",
+              "directcompiled",
+              "compileddirect",
+              "directcompiled",
+              "compileddirect",
+              "directcompiled",
+              "compileddirect",
+              "directcompiled"
+            ]
+          },
+          "forward_backward": {
+            "direct_wall": {
+              "sample_count": 15,
+              "median_ms": 5.3732962001959095,
+              "p95_ms": 5.378881999749865,
+              "raw_samples_ms": [
+                5.36702499994135,
+                5.379161299788393,
+                5.372975099817268,
+                5.375269199794275,
+                5.374670200035325,
+                5.3697592000389704,
+                5.375582100168685,
+                5.375107099825982,
+                5.373152200263576,
+                5.3722960998129565,
+                5.3732962001959095,
+                5.371457200089935,
+                5.374642099923221,
+                5.378762299733353,
+                5.368971999996575
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 15,
+              "median_ms": 8.003766600086237,
+              "p95_ms": 8.017491930149845,
+              "raw_samples_ms": [
+                7.993690399962361,
+                8.016900900111068,
+                8.006587499767193,
+                7.998570500058122,
+                8.003766600086237,
+                7.9961064002418425,
+                8.004987700041966,
+                8.018871000240324,
+                8.010855799875571,
+                7.997735599929001,
+                8.001174600212835,
+                7.998434500041184,
+                8.004134699876886,
+                8.000879599785549,
+                8.005981799942674
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 0.48916422816671284,
+              "p95": 0.4913660863662063,
+              "ci95_lower": 0.48906231625698604,
+              "ci95_upper": 0.4903626147865167,
+              "raw_samples": [
+                0.4894080799045496,
+                0.4903626147865167,
+                0.4901590554624927,
+                0.48803161344258755,
+                0.48916422816671284,
+                0.4890996229744923,
+                0.48913876690503333,
+                0.4918532507938182,
+                0.4909043148791886,
+                0.4886997014567853,
+                0.4890626353189151,
+                0.48906231625698604,
+                0.48924050217059606,
+                0.48749454873329945,
+                0.4911573016115155
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect",
+              "directcompiled",
+              "compileddirect",
+              "directcompiled",
+              "compileddirect",
+              "directcompiled",
+              "compileddirect",
+              "directcompiled",
+              "compileddirect",
+              "directcompiled",
+              "compileddirect",
+              "directcompiled",
+              "compileddirect",
+              "directcompiled"
+            ]
+          }
+        }
+      }
+    }
+  }
+}
