@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "purpose": "executable production release gate (acceptance-contract section 10)",
+  "production_progress": {
+    "qualified": 1,
+    "total_mandatory": 6,
+    "fraction": 0.16666666666666666,
+    "headline": "1/6 mandatory workloads qualified; broader catalog incomplete"
+  },
+  "workloads": {
+    "k1-mha": {
+      "workload": "k1-mha",
+      "verdict": "correct_below_target",
+      "cases": {
+        "mha": {
+          "forward": {
+            "median_overhead": 0.8283489190624362,
+            "ci95_upper": 0.8303676184028765,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 1.1215250258265421,
+            "ci95_upper": 1.1243348743449806,
+            "gate_pass": false
+          }
+        }
+      }
+    },
+    "k1-gqa": {
+      "workload": "k1-gqa",
+      "verdict": "unsupported",
+      "reason": "no qualification runner / comparator in this environment"
+    },
+    "k1-masked-variant": {
+      "workload": "k1-masked-variant",
+      "verdict": "unsupported",
+      "reason": "no qualification runner / comparator in this environment"
+    },
+    "k2-diagonal-recurrence": {
+      "workload": "k2-diagonal-recurrence",
+      "verdict": "qualified",
+      "cases": {
+        "hgrn_ssm_core": {
+          "forward": {
+            "median_overhead": 0.051900513573582545,
+            "ci95_upper": 0.08080410027781071,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": 0.024870745439674588,
+            "ci95_upper": 0.04643086973996344,
+            "gate_pass": true
+          }
+        }
+      }
+    },
+    "k2-gated-delta-recurrence": {
+      "workload": "k2-gated-delta-recurrence",
+      "verdict": "correct_below_target",
+      "cases": {
+        "gated_delta_net": {
+          "forward": {
+            "median_overhead": 2.054313113969638,
+            "ci95_upper": 2.0722461063126665,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 0.9624264491629035,
+            "ci95_upper": 0.9674745371477786,
+            "gate_pass": false
+          }
+        }
+      }
+    },
+    "k3-sparse-state": {
+      "workload": "k3-sparse-state",
+      "verdict": "unsupported",
+      "reason": "no qualification runner / comparator in this environment"
+    }
+  },
+  "release_ready": false
+}
