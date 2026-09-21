@@ -2,10 +2,10 @@
   "schema_version": 1,
   "purpose": "executable production release gate (acceptance-contract section 10)",
   "production_progress": {
-    "qualified": 1,
+    "qualified": 2,
     "total_mandatory": 6,
-    "fraction": 0.16666666666666666,
-    "headline": "1/6 mandatory workloads qualified; broader catalog incomplete"
+    "fraction": 0.3333333333333333,
+    "headline": "2/6 mandatory workloads qualified; broader catalog incomplete"
   },
   "workloads": {
     "k1-mha": {
@@ -14,13 +14,13 @@
       "cases": {
         "mha": {
           "forward": {
-            "median_overhead": 0.17941196543975624,
-            "ci95_upper": 0.18438215392670715,
+            "median_overhead": 0.17824564890818057,
+            "ci95_upper": 0.1817223784955081,
             "gate_pass": false
           },
           "forward_backward": {
-            "median_overhead": 0.5140711638544501,
-            "ci95_upper": 0.5163476290981479,
+            "median_overhead": 0.5164758470207289,
+            "ci95_upper": 0.5178666622148287,
             "gate_pass": false
           }
         }
@@ -32,13 +32,13 @@
       "cases": {
         "mha": {
           "forward": {
-            "median_overhead": -0.14848116122750937,
-            "ci95_upper": -0.14272691639613666,
+            "median_overhead": -0.1491867161465925,
+            "ci95_upper": -0.14578101478461666,
             "gate_pass": true
           },
           "forward_backward": {
-            "median_overhead": 0.07109293684432799,
-            "ci95_upper": 0.07173435578629613,
+            "median_overhead": 0.07080346819364797,
+            "ci95_upper": 0.07143951224826989,
             "gate_pass": true
           }
         }
@@ -51,17 +51,17 @@
     },
     "k2-diagonal-recurrence": {
       "workload": "k2-diagonal-recurrence",
-      "verdict": "correct_below_target",
+      "verdict": "qualified",
       "cases": {
         "hgrn_ssm_core": {
           "forward": {
-            "median_overhead": 0.06307310876805296,
-            "ci95_upper": 0.12369460689631684,
-            "gate_pass": false
+            "median_overhead": 0.035288454414000414,
+            "ci95_upper": 0.0660260578837587,
+            "gate_pass": true
           },
           "forward_backward": {
-            "median_overhead": -0.0052379671111091155,
-            "ci95_upper": 0.020691394476274445,
+            "median_overhead": 0.009331616475453048,
+            "ci95_upper": 0.04704175800864884,
             "gate_pass": true
           }
         }
@@ -73,13 +73,13 @@
       "cases": {
         "gated_delta_net": {
           "forward": {
-            "median_overhead": 2.06365855108295,
-            "ci95_upper": 2.07241098981742,
+            "median_overhead": 2.054853837976899,
+            "ci95_upper": 2.075472925955377,
             "gate_pass": false
           },
           "forward_backward": {
-            "median_overhead": 0.9626835953196534,
-            "ci95_upper": 0.9641680012417232,
+            "median_overhead": 0.9617280027173221,
+            "ci95_upper": 0.9661979625933126,
             "gate_pass": false
           }
         }
