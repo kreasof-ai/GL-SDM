@@ -109,3 +109,58 @@ def test_dual_form_names_are_absent_from_production_backend_catalog():
 
     for name in ("DualFormSDMFunction", "dual_form_sdm"):
         assert not hasattr(backends, name)
+
+
+def test_k1_k2_k3_ir_family_modules_own_their_contracts():
+    """Each semantic family has a canonical, dependency-light IR home."""
+    import importlib
+
+    family_modules = {
+        "urm.ir.softmax": "softmax",
+        "urm.ir.recurrence": "recurrence",
+        "urm.ir.sparse_state": "sparse_state",
+    }
+    for module_name, family in family_modules.items():
+        module = importlib.import_module(module_name)
+        # Each family module documents its contract, implementations,
+        # limitations, and conformance tests in its docstring.
+        doc = module.__doc__ or ""
+        for required in ("Contract:", "Limitations:", "Conformance tests:"):
+            assert required in doc, (module_name, required)
+        # Each exposes a family membership predicate and a validation boundary.
+        assert any(
+            name.startswith("is_") and name.endswith("_family")
+            for name in dir(module)
+        ), module_name
+        assert any(
+            name.startswith("validate_") and name.endswith("_contract")
+            for name in dir(module)
+        ), module_name
+
+
+def test_ir_family_modules_do_not_import_optional_backends():
+    """The IR family modules must stay dependency-light (no torch/triton)."""
+    import os
+    import subprocess
+    import sys
+
+    root = Path(__file__).resolve().parents[1]
+    env = {**os.environ, "PYTHONPATH": str(root / "src")}
+    subprocess.run(
+        [
+            sys.executable,
+            "-B",
+            "-c",
+            (
+                "import sys; "
+                "import urm.ir.softmax, urm.ir.recurrence, urm.ir.sparse_state; "
+                "assert 'torch' not in sys.modules; "
+                "assert 'triton' not in sys.modules; "
+                "assert 'tilelang' not in sys.modules"
+            ),
+        ],
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )

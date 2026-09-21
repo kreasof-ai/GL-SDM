@@ -1,4 +1,15 @@
-"""Typed operations and contracts for Unified Routed Mixers."""
+"""Typed operations and contracts for Unified Routed Mixers.
+
+The three semantic families each have a canonical IR home that owns its
+contract and validation boundary:
+
+- :mod:`urm.ir.softmax` - K1 normalized routed reduction
+- :mod:`urm.ir.recurrence` - K2 structured recurrence
+- :mod:`urm.ir.sparse_state` - K3 ordered sparse-state operations
+
+The shared, backend independent :class:`UnifiedMixerSpec` and its enums live in
+:mod:`urm.ir.mixer`.
+"""
 
 from urm.frontend.spec import (
     BalanceStrategy,
@@ -25,6 +36,7 @@ from urm.frontend.spec import (
     SparseIndexerKind,
     StateLayout,
 )
+from . import recurrence, softmax, sparse_state
 from .mixer import (
     DecayGranularity,
     FeatureMap,
@@ -80,4 +92,7 @@ __all__ = [
     "StateTransition",
     "StateUpdateRule",
     "UnifiedMixerSpec",
+    "recurrence",
+    "softmax",
+    "sparse_state",
 ]
