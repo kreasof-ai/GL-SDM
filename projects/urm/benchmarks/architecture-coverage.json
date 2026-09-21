@@ -84,10 +84,9 @@
       "audit": "Pinned KATA normalized positive causal attention and Triton backward kernels; exact output/gradient parity and 21-pair A10G profiles at BF16 B4/T1024/H8/D=64/M=4 are recorded in kata-k1.json."
     },
     "atma": {
-      "repository": null,
-      "local_path": "D:/Workspace/kreasof-ai/github/atma",
+      "repository": "https://github.com/kreasof-ai/atma",
       "revision": "28bb3de8afbe7c0b00115e0fbff36afc9ad49c11",
-      "audit": "Checkout identity only; benchmark worktree dirtiness and callable source hashes before use."
+      "audit": "Checkout identity only; benchmark worktree dirtiness and callable source hashes before use. Public repository confirmed against the pinned revision's tests (provision via benchmarks/provision_comparators.py)."
     },
     "conformer": {
       "repository": "https://github.com/espnet/espnet",
