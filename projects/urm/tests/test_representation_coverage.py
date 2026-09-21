@@ -40,6 +40,8 @@ VERIFIED = {
     "hgrn2_ssm_core",
     "hgrn_ssm_core",
     "hopfield_attention_core",
+    "kata_attention_core",
+    "kda_core",
     "lightnet_gla_core",
     "lightning_attention_core",
     "linear_attention",

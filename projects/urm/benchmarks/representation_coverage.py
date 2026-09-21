@@ -72,6 +72,13 @@ def _rng_operands(spec, seed=0):
                 "key": rng.normal(size=(b, t, h, k)),
                 "value": rng.normal(size=(b, t, h, k)),
             }
+        if spec.k1_operation is K1Operation.POSITIVE_FEATURE:
+            return {
+                "query": rng.normal(size=(b, t, h, k)),
+                "key": rng.normal(size=(b, t, h, k)),
+                "value": rng.normal(size=(b, t, h, v)),
+                "num_groups": 2,
+            }
         ops = {
             "query": rng.normal(size=(b, t, h, k)),
             "key": rng.normal(size=(b, t, h, k)),

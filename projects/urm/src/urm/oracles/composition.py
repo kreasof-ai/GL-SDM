@@ -53,6 +53,7 @@ _COVERED_K1_OPERATIONS = frozenset(
         K1Operation.DIFFERENTIAL,
         K1Operation.PROJECTED,
         K1Operation.POSITIONAL,
+        K1Operation.POSITIVE_FEATURE,
     }
 )
 
@@ -120,7 +121,7 @@ def _require_canonical_k2(spec: UnifiedMixerSpec) -> None:
     exotic = [
         name for name in (
             "mamba2_ssm", "log_linear_attention",
-            "kda_delta", "gated_delta_product", "generalized_delta_iplr",
+            "gated_delta_product", "generalized_delta_iplr",
             "generalized_delta_dplr", "rwkv4_memory", "rwkv6_memory",
             "momentum_delta", "gated_oja", "comba_rule", "preconditioned_gated_delta",
             "preconditioned_kda", "slot_attention", "step_size_discretization",
@@ -130,6 +131,13 @@ def _require_canonical_k2(spec: UnifiedMixerSpec) -> None:
     ]
     if exotic:
         raise UnderspecifiedComposition(f"exotic composition flags: {exotic}")
+    # kda is the plain delta rule with key-channel decay and a key_dim**-0.5 read
+    # scale; it requires the delta update rule and key-channel decay.
+    if spec.kda_delta and not (
+        spec.update_rule is StateUpdateRule.DELTA
+        and spec.decay is DecayGranularity.KEY_CHANNEL
+    ):
+        raise UnderspecifiedComposition("kda requires delta + key-channel decay")
     # The dual-gate delta (gdn2) is the delta rule with independent erase/write
     # gates; it requires key-channel decay and the delta update rule.
     if spec.gdn2_ssm and not (
@@ -263,6 +271,29 @@ def _execute_k1(spec: UnifiedMixerSpec, **operands):
             outputs.append(out.transpose(1, 0, 2))
         return {"output": np.stack(outputs, axis=0)}
 
+    if spec.k1_operation is K1Operation.POSITIVE_FEATURE:
+        # KATA: grouped SPD positive-feature scores with L1 normalization (not
+        # softmax). scores = sum_groups (q.k / sqrt(group_dim))^2, causal-masked,
+        # normalized by their row sum.
+        query = np.asarray(operands.pop("query"), dtype=np.float64)
+        key = np.asarray(operands.pop("key"), dtype=np.float64)
+        value = np.asarray(operands.pop("value"), dtype=np.float64)
+        num_groups = operands.pop("num_groups")
+        if operands:
+            raise TypeError(f"unexpected positive-feature K1 operands: {sorted(operands)}")
+        batch, sequence, heads, dim = query.shape
+        group_dim = dim // num_groups
+        qg = query.reshape(batch, sequence, heads, num_groups, group_dim)
+        kg = key.reshape(batch, sequence, heads, num_groups, group_dim)
+        group_scores = np.einsum("bthme,bshme->bhtsm", qg, kg) * (group_dim ** -0.5)
+        scores = np.square(group_scores).sum(axis=-1)
+        causal = np.tril(np.ones((sequence, sequence), dtype=bool))
+        scores = np.where(causal[None, None], scores, 0.0)
+        denom = scores.sum(axis=-1, keepdims=True).clip(min=1e-12)
+        probs = scores / denom
+        output = np.einsum("bhts,bshv->bthv", probs, value)
+        return {"output": output}
+
     query = np.asarray(operands.pop("query"), dtype=np.float64)
     key = np.asarray(operands.pop("key"), dtype=np.float64)
     value = np.asarray(operands.pop("value"), dtype=np.float64)
@@ -385,10 +416,10 @@ def _execute_k2(spec: UnifiedMixerSpec, **operands):
     batch, sequence, q_heads, key_dim = query.shape
     value_heads, value_dim = value.shape[2], value.shape[3]
     # Read-scale convention: the plain matrix-state reference defaults to 1.0,
-    # but the dual-gate (gdn2) reference defaults to key_dim**-0.5.
+    # but the dual-gate (gdn2) and kda references default to key_dim**-0.5.
     if spec.read_scale is not None:
         scale = spec.read_scale
-    elif spec.gdn2_ssm:
+    elif spec.gdn2_ssm or spec.kda_delta:
         scale = key_dim ** -0.5
     else:
         scale = 1.0
