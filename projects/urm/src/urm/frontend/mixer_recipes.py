@@ -11,6 +11,7 @@ from urm.ir.mixer import (
     MixerKernelFamily,
     PolynomialBasis,
     ReadTiming,
+    RecurrenceOperator,
     RecurrentLayout,
     StateEffect,
     StateNormalizer,
@@ -309,6 +310,7 @@ def named_mixer_recipe(name: str) -> MixerRecipe:
             "h3_ssm_fft_core",
             MixerKernelFamily.RECURRENCE,
             update_rule=StateUpdateRule.ADDITIVE,
+            recurrence_operator=RecurrenceOperator.TWO_STAGE_FFT_CONVOLUTION,
         ),
         "H3 head_dim=1 multiplicative SSM mixer with two causal FFT convolutions and skip paths",
         (
@@ -322,6 +324,7 @@ def named_mixer_recipe(name: str) -> MixerRecipe:
             "hyena_fftconv_core",
             MixerKernelFamily.RECURRENCE,
             update_rule=StateUpdateRule.ADDITIVE,
+            recurrence_operator=RecurrenceOperator.FFT_CONVOLUTION,
         ),
         "Hyena implicit-filter causal FFT convolution with a learned direct term",
         (
@@ -335,6 +338,7 @@ def named_mixer_recipe(name: str) -> MixerRecipe:
             "hla_second_order_core",
             MixerKernelFamily.RECURRENCE,
             update_rule=StateUpdateRule.ADDITIVE,
+            recurrence_operator=RecurrenceOperator.SECOND_ORDER_CUMSUM,
         ),
         "HLA masked second-order causal attention with exact streaming summaries",
         (
@@ -429,6 +433,7 @@ def named_mixer_recipe(name: str) -> MixerRecipe:
             update_rule=StateUpdateRule.ADDITIVE,
             normalizer=StateNormalizer.NONE,
             read_timing=ReadTiming.BEFORE_UPDATE,
+            recurrence_operator=RecurrenceOperator.EXTERNAL_OPAQUE,
         ),
         "BDH rotary unnormalized causal attention as a strict-past additive K2 matrix recurrence",
         (
@@ -901,6 +906,7 @@ def named_mixer_recipe(name: str) -> MixerRecipe:
             "mesa_net_core",
             MixerKernelFamily.RECURRENCE,
             update_rule=StateUpdateRule.ADDITIVE,
+            recurrence_operator=RecurrenceOperator.REGULARIZED_SOLVE,
         ),
         "MesaNet dual covariance-state recurrence with a regularized per-token linear solve",
         (
@@ -914,6 +920,7 @@ def named_mixer_recipe(name: str) -> MixerRecipe:
             "titans_linear_memory_core",
             MixerKernelFamily.RECURRENCE,
             update_rule=StateUpdateRule.ADDITIVE,
+            recurrence_operator=RecurrenceOperator.MOMENTUM_INNER_STATE,
         ),
         "FLA Titans chunked associative memory update with its learned inner loss and layer-normalized readout",
         (
@@ -928,6 +935,7 @@ def named_mixer_recipe(name: str) -> MixerRecipe:
             "ttt_linear_core",
             MixerKernelFamily.RECURRENCE,
             update_rule=StateUpdateRule.ADDITIVE,
+            recurrence_operator=RecurrenceOperator.LAYERNORM_INNER_STATE,
         ),
         "TTT-Linear chunkwise inner-loss update with matrix and bias memory states",
         (
@@ -942,6 +950,7 @@ def named_mixer_recipe(name: str) -> MixerRecipe:
             "rnn_core",
             MixerKernelFamily.RECURRENCE,
             update_rule=StateUpdateRule.ADDITIVE,
+            recurrence_operator=RecurrenceOperator.TANH_RNN,
         ),
         "XMA tanh RNN nonlinear recurrent state update",
         (
@@ -955,6 +964,7 @@ def named_mixer_recipe(name: str) -> MixerRecipe:
             "gru_core",
             MixerKernelFamily.RECURRENCE,
             update_rule=StateUpdateRule.ADDITIVE,
+            recurrence_operator=RecurrenceOperator.GATED_RNN,
         ),
         "XMA reset/update-gated nonlinear GRU state update",
         (
@@ -968,6 +978,7 @@ def named_mixer_recipe(name: str) -> MixerRecipe:
             "m2rnn_core",
             MixerKernelFamily.RECURRENCE,
             update_rule=StateUpdateRule.ADDITIVE,
+            recurrence_operator=RecurrenceOperator.MULTIPLICATIVE_RNN,
         ),
         "XMA second-order matrix-memory nonlinear recurrent state update",
         (
@@ -1003,6 +1014,7 @@ def named_mixer_recipe(name: str) -> MixerRecipe:
             "mamba3_siso_core",
             MixerKernelFamily.RECURRENCE,
             update_rule=StateUpdateRule.ADDITIVE,
+            recurrence_operator=RecurrenceOperator.TRAPEZOIDAL_SSM,
         ),
         "Mamba-3 SISO rotary angle accumulator with trapezoidal four-state SSM update",
         (

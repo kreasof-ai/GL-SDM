@@ -25,6 +25,7 @@ from urm.ir.mixer import (
     K1Operation,
     MixerKernelFamily,
     PolynomialBasis,
+    RecurrenceOperator,
     RecurrentLayout,
     StateEffect,
     StateNormalizer,
@@ -85,23 +86,15 @@ def _require_canonical_k2(spec: UnifiedMixerSpec) -> None:
         )
     if spec.update_rule not in (StateUpdateRule.ADDITIVE, StateUpdateRule.DELTA):
         raise UnderspecifiedComposition(f"unsupported update rule {spec.update_rule}")
-    # The additive/no-decay configuration is under-specified only when no other
-    # axis distinguishes the equation: a feature map, a normalizer, or a
-    # polynomial basis makes an additive recurrence distinguishable from the
-    # collision group (GRU tanh/gate, FFT convolution, second-order correction),
-    # which all present as identity-feature / no-normalizer / no-polynomial.
-    distinguishes = (
-        spec.feature_map is not FeatureMap.IDENTITY
-        or spec.normalizer is not StateNormalizer.NONE
-        or spec.polynomial_basis is not PolynomialBasis.NONE
-    )
-    if (
-        spec.update_rule is StateUpdateRule.ADDITIVE
-        and spec.decay is DecayGranularity.NONE
-        and not distinguishes
-    ):
+    # The recurrence_operator field carries the equation explicitly. The plain
+    # linear matrix-state recurrence (PLAIN) is the canonical path; the distinct
+    # nonlinear/convolution/solve operators route to their own canonical
+    # executors below. A PLAIN additive/no-decay spec with no distinguishing axis
+    # is the genuinely plain linear recurrence (no hidden nonlinearity).
+    if spec.recurrence_operator is not RecurrenceOperator.PLAIN:
         raise UnderspecifiedComposition(
-            "additive/no-decay is under-specified in the IR (collision group)"
+            f"non-plain recurrence operator {spec.recurrence_operator.value} routes "
+            "to its own canonical executor"
         )
     if spec.normalizer not in (StateNormalizer.NONE, StateNormalizer.QUERY_KEY):
         raise UnderspecifiedComposition(f"normalizer {spec.normalizer} not canonical")
@@ -370,7 +363,60 @@ def _diagonal_recurrent(x, input_gate, read_gate, log_decay, step_size,
     return np.stack(outputs, axis=1), state
 
 
+def _execute_k2_operator(spec: UnifiedMixerSpec, **operands):
+    """Execute a distinct (non-plain) K2 recurrence operator via its canonical path."""
+    from . import nonlinear_recurrence as nl
+
+    op = spec.recurrence_operator
+    if op is RecurrenceOperator.TANH_RNN:
+        out, state = nl.tanh_rnn(
+            operands.pop("query"), operands.pop("weight"),
+            operands.pop("initial_state"),
+        )
+    elif op is RecurrenceOperator.GATED_RNN:
+        out, state = nl.gated_rnn(
+            operands.pop("query"), operands.pop("weight"),
+            operands.pop("forget_input"), operands.pop("forget_weight"),
+            operands.pop("reset_input"), operands.pop("reset_weight"),
+            operands.pop("initial_state"),
+        )
+    elif op is RecurrenceOperator.MULTIPLICATIVE_RNN:
+        out, state = nl.multiplicative_rnn(
+            operands.pop("query"), operands.pop("key"), operands.pop("value"),
+            operands.pop("weight"), operands.pop("forget_input"),
+            operands.pop("initial_state"),
+        )
+    elif op is RecurrenceOperator.FFT_CONVOLUTION:
+        out, state = nl.hyena_fft_convolution(
+            operands.pop("query"), operands.pop("kernel"), operands.pop("direct"),
+        )
+    elif op is RecurrenceOperator.TWO_STAGE_FFT_CONVOLUTION:
+        out, state = nl.two_stage_fft_convolution(
+            operands.pop("query"), operands.pop("key"), operands.pop("value"),
+            operands.pop("ssm_kernel"), operands.pop("ssm_k_kernel"),
+            operands.pop("ssm_k_direct"), operands.pop("skip"),
+        )
+    elif op is RecurrenceOperator.SECOND_ORDER_CUMSUM:
+        out, state = nl.second_order_cumsum(
+            operands.pop("query"), operands.pop("key"), operands.pop("value"),
+        )
+    else:
+        raise UnderspecifiedComposition(
+            f"no canonical executor yet for recurrence operator {op.value}"
+        )
+    if operands:
+        raise TypeError(f"unexpected {op.value} operands: {sorted(operands)}")
+    result = {"output": out}
+    if state is not None:
+        result["final_state"] = state
+    return result
+
+
 def _execute_k2(spec: UnifiedMixerSpec, **operands):
+    # Route the distinct recurrence operators (the IR-distinguished equations) to
+    # their own canonical executors before the plain matrix-state path.
+    if spec.recurrence_operator is not RecurrenceOperator.PLAIN:
+        return _execute_k2_operator(spec, **operands)
     _require_canonical_k2(spec)
     if spec.recurrent_layout is RecurrentLayout.DIAGONAL:
         x = np.asarray(operands.pop("x"), dtype=np.float64)

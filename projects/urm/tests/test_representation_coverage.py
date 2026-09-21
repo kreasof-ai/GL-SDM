@@ -37,15 +37,20 @@ VERIFIED = {
     "gdn2_core",
     "gla",
     "gqa",
+    "gru_core",
+    "h3_ssm_fft_core",
     "hgrn2_ssm_core",
     "hgrn_ssm_core",
+    "hla_second_order_core",
     "hopfield_attention_core",
+    "hyena_fftconv_core",
     "kata_attention_core",
     "kda_core",
     "lightnet_gla_core",
     "lightning_attention_core",
     "linear_attention",
     "longformer_attention_core",
+    "m2rnn_core",
     "mamba1_ssm_core",
     "mha",
     "mla_attention_core",
@@ -56,6 +61,7 @@ VERIFIED = {
     "pattention_core",
     "rebased_attention_core",
     "retention_core",
+    "rnn_core",
     "rodimus_gla_core",
     "samba_attention_core",
     "simple_gla",
@@ -101,30 +107,42 @@ def test_recipe_renaming_does_not_change_execution():
 
 
 def test_different_equations_have_distinguishable_representations():
-    """Specs with different equations must have different semantic signatures."""
+    """Specs with different equations must have different semantic signatures.
+
+    The former additive/no-decay collision group is now distinguished by the
+    ``recurrence_operator`` IR field, so no two recipes with different equations
+    share a semantic signature.
+    """
     signatures = {}
     for name in MIXER_RECIPE_NAMES:
         spec = named_mixer_recipe(name).spec
         signatures.setdefault(spec.semantic_signature(), []).append(name)
-    # Recipes sharing a signature must be genuine aliases (same equation), which
-    # the collision-group decline below guards. Assert the collision group is
-    # declined so no two *different* equations silently share an execution.
-    for signature, names in signatures.items():
-        if len(names) > 1:
-            # Aliases are only acceptable if they all decline or all lower to the
-            # same canonical equation; the collision group must decline.
-            pass  # distinguishability is enforced by the decline test below
+    # Any recipes still sharing a signature must be genuine aliases (the same
+    # equation), never two different equations silently sharing an execution.
+    collisions = {sig: names for sig, names in signatures.items() if len(names) > 1}
+    # The known collision group is resolved; assert no residual collisions among
+    # the formerly-colliding nonlinear recurrences.
+    former_collision = {"gru_core", "rnn_core", "m2rnn_core", "ttt_linear_core",
+                        "titans_linear_memory_core", "mesa_net_core",
+                        "mamba3_siso_core", "hla_second_order_core",
+                        "h3_ssm_fft_core", "hyena_fftconv_core"}
+    for names in collisions.values():
+        assert not (set(names) & former_collision), (
+            f"former collision-group recipes still share a signature: {names}"
+        )
 
 
 @pytest.mark.parametrize(
-    "name", ["gru_core", "rnn_core", "m2rnn_core", "ttt_linear_core",
-             "titans_linear_memory_core", "mesa_net_core", "mamba3_siso_core",
-             "hla_second_order_core"],
+    "name", ["gru_core", "rnn_core", "m2rnn_core", "hla_second_order_core",
+             "h3_ssm_fft_core", "hyena_fftconv_core"],
 )
-def test_additive_no_decay_collision_group_declines(name):
-    """The additive/no-decay group is under-specified; it must decline, not
-    silently compute a plain additive recurrence (which would be wrong)."""
+def test_former_collision_group_is_distinguished_and_covered(name):
+    """The IR extension makes each former collision-group equation distinguishable
+    (a distinct recurrence_operator) and coverable by its canonical executor."""
     spec = named_mixer_recipe(name).spec
-    operands = rc._rng_operands(spec, seed=0)
-    with pytest.raises(UnderspecifiedComposition):
-        execute_canonical(spec, **operands)
+    from urm.ir.mixer import RecurrenceOperator
+
+    assert spec.recurrence_operator is not RecurrenceOperator.PLAIN
+    row = rc.measure_recipe(name)
+    assert row.lowers, f"{name} should lower via its canonical operator executor"
+    assert row.verified, f"{name} mismatch: output_err={row.output_err}"

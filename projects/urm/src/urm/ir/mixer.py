@@ -41,6 +41,34 @@ class RecurrentLayout(StrEnum):
     DIAGONAL = "diagonal_ssm_state"
 
 
+class RecurrenceOperator(StrEnum):
+    """The explicit equation a K2 recurrence computes, without architecture identity.
+
+    The additive/no-decay semantic signature is shared by equations that differ
+    fundamentally (a GRU's gated tanh interpolation, an FFT long convolution, a
+    second-order cumsum correction, a per-token linear solve, and similar). This
+    field carries the equation explicitly so different equations have
+    distinguishable semantic representations (acceptance-contract section 4) and
+    the compiler never dispatches on a recipe name.
+
+    PLAIN is the default linear matrix/diagonal recurrence the canonical cores
+    cover. The others name the distinct equation structures.
+    """
+
+    PLAIN = "plain_linear_recurrence"
+    TANH_RNN = "tanh_rnn"
+    GATED_RNN = "gated_rnn_gru"
+    MULTIPLICATIVE_RNN = "multiplicative_rnn_second_order"
+    LAYERNORM_INNER_STATE = "layernorm_inner_loss_state"
+    MOMENTUM_INNER_STATE = "momentum_inner_loss_state"
+    TRAPEZOIDAL_SSM = "trapezoidal_ssm_rotary"
+    REGULARIZED_SOLVE = "regularized_solve_state"
+    SECOND_ORDER_CUMSUM = "second_order_cumsum"
+    FFT_CONVOLUTION = "fft_long_convolution"
+    TWO_STAGE_FFT_CONVOLUTION = "two_stage_fft_convolution"
+    EXTERNAL_OPAQUE = "external_opaque"
+
+
 class StateUpdateRule(StrEnum):
     ADDITIVE = "additive"
     DELTA = "delta"
@@ -149,12 +177,14 @@ class UnifiedMixerSpec:
     diagonal_hgrn: bool = False
     epsilon: float = 1e-6
     k1_operation: K1Operation = K1Operation.SOFTMAX
+    recurrence_operator: RecurrenceOperator = RecurrenceOperator.PLAIN
 
     def __post_init__(self) -> None:
         for name, enum_type in (
             ("family", MixerKernelFamily),
             ("k1_operation", K1Operation),
             ("recurrent_layout", RecurrentLayout),
+            ("recurrence_operator", RecurrenceOperator),
             ("update_rule", StateUpdateRule),
             ("normalizer", StateNormalizer),
             ("feature_map", FeatureMap),

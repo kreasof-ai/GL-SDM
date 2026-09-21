@@ -93,8 +93,63 @@ def _rng_operands(spec, seed=0):
             ops["attention_mask"] = mask
         return ops
     if spec.family is MixerKernelFamily.RECURRENCE:
-        from urm.ir.mixer import RecurrentLayout
+        from urm.ir.mixer import RecurrenceOperator, RecurrentLayout
 
+        # Distinct recurrence operators (IR-distinguished equations).
+        op = spec.recurrence_operator
+        if op is RecurrenceOperator.TANH_RNN:
+            b, t, n, h = 1, 5, 2, 3
+            return {
+                "query": rng.normal(size=(b, t, n, h)),
+                "weight": rng.normal(size=(n, h, h)) * 0.3,
+                "initial_state": rng.normal(size=(b, n, h)),
+            }
+        if op is RecurrenceOperator.GATED_RNN:
+            b, t, n, h = 1, 5, 2, 3
+            return {
+                "query": rng.normal(size=(b, t, n, h)),
+                "weight": rng.normal(size=(n, h, h)) * 0.3,
+                "forget_input": rng.normal(size=(b, t, n, h)),
+                "forget_weight": rng.normal(size=(n, h, h)) * 0.3,
+                "reset_input": rng.normal(size=(b, t, n, h)),
+                "reset_weight": rng.normal(size=(n, h, h)) * 0.3,
+                "initial_state": rng.normal(size=(b, n, h)),
+            }
+        if op is RecurrenceOperator.MULTIPLICATIVE_RNN:
+            b, t, n, k, v = 1, 5, 2, 3, 3
+            return {
+                "query": rng.normal(size=(b, t, n, k)),
+                "key": rng.normal(size=(b, t, n, k)),
+                "value": rng.normal(size=(b, t, n, v)),
+                "weight": rng.normal(size=(n, v, v)) * 0.3,
+                "forget_input": rng.uniform(0.1, 0.9, size=(b, t, n)),
+                "initial_state": rng.normal(size=(b, n, k, v)) * 0.1,
+            }
+        if op is RecurrenceOperator.FFT_CONVOLUTION:
+            b, t, c = 1, 8, 3
+            return {
+                "query": rng.normal(size=(b, t, c)),
+                "kernel": rng.normal(size=(c, t)),
+                "direct": rng.normal(size=(c,)),
+            }
+        if op is RecurrenceOperator.TWO_STAGE_FFT_CONVOLUTION:
+            b, t, h = 1, 8, 2
+            return {
+                "query": rng.normal(size=(b, t, h, 1)),
+                "key": rng.normal(size=(b, t, h, 1)),
+                "value": rng.normal(size=(b, t, h, 1)),
+                "ssm_kernel": rng.normal(size=(h, t)),
+                "ssm_k_kernel": rng.normal(size=(h, t)),
+                "ssm_k_direct": rng.normal(size=(h,)),
+                "skip": rng.normal(size=(h,)),
+            }
+        if op is RecurrenceOperator.SECOND_ORDER_CUMSUM:
+            b, t, h, k, v = 1, 6, 2, 3, 3
+            return {
+                "query": rng.normal(size=(b, t, h, k)),
+                "key": rng.normal(size=(b, t, h, k)),
+                "value": rng.normal(size=(b, t, h, v)),
+            }
         if spec.recurrent_layout is RecurrentLayout.DIAGONAL:
             b, t, c, n = 1, 6, 4, 2
             if spec.diagonal_hgrn:
