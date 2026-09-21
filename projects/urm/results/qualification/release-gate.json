@@ -14,13 +14,13 @@
       "cases": {
         "mha": {
           "forward": {
-            "median_overhead": 0.18481893742620395,
-            "ci95_upper": 0.19092420629144638,
+            "median_overhead": 0.17407227744822482,
+            "ci95_upper": 0.18054759909307477,
             "gate_pass": false
           },
           "forward_backward": {
-            "median_overhead": 0.5138191958846829,
-            "ci95_upper": 0.5158272879067676,
+            "median_overhead": 0.5145367184038833,
+            "ci95_upper": 0.5160029268060398,
             "gate_pass": false
           }
         }
@@ -32,13 +32,13 @@
       "cases": {
         "mha": {
           "forward": {
-            "median_overhead": -0.14706147442847772,
-            "ci95_upper": -0.14498463304856474,
+            "median_overhead": -0.1467680638134986,
+            "ci95_upper": -0.1421442686669141,
             "gate_pass": true
           },
           "forward_backward": {
-            "median_overhead": 0.07059660561843958,
-            "ci95_upper": 0.07105168919521172,
+            "median_overhead": 0.07044013226314488,
+            "ci95_upper": 0.07115229012701714,
             "gate_pass": true
           }
         }
@@ -55,13 +55,13 @@
       "cases": {
         "hgrn_ssm_core": {
           "forward": {
-            "median_overhead": 0.023160077965503633,
-            "ci95_upper": 0.06460120996634057,
+            "median_overhead": 0.04728465093735208,
+            "ci95_upper": 0.08839998431064605,
             "gate_pass": true
           },
           "forward_backward": {
-            "median_overhead": -0.005865907539010448,
-            "ci95_upper": 0.016167314583665125,
+            "median_overhead": 0.013877962312275258,
+            "ci95_upper": 0.027385394697695728,
             "gate_pass": true
           }
         }
@@ -71,16 +71,100 @@
       "workload": "k2-gated-delta-recurrence",
       "verdict": "correct_below_target",
       "cases": {
-        "gated_delta_net": {
+        "latency_short/float32": {
           "forward": {
-            "median_overhead": 2.058523022074794,
-            "ci95_upper": 2.0732763724172103,
+            "median_overhead": -0.7685068537167667,
+            "ci95_upper": -0.7556931607331004,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.6430636973024397,
+            "ci95_upper": -0.6366755383936002,
+            "gate_pass": true
+          }
+        },
+        "latency_short/bfloat16": {
+          "forward": {
+            "median_overhead": -0.7556872918671638,
+            "ci95_upper": -0.7441941816142466,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.6403177505848423,
+            "ci95_upper": -0.6233028855927745,
+            "gate_pass": true
+          }
+        },
+        "throughput_medium/float32": {
+          "forward": {
+            "median_overhead": 2.084297756773932,
+            "ci95_upper": 2.1110608000225524,
             "gate_pass": false
           },
           "forward_backward": {
-            "median_overhead": 0.9650977637014402,
-            "ci95_upper": 0.9659364405471978,
+            "median_overhead": 0.9773956277045106,
+            "ci95_upper": 0.9836175927593432,
             "gate_pass": false
+          }
+        },
+        "throughput_medium/bfloat16": {
+          "forward": {
+            "median_overhead": 3.4013736813181876,
+            "ci95_upper": 3.511612246044323,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 2.222385875799687,
+            "ci95_upper": 2.2749886998749096,
+            "gate_pass": false
+          }
+        },
+        "continuation_nonzero_state/float32": {
+          "forward": {
+            "median_overhead": -0.28052883754015356,
+            "ci95_upper": -0.2610105287408677,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.42698602761087323,
+            "ci95_upper": -0.4181378039770506,
+            "gate_pass": true
+          }
+        },
+        "continuation_nonzero_state/bfloat16": {
+          "forward": {
+            "median_overhead": -0.28385225141626214,
+            "ci95_upper": -0.26922821506484784,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.4387503945995786,
+            "ci95_upper": -0.4251598631023118,
+            "gate_pass": true
+          }
+        },
+        "decode_step/float32": {
+          "forward": {
+            "median_overhead": -0.7483772078250401,
+            "ci95_upper": -0.740344805735082,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.6286520547709783,
+            "ci95_upper": -0.6192161195396898,
+            "gate_pass": true
+          }
+        },
+        "decode_step/bfloat16": {
+          "forward": {
+            "median_overhead": -0.7491506270143533,
+            "ci95_upper": -0.742885945280571,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.6221327914332658,
+            "ci95_upper": -0.6157285825593954,
+            "gate_pass": true
           }
         }
       }
@@ -91,25 +175,25 @@
       "cases": {
         "float32": {
           "forward": {
-            "median_overhead": -0.18554104247225386,
-            "ci95_upper": -0.17378515113310683,
+            "median_overhead": -0.19742489499115035,
+            "ci95_upper": -0.14838389948065683,
             "gate_pass": true
           },
           "forward_backward": {
-            "median_overhead": -0.4242312906734371,
-            "ci95_upper": -0.40901214107062794,
+            "median_overhead": -0.450195137981789,
+            "ci95_upper": -0.4389910181744766,
             "gate_pass": true
           }
         },
         "bfloat16": {
           "forward": {
-            "median_overhead": -0.18900373745423193,
-            "ci95_upper": -0.1713210472504917,
+            "median_overhead": -0.22478681384636548,
+            "ci95_upper": -0.21368742068167806,
             "gate_pass": true
           },
           "forward_backward": {
-            "median_overhead": -0.4374652344300751,
-            "ci95_upper": -0.39826150022435847,
+            "median_overhead": -0.42948783652943723,
+            "ci95_upper": -0.40891711132399056,
             "gate_pass": true
           }
         }
