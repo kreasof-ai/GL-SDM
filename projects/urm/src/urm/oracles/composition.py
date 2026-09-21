@@ -121,7 +121,7 @@ def _require_canonical_k2(spec: UnifiedMixerSpec) -> None:
     exotic = [
         name for name in (
             "mamba2_ssm", "log_linear_attention",
-            "gated_delta_product", "rwkv4_memory", "rwkv6_memory",
+            "rwkv4_memory", "rwkv6_memory",
             "momentum_delta", "gated_oja", "preconditioned_gated_delta",
             "preconditioned_kda", "slot_attention", "step_size_discretization",
             "diagonal_hgrn", "path_attention", "deltaformer_attention",
@@ -469,6 +469,12 @@ def _execute_k2_operator(spec: UnifiedMixerSpec, **operands):
             operands.pop("log_decay"), operands.pop("bonus"),
             initial_state=operands.pop("initial_state", None),
         )
+    elif op is RecurrenceOperator.MAMBA2_STRUCTURED_SSM:
+        out, state = nl.mamba2_structured_ssm(
+            operands.pop("x"), operands.pop("dt"), operands.pop("A"),
+            operands.pop("B"), operands.pop("C"),
+            initial_states=operands.pop("initial_states", None),
+        )
     elif op is RecurrenceOperator.SLOT_ATTENTION_TWO_STAGE:
         query = operands.pop("query")
         key = operands.pop("key")
@@ -553,6 +559,9 @@ def _execute_k2(spec: UnifiedMixerSpec, **operands):
     # generalized-delta factored transitions.
     transition_alpha = operands.pop("transition_alpha", None)
     transition_beta = operands.pop("transition_beta", None)
+    # gated-delta-product multi-rank updates.
+    update_keys = operands.pop("update_keys", None)
+    update_values = operands.pop("update_values", None)
     if operands:
         raise TypeError(f"unexpected K2 operands: {sorted(operands)}")
     if spec.gdn2_ssm and (erase_gate is None or write_gate is None):
@@ -574,6 +583,7 @@ def _execute_k2(spec: UnifiedMixerSpec, **operands):
     elif (
         spec.gdn2_ssm or spec.kda_delta or spec.comba_rule
         or spec.generalized_delta_iplr or spec.generalized_delta_dplr
+        or spec.gated_delta_product
     ):
         scale = key_dim ** -0.5
     else:
@@ -619,7 +629,7 @@ def _execute_k2(spec: UnifiedMixerSpec, **operands):
             is_delta = spec.update_rule is StateUpdateRule.DELTA
             beta_col = (
                 np.asarray(beta[b, :, vh], dtype=np.float64).reshape(sequence)
-                if is_delta and not spec.gdn2_ssm
+                if is_delta and not spec.gdn2_ssm and not spec.gated_delta_product
                 else np.ones(sequence)
             )
             erase_col = write_col = None
@@ -651,6 +661,12 @@ def _execute_k2(spec: UnifiedMixerSpec, **operands):
                         left_col[ti] = np.diag(np.exp(dplr_decay[ti])) + rank_one
                     else:
                         left_col[ti] = eye + rank_one
+            uk_col = uv_col = rb_col = None
+            if spec.gated_delta_product:
+                # update_keys [B,T,R,H,K], update_values [B,T,R,H,V], beta [B,T,R,H].
+                uk_col = np.asarray(update_keys[b, :, :, qh], dtype=np.float64)
+                uv_col = np.asarray(update_values[b, :, :, vh], dtype=np.float64)
+                rb_col = np.asarray(beta[b, :, :, vh], dtype=np.float64)
             out, m = matrix_state.recurrent(
                 m0,
                 kf[b, :, qh],
@@ -667,6 +683,9 @@ def _execute_k2(spec: UnifiedMixerSpec, **operands):
                 write_gate=write_col,
                 retrieval_keys=retr_col,
                 left_transitions=left_col,
+                update_keys=uk_col,
+                update_values=uv_col,
+                rank_beta=rb_col,
             )
             outputs[b, :, vh] = out
             final_states[b, vh] = m[0] if normalizer else m

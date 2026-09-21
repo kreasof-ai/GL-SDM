@@ -8,7 +8,7 @@ is recorded as declined with the precise reason. Once a recipe lowers and
 matches, any later optimization of the canonical K1/K2/K3 kernel lifts it
 automatically - there is no per-architecture re-derivation.
 
-**57 of 74 named recipes lower into a canonical core and match their independent equation.** 0 lower but are not yet verified; 17 decline (under-specified or exotic).
+**59 of 74 named recipes lower into a canonical core and match their independent equation.** 0 lower but are not yet verified; 15 decline (under-specified or exotic).
 
 ## Verified (lower + match independent equation)
 
@@ -56,6 +56,7 @@ automatically - there is no per-architecture re-derivation.
 | `abc_core` | RECURRENCE | 1.23e-07 | 2.39e-07 |
 | `gsa_core` | RECURRENCE | 1.15e-07 | 1.77e-07 |
 | `kda_core` | RECURRENCE | 8.26e-07 | 5.53e-07 |
+| `gated_delta_product_core` | RECURRENCE | 7.41e-06 | 5.24e-06 |
 | `generalized_delta_iplr_core` | RECURRENCE | 4.08e-07 | 5.03e-07 |
 | `generalized_delta_dplr_core` | RECURRENCE | 1.71e-07 | 1.28e-07 |
 | `rwkv4_memory_core` | RECURRENCE | 7.46e-08 | 1.42e-07 |
@@ -64,6 +65,7 @@ automatically - there is no per-architecture re-derivation.
 | `mesa_net_core` | RECURRENCE | 2.80e-07 | 2.86e-07 |
 | `rwkv7_transition_core` | RECURRENCE | 3.42e-07 | 1.28e-07 |
 | `mamba1_ssm_core` | RECURRENCE | 9.02e-08 | 7.27e-08 |
+| `mamba2_ssm_core` | RECURRENCE | 1.08e-07 | 1.82e-07 |
 | `mamba3_siso_core` | RECURRENCE | 2.07e-07 | 4.36e-07 |
 | `titans_linear_memory_core` | RECURRENCE | 1.18e-04 | 2.95e-05 |
 | `ttt_linear_core` | RECURRENCE | 2.14e-04 | 1.29e-04 |
@@ -95,6 +97,4 @@ automatically - there is no per-architecture re-derivation.
 | `atma_gated_delta_decode_core` | RECURRENCE | only functional state is canonical |
 | `pgdn_core` | RECURRENCE | exotic composition flags: ['preconditioned_gated_delta'] |
 | `pkda_core` | RECURRENCE | exotic composition flags: ['preconditioned_kda'] |
-| `gated_delta_product_core` | RECURRENCE | exotic composition flags: ['gated_delta_product'] |
-| `mamba2_ssm_core` | RECURRENCE | exotic composition flags: ['mamba2_ssm'] |
 | `log_linear_attention_core` | RECURRENCE | exotic composition flags: ['log_linear_attention'] |

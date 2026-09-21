@@ -1006,6 +1006,7 @@ def named_mixer_recipe(name: str) -> MixerRecipe:
             update_rule=StateUpdateRule.ADDITIVE,
             decay=DecayGranularity.HEAD,
             mamba2_ssm=True,
+            recurrence_operator=RecurrenceOperator.MAMBA2_STRUCTURED_SSM,
         ),
         "SSD matrix-state recurrence with continuous-time head decay",
         (

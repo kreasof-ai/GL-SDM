@@ -66,6 +66,7 @@ class RecurrenceOperator(StrEnum):
     SLOT_ATTENTION_TWO_STAGE = "slot_attention_two_stage"
     RWKV4_SCALAR_STATE = "rwkv4_scalar_state"
     RWKV6_BONUS_CORRECTED = "rwkv6_bonus_corrected"
+    MAMBA2_STRUCTURED_SSM = "mamba2_structured_ssm"
     TRAPEZOIDAL_SSM = "trapezoidal_ssm_rotary"
     REGULARIZED_SOLVE = "regularized_solve_state"
     SECOND_ORDER_CUMSUM = "second_order_cumsum"

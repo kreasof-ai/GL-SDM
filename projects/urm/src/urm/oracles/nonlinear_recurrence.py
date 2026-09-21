@@ -554,6 +554,41 @@ def rwkv6_bonus_corrected(query, key, value, log_decay, bonus, initial_state=Non
     return np.stack(outputs, axis=1), state
 
 
+def mamba2_structured_ssm(x, dt, A, B, C, initial_states=None, groups=1):
+    """Mamba-2 structured SSM recurrence.
+
+    State ``[H, P, N]`` (head_dim x state_dim). Per token: ``decay = exp(dt*A)``;
+    ``state = state*decay + (x ⊗ B)*dt``; read ``sum_N(state * C)``. ``x`` is
+    ``[B,T,H,P]``; ``dt``/``A`` are per-head; ``B``/``C`` are ``[B,T,G,N]``
+    (grouped, broadcast over heads). Returns (output, state).
+    """
+    x = np.asarray(x, dtype=np.float64)
+    dt = np.asarray(dt, dtype=np.float64)
+    A = np.asarray(A, dtype=np.float64)
+    B = np.asarray(B, dtype=np.float64)
+    C = np.asarray(C, dtype=np.float64)
+    batch, sequence, heads, head_dim = x.shape
+    state_dim = B.shape[-1]
+    groups = B.shape[2]
+    b_heads = np.repeat(B, heads // groups, axis=2)
+    c_heads = np.repeat(C, heads // groups, axis=2)
+    state = (
+        np.zeros((batch, heads, head_dim, state_dim))
+        if initial_states is None
+        else np.asarray(initial_states, dtype=np.float64).copy()
+    )
+    outputs = []
+    for token in range(sequence):
+        step = dt[:, token]
+        decay = np.exp(step * A[None, :])
+        state = state * decay[:, :, None, None]
+        state = state + (
+            x[:, token][..., None] * b_heads[:, token][:, :, None, :] * step[:, :, None, None]
+        )
+        outputs.append((state * c_heads[:, token][:, :, None, :]).sum(axis=-1))
+    return np.stack(outputs, axis=1), state
+
+
 def regularized_solve(query, key, value, log_decay, beta, lamb,
                       h_kk_init=None, h_kv_init=None):
     """MesaNet dual covariance-state recurrence with a per-token regularized solve.

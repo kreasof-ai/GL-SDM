@@ -62,7 +62,8 @@ def _decay_factor(g_t):
 def recurrent(memory, keys, queries, values, beta, log_decay, *, scale=1.0,
               read_before_update=False, is_delta=True, normalizer=False,
               epsilon=1e-6, erase_gate=None, write_gate=None, retrieval_keys=None,
-              left_transitions=None):
+              left_transitions=None, update_keys=None, update_values=None,
+              rank_beta=None):
     """Independent token recurrence returning readings and final memory.
 
     ``is_delta=True`` applies the delta-rule correction ``delta = beta (v - k^T
@@ -109,13 +110,24 @@ def recurrent(memory, keys, queries, values, beta, log_decay, *, scale=1.0,
             out[t] = scale * (q[t] @ z)
             if normalizer:
                 out[t] = out[t] / max(denom, epsilon)
-        if dual_gate:
+        if update_keys is not None:
+            # Multi-rank delta: R sequential rank-1 delta updates within the token.
+            uk = np.asarray(update_keys[t], dtype=np.float64)   # [R, K]
+            uv = np.asarray(update_values[t], dtype=np.float64)  # [R, V]
+            rb = np.asarray(rank_beta[t], dtype=np.float64)      # [R]
+            for r in range(uk.shape[0]):
+                delta_r = rb[r] * (uv[r] - uk[r] @ z)
+                z = z + uk[r][:, None] * delta_r[None, :]
+            m = z
+        elif dual_gate:
             delta = write[t] * v[t] - (erase[t] * k[t]) @ z
+            m = z + k[t][:, None] * delta[None, :]
         elif is_delta:
             delta = b[t] * (v[t] - retr[t] @ z)
+            m = z + k[t][:, None] * delta[None, :]
         else:
             delta = v[t]
-        m = z + k[t][:, None] * delta[None, :]
+            m = z + k[t][:, None] * delta[None, :]
         if normalizer:
             norm = norm + k[t]
         if not read_before_update:

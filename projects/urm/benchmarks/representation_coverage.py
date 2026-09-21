@@ -184,6 +184,15 @@ def _rng_operands(spec, seed=0):
                 "eta": rng.uniform(0.01, 0.3, size=(b, t, h, 1)),
                 "chunk_size": 4,
             }
+        if op is RecurrenceOperator.MAMBA2_STRUCTURED_SSM:
+            b, t, h, p, g, n = 1, 6, 2, 4, 1, 3
+            return {
+                "x": rng.normal(size=(b, t, h, p)),
+                "dt": rng.uniform(0.01, 0.5, size=(b, t, h)),
+                "A": -rng.uniform(0.1, 1.0, size=(h,)),
+                "B": rng.normal(size=(b, t, g, n)),
+                "C": rng.normal(size=(b, t, g, n)),
+            }
         if op is RecurrenceOperator.RWKV6_BONUS_CORRECTED:
             b, t, h, k, v = 1, 6, 2, 4, 3
             return {
@@ -284,6 +293,11 @@ def _rng_operands(spec, seed=0):
         if spec.generalized_delta_iplr or spec.generalized_delta_dplr:
             ops["transition_alpha"] = rng.normal(size=(b, t, h, k)) * 0.3
             ops["transition_beta"] = rng.normal(size=(b, t, h, k)) * 0.3
+        if spec.gated_delta_product:
+            r = 2  # ranks per token
+            ops["update_keys"] = rng.normal(size=(b, t, r, h, k))
+            ops["update_values"] = rng.normal(size=(b, t, r, h, v))
+            ops["beta"] = rng.uniform(0.1, 0.9, size=(b, t, r, h))
         if spec.comba_rule:
             # comba names its prediction key "p" and its (head) log decay "g".
             ops["p"] = rng.normal(size=(b, t, h, k))
