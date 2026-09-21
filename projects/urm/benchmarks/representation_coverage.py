@@ -184,6 +184,18 @@ def _rng_operands(spec, seed=0):
                 "eta": rng.uniform(0.01, 0.3, size=(b, t, h, 1)),
                 "chunk_size": 4,
             }
+        if op is RecurrenceOperator.MOMENTUM_DELTA_STATE:
+            b, t, h, k, v = 1, 6, 2, 4, 3
+            return {
+                "query": rng.normal(size=(b, t, h, k)),
+                "key": rng.normal(size=(b, t, h, k)),
+                "value": rng.normal(size=(b, t, h, v)),
+                "p": rng.normal(size=(b, t, h, k)),
+                "log_alpha": -rng.uniform(0, 0.4, size=(b, t, h)),
+                "log_mu": -rng.uniform(0, 0.4, size=(b, t, h)),
+                "beta": rng.uniform(0.1, 0.9, size=(b, t, h)),
+                "eta": rng.uniform(0.01, 0.3, size=(b, t, h)),
+            }
         if op is RecurrenceOperator.TRAPEZOIDAL_SSM:
             b, t, h, kd, vd, a = 1, 6, 2, 4, 3, 2  # K even, 2*A <= K
             return {
@@ -228,7 +240,11 @@ def _rng_operands(spec, seed=0):
             ops["write_gate"] = rng.uniform(0.1, 0.9, size=(b, t, h, v))
         elif spec.update_rule is StateUpdateRule.DELTA:
             ops["beta"] = rng.uniform(0.1, 0.9, size=(b, t, h))
-        if spec.static_head_decay:
+        if spec.comba_rule:
+            # comba names its prediction key "p" and its (head) log decay "g".
+            ops["p"] = rng.normal(size=(b, t, h, k))
+            ops["g"] = -rng.uniform(0, 0.4, size=(b, t, h))
+        elif spec.static_head_decay:
             ops["log_decay"] = -rng.uniform(0, 0.4, size=(h,))
         elif spec.decay is DecayGranularity.HEAD:
             ops["log_decay"] = -rng.uniform(0, 0.4, size=(b, t, h))

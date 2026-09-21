@@ -28,6 +28,7 @@ from urm.oracles.composition import UnderspecifiedComposition, execute_canonical
 VERIFIED = {
     "based_attention_core",
     "cat_attention_core",
+    "comba_core",
     "conformer_attention_core",
     "delta_net",
     "differential_attention_core",
@@ -57,6 +58,7 @@ VERIFIED = {
     "mha",
     "mla_attention_core",
     "mom_selected_memory_core",
+    "momentum_delta_core",
     "mqa",
     "nsa_selected_attention_core",
     "parallax_attention_core",

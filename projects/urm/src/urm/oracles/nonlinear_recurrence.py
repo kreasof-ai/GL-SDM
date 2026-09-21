@@ -341,6 +341,46 @@ def trapezoidal_ssm(query, key, value, adt, dt, trap, query_bias, key_bias,
     return np.stack(outputs, axis=1), (angle_state, ssm_state, key_state, value_state)
 
 
+def momentum_delta(query, key, value, p, log_alpha, log_mu, beta, eta,
+                   initial_state=None, initial_momentum=None, scale=None):
+    """Momentum DeltaNet two-matrix-state recurrence (state + momentum).
+
+    Per token: ``prediction = p^T state``; ``residual = v - prediction``;
+    ``momentum = mu*momentum - (eta*k)⊗residual``; ``state = alpha*state -
+    beta*momentum``; read ``(q*scale)^T state``. query/key/value/p [B,T,H,*];
+    log_alpha/log_mu/beta/eta per-head schedules. Returns (output, (state,
+    momentum)).
+    """
+    q = np.asarray(query, dtype=np.float64)
+    k = np.asarray(key, dtype=np.float64)
+    v = np.asarray(value, dtype=np.float64)
+    p = np.asarray(p, dtype=np.float64)
+    log_alpha = np.asarray(log_alpha, dtype=np.float64)
+    log_mu = np.asarray(log_mu, dtype=np.float64)
+    beta = np.asarray(beta, dtype=np.float64)
+    eta = np.asarray(eta, dtype=np.float64)
+    batch, sequence, heads, key_dim = q.shape
+    value_dim = v.shape[-1]
+    state_shape = (batch, heads, key_dim, value_dim)
+    state = np.zeros(state_shape) if initial_state is None else np.asarray(initial_state, dtype=np.float64).copy()
+    momentum = np.zeros(state_shape) if initial_momentum is None else np.asarray(initial_momentum, dtype=np.float64).copy()
+    if scale is None:
+        scale = key_dim ** -0.5
+    outputs = []
+    for token in range(sequence):
+        q_t, k_t, v_t, p_t = q[:, token], k[:, token], v[:, token], p[:, token]
+        alpha_t = np.exp(log_alpha[:, token])[..., None, None]
+        mu_t = np.exp(log_mu[:, token])[..., None, None]
+        beta_t = beta[:, token][..., None, None]
+        eta_t = eta[:, token][..., None]
+        prediction = np.einsum("bhk,bhkv->bhv", p_t, state)
+        residual = v_t - prediction
+        momentum = mu_t * momentum - (eta_t * k_t)[..., None] * residual[:, :, None, :]
+        state = alpha_t * state - beta_t * momentum
+        outputs.append(np.einsum("bhk,bhkv->bhv", q_t * scale, state))
+    return np.stack(outputs, axis=1), (state, momentum)
+
+
 def regularized_solve(query, key, value, log_decay, beta, lamb,
                       h_kk_init=None, h_kv_init=None):
     """MesaNet dual covariance-state recurrence with a per-token regularized solve.

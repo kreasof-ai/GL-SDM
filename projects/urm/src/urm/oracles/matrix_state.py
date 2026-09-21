@@ -61,7 +61,7 @@ def _decay_factor(g_t):
 
 def recurrent(memory, keys, queries, values, beta, log_decay, *, scale=1.0,
               read_before_update=False, is_delta=True, normalizer=False,
-              epsilon=1e-6, erase_gate=None, write_gate=None):
+              epsilon=1e-6, erase_gate=None, write_gate=None, retrieval_keys=None):
     """Independent token recurrence returning readings and final memory.
 
     ``is_delta=True`` applies the delta-rule correction ``delta = beta (v - k^T
@@ -76,6 +76,11 @@ def recurrent(memory, keys, queries, values, beta, log_decay, *, scale=1.0,
     ``(out, m)`` or ``(out, (m, z))`` when ``normalizer`` is set.
     """
     m, k, q, v, b, g = _inputs(memory, keys, queries, values, beta, log_decay)
+    # A separate retrieval key (comba dual-key delta): the retrieval h = p^T Z uses
+    # ``retrieval_keys`` while the write outer product uses ``keys``.
+    retr = k if retrieval_keys is None else np.asarray(retrieval_keys, dtype=np.float64)
+    if retr.shape != k.shape:
+        raise ValueError("retrieval_keys must match keys shape [T, K]")
     dual_gate = erase_gate is not None or write_gate is not None
     if dual_gate:
         # erase_gate is [T, K] (per key channel), write_gate is [T, V] (per value
@@ -102,7 +107,7 @@ def recurrent(memory, keys, queries, values, beta, log_decay, *, scale=1.0,
         if dual_gate:
             delta = write[t] * v[t] - (erase[t] * k[t]) @ z
         elif is_delta:
-            delta = b[t] * (v[t] - k[t] @ z)
+            delta = b[t] * (v[t] - retr[t] @ z)
         else:
             delta = v[t]
         m = z + k[t][:, None] * delta[None, :]

@@ -61,6 +61,7 @@ class RecurrenceOperator(StrEnum):
     MULTIPLICATIVE_RNN = "multiplicative_rnn_second_order"
     LAYERNORM_INNER_STATE = "layernorm_inner_loss_state"
     MOMENTUM_INNER_STATE = "momentum_inner_loss_state"
+    MOMENTUM_DELTA_STATE = "momentum_delta_two_matrix_state"
     TRAPEZOIDAL_SSM = "trapezoidal_ssm_rotary"
     REGULARIZED_SOLVE = "regularized_solve_state"
     SECOND_ORDER_CUMSUM = "second_order_cumsum"

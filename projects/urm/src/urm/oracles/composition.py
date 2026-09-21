@@ -116,7 +116,7 @@ def _require_canonical_k2(spec: UnifiedMixerSpec) -> None:
             "mamba2_ssm", "log_linear_attention",
             "gated_delta_product", "generalized_delta_iplr",
             "generalized_delta_dplr", "rwkv4_memory", "rwkv6_memory",
-            "momentum_delta", "gated_oja", "comba_rule", "preconditioned_gated_delta",
+            "momentum_delta", "gated_oja", "preconditioned_gated_delta",
             "preconditioned_kda", "slot_attention", "step_size_discretization",
             "diagonal_hgrn", "path_attention", "deltaformer_attention",
         )
@@ -124,6 +124,9 @@ def _require_canonical_k2(spec: UnifiedMixerSpec) -> None:
     ]
     if exotic:
         raise UnderspecifiedComposition(f"exotic composition flags: {exotic}")
+    # comba is the dual-key delta rule (separate prediction/write keys).
+    if spec.comba_rule and spec.update_rule is not StateUpdateRule.DELTA:
+        raise UnderspecifiedComposition("comba requires the delta update rule")
     # kda is the plain delta rule with key-channel decay and a key_dim**-0.5 read
     # scale; it requires the delta update rule and key-channel decay.
     if spec.kda_delta and not (
@@ -433,6 +436,15 @@ def _execute_k2_operator(spec: UnifiedMixerSpec, **operands):
             d_skip=operands.pop("d_skip", None), gate=operands.pop("gate", None),
             initial_states=operands.pop("initial_states", None),
         )
+    elif op is RecurrenceOperator.MOMENTUM_DELTA_STATE:
+        out, state = nl.momentum_delta(
+            operands.pop("query"), operands.pop("key"), operands.pop("value"),
+            operands.pop("p"), operands.pop("log_alpha"), operands.pop("log_mu"),
+            operands.pop("beta"), operands.pop("eta"),
+            initial_state=operands.pop("initial_state", None),
+            initial_momentum=operands.pop("initial_normalizer_state", None),
+            scale=spec.read_scale,
+        )
     else:
         raise UnderspecifiedComposition(
             f"no canonical executor yet for recurrence operator {op.value}"
@@ -483,10 +495,16 @@ def _execute_k2(spec: UnifiedMixerSpec, **operands):
     initial_state = operands.pop("initial_state", None)
     erase_gate = operands.pop("erase_gate", None)
     write_gate = operands.pop("write_gate", None)
+    # comba names its prediction key "p" and its log decay "g".
+    prediction_key = operands.pop("prediction_key", operands.pop("p", None))
+    if spec.comba_rule and log_decay is None:
+        log_decay = operands.pop("g", None)
     if operands:
         raise TypeError(f"unexpected K2 operands: {sorted(operands)}")
     if spec.gdn2_ssm and (erase_gate is None or write_gate is None):
         raise ValueError("gdn2 dual-gate delta requires erase_gate and write_gate")
+    if spec.comba_rule and prediction_key is None:
+        raise ValueError("comba dual-key delta requires prediction_key (p)")
     if spec.update_rule is StateUpdateRule.DELTA and beta is None and not spec.gdn2_ssm:
         raise ValueError("delta update requires beta")
     if spec.decay is not DecayGranularity.NONE and log_decay is None:
@@ -495,10 +513,10 @@ def _execute_k2(spec: UnifiedMixerSpec, **operands):
     batch, sequence, q_heads, key_dim = query.shape
     value_heads, value_dim = value.shape[2], value.shape[3]
     # Read-scale convention: the plain matrix-state reference defaults to 1.0,
-    # but the dual-gate (gdn2) and kda references default to key_dim**-0.5.
+    # but the dual-gate (gdn2), kda, and comba references default to key_dim**-0.5.
     if spec.read_scale is not None:
         scale = spec.read_scale
-    elif spec.gdn2_ssm or spec.kda_delta:
+    elif spec.gdn2_ssm or spec.kda_delta or spec.comba_rule:
         scale = key_dim ** -0.5
     else:
         scale = 1.0
@@ -551,6 +569,10 @@ def _execute_k2(spec: UnifiedMixerSpec, **operands):
                 # erase_gate [B,T,Hv,K], write_gate [B,T,Hv,V]
                 erase_col = np.asarray(erase_gate[b, :, vh], dtype=np.float64)
                 write_col = np.asarray(write_gate[b, :, vh], dtype=np.float64)
+            retr_col = None
+            if spec.comba_rule:
+                # prediction_key [B,T,H,K] is the retrieval key.
+                retr_col = np.asarray(prediction_key[b, :, qh], dtype=np.float64)
             out, m = matrix_state.recurrent(
                 m0,
                 kf[b, :, qh],
@@ -565,6 +587,7 @@ def _execute_k2(spec: UnifiedMixerSpec, **operands):
                 epsilon=spec.epsilon,
                 erase_gate=erase_col,
                 write_gate=write_col,
+                retrieval_keys=retr_col,
             )
             outputs[b, :, vh] = out
             final_states[b, vh] = m[0] if normalizer else m

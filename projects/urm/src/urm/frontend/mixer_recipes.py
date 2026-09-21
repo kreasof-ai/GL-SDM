@@ -896,6 +896,7 @@ def named_mixer_recipe(name: str) -> MixerRecipe:
             MixerKernelFamily.RECURRENCE,
             update_rule=StateUpdateRule.DELTA,
             momentum_delta=True,
+            recurrence_operator=RecurrenceOperator.MOMENTUM_DELTA_STATE,
         ),
         "Momentum DeltaNet with coupled fast-weight and momentum matrix states",
         ("momentum/delta frontend transforms and model projections",),
