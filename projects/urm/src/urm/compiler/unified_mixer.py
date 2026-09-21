@@ -1187,7 +1187,7 @@ def _native_matrix_state_supported(spec: UnifiedMixerSpec) -> bool:
         and spec.decay is DecayGranularity.NONE
     ):
         return False
-    if spec.feature_map is not FeatureMap.IDENTITY:
+    if spec.feature_map not in (FeatureMap.IDENTITY, FeatureMap.L2_NORMALIZE):
         return False
     if spec.normalizer is not StateNormalizer.NONE:
         return False
@@ -7445,6 +7445,11 @@ def _execute_native_matrix_state_recurrence(
         scale = spec.attention_scale
     else:
         scale = 1.0
+    # Apply the feature map to query/key (identity is a no-op; L2-normalize maps
+    # each vector to unit norm). This matches the reference oracle's _feature.
+    if spec.feature_map is not FeatureMap.IDENTITY:
+        query = _feature(torch, query, spec.feature_map)
+        key = _feature(torch, key, spec.feature_map)
     # The kernel holds the state as [B,H,K,V]; state_v_first recipes expose it as
     # [B,H,V,K], so transpose at the boundary (matching the reference oracle).
     kernel_initial = initial_state
