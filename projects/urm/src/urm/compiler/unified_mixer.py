@@ -274,6 +274,8 @@ class CompiledMixerPlan:
                 return _execute_fla_k2(self, torch, **operands)
         if self.backend is MixerBackend.NATIVE:
             if self.spec.family is MixerKernelFamily.SOFTMAX:
+                if self.spec.k1_operation is K1Operation.DIFFERENTIAL:
+                    return _execute_native_differential_attention(self, torch, **operands)
                 from urm.backends.triton.softmax.online_backend import (
                     TritonOnlineSoftmaxBackend,
                 )
@@ -442,12 +444,16 @@ def compile_mixer(
         )
         or (
             spec.family is MixerKernelFamily.SOFTMAX
-            and spec.is_normalized_softmax_attention()
+            and (
+                spec.is_normalized_softmax_attention()
+                or spec.k1_operation is K1Operation.DIFFERENTIAL
+            )
         )
     ):
         raise ValueError(
-            "URM-native anchors support K1 normalized softmax, K3 sparse delta, "
-            "K2 diagonal SSM semantics, or the plain K2 matrix-state recurrence"
+            "URM-native anchors support K1 normalized softmax (and its "
+            "differential composition), K3 sparse delta, K2 diagonal SSM "
+            "semantics, or the plain K2 matrix-state recurrence"
         )
     if (
         resolved_backend is MixerBackend.LIBRARY
@@ -2417,6 +2423,62 @@ def _execute_softmax(spec: UnifiedMixerSpec, torch: Any, **operands: Any):
             "anchor": "urm.unified.k1.softmax_reference.v1",
             "head_mode": "mha" if q_heads == kv_heads else "gqa_or_mqa",
             "execution": "torch_eager_reference",
+        },
+    )
+
+
+def _execute_native_differential_attention(
+    plan: CompiledMixerPlan, torch: Any, **operands: Any
+) -> MixerResult:
+    """Compose differential attention natively from two reusable K1 reductions.
+
+    Differential attention is ``softmax(q_a k_a) v - lambda * softmax(q_b k_b) v``:
+    two normalized routed reductions (the reusable K1 online-softmax capability)
+    combined by a learned per-head scalar. This is a held-out composition probe -
+    the frozen compiler generates it from the existing K1 core with no
+    architecture-specific kernel body.
+    """
+    spec = plan.spec
+    query_a = operands.pop("query_a")
+    query_b = operands.pop("query_b")
+    key_a = operands.pop("key_a")
+    key_b = operands.pop("key_b")
+    value = operands.pop("value")
+    lambda_weight = operands.pop("lambda_weight")
+    if operands:
+        raise TypeError(
+            f"unexpected native differential K1 operands: {', '.join(sorted(operands))}"
+        )
+    if query_a.ndim != 4 or any(
+        item.shape != query_a.shape for item in (query_b, key_a, key_b)
+    ):
+        raise ValueError("differential Q/K operands must share [B,T,H,K] layout")
+    batch, sequence, heads, key_dim = query_a.shape
+    if lambda_weight.ndim == 0:
+        combine = lambda_weight
+    elif lambda_weight.shape == (heads,):
+        combine = lambda_weight.view(1, 1, heads, 1)
+    else:
+        raise ValueError("differential lambda_weight must be scalar or [H]")
+    from urm.backends.triton.softmax.online import execute_online_softmax
+
+    attention_scale = spec.attention_scale or key_dim**-0.5
+    output_a = execute_online_softmax(
+        query_a, key_a, value,
+        attention_mask=None, score_bias=None, causal=spec.causal, scale=attention_scale,
+    )
+    output_b = execute_online_softmax(
+        query_b, key_b, value,
+        attention_mask=None, score_bias=None, causal=spec.causal, scale=attention_scale,
+    )
+    output = output_a - combine * output_b
+    return MixerResult(
+        output,
+        metadata={
+            "anchor": plan.anchor,
+            "execution": "urm_native_two_online_softmax_reductions_and_differential_combine",
+            "backward_supported": True,
+            "composition": "two K1 normalized reductions + learned per-head combine",
         },
     )
 

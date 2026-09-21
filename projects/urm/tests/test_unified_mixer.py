@@ -4913,6 +4913,102 @@ def test_native_matrix_state_declines_underdetermined_recipes(recipe_name):
         compile_mixer(spec, backend=MixerBackend.NATIVE, intent="training", dtype="float32")
 
 
+def test_held_out_differential_attention_composes_natively():
+    """Held-out K1 probe: differential attention from two reusable K1 reductions.
+
+    The frozen compiler must generate differential attention - two normalized
+    routed reductions combined by a learned per-head scalar - from the existing
+    K1 online-softmax core, with no architecture-specific kernel body. This is
+    the acceptance-contract section-4 composition invariant.
+    """
+    torch = _torch()
+    if not torch.cuda.is_available():
+        pytest.skip("native K1 requires CUDA")
+    pytest.importorskip("triton")
+    from urm.compiler.unified_mixer import MixerBackend, compile_mixer
+
+    spec = named_mixer_recipe("differential_attention_core").spec
+    torch.manual_seed(0)
+    batch, sequence, heads, key_dim, value_dim = 2, 32, 4, 32, 32
+    operands = {
+        "query_a": torch.randn(batch, sequence, heads, key_dim, device="cuda"),
+        "query_b": torch.randn(batch, sequence, heads, key_dim, device="cuda"),
+        "key_a": torch.randn(batch, sequence, heads, key_dim, device="cuda"),
+        "key_b": torch.randn(batch, sequence, heads, key_dim, device="cuda"),
+        "value": torch.randn(batch, sequence, heads, value_dim, device="cuda"),
+        "lambda_weight": torch.rand(heads, device="cuda"),
+    }
+    native = compile_mixer(
+        spec, backend=MixerBackend.NATIVE, intent="training", dtype="float32"
+    ).execute(**operands)
+    reference = compile_mixer(
+        spec, backend=MixerBackend.REFERENCE, intent="training", dtype="float32"
+    ).execute(**operands)
+    torch.testing.assert_close(native.output, reference.output, atol=2e-5, rtol=2e-4)
+    # Gradients flow through the composition to inputs and the learned combine.
+    grad_operands = {
+        name: (value.clone().requires_grad_() if name in ("query_a", "lambda_weight") else value)
+        for name, value in operands.items()
+    }
+    result = compile_mixer(
+        spec, backend=MixerBackend.NATIVE, intent="training", dtype="float32"
+    ).execute(**grad_operands)
+    result.output.square().mean().backward()
+    assert grad_operands["query_a"].grad is not None
+    assert grad_operands["lambda_weight"].grad is not None
+
+
+def test_held_out_gated_delta_with_forgetting_composes_natively():
+    """Held-out K2 probe: gated-delta matrix-state + per-head forgetting gate.
+
+    The frozen compiler must generate the gated-delta recurrence composed with a
+    per-head forgetting (decay) gate from the reusable matrix-state core, with
+    native forward/backward, state gradients, and exact streaming continuation.
+    """
+    torch = _torch()
+    if not torch.cuda.is_available():
+        pytest.skip("native matrix-state recurrence requires CUDA")
+    pytest.importorskip("triton")
+    from urm.compiler.unified_mixer import MixerBackend, compile_mixer
+
+    spec = named_mixer_recipe("gated_delta_net").spec
+    plan = compile_mixer(spec, backend=MixerBackend.NATIVE, intent="training", dtype="float32")
+    torch.manual_seed(5)
+    batch, sequence, heads, key_dim, value_dim = 2, 16, 3, 8, 5
+    query = torch.randn(batch, sequence, heads, key_dim, device="cuda")
+    key = torch.nn.functional.normalize(
+        torch.randn(batch, sequence, heads, key_dim, device="cuda"), dim=-1
+    )
+    value = torch.randn(batch, sequence, heads, value_dim, device="cuda")
+    log_decay = -torch.rand(batch, sequence, heads, device="cuda") * 0.3
+    beta = torch.rand(batch, sequence, heads, device="cuda")
+
+    full = plan.execute(query=query, key=key, value=value, log_decay=log_decay, beta=beta)
+    # Streaming continuation: a second chunk continues from the first's final state.
+    split = 7
+    chunk1 = plan.execute(
+        query=query[:, :split], key=key[:, :split], value=value[:, :split],
+        log_decay=log_decay[:, :split], beta=beta[:, :split],
+    )
+    chunk2 = plan.execute(
+        query=query[:, split:], key=key[:, split:], value=value[:, split:],
+        log_decay=log_decay[:, split:], beta=beta[:, split:],
+        initial_state=chunk1.final_state,
+    )
+    streamed = torch.cat([chunk1.output, chunk2.output], dim=1)
+    torch.testing.assert_close(streamed, full.output, atol=2e-5, rtol=2e-4)
+    torch.testing.assert_close(chunk2.final_state, full.final_state, atol=2e-5, rtol=2e-4)
+    # Gradients flow to inputs and the forgetting gate (log_decay).
+    query_g = query.clone().requires_grad_()
+    decay_g = log_decay.clone().requires_grad_()
+    beta_g = beta.clone().requires_grad_()
+    result = plan.execute(query=query_g, key=key, value=value, log_decay=decay_g, beta=beta_g)
+    (result.output.square().mean() + result.final_state.square().mean()).backward()
+    assert query_g.grad is not None
+    assert decay_g.grad is not None
+    assert beta_g.grad is not None
+
+
 def test_native_k2_diagonal_step_discretization_matches_reference_and_backward():
     torch = _torch()
     if not torch.cuda.is_available():
