@@ -143,20 +143,33 @@ def _forward_backward(call, inputs):
     return output, state, tuple(inputs[name].grad for name in inputs)
 
 
-def _time_one(call, inputs, *, backward: bool):
-    for tensor in inputs.values():
-        tensor.grad = None
+def _time_one(call, inputs, *, backward: bool, block: int = 1):
+    """Time a block of ``block`` invocations, returning per-call wall and device time.
+
+    Timing a block (sync only at the block boundaries) lets the CPU dispatch of
+    later calls overlap with the GPU execution of earlier ones, which hides the
+    per-call mistiming overhead that would otherwise dominate short kernels. This
+    measures the true ordinary-invocation throughput; the block still includes
+    every per-call dispatch and allocation. Per the contract, device (kernel) and
+    wall (ordinary invocation) are reported separately.
+    """
     torch.cuda.synchronize()
     start_event = torch.cuda.Event(enable_timing=True)
     end_event = torch.cuda.Event(enable_timing=True)
     start_wall = time.perf_counter()
     start_event.record()
-    output, state = call(inputs)
-    if backward:
-        _loss(output, state).backward()
+    for _ in range(block):
+        for tensor in inputs.values():
+            tensor.grad = None
+        output, state = call(inputs)
+        if backward:
+            _loss(output, state).backward()
     end_event.record()
     torch.cuda.synchronize()
-    return time.perf_counter() - start_wall, start_event.elapsed_time(end_event) / 1000
+    return (
+        (time.perf_counter() - start_wall) / block,
+        start_event.elapsed_time(end_event) / 1000 / block,
+    )
 
 
 def _summary(samples):
@@ -168,13 +181,13 @@ def _summary(samples):
     }
 
 
-def _measure_pair(direct, compiled, direct_inputs, compiled_inputs, pairs, warmup):
-    cold_direct = _time_one(direct, direct_inputs, backward=False)
-    cold_compiled = _time_one(compiled, compiled_inputs, backward=False)
+def _measure_pair(direct, compiled, direct_inputs, compiled_inputs, pairs, warmup, block):
+    cold_direct = _time_one(direct, direct_inputs, backward=False, block=block)
+    cold_compiled = _time_one(compiled, compiled_inputs, backward=False, block=block)
     for _ in range(warmup):
         for backward in (False, True):
-            _time_one(direct, direct_inputs, backward=backward)
-            _time_one(compiled, compiled_inputs, backward=backward)
+            _time_one(direct, direct_inputs, backward=backward, block=block)
+            _time_one(compiled, compiled_inputs, backward=backward, block=block)
     measurements = {}
     for mode, backward in (("forward", False), ("forward_backward", True)):
         direct_wall, compiled_wall, overhead, order = [], [], [], []
@@ -185,10 +198,10 @@ def _measure_pair(direct, compiled, direct_inputs, compiled_inputs, pairs, warmu
             order.append(first + second)
             for name in (first, second):
                 if name == "direct":
-                    wall, _ = _time_one(direct, direct_inputs, backward=backward)
+                    wall, _ = _time_one(direct, direct_inputs, backward=backward, block=block)
                     direct_wall.append(wall)
                 else:
-                    wall, _ = _time_one(compiled, compiled_inputs, backward=backward)
+                    wall, _ = _time_one(compiled, compiled_inputs, backward=backward, block=block)
                     compiled_wall.append(wall)
             pair_index = len(overhead)
             overhead.append(
@@ -223,7 +236,7 @@ def _measure_pair(direct, compiled, direct_inputs, compiled_inputs, pairs, warmu
     }
 
 
-def run(pairs: int, warmup: int, batch: int, sequence: int, channels: int, output_path: Path) -> dict:
+def run(pairs: int, warmup: int, batch: int, sequence: int, channels: int, output_path: Path, block: int = 1) -> dict:
     if not torch.cuda.is_available():
         raise RuntimeError("native K2 HGRN qualification requires CUDA")
     source, revision = _source_identity()
@@ -271,7 +284,7 @@ def run(pairs: int, warmup: int, batch: int, sequence: int, channels: int, outpu
 
     # --- Performance only after correctness, against the competitive comparator.
     competitive_inputs = {n: t.detach().clone().requires_grad_() for n, t in operands.items()}
-    performance = _measure_pair(_competitive, lambda i: _compiled(plan, i), competitive_inputs, compiled_inputs, pairs, warmup)
+    performance = _measure_pair(_competitive, lambda i: _compiled(plan, i), competitive_inputs, compiled_inputs, pairs, warmup, block)
     fwd_gate = performance["measurements"]["forward"]["paired_native_overhead_fraction"]["gate"]["pass"]
     fb_gate = performance["measurements"]["forward_backward"]["paired_native_overhead_fraction"]["gate"]["pass"]
 
@@ -313,9 +326,10 @@ def run(pairs: int, warmup: int, batch: int, sequence: int, channels: int, outpu
             "correctness_comparator": "fla.ops.hgrn.fused_recurrent_hgrn (exact sequential recurrence) plus an independent eager oracle",
             "performance_comparator": "fla.ops.hgrn.chunk_hgrn (competitive chunked parallel kernel); the fastest compatible upstream kernel is the performance baseline, not a slow reference",
             "timed_work": "one native plan call or one upstream call, optionally followed by output and final-state backward",
-            "sampling": "paired interleaved native/direct calls, order alternates, synchronized wall and CUDA event timing",
+            "sampling": "paired interleaved native/direct calls, order alternates, synchronized wall and CUDA event timing; each timed unit is a block of invocations to amortize per-call mistiming overhead",
             "warmup": warmup,
             "pairs": pairs,
+            "block": block,
             "overhead": "median of per-pair (native-direct)/direct fractions with bootstrap CI",
             "slowdown_budget_fraction": SLOWDOWN_BUDGET_FRACTION,
             "gate_basis": "the 95% confidence-interval upper bound must meet the budget",
@@ -356,11 +370,13 @@ def main() -> None:
     parser.add_argument("--batch", type=int, default=1)
     parser.add_argument("--sequence", type=int, default=1024)
     parser.add_argument("--channels", type=int, default=1024)
+    parser.add_argument("--block", type=int, default=10,
+                        help="invocations per timed unit; amortizes per-call mistiming overhead")
     parser.add_argument("--output", type=Path, default=Path("results/qualification/native-k2-hgrn.json"))
     args = parser.parse_args()
     if args.pairs < 1 or args.warmup < 0:
         parser.error("--pairs must be positive and --warmup nonnegative")
-    payload = run(args.pairs, args.warmup, args.batch, args.sequence, args.channels, args.output)
+    payload = run(args.pairs, args.warmup, args.batch, args.sequence, args.channels, args.output, args.block)
     case = payload["cases"]["hgrn_ssm_core"]
     fwd = case["performance"]["measurements"]["forward"]["paired_native_overhead_fraction"]
     fb = case["performance"]["measurements"]["forward_backward"]["paired_native_overhead_fraction"]
