@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "URM production replacement matrix",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "frozen_on",
+    "status",
+    "purpose",
+    "comparator_policy",
+    "measurement_policy",
+    "hardware",
+    "workloads",
+    "held_out_generation_probes"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "frozen_on": { "type": "string" },
+    "status": { "const": "frozen_release_envelope" },
+    "purpose": { "type": "string", "minLength": 1 },
+    "comparator_policy": { "type": "string", "minLength": 1 },
+    "measurement_policy": { "type": "string", "minLength": 1 },
+    "hardware": {
+      "type": "object",
+      "required": ["gpu"],
+      "properties": {
+        "gpu": { "type": "string", "minLength": 1 }
+      }
+    },
+    "workloads": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/workload" }
+    },
+    "held_out_generation_probes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/probe" }
+    }
+  },
+  "$defs": {
+    "workload": {
+      "type": "object",
+      "required": [
+        "id",
+        "family",
+        "operation",
+        "architecture",
+        "comparator",
+        "modes",
+        "dtypes",
+        "correctness",
+        "performance_budget",
+        "cases"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "family": { "enum": ["K1", "K2", "K3"] },
+        "operation": {
+          "enum": [
+            "normalized_routed_reduction",
+            "structured_recurrence",
+            "sparse_state"
+          ]
+        },
+        "architecture": { "type": "string", "minLength": 1 },
+        "comparator": {
+          "type": "object",
+          "required": ["source", "repository", "revision", "callable"],
+          "properties": {
+            "source": { "type": "string", "minLength": 1 },
+            "repository": { "type": "string", "minLength": 1 },
+            "revision": { "type": "string", "minLength": 7 },
+            "callable": { "type": "string", "minLength": 1 }
+          }
+        },
+        "modes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "enum": [
+              "training_forward",
+              "training_forward_backward",
+              "prefill",
+              "decode"
+            ]
+          }
+        },
+        "dtypes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "enum": ["float32", "bfloat16", "float16"] }
+        },
+        "correctness": {
+          "type": "object",
+          "required": ["components"],
+          "properties": {
+            "components": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "enum": [
+                  "output",
+                  "final_state",
+                  "input_gradients",
+                  "state_gradients"
+                ]
+              }
+            }
+          }
+        },
+        "performance_budget": {
+          "type": "object",
+          "minProperties": 1,
+          "properties": {
+            "ordinary_invocation_slowdown_max": {
+              "type": "number",
+              "minimum": 0
+            },
+            "cuda_graph_replay_slowdown_max": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        },
+        "cases": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["id"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "probe": {
+      "type": "object",
+      "required": ["id", "family", "operation", "rationale", "acceptance"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "family": { "enum": ["K1", "K2", "K3"] },
+        "operation": {
+          "enum": [
+            "normalized_routed_reduction",
+            "structured_recurrence",
+            "sparse_state"
+          ]
+        },
+        "rationale": { "type": "string", "minLength": 1 },
+        "acceptance": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

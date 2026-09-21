@@ -790,6 +790,28 @@ def test_aggregate_case_uses_only_named_cases() -> None:
     )
 
 
+def test_production_matrix_validates_against_schema() -> None:
+    """The frozen production replacement matrix must stay well-formed."""
+    schema = _load(PROJECT_ROOT / "benchmarks" / "production-matrix-schema.json")
+    validate(_load(PROJECT_ROOT / "benchmarks" / "production-matrix.json"), schema)
+
+
+def test_production_matrix_spans_all_three_families() -> None:
+    """The mandatory envelope must cover K1, K2, and K3 with a comparator each."""
+    matrix = _load(PROJECT_ROOT / "benchmarks" / "production-matrix.json")
+    families = {workload["family"] for workload in matrix["workloads"]}
+    assert families == {"K1", "K2", "K3"}
+    for workload in matrix["workloads"]:
+        comparator = workload["comparator"]
+        # A competitive comparator must be frozen with an exact revision.
+        assert comparator["revision"], workload["id"]
+        assert comparator["callable"], workload["id"]
+        # Every workload must declare at least one training and one serving mode
+        # where the family supports it, and freeze a performance budget.
+        assert workload["performance_budget"], workload["id"]
+        assert workload["cases"], workload["id"]
+
+
 def test_every_register_comparison_names_real_cases() -> None:
     """The register must name explicit cases that exist in each artifact.
 

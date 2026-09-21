@@ -15,6 +15,8 @@ Read in this order:
    [linear/delta recurrence](kernels/linear-delta.md), and
    [sparse routed delta](kernels/sparse-delta.md).
 7. [Named coverage register](planning/coverage.md): architecture-by-architecture comparisons.
+   [Production replacement matrix](planning/production-matrix.md) freezes the
+   mandatory workloads URM-native kernels must qualify against upstream.
    [Upstream comparison table](validation/upstream-comparison.md) consolidates
    coverage, parity, and dispatch overhead against pinned upstream sources.
    [Unification audit](planning/unification-audit.md) records source findings;

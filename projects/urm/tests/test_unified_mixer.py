@@ -320,6 +320,22 @@ def test_name_dependent_recipes_are_explicitly_enumerated():
     assert actually_name_dependent == set(_NAME_DEPENDENT_RECIPES_UNFINISHED)
 
 
+@pytest.mark.parametrize("recipe_name", sorted(_NAME_DEPENDENT_RECIPES_UNFINISHED))
+def test_native_backend_declines_name_dependent_recipes(recipe_name):
+    """The native production path must never silently name-dispatch.
+
+    Name-dependent recipes select an upstream comparator by ``spec.name``; that
+    is legitimate for the LIBRARY/REFERENCE comparison boundary but must not
+    reach the native generator. Until their equations are lowered into reusable
+    semantic operations, the native backend must decline them explicitly rather
+    than substitute an equation selected by name.
+    """
+    spec = named_mixer_recipe(recipe_name).spec
+    for dtype in ("float32", "bfloat16"):
+        with pytest.raises(Exception):
+            compile_mixer(spec, backend=MixerBackend.NATIVE, dtype=dtype)
+
+
 def test_missing_route_mask_diagnostic_does_not_require_torch():
     """The missing-mask check must run before importing any optional backend.
 

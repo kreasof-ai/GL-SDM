@@ -10,7 +10,9 @@ The [machine-readable register](../../benchmarks/architecture-coverage.json) rec
 IDs, source revisions, proposed lowerings, mode qualification and remaining work.
 The [upstream comparison table](../validation/upstream-comparison.md) consolidates
 the validated coverage, parity, and dispatch-overhead numbers against each pinned
-upstream source.
+upstream source. The [production replacement matrix](production-matrix.md) freezes
+the mandatory subset of workloads URM-native kernels must qualify against upstream
+before the next release.
 Revisions captured through 2026-09-20 are audit/comparison candidates; they do not replace
 older frozen acceptance pins. Every run must additionally pin its actual callable,
 dependencies, shapes and tolerances. Paired GPU kernel-slice comparisons are now
