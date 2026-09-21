@@ -17,18 +17,24 @@ def test_active_documentation_links_resolve():
             assert (document.parent / target.split("#")[0]).exists(), (document, target)
 
 
-def test_public_compatibility_types_keep_identity():
+def test_public_canonical_types_keep_identity():
     import urm
-    from urm.backend import BackendRegistry as LegacyRegistry
     from urm.frontend import MixerSpec
-    from urm.ir import MixerSpec as LegacySpec
+    from urm.ir import MixerSpec as IrSpec
     from urm.oracles import execute
-    from urm.reference import execute as legacy_execute
     from urm.runtime import BackendRegistry
 
-    assert urm.MixerSpec is LegacySpec is MixerSpec
-    assert urm.BackendRegistry is LegacyRegistry is BackendRegistry
-    assert urm.execute is legacy_execute is execute
+    assert urm.MixerSpec is IrSpec is MixerSpec
+    assert urm.BackendRegistry is BackendRegistry
+    assert urm.execute is execute
+
+
+def test_removed_compatibility_shims_are_not_importable():
+    """The wildcard compatibility shims were removed; canonical paths remain."""
+    import importlib.util
+
+    for removed in ("urm.reference", "urm.backend"):
+        assert importlib.util.find_spec(removed) is None, removed
 
 
 def test_archived_evidence_is_preserved_byte_for_byte():

@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy.typing as npt
 
 from ...ir import MixerSpec, MutationKind, RoutingKind
-from ...reference import ReferenceResult, execute
+from ...oracles.routed import ReferenceResult, execute
 
 
 class NumpyBackend:

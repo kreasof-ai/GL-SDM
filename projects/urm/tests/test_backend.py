@@ -1,10 +1,10 @@
 from dataclasses import replace
 import pytest
 
-from urm.backend import BackendRegistry
 from urm.backends import NumpyBackend
 from urm.backends.interface import BackendCapability, BackendRequest
-from urm.backends.registry import BackendDeclined, BackendRegistry as CapabilityRegistry
+from urm.backends.registry import BackendDeclined, CapabilityRegistry
+from urm.runtime import BackendRegistry
 from urm.presets import (
     DEEPSEEK_V3_MOE,
     DENSE_ATTENTION,

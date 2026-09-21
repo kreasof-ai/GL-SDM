@@ -1,4 +1,12 @@
-"""Explicit backend selection with visible declines and fallback decisions."""
+"""Execution-capability backend selection with visible declines and fallbacks.
+
+This registry is distinct from :class:`urm.runtime.registry.BackendRegistry`,
+which selects a backend by *semantic-family* support over a frontend
+``MixerSpec``. This one selects a backend by *execution capability* - whether
+an implementation honors a concrete operation, semantic contract, device,
+dtype, layout, and execution mode. The two selection APIs answer different
+questions and are deliberately not interchangeable.
+"""
 
 from __future__ import annotations
 
@@ -15,7 +23,9 @@ class BackendDeclined(ValueError):
     """Raised when an explicit backend cannot honor a request."""
 
 
-class BackendRegistry:
+class CapabilityRegistry:
+    """Select a backend implementation by its declared execution capability."""
+
     def __init__(self, backends: Iterable[BackendImplementation] = ()) -> None:
         self._backends: dict[str, BackendImplementation] = {}
         for backend in backends:
@@ -77,4 +87,4 @@ class BackendRegistry:
         )
 
 
-__all__ = ["BackendDeclined", "BackendRegistry"]
+__all__ = ["BackendDeclined", "CapabilityRegistry"]

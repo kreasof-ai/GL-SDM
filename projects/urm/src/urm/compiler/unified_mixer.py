@@ -406,7 +406,7 @@ def compile_mixer(
         and spec.family is MixerKernelFamily.SOFTMAX
         and spec.is_normalized_softmax_attention()
     ):
-        from urm.backends.registry import BackendRegistry as CapabilityRegistry
+        from urm.backends.registry import CapabilityRegistry
         from urm.backends.triton.softmax.online_backend import (
             TritonOnlineSoftmaxBackend,
         )
