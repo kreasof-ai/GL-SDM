@@ -13,15 +13,15 @@ from pathlib import Path
 
 import torch
 from lingua.sparse_delta_memory.layer import SparseDeltaMemory, SparseDeltaMemoryArgs
-from measurement import quantile
+from measurement import bootstrap_ci, quantile
 from provenance import provenance, write_artifact
 
 from urm.compiler.unified_mixer import (
     MixerBackend,
     MixerIntent,
     compile_mixer,
-    sparse_delta_spec,
 )
+from urm.frontend.mixer_recipes import sparse_delta_spec
 
 EXPECTED_SDM_REVISION = "183e7df809131b80ad4393741029d0f20fc3640b"
 ROUTE_WIDTH = 4
@@ -283,6 +283,7 @@ def _measure_pair(
                 / direct_wall[pair_index]
             )
         median_overhead = statistics.median(overhead)
+        ci_lower, ci_upper = bootstrap_ci(overhead, num_resamples=2000)
         measurements[label] = {
             "direct_wall": _summary(direct_wall),
             "compiled_wall": _summary(compiled_wall),
@@ -291,8 +292,11 @@ def _measure_pair(
             "paired_compiled_overhead_fraction": {
                 "median": median_overhead,
                 "p95": quantile(overhead, 0.95),
+                "ci95_lower": ci_lower,
+                "ci95_upper": ci_upper,
                 "raw_samples": overhead,
-                "gate": {"limit_fraction": 0.10, "pass": median_overhead <= 0.10},
+                # The confidence bound, not the point estimate, must meet budget.
+                "gate": {"limit_fraction": 0.10, "pass": ci_upper <= 0.10},
             },
             "pair_order": order,
         }
@@ -659,10 +663,29 @@ def run(pairs: int, warmup: int, output: Path) -> None:
         "value_dim": VALUE_DIM,
         "route_width": ROUTE_WIDTH,
     }
+    # Compute the workload verdict from every case's parity and performance gates.
+    # The confidence-interval upper bound (not the point estimate) must meet budget.
+    all_pass = True
+    any_fail = False
+    for case in cases.values():
+        parity_ok = case["parity"].get("status") == "pass" if isinstance(case["parity"], dict) else case["parity"] == "pass"
+        if not parity_ok:
+            any_fail = True
+        for mode in case["performance"]["measurements"].values():
+            if not mode["paired_compiled_overhead_fraction"]["gate"]["pass"]:
+                all_pass = False
+    if any_fail:
+        verdict = "numeric_failed"
+    elif all_pass:
+        verdict = "qualified"
+    else:
+        verdict = "correct_below_target"
     payload = {
         "schema_version": 1,
         "generated_utc": datetime.now(UTC).isoformat(),
         "purpose": "compare unified native K3 compiler plan with direct pinned SDM state operator",
+        "matrix_workload": "k3-sparse-state",
+        "verdict": verdict,
         "upstream": {
             "repository": "https://github.com/facebookresearch/sparse-delta-memory",
             "revision": revision,

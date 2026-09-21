@@ -419,6 +419,120 @@ def _online_softmax_backward_tiled(
     )
 
 
+@triton.jit
+def _online_softmax_backward_kv_tiled(
+    Q,
+    K,
+    V,
+    OUTPUT,
+    LOGSUMEXP,
+    GRAD_OUTPUT,
+    DELTA,
+    GRAD_K,
+    GRAD_V,
+    TQ: tl.constexpr,
+    TK: tl.constexpr,
+    HQ: tl.constexpr,
+    HK: tl.constexpr,
+    D: tl.constexpr,
+    DV: tl.constexpr,
+    CAUSAL: tl.constexpr,
+    SCALE: tl.constexpr,
+    INPUT_FP32: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_D: tl.constexpr,
+    BLOCK_V: tl.constexpr,
+):
+    """Key-parallel grad_k/grad_v pass (FlashAttention-2 style, no atomics).
+
+    One program per (batch, kv-head, key block); each owns its grad_k/grad_v tile
+    and loops over the query blocks that attend to it, so no cross-program
+    accumulation (atomics) is needed. This is the proven two-pass backward: the
+    query-parallel pass computes grad_q, this key-parallel pass computes
+    grad_k/grad_v.
+    """
+    batch = tl.program_id(0)
+    key_head = tl.program_id(1)
+    key_start = tl.program_id(2) * BLOCK_N
+    key_offsets = key_start + tl.arange(0, BLOCK_N)
+    query_offsets = tl.arange(0, BLOCK_M)
+    key_dims = tl.arange(0, BLOCK_D)
+    value_dims = tl.arange(0, BLOCK_V)
+    key_valid = key_offsets < TK
+    key = tl.load(
+        K + ((batch * TK + key_offsets[:, None]) * HK + key_head) * D + key_dims[None, :],
+        key_valid[:, None] & (key_dims[None, :] < D), other=0.0,
+    )
+    value = tl.load(
+        V + ((batch * TK + key_offsets[:, None]) * HK + key_head) * DV + value_dims[None, :],
+        key_valid[:, None] & (value_dims[None, :] < DV), other=0.0,
+    )
+    grad_key = tl.zeros((BLOCK_N, BLOCK_D), tl.float32)
+    grad_value = tl.zeros((BLOCK_N, BLOCK_V), tl.float32)
+    # Causal: query block i attends to key block j only if some query in i is at or
+    # after some key in j. The first query block that can attend is the one whose
+    # diagonal reaches this key block's first key.
+    if CAUSAL:
+        first_query = key_start - (TK - TQ)
+        first_query_block = tl.maximum(first_query // BLOCK_M, 0)
+        num_query_blocks = tl.cdiv(TQ, BLOCK_M)
+    else:
+        first_query_block = 0
+        num_query_blocks = tl.cdiv(TQ, BLOCK_M)
+    for query_block in range(first_query_block, num_query_blocks):
+        query_start = query_block * BLOCK_M
+        qoff = query_start + query_offsets
+        query_valid = qoff < TQ
+        for qhead_in_group in range(HQ // HK):
+            query_head = key_head * (HQ // HK) + qhead_in_group
+            query = tl.load(
+                Q + ((batch * TQ + qoff[:, None]) * HQ + query_head) * D + key_dims[None, :],
+                query_valid[:, None] & (key_dims[None, :] < D), other=0.0,
+            )
+            grad_output = tl.load(
+                GRAD_OUTPUT + ((batch * TQ + qoff[:, None]) * HQ + query_head) * DV + value_dims[None, :],
+                query_valid[:, None] & (value_dims[None, :] < DV), other=0.0,
+            )
+            logsumexp = tl.load(
+                LOGSUMEXP + (batch * HQ + query_head) * TQ + qoff, query_valid, other=float("-inf")
+            )
+            delta = tl.load(
+                DELTA + (batch * HQ + query_head) * TQ + qoff, query_valid, other=0.0
+            )
+            scores = tl.dot(
+                key, tl.trans(query), input_precision="ieee" if INPUT_FP32 else "tf32"
+            ) * SCALE  # [BLOCK_N, BLOCK_M]
+            score_valid = key_valid[:, None] & query_valid[None, :]
+            if CAUSAL:
+                visible = key_offsets[:, None] <= qoff[None, :] + TK - TQ
+                score_valid = score_valid & visible
+            scores = tl.where(score_valid, scores, float("-inf"))
+            probabilities = tl.where(
+                scores == float("-inf"), 0.0, tl.exp(scores - logsumexp[None, :])
+            )  # [BLOCK_N, BLOCK_M]
+            grad_probabilities = tl.dot(
+                value, tl.trans(grad_output), input_precision="ieee" if INPUT_FP32 else "tf32"
+            )  # [BLOCK_N, BLOCK_M]
+            grad_scores = probabilities * (grad_probabilities - delta[None, :])
+            grad_scores = tl.where(score_valid, grad_scores, 0.0)
+            grad_key += tl.dot(
+                grad_scores.to(query.dtype), tl.trans(query), input_precision="ieee" if INPUT_FP32 else "tf32"
+            ) * SCALE
+            grad_value += tl.dot(
+                probabilities.to(grad_output.dtype), tl.trans(grad_output),
+                input_precision="ieee" if INPUT_FP32 else "tf32",
+            )
+    tl.store(
+        GRAD_K + ((batch * TK + key_offsets[:, None]) * HK + key_head) * D + key_dims[None, :],
+        grad_key, key_valid[:, None] & (key_dims[None, :] < D),
+    )
+    tl.store(
+        GRAD_V + ((batch * TK + key_offsets[:, None]) * HK + key_head) * DV + value_dims[None, :],
+        grad_value, key_valid[:, None] & (value_dims[None, :] < DV),
+    )
+
+
 def _broadcast_strides_4d(tensor: Any | None, target: tuple[int, int, int, int]):
     if tensor is None:
         return (0, 0, 0, 0)

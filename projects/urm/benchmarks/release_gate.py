@@ -51,6 +51,21 @@ WORKLOADS = {
         "artifact": "native-k2-gated-delta.json",
         "args": ["--block", "10"],
     },
+    "k3-sparse-state": {
+        "runner": "benchmarks/unified_mixer_sdm.py",
+        "artifact": "sdm-k3.json",
+        "results_dir": PROJECT_ROOT / "results" / "unified-mixer",
+        "args": [],
+        "block": False,
+        # The SDM upstream builds its CUDA extension with the CUDA 13 nvcc/CCCL
+        # toolchain (pip nvidia-cuda-* 13.0 packages) and imports from the pinned
+        # checkout; see benchmarks/provision_comparators.py.
+        "env": {
+            "PYTHONPATH": "src:/tmp/urm-comparator-pins/sdm",
+            "CUDA_HOME": "/opt/conda/lib/python3.12/site-packages/nvidia/cu13",
+            "PATH_PREFIX": "/opt/conda/lib/python3.12/site-packages/nvidia/cu13/bin",
+        },
+    },
 }
 
 VALID_VERDICTS = {
@@ -65,7 +80,9 @@ VALID_VERDICTS = {
 
 def _run_workload(workload_id: str, spec: dict, pairs: int, warmup: int, block: int) -> dict:
     """Run a workload's qualification runner in a fresh process; read its artifact."""
-    artifact_path = RESULTS / spec["artifact"]
+    import os
+
+    artifact_path = spec.get("results_dir", RESULTS) / spec["artifact"]
     cmd = [
         sys.executable,
         spec["runner"],
@@ -74,12 +91,21 @@ def _run_workload(workload_id: str, spec: dict, pairs: int, warmup: int, block: 
         "--output", str(artifact_path),
         *spec["args"],
     ]
-    if block and "--block" not in spec["args"]:
+    if block and spec.get("block", True) and "--block" not in spec["args"]:
         cmd += ["--block", str(block)]
+    env = {"PYTHONPATH": "src", **os.environ}
+    extra_env = spec.get("env")
+    if extra_env:
+        for key, value in extra_env.items():
+            if key == "PATH_PREFIX":
+                env["PATH"] = value + os.pathsep + env.get("PATH", "")
+            elif key == "PYTHONPATH":
+                env["PYTHONPATH"] = value + os.pathsep + env.get("PYTHONPATH", "")
+            else:
+                env[key] = value
     try:
         proc = subprocess.run(
-            cmd, cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=900,
-            env={"PYTHONPATH": "src", **__import__("os").environ},
+            cmd, cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=900, env=env,
         )
     except subprocess.TimeoutExpired:
         return {"workload": workload_id, "verdict": "inconclusive", "reason": "runner timeout"}
@@ -109,11 +135,13 @@ def _read_artifact(workload_id: str, artifact_path: Path) -> dict:
     if verdict == "qualified" and not parity_ok:
         verdict = "numeric_failed"
     result = {"workload": workload_id, "verdict": verdict}
-    # Surface the headline performance numbers for the report.
+    # Surface the headline performance numbers for the report. Both the K1/K2
+    # runners (paired_native_overhead_fraction) and the K3 runner
+    # (paired_compiled_overhead_fraction) record the same paired overhead.
     for case_id, case in cases.items():
         perf = case.get("performance", {}).get("measurements", {})
         for mode, m in perf.items():
-            ov = m.get("paired_native_overhead_fraction", {})
+            ov = m.get("paired_native_overhead_fraction") or m.get("paired_compiled_overhead_fraction") or {}
             result.setdefault("cases", {}).setdefault(case_id, {})[mode] = {
                 "median_overhead": ov.get("median"),
                 "ci95_upper": ov.get("ci95_upper"),

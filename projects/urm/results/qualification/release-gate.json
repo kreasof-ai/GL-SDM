@@ -2,10 +2,10 @@
   "schema_version": 1,
   "purpose": "executable production release gate (acceptance-contract section 10)",
   "production_progress": {
-    "qualified": 2,
+    "qualified": 3,
     "total_mandatory": 6,
-    "fraction": 0.3333333333333333,
-    "headline": "2/6 mandatory workloads qualified; broader catalog incomplete"
+    "fraction": 0.5,
+    "headline": "3/6 mandatory workloads qualified; broader catalog incomplete"
   },
   "workloads": {
     "k1-mha": {
@@ -14,13 +14,13 @@
       "cases": {
         "mha": {
           "forward": {
-            "median_overhead": 0.17824564890818057,
-            "ci95_upper": 0.1817223784955081,
+            "median_overhead": 0.18481893742620395,
+            "ci95_upper": 0.19092420629144638,
             "gate_pass": false
           },
           "forward_backward": {
-            "median_overhead": 0.5164758470207289,
-            "ci95_upper": 0.5178666622148287,
+            "median_overhead": 0.5138191958846829,
+            "ci95_upper": 0.5158272879067676,
             "gate_pass": false
           }
         }
@@ -32,13 +32,13 @@
       "cases": {
         "mha": {
           "forward": {
-            "median_overhead": -0.1491867161465925,
-            "ci95_upper": -0.14578101478461666,
+            "median_overhead": -0.14706147442847772,
+            "ci95_upper": -0.14498463304856474,
             "gate_pass": true
           },
           "forward_backward": {
-            "median_overhead": 0.07080346819364797,
-            "ci95_upper": 0.07143951224826989,
+            "median_overhead": 0.07059660561843958,
+            "ci95_upper": 0.07105168919521172,
             "gate_pass": true
           }
         }
@@ -55,13 +55,13 @@
       "cases": {
         "hgrn_ssm_core": {
           "forward": {
-            "median_overhead": 0.035288454414000414,
-            "ci95_upper": 0.0660260578837587,
+            "median_overhead": 0.023160077965503633,
+            "ci95_upper": 0.06460120996634057,
             "gate_pass": true
           },
           "forward_backward": {
-            "median_overhead": 0.009331616475453048,
-            "ci95_upper": 0.04704175800864884,
+            "median_overhead": -0.005865907539010448,
+            "ci95_upper": 0.016167314583665125,
             "gate_pass": true
           }
         }
@@ -73,13 +73,13 @@
       "cases": {
         "gated_delta_net": {
           "forward": {
-            "median_overhead": 2.054853837976899,
-            "ci95_upper": 2.075472925955377,
+            "median_overhead": 2.058523022074794,
+            "ci95_upper": 2.0732763724172103,
             "gate_pass": false
           },
           "forward_backward": {
-            "median_overhead": 0.9617280027173221,
-            "ci95_upper": 0.9661979625933126,
+            "median_overhead": 0.9650977637014402,
+            "ci95_upper": 0.9659364405471978,
             "gate_pass": false
           }
         }
@@ -87,8 +87,33 @@
     },
     "k3-sparse-state": {
       "workload": "k3-sparse-state",
-      "verdict": "unsupported",
-      "reason": "no qualification runner / comparator in this environment"
+      "verdict": "qualified",
+      "cases": {
+        "float32": {
+          "forward": {
+            "median_overhead": -0.18554104247225386,
+            "ci95_upper": -0.17378515113310683,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.4242312906734371,
+            "ci95_upper": -0.40901214107062794,
+            "gate_pass": true
+          }
+        },
+        "bfloat16": {
+          "forward": {
+            "median_overhead": -0.18900373745423193,
+            "ci95_upper": -0.1713210472504917,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.4374652344300751,
+            "ci95_upper": -0.39826150022435847,
+            "gate_pass": true
+          }
+        }
+      }
     }
   },
   "release_ready": false
