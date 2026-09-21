@@ -74,12 +74,32 @@ def _inputs(seed, batch, qlen, klen, qheads, kvheads, key_dim, value_dim, dtype)
 
 
 def _direct(inputs, scale, causal):
-    """Competitive upstream: SDPA fused attention (BHTD layout), GQA-aware."""
+    """Competitive upstream: SDPA fused attention (BHTD layout), native GQA.
+
+    Uses SDPA's native grouped-query path (``enable_gqa=True``) so the comparator
+    does not pay avoidable KV-head expansion allocation and reduction work. The
+    expanded-KV form is kept separately as ``_direct_expanded_kv`` (a labeled
+    baseline), never as the qualification comparator.
+    """
+    qh = inputs["query"].transpose(1, 2)
+    kh = inputs["key"].transpose(1, 2)
+    vh = inputs["value"].transpose(1, 2)
+    gqa = qh.shape[1] != kh.shape[1]
+    return F.scaled_dot_product_attention(
+        qh, kh, vh, is_causal=causal, scale=scale, enable_gqa=gqa
+    ).transpose(1, 2)
+
+
+def _direct_expanded_kv(inputs, scale, causal):
+    """Labeled baseline: SDPA over KV heads expanded with repeat_interleave.
+
+    This is the avoidable-allocation form. It is recorded for transparency but is
+    never the qualification comparator, per the comparator policy.
+    """
     qh = inputs["query"].transpose(1, 2)
     kh = inputs["key"].transpose(1, 2)
     vh = inputs["value"].transpose(1, 2)
     if qh.shape[1] != kh.shape[1]:
-        # Grouped-query: repeat KV heads to match query heads.
         repeats = qh.shape[1] // kh.shape[1]
         kh = kh.repeat_interleave(repeats, dim=1)
         vh = vh.repeat_interleave(repeats, dim=1)

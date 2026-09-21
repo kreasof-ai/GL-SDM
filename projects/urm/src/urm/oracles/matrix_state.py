@@ -60,8 +60,13 @@ def _decay_factor(g_t):
 
 
 def recurrent(memory, keys, queries, values, beta, log_decay, *, scale=1.0,
-              read_before_update=False):
-    """Independent token recurrence returning readings and final memory."""
+              read_before_update=False, is_delta=True):
+    """Independent token recurrence returning readings and final memory.
+
+    ``is_delta=True`` applies the delta-rule correction ``delta = beta (v - k^T
+    Z)``; ``is_delta=False`` is the additive linear update ``M = Z + k v^T``
+    (beta is ignored).
+    """
     m, k, q, v, b, g = _inputs(memory, keys, queries, values, beta, log_decay)
     m = m.copy()
     out = np.empty_like(v)
@@ -69,8 +74,10 @@ def recurrent(memory, keys, queries, values, beta, log_decay, *, scale=1.0,
         z = _decay_factor(g[t]) * m
         if read_before_update:
             out[t] = scale * (q[t] @ z)
-        h = k[t] @ z
-        delta = b[t] * (v[t] - h)
+        if is_delta:
+            delta = b[t] * (v[t] - k[t] @ z)
+        else:
+            delta = v[t]
         m = z + k[t][:, None] * delta[None, :]
         if not read_before_update:
             out[t] = scale * (q[t] @ m)

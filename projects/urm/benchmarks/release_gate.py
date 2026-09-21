@@ -23,6 +23,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from release_coverage import derive_workload_coverage
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RESULTS = PROJECT_ROOT / "results" / "qualification"
 MATRIX = PROJECT_ROOT / "benchmarks" / "production-matrix.json"
@@ -68,9 +70,14 @@ WORKLOADS = {
     },
 }
 
+# Derived verdicts. The gate derives these from matrix coverage; it never trusts
+# an artifact's self-declared "qualified" string. "partial_coverage" means the
+# artifact passes only a slice of the mandatory matrix (a passing benchmark
+# slice), which does not count as a qualified replacement.
 VALID_VERDICTS = {
     "qualified",
-    "correct_below_target",
+    "partial_coverage",
+    "gate_failed",
     "numeric_failed",
     "inconclusive",
     "unsupported",
@@ -78,7 +85,7 @@ VALID_VERDICTS = {
 }
 
 
-def _run_workload(workload_id: str, spec: dict, pairs: int, warmup: int, block: int) -> dict:
+def _run_workload(workload_id: str, spec: dict, matrix_workload: dict, pairs: int, warmup: int, block: int) -> dict:
     """Run a workload's qualification runner in a fresh process; read its artifact."""
     import os
 
@@ -115,30 +122,42 @@ def _run_workload(workload_id: str, spec: dict, pairs: int, warmup: int, block: 
             "verdict": "inconclusive",
             "reason": f"runner failed: {proc.stderr[-300:]}",
         }
-    return _read_artifact(workload_id, artifact_path)
+    return _read_artifact(workload_id, artifact_path, matrix_workload)
 
 
-def _read_artifact(workload_id: str, artifact_path: Path) -> dict:
-    """Fail closed on missing, malformed, or failed evidence."""
+def _read_artifact(workload_id: str, artifact_path: Path, matrix_workload: dict) -> dict:
+    """Derive the verdict from matrix coverage; fail closed on bad evidence.
+
+    The artifact's self-declared ``verdict`` string is ignored. The verdict is
+    derived by cross-referencing the artifact's covered cases, dtypes, modes, and
+    correctness components against the frozen matrix declaration, and by checking
+    parity and performance gates from the recorded evidence.
+    """
     if not artifact_path.exists():
         return {"workload": workload_id, "verdict": "not_run", "reason": "no artifact"}
     try:
         payload = json.loads(artifact_path.read_text())
     except (OSError, json.JSONDecodeError) as exc:
         return {"workload": workload_id, "verdict": "inconclusive", "reason": f"malformed artifact: {exc}"}
-    verdict = payload.get("verdict")
-    if verdict not in VALID_VERDICTS:
-        return {"workload": workload_id, "verdict": "inconclusive", "reason": f"unknown verdict {verdict!r}"}
-    # Fail closed: a qualified verdict requires parity pass on every case.
-    cases = payload.get("cases", {})
-    parity_ok = all(c.get("parity", {}).get("status") == "pass" for c in cases.values())
-    if verdict == "qualified" and not parity_ok:
-        verdict = "numeric_failed"
-    result = {"workload": workload_id, "verdict": verdict}
+    if not isinstance(payload.get("cases"), dict):
+        return {"workload": workload_id, "verdict": "inconclusive", "reason": "artifact has no cases mapping"}
+
+    derived = derive_workload_coverage(matrix_workload, payload)
+    result = {
+        "workload": workload_id,
+        "verdict": derived["verdict"],
+        "artifact_self_declared_verdict": payload.get("verdict"),
+        "coverage_complete": derived["complete"],
+    }
+    if derived.get("missing"):
+        result["missing_coverage"] = derived["missing"]
+    if derived.get("correctness_gaps"):
+        result["correctness_gaps"] = derived["correctness_gaps"]
+
     # Surface the headline performance numbers for the report. Both the K1/K2
     # runners (paired_native_overhead_fraction) and the K3 runner
     # (paired_compiled_overhead_fraction) record the same paired overhead.
-    for case_id, case in cases.items():
+    for case_id, case in payload.get("cases", {}).items():
         perf = case.get("performance", {}).get("measurements", {})
         for mode, m in perf.items():
             ov = m.get("paired_native_overhead_fraction") or m.get("paired_compiled_overhead_fraction") or {}
@@ -161,9 +180,11 @@ def main() -> int:
     args = parser.parse_args()
 
     matrix = json.loads(MATRIX.read_text())
+    matrix_by_id = {w["id"]: w for w in matrix["workloads"]}
     mandatory_ids = [w["id"] for w in matrix["workloads"]]
     results = {}
     for workload_id in mandatory_ids:
+        matrix_workload = matrix_by_id[workload_id]
         spec = WORKLOADS.get(workload_id)
         if spec is None:
             results[workload_id] = {
@@ -172,20 +193,41 @@ def main() -> int:
                 "reason": "no qualification runner / comparator in this environment",
             }
             continue
-        results[workload_id] = _run_workload(workload_id, spec, args.pairs, args.warmup, args.block)
+        results[workload_id] = _run_workload(
+            workload_id, spec, matrix_workload, args.pairs, args.warmup, args.block
+        )
 
     qualified = sum(1 for r in results.values() if r["verdict"] == "qualified")
+    partial = sum(1 for r in results.values() if r["verdict"] == "partial_coverage")
     total = len(mandatory_ids)
     production_progress = qualified / total if total else 0.0
 
+    # Honest headline: only fully matrix-qualified workloads count. Workloads
+    # passing only a slice of the mandatory matrix are reported as passing
+    # benchmark slices, not as qualified replacements.
+    if qualified == total:
+        headline = f"{qualified}/{total} mandatory workloads fully qualified"
+    else:
+        headline = (
+            f"Production qualification incomplete: {qualified}/{total} mandatory "
+            f"workloads fully qualified against the frozen matrix"
+            + (f" ({partial} passing benchmark slices only)" if partial else "")
+        )
+
     report = {
-        "schema_version": 1,
+        "schema_version": 2,
         "purpose": "executable production release gate (acceptance-contract section 10)",
+        "accounting": (
+            "Verdicts are derived from frozen-matrix coverage (every mandatory "
+            "case, dtype, mode, and correctness component, with passing parity and "
+            "performance gates), not from an artifact's self-declared verdict."
+        ),
         "production_progress": {
             "qualified": qualified,
+            "partial_coverage": partial,
             "total_mandatory": total,
             "fraction": production_progress,
-            "headline": f"{qualified}/{total} mandatory workloads qualified; broader catalog incomplete",
+            "headline": headline,
         },
         "workloads": results,
         "release_ready": qualified == total,
@@ -195,18 +237,25 @@ def main() -> int:
 
     # Human-readable summary.
     print("=" * 70)
-    print("URM production release gate")
+    print("URM production release gate (verdicts derived from frozen-matrix coverage)")
     print("=" * 70)
     for workload_id in mandatory_ids:
         r = results[workload_id]
         line = f"  {workload_id:32} {r['verdict']}"
+        self_declared = r.get("artifact_self_declared_verdict")
+        if self_declared and self_declared != r["verdict"]:
+            line += f"  (artifact self-declared: {self_declared})"
         for case_id, modes in (r.get("cases") or {}).items():
             for mode, m in modes.items():
                 if m.get("median_overhead") is not None:
                     line += f"\n      {case_id}/{mode}: {m['median_overhead']*100:+.1f}% (ci95 upper {m['ci95_upper']*100:+.1f}%)"
+        for gap in (r.get("missing_coverage") or [])[:6]:
+            line += f"\n      missing: {gap}"
+        for gap in (r.get("correctness_gaps") or [])[:6]:
+            line += f"\n      gap: {gap}"
         print(line)
     print("-" * 70)
-    print(f"  Production progress: {qualified}/{total} qualified ({production_progress*100:.0f}%)")
+    print(f"  Production progress: {qualified}/{total} fully qualified ({production_progress*100:.0f}%)")
     print(f"  Headline: {report['production_progress']['headline']}")
     print(f"  RELEASE READY: {report['release_ready']}")
     print("=" * 70)
