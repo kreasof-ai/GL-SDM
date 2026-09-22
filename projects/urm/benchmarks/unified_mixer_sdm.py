@@ -399,6 +399,7 @@ def _measure_pair(
     warmup,
     decode_template=None,
     decode_direct=None,
+    decode_compiled=None,
 ):
     cold_direct = _time_one(
         direct, template, output_cotangent, state_cotangent, backward=False, direct=True
@@ -439,7 +440,7 @@ def _measure_pair(
                 direct=True,
             )
             _time_one(
-                compiled,
+                decode_compiled if decode_compiled is not None else compiled,
                 decode_template,
                 output_cotangent,
                 state_cotangent,
@@ -448,15 +449,26 @@ def _measure_pair(
             )
 
     measurements = {}
-    # (label, backward, template, direct call) — decode is a single-token
-    # forward-only step that uses the eval-mode pinned SDM operator.
+    # (label, backward, template, direct call, compiled call) — decode is a
+    # single-token forward-only step. The direct side uses the eval-mode pinned
+    # SDM operator; the compiled side uses the proper fused decode-step path (a
+    # persistent-state decode session) when ``decode_compiled`` is supplied,
+    # falling back to the training plan otherwise.
     mode_specs = [
-        ("forward", False, template, direct),
-        ("forward_backward", True, template, direct),
+        ("forward", False, template, direct, compiled),
+        ("forward_backward", True, template, direct, compiled),
     ]
     if decode_template is not None:
-        mode_specs.append(("decode", False, decode_template, decode_direct))
-    for label, backward, mode_template, mode_direct in mode_specs:
+        mode_specs.append(
+            (
+                "decode",
+                False,
+                decode_template,
+                decode_direct,
+                decode_compiled if decode_compiled is not None else compiled,
+            )
+        )
+    for label, backward, mode_template, mode_direct, mode_compiled in mode_specs:
         direct_wall, compiled_wall = [], []
         direct_device, compiled_device, overhead, order = [], [], [], []
         for index in range(pairs):
@@ -478,7 +490,7 @@ def _measure_pair(
                     direct_device.append(device)
                 else:
                     wall, device = _time_one(
-                        compiled,
+                        mode_compiled,
                         mode_template,
                         output_cotangent,
                         state_cotangent,
@@ -922,6 +934,47 @@ def run(pairs: int, warmup: int, output: Path) -> None:
                 )
             )
             compiled = lambda inputs, plan=plan: _compiled_call(plan, inputs)
+            # Native decode: the proper single-token decode-step path, a
+            # persistent-state SparseStateDecodeSession that holds the [B,S,D]
+            # memory and reuses the route+state backends with trusted native
+            # routes (no per-step GPU value-scan certification). The session is
+            # opened once per timed unit so the persistent memory threads across
+            # the step; the callable ignores the passed inputs.
+            from urm.runtime.decode import SparseStateDecodeSession
+
+            score_width = 2 * round(case["slots"] ** 0.5)
+            score_generator = torch.Generator(device="cuda").manual_seed(
+                66061 + index
+            )
+            decode_read_scores = torch.randn(
+                (case["batch"], 1, score_width),
+                device="cuda",
+                dtype=dtype,
+                generator=score_generator,
+            ).contiguous()
+            decode_write_scores = torch.randn(
+                (case["batch"], 1, score_width),
+                device="cuda",
+                dtype=dtype,
+                generator=score_generator,
+            ).contiguous()
+
+            def decode_compiled(inputs, _scores=(decode_read_scores, decode_write_scores)):
+                read_scores, write_scores = _scores
+                session = SparseStateDecodeSession(
+                    memory=inputs["memory"],
+                    read_width=case["read_width"],
+                    write_width=case["write_width"],
+                )
+                readings = session.step(
+                    read_scores=read_scores,
+                    write_scores=write_scores,
+                    values=inputs["values"],
+                    beta=inputs["beta"],
+                    log_decay=inputs["log_decay"],
+                )
+                return readings, session.memory
+
             parity, output_cotangent, state_cotangent = _check_parity(
                 layer, plan, reference_plan, template, case, dtype
             )
@@ -935,6 +988,7 @@ def run(pairs: int, warmup: int, output: Path) -> None:
                 warmup,
                 decode_template=decode_template,
                 decode_direct=decode_direct,
+                decode_compiled=decode_compiled,
             )
             cases[f"{case['id']}/{dtype_name}"] = {
                 "architecture_ids": ["arch-047"],
@@ -1016,13 +1070,14 @@ def run(pairs: int, warmup: int, output: Path) -> None:
             "nvcc": _nvcc_version(),
         },
         "methodology": {
-            "timed_work": "direct SDM gated_write_read or compiled K3 plan, with one forward or forward plus backward",
+            "timed_work": "direct SDM gated_write_read or compiled K3 plan, with one forward or forward plus backward; the decode mode runs the single-token decode-step path on both sides (native persistent-state SparseStateDecodeSession vs upstream eval-mode gated_write_read on a one-token step), not the training plan on T=1",
             "sampling": "paired interleaved direct/compiled calls, order alternates, synchronized wall and CUDA event timing; fresh state buffers cloned before each timer",
             "warmup": warmup,
             "pairs": pairs,
             "overhead": "median of per-pair (compiled-direct)/direct fractions",
             "overhead_gate_fraction": 0.10,
             "interpretation": "compares direct source operation with the full unified native K3 plan; route score production and model projections are excluded",
+            "decode_route_sources": "the decode mode compares two single-token state updates whose route sources differ: the native decode session derives routes from factorized route SCORES via the trusted native route-selection kernel, while the upstream eval-mode gated_write_read consumes explicit route INDICES. The route sources cannot be trivially matched, so the decode comparison measures the native decode-step cost against the upstream decode-step cost (both single-token state updates), not a route-matched parity check; correctness parity is verified separately by the forward/forward_backward modes.",
             "upstream_extension": "pinned source CUDA extension built with the CUDA 13 nvcc/CCCL toolchain before paired timing",
         },
         "cases": cases,

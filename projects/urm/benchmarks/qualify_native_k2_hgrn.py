@@ -340,15 +340,52 @@ def _run_case(case, dtype_name, dtype, pairs, warmup, block):
 
     # --- Performance only after correctness, against the competitive comparator.
     competitive_inputs = {n: t.detach().clone().requires_grad_() for n, t in operands.items()}
-    # Single-token decode-step operands (sequence=1) for the decode mode.
+    # Decode mode: the proper single-token decode-step path (a fused in-place
+    # kernel against a persistent state), not the training plan run on T=1. The
+    # native decode uses execute_diagonal_decode_step on a persistent [B,C,1]
+    # fp32 state; the upstream decode uses the exact sequential fused_recurrent
+    # operator on a one-token step (T=1). Both thread a persistent state across
+    # steps (reset per timed unit).
+    from urm.backends.triton.recurrence.diagonal_recurrence import (
+        execute_diagonal_decode_step,
+    )
+
     decode_operands = _inputs(
         hash((case["id"], dtype_name, "decode")) % (2**31), batch, 1, channels, dtype, case["initial"],
     )
-    decode_competitive = {n: t.detach().clone() for n, t in decode_operands.items()}
-    decode_compiled = {n: t.detach().clone() for n, t in decode_operands.items()}
+    decode_x = decode_operands["x"][:, 0].detach().float()  # [B, C] single token
+    decode_log_decay = decode_operands["log_decay"][:, 0].detach().float()  # [B, C]
+    # The persistent native state is [B, C, N=1] fp32 (HGRN is a per-channel
+    # scalar recurrence, so the state width N is one).
+    decode_native_initial = (
+        decode_operands["initial_state"].detach().float().unsqueeze(-1).contiguous()
+    )
+    decode_upstream_initial = decode_operands["initial_state"].detach().float().contiguous()
+
+    def _native_decode_step(_inputs):
+        state = decode_native_initial.clone()
+
+        def call(_):
+            return execute_diagonal_decode_step(
+                x=decode_x, log_decay=decode_log_decay,
+                input_gate=None, read_gate=None, state=state, read_before=False,
+            )
+        return call
+
+    def _upstream_decode_step(_inputs):
+        x1 = decode_operands["x"].detach().clone()  # [B, 1, C]
+        ld1 = decode_operands["log_decay"].detach().clone()  # [B, 1, C]
+
+        def call(_):
+            state = decode_upstream_initial.clone()
+            return fused_recurrent_hgrn(
+                x1, ld1, initial_state=state, output_final_state=True,
+            )
+        return call
+
     performance = _measure_pair(
         _competitive, lambda i: _compiled(plan, i), competitive_inputs, compiled_inputs, pairs, warmup, block,
-        decode_direct_inputs=decode_competitive, decode_compiled_inputs=decode_compiled,
+        decode_direct=_upstream_decode_step(None), decode_compiled=_native_decode_step(None),
     )
     fwd_gate = performance["measurements"]["forward"]["paired_native_overhead_fraction"]["gate"]["pass"]
     fb_gate = performance["measurements"]["forward_backward"]["paired_native_overhead_fraction"]["gate"]["pass"]
@@ -444,7 +481,7 @@ def run(pairs: int, warmup: int, output_path: Path, block: int = 1, only_case=No
             "comparison": "URM-native diagonal recurrence kernel vs pinned FLA HGRN; the two share no kernel",
             "correctness_comparator": "fla.ops.hgrn.fused_recurrent_hgrn (exact sequential recurrence) plus an independent eager oracle; output/final-state/input-gradients/state-gradients verified",
             "performance_comparator": "fla.ops.hgrn.chunk_hgrn (competitive chunked parallel kernel); the fastest compatible upstream kernel is the performance baseline, not a slow reference",
-            "timed_work": "one native plan call or one upstream call, in each matrix mode (training forward, training forward+backward, inference prefill, single-token decode)",
+            "timed_work": "one native plan call or one upstream call, in each matrix mode (training forward, training forward+backward, inference prefill, single-token decode); the decode mode runs the fused single-token decode-step path (native execute_diagonal_decode_step on a persistent [B,C,1] fp32 state vs upstream fused_recurrent_hgrn on a one-token step), not the training plan on T=1",
             "sampling": "paired interleaved native/direct calls, order alternates, synchronized wall and CUDA event timing; each timed unit is a block of invocations to amortize per-call mistiming overhead",
             "warmup": warmup,
             "pairs": pairs,
