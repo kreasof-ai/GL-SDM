@@ -43,6 +43,11 @@ WORKLOADS = {
         "artifact": "native-k1-gqa.json",
         "args": ["--workload", "gqa"],
     },
+    "k1-masked-variant": {
+        "runner": "benchmarks/qualify_native_k1_masked.py",
+        "artifact": "native-k1-masked.json",
+        "args": [],
+    },
     "k2-diagonal-recurrence": {
         "runner": "benchmarks/qualify_native_k2_hgrn.py",
         "artifact": "native-k2-hgrn.json",
