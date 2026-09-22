@@ -184,7 +184,7 @@ def _forward_backward(call, inputs):
     return output, state, tuple(inputs[name].grad for name in inputs)
 
 
-def _time_one(call, inputs, *, backward: bool, block: int = 1):
+def _time_one(call, inputs, *, backward: bool, block: int = 1, no_grad: bool = False):
     torch.cuda.synchronize()
     start_event = torch.cuda.Event(enable_timing=True)
     end_event = torch.cuda.Event(enable_timing=True)
@@ -193,9 +193,13 @@ def _time_one(call, inputs, *, backward: bool, block: int = 1):
     for _ in range(block):
         for tensor in inputs.values():
             tensor.grad = None
-        output, state = call(inputs)
-        if backward:
-            _loss(output, state).backward()
+        if no_grad:
+            with torch.no_grad():
+                call(inputs)
+        else:
+            output, state = call(inputs)
+            if backward:
+                _loss(output, state).backward()
     end_event.record()
     torch.cuda.synchronize()
     return (
@@ -213,13 +217,32 @@ def _summary(samples):
     }
 
 
-def _measure_pair(direct, compiled, direct_inputs, compiled_inputs, pairs, warmup, block):
+def _measure_pair(direct, compiled, direct_inputs, compiled_inputs, pairs, warmup, block,
+                  decode_direct_inputs=None, decode_compiled_inputs=None):
+    """Measure every matrix mode: training forward, training forward+backward,
+    inference prefill (forward under no_grad), and single-token decode.
+
+    ``decode_*_inputs`` carry the single-token (sequence=1) decode-step operands;
+    when omitted the decode mode reuses the training inputs (already a single
+    token for the decode_step case).
+    """
+    # (mode key, backward, no_grad, use decode inputs)
+    mode_specs = [
+        ("forward", False, False, False),
+        ("forward_backward", True, False, False),
+        ("prefill", False, True, False),
+        ("decode", False, True, True),
+    ]
     for _ in range(warmup):
-        for backward in (False, True):
-            _time_one(direct, direct_inputs, backward=backward, block=block)
-            _time_one(compiled, compiled_inputs, backward=backward, block=block)
+        for _, backward, no_grad, use_decode in mode_specs:
+            d_in = decode_direct_inputs if use_decode else direct_inputs
+            c_in = decode_compiled_inputs if use_decode else compiled_inputs
+            _time_one(direct, d_in, backward=backward, block=block, no_grad=no_grad)
+            _time_one(compiled, c_in, backward=backward, block=block, no_grad=no_grad)
     measurements = {}
-    for mode, backward in (("forward", False), ("forward_backward", True)):
+    for mode, backward, no_grad, use_decode in mode_specs:
+        d_in = decode_direct_inputs if use_decode else direct_inputs
+        c_in = decode_compiled_inputs if use_decode else compiled_inputs
         direct_wall, compiled_wall, overhead, order = [], [], [], []
         for index in range(pairs):
             first, second = (
@@ -228,10 +251,10 @@ def _measure_pair(direct, compiled, direct_inputs, compiled_inputs, pairs, warmu
             order.append(first + second)
             for name in (first, second):
                 if name == "direct":
-                    wall, _ = _time_one(direct, direct_inputs, backward=backward, block=block)
+                    wall, _ = _time_one(direct, d_in, backward=backward, block=block, no_grad=no_grad)
                     direct_wall.append(wall)
                 else:
-                    wall, _ = _time_one(compiled, compiled_inputs, backward=backward, block=block)
+                    wall, _ = _time_one(compiled, c_in, backward=backward, block=block, no_grad=no_grad)
                     compiled_wall.append(wall)
             pair_index = len(overhead)
             overhead.append(
@@ -296,6 +319,11 @@ def _run_case(case, dtype_name, dtype, pairs, warmup, block):
         name: (left.float() - right.float()).abs().max().item()
         for name, left, right in zip(operands, oracle_result[2], compiled_result[2], strict=True)
     }
+    # State-gradient component (matrix: "state_gradients"): the gradient flowing
+    # into the initial state, ∂L/∂(initial_state), verified against the oracle.
+    # The loss includes the final state, so the state-cotangent path is exercised;
+    # this isolates the state input's gradient from the operand gradients.
+    state_gradient_error = {"initial_state": gradient_errors_oracle["initial_state"]}
 
     # The exact upstream and the native kernel share the input dtype, so their
     # outputs round identically; compare them directly at the contract tolerance.
@@ -328,9 +356,19 @@ def _run_case(case, dtype_name, dtype, pairs, warmup, block):
 
     # --- Performance only after correctness, against the competitive comparator. ---
     competitive_inputs = {n: t.detach().clone().requires_grad_() for n, t in operands.items()}
+    # Single-token decode-step operands (sequence=1) with the case's initial-state
+    # config, for the decode mode. Prefill reuses the training operands under
+    # no_grad (inference forward, no autograd graph).
+    decode_operands = _inputs(
+        hash((case["id"], dtype_name, "decode")) % (2**31),
+        batch, 1, heads, key_dim, value_dim, dtype, case["initial"],
+    )
+    decode_competitive = {n: t.detach().clone() for n, t in decode_operands.items()}
+    decode_compiled = {n: t.detach().clone() for n, t in decode_operands.items()}
     measurements = _measure_pair(
         lambda i: _competitive(i, scale), lambda i: _compiled(plan, i),
         competitive_inputs, compiled_inputs, pairs, warmup, block,
+        decode_direct_inputs=decode_competitive, decode_compiled_inputs=decode_compiled,
     )
     fwd_gate = measurements["forward"]["paired_native_overhead_fraction"]["gate"]["pass"]
     fb_gate = measurements["forward_backward"]["paired_native_overhead_fraction"]["gate"]["pass"]
@@ -351,6 +389,7 @@ def _run_case(case, dtype_name, dtype, pairs, warmup, block):
             "output_max_abs_error_vs_oracle": output_error_oracle,
             "final_state_max_abs_error_vs_oracle": state_error_oracle,
             "input_gradient_max_abs_errors_vs_oracle": gradient_errors_oracle,
+            "state_gradient_max_abs_errors": state_gradient_error,
             "tolerances": {
                 "output_atol": OUTPUT_ATOL,
                 "state_atol": STATE_ATOL,
