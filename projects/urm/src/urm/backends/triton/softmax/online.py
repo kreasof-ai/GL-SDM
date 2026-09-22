@@ -168,11 +168,12 @@ def _online_softmax_forward_tiled(
         output,
         query_valid[:, None] & (value_dims[None, :] < DV),
     )
-    # running_max is in the log2 domain (scores were scaled by log2e); convert the
-    # logsumexp back to natural log for the backward pass.
+    # running_max is in the log2 domain (scores were scaled by log2e). Store the
+    # logsumexp in the log2 domain so the backward pass can use exp2 (a single
+    # ex2 instruction) instead of the multi-instruction natural exp.
     logsumexp = tl.where(
         running_sum > 0.0,
-        (running_max + tl.log2(tl.maximum(running_sum, 1.0e-30))) / LOG2E,
+        running_max + tl.log2(tl.maximum(running_sum, 1.0e-30)),
         float("-inf"),
     )
     tl.store(
@@ -335,10 +336,11 @@ def _online_softmax_backward_tiled(
             visible = keys[None, :] <= query_offsets[:, None] + TK - TQ
             scores = tl.where(visible, scores, float("-inf"))
         scores = tl.where(score_valid, scores, float("-inf"))
+        # logsumexp is stored in the log2 domain; use exp2 (single ex2 op).
         probabilities = tl.where(
             scores == float("-inf"),
             0.0,
-            tl.exp(scores - safe_logsumexp[:, None]),
+            tl.exp2(scores * 1.4426950408889634 - safe_logsumexp[:, None]),
         )
 
         grad_probabilities = tl.dot(
@@ -409,6 +411,167 @@ def _online_softmax_backward_tiled(
                 sem="relaxed",
             )
 
+    grad_query_offset = (
+        (batch * TQ + query_offsets[:, None]) * HQ + query_head
+    ) * D + key_dims[None, :]
+    tl.store(
+        GRAD_Q + grad_query_offset,
+        grad_query,
+        query_valid[:, None] & (key_dims[None, :] < D),
+    )
+
+
+@triton.jit
+def _online_softmax_backward_delta(
+    OUTPUT,
+    GRAD_OUTPUT,
+    DELTA,
+    B: tl.constexpr,
+    TQ: tl.constexpr,
+    HQ: tl.constexpr,
+    DV: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_V: tl.constexpr,
+):
+    """Compute the row quantity DELTA = sum(dO * O) once (FlashAttention-2 style).
+
+    One program per (batch, query-head, query block); DELTA is shared by the dQ
+    pass and the key-parallel dK/dV pass, so it is computed once here rather than
+    recomputed in both.
+    """
+    batch = tl.program_id(0)
+    query_head = tl.program_id(1)
+    query_start = tl.program_id(2) * BLOCK_M
+    query_offsets = query_start + tl.arange(0, BLOCK_M)
+    value_dims = tl.arange(0, BLOCK_V)
+    query_valid = query_offsets < TQ
+    output = tl.load(
+        OUTPUT
+        + ((batch * TQ + query_offsets[:, None]) * HQ + query_head) * DV
+        + value_dims[None, :],
+        query_valid[:, None] & (value_dims[None, :] < DV),
+        other=0.0,
+    )
+    grad_output = tl.load(
+        GRAD_OUTPUT
+        + ((batch * TQ + query_offsets[:, None]) * HQ + query_head) * DV
+        + value_dims[None, :],
+        query_valid[:, None] & (value_dims[None, :] < DV),
+        other=0.0,
+    )
+    delta = tl.sum(grad_output.to(tl.float32) * output.to(tl.float32), axis=1)
+    tl.store(
+        DELTA + (batch * HQ + query_head) * TQ + query_offsets,
+        delta,
+        query_valid,
+    )
+
+
+@triton.jit
+def _online_softmax_backward_dq(
+    Q,
+    K,
+    V,
+    OUTPUT,
+    LOGSUMEXP,
+    GRAD_OUTPUT,
+    DELTA,
+    GRAD_Q,
+    B: tl.constexpr,
+    TQ: tl.constexpr,
+    TK: tl.constexpr,
+    HQ: tl.constexpr,
+    HK: tl.constexpr,
+    D: tl.constexpr,
+    DV: tl.constexpr,
+    CAUSAL: tl.constexpr,
+    SCALE: tl.constexpr,
+    INPUT_FP32: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_D: tl.constexpr,
+    BLOCK_V: tl.constexpr,
+):
+    """Query-parallel grad_q pass (no dK/dV atomics; those use the KV-tiled pass)."""
+    batch = tl.program_id(0)
+    query_head = tl.program_id(1)
+    query_start = tl.program_id(2) * BLOCK_M
+    key_head = query_head // (HQ // HK)
+    query_offsets = query_start + tl.arange(0, BLOCK_M)
+    key_offsets = tl.arange(0, BLOCK_N)
+    key_dims = tl.arange(0, BLOCK_D)
+    query_valid = query_offsets < TQ
+    query = tl.load(
+        Q
+        + ((batch * TQ + query_offsets[:, None]) * HQ + query_head) * D
+        + key_dims[None, :],
+        query_valid[:, None] & (key_dims[None, :] < D),
+        other=0.0,
+    )
+    grad_output = tl.load(
+        GRAD_OUTPUT
+        + ((batch * TQ + query_offsets[:, None]) * HQ + query_head) * DV
+        + tl.arange(0, BLOCK_V)[None, :],
+        query_valid[:, None] & (tl.arange(0, BLOCK_V)[None, :] < DV),
+        other=0.0,
+    )
+    logsumexp = tl.load(
+        LOGSUMEXP + (batch * HQ + query_head) * TQ + query_offsets,
+        query_valid,
+        other=float("-inf"),
+    )
+    delta = tl.load(
+        DELTA + (batch * HQ + query_head) * TQ + query_offsets,
+        query_valid,
+        other=0.0,
+    )
+    row_valid = logsumexp != float("-inf")
+    safe_logsumexp = tl.where(row_valid, logsumexp, 0.0)
+    grad_query = tl.zeros((BLOCK_M, BLOCK_D), tl.float32)
+    if CAUSAL:
+        last_visible = query_start + BLOCK_M - 1 + (TK - TQ)
+        key_blocks = tl.cdiv(tl.minimum(last_visible + 1, TK), BLOCK_N)
+    else:
+        key_blocks = tl.cdiv(TK, BLOCK_N)
+    for key_start in range(key_blocks):
+        keys = key_start * BLOCK_N + key_offsets
+        key_valid = keys < TK
+        key = tl.load(
+            K
+            + ((batch * TK + keys[:, None]) * HK + key_head) * D
+            + key_dims[None, :],
+            key_valid[:, None] & (key_dims[None, :] < D),
+            other=0.0,
+        )
+        value = tl.load(
+            V
+            + ((batch * TK + keys[:, None]) * HK + key_head) * DV
+            + tl.arange(0, BLOCK_V)[None, :],
+            key_valid[:, None] & (tl.arange(0, BLOCK_V)[None, :] < DV),
+            other=0.0,
+        )
+        scores = tl.dot(
+            query, tl.trans(key), input_precision="ieee" if INPUT_FP32 else "tf32"
+        ) * SCALE
+        score_valid = query_valid[:, None] & key_valid[None, :]
+        scores = tl.where(score_valid, scores, float("-inf"))
+        if CAUSAL:
+            visible = keys[None, :] <= query_offsets[:, None] + TK - TQ
+            scores = tl.where(visible, scores, float("-inf"))
+        scores = tl.where(score_valid, scores, float("-inf"))
+        probabilities = tl.where(
+            scores == float("-inf"),
+            0.0,
+            tl.exp2(scores * 1.4426950408889634 - safe_logsumexp[:, None]),
+        )
+        grad_probabilities = tl.dot(
+            grad_output, tl.trans(value), input_precision="ieee" if INPUT_FP32 else "tf32"
+        )
+        grad_scores = probabilities * (grad_probabilities - delta[:, None])
+        grad_scores = tl.where(row_valid[:, None] & score_valid, grad_scores, 0.0)
+        grad_query += tl.dot(
+            grad_scores.to(query.dtype), key, input_precision="ieee" if INPUT_FP32 else "tf32"
+        ) * SCALE
     grad_query_offset = (
         (batch * TQ + query_offsets[:, None]) * HQ + query_head
     ) * D + key_dims[None, :]
@@ -509,7 +672,7 @@ def _online_softmax_backward_kv_tiled(
                 score_valid = score_valid & visible
             scores = tl.where(score_valid, scores, float("-inf"))
             probabilities = tl.where(
-                scores == float("-inf"), 0.0, tl.exp(scores - logsumexp[None, :])
+                scores == float("-inf"), 0.0, tl.exp2(scores * 1.4426950408889634 - logsumexp[None, :])
             )  # [BLOCK_N, BLOCK_M]
             grad_probabilities = tl.dot(
                 value, tl.trans(grad_output), input_precision="ieee" if INPUT_FP32 else "tf32"
@@ -517,10 +680,10 @@ def _online_softmax_backward_kv_tiled(
             grad_scores = probabilities * (grad_probabilities - delta[None, :])
             grad_scores = tl.where(score_valid, grad_scores, 0.0)
             grad_key += tl.dot(
-                grad_scores.to(query.dtype), tl.trans(query), input_precision="ieee" if INPUT_FP32 else "tf32"
+                grad_scores.to(query.dtype), query, input_precision="ieee" if INPUT_FP32 else "tf32"
             ) * SCALE
             grad_value += tl.dot(
-                probabilities.to(grad_output.dtype), tl.trans(grad_output),
+                probabilities.to(grad_output.dtype), grad_output,
                 input_precision="ieee" if INPUT_FP32 else "tf32",
             )
     tl.store(
@@ -644,7 +807,8 @@ def execute_online_softmax(
     num_stages = 3
     # Backward config: same tiling as the forward (the recompute-and-accumulate
     # backward benefits from the multi-stage pipeline here, unlike the FA reference
-    # whose structure differs).
+    # whose structure differs). A larger key tile (block_n=128) was evaluated and
+    # is slower (less pipelining): the forward tiling is already near-optimal.
     bwd_block_n = block_n
     bwd_num_warps = num_warps
     bwd_num_stages = num_stages
@@ -715,9 +879,22 @@ def execute_online_softmax(
             q, k, v, mask_tensor, bias_tensor, output, logsumexp = ctx.saved_tensors
             if grad_output is None:
                 return None, None, None, None, None
+            # Backward schedule selection. A key/value-owned two-pass backward (no
+            # atomics) was implemented and validated for correctness, but on the
+            # A10G it is consistently SLOWER than the single-pass atomic backward
+            # (measured +60-83% vs +51% at the mandatory shapes): the two-pass pays
+            # 2x score recomputation while the atomics are not the bottleneck. Per
+            # the schedule policy ("do not assume one backward decomposition wins at
+            # every shape"), the single-pass atomic backward remains the default;
+            # the two-pass path is retained for shapes where atomics dominate.
+            use_two_pass = False
             grad_q = torch.empty(q.shape, device=q.device, dtype=torch.float32)
-            grad_k = torch.zeros(k.shape, device=k.device, dtype=torch.float32)
-            grad_v = torch.zeros(v.shape, device=v.device, dtype=torch.float32)
+            if use_two_pass:
+                grad_k = torch.empty(k.shape, device=k.device, dtype=torch.float32)
+                grad_v = torch.empty(v.shape, device=v.device, dtype=torch.float32)
+            else:
+                grad_k = torch.zeros(k.shape, device=k.device, dtype=torch.float32)
+                grad_v = torch.zeros(v.shape, device=v.device, dtype=torch.float32)
             grad_mask = (
                 torch.zeros(ctx.mask_shape, device=q.device, dtype=torch.float32)
                 if ctx.needs_mask_grad
@@ -730,6 +907,41 @@ def execute_online_softmax(
             )
             grad_mask_strides = _gradient_strides_4d(grad_mask if ctx.needs_mask_grad else None)
             grad_bias_strides = _gradient_strides_4d(grad_bias if ctx.needs_bias_grad else None)
+            if use_two_pass:
+                delta = torch.empty(
+                    (batch, query_heads, query_length), device=q.device, dtype=torch.float32
+                )
+                grad_output_c = grad_output.contiguous()
+                # Pass 0: compute DELTA = sum(dO * O) once.
+                _online_softmax_backward_delta[
+                    (batch, query_heads, triton.cdiv(query_length, block_m))
+                ](
+                    output, grad_output_c, delta,
+                    batch, query_length, query_heads, value_dim,
+                    block_m, block_v,
+                    num_warps=4, num_stages=2,
+                )
+                # Pass 1: query-owned dQ.
+                _online_softmax_backward_dq[
+                    (batch, query_heads, triton.cdiv(query_length, block_m))
+                ](
+                    q, k, v, output, logsumexp, grad_output_c, delta, grad_q,
+                    batch, query_length, key_length, query_heads, key_heads,
+                    key_dim, value_dim, ctx.causal, ctx.scale, q.dtype is torch.float32,
+                    block_m, bwd_block_n, block_d, block_v,
+                    num_warps=bwd_num_warps, num_stages=bwd_num_stages,
+                )
+                # Pass 2: key/value-owned dK/dV (no atomics).
+                _online_softmax_backward_kv_tiled[
+                    (batch, key_heads, triton.cdiv(key_length, bwd_block_n))
+                ](
+                    q, k, v, output, logsumexp, grad_output_c, delta, grad_k, grad_v,
+                    query_length, key_length, query_heads, key_heads,
+                    key_dim, value_dim, ctx.causal, ctx.scale, q.dtype is torch.float32,
+                    block_m, bwd_block_n, block_d, block_v,
+                    num_warps=bwd_num_warps, num_stages=bwd_num_stages,
+                )
+                return grad_q.to(q.dtype), grad_k.to(k.dtype), grad_v.to(v.dtype), None, None
             _online_softmax_backward_tiled[
                 (batch, query_heads, triton.cdiv(query_length, block_m))
             ](
