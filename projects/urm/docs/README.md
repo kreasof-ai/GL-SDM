@@ -29,6 +29,10 @@ Read in this order:
    [Native coverage](validation/native-coverage.md) is the honest measure of the
    unified generator's reach - what URM computes with its own kernels versus
    what it can only dispatch to upstream.
+   [Product evidence table](validation/product-table.md) is the per-recipe product
+   record: all 62 covered recipes, native vs upstream, across parity, gradient
+   alignment, decode KL divergence, MFU (training/prefill/decode), throughput and
+   peak memory.
 
 Kernel contracts are architecture-independent. Names such as `sparse_delta`
 describe mathematical operations; named models belong in presets, adapters and
