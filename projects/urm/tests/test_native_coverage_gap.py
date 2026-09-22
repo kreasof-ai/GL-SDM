@@ -187,6 +187,226 @@ def test_coverage_gap_recipe_runs_natively(name):
         assert state_rel < REL_TOL, f"{name} native state rel err {state_rel:.3e}"
 
 
+# The four materializing K1 variants whose native executors previously set
+# ``backward_supported: False`` (their forward materializes the attention
+# probabilities/matrix and torch-autodiffs through it, a partial/wrong gradient
+# that ignores the online-softmax normalization state). Each now recomputes its
+# probabilities with differentiable torch ops so the native input gradients match
+# the canonical core.
+BACKWARD_COVERAGE_GAP_RECIPES = (
+    "parallax_attention_core",  # positional
+    "kata_attention_core",  # positive_feature
+    "tda_attention_core",  # thresholded
+    "deltaformer_attention_core",  # delta_transform
+)
+
+# Native fp32 recomputation vs the fp32 REFERENCE-backend gradient. The native
+# and reference paths now share the same differentiable equation, so the
+# agreement is exact; the bound is the product-table gradient tolerance.
+GRAD_REL_TOL = 2e-2
+
+
+def _native_input_grads(name: str, loss_seed: np.ndarray, seed: int = 0):
+    """Native-backend input gradients (autograd through the executor)."""
+    recipe = named_mixer_recipe(name)
+    operands = rc._rng_operands(recipe.spec, seed=seed)
+    plan = compile_mixer(
+        recipe,
+        intent=MixerIntent.TRAINING,
+        backend=MixerBackend.NATIVE,
+        dtype="float32",
+    )
+    grad_ops = {}
+    for key, value in operands.items():
+        if isinstance(value, (int, float, bool)):
+            grad_ops[key] = value
+            continue
+        arr = np.asarray(value)
+        if arr.dtype.kind in "iu":
+            grad_ops[key] = torch.as_tensor(arr, dtype=torch.int64, device="cuda")
+        else:
+            grad_ops[key] = torch.as_tensor(
+                arr, dtype=torch.float32, device="cuda"
+            ).requires_grad_(True)
+    result = plan.execute(**grad_ops)
+    assert result.metadata.get("backward_supported") is not False, (
+        f"{name} native executor still declares backward_supported: False"
+    )
+    assert result.output.grad_fn is not None, f"{name} native output has no grad_fn"
+    seed_t = torch.as_tensor(
+        np.asarray(loss_seed), dtype=result.output.dtype, device=result.output.device
+    )
+    torch.autograd.backward(result.output, grad_tensors=seed_t)
+    return {
+        key: op.grad.float().detach().cpu().numpy()
+        for key, op in grad_ops.items()
+        if torch.is_tensor(op) and op.is_floating_point() and op.grad is not None
+    }
+
+
+def _reference_input_grads(name: str, loss_seed: np.ndarray, seed: int = 0):
+    """REFERENCE-backend input gradients (the trusted canonical gradient)."""
+    recipe = named_mixer_recipe(name)
+    operands = rc._rng_operands(recipe.spec, seed=seed)
+    plan = compile_mixer(
+        recipe,
+        intent=MixerIntent.TRAINING,
+        backend=MixerBackend.REFERENCE,
+        dtype="float32",
+    )
+    grad_ops = {}
+    for key, value in operands.items():
+        if isinstance(value, (int, float, bool)):
+            grad_ops[key] = value
+            continue
+        arr = np.asarray(value)
+        if arr.dtype.kind in "iu":
+            grad_ops[key] = torch.as_tensor(arr, dtype=torch.int64)
+        else:
+            grad_ops[key] = torch.as_tensor(
+                arr, dtype=torch.float32
+            ).requires_grad_(True)
+    out = plan.execute(**grad_ops).output
+    seed_t = torch.as_tensor(np.asarray(loss_seed), dtype=out.dtype)
+    torch.autograd.backward(out, grad_tensors=seed_t)
+    return {
+        key: op.grad.float().detach().cpu().numpy()
+        for key, op in grad_ops.items()
+        if torch.is_tensor(op) and op.is_floating_point() and op.grad is not None
+    }
+
+
+def _grad_rel_err(native: dict, reference: dict) -> float:
+    """Max relative gradient error over the shared operands."""
+    max_rel = 0.0
+    for key, grad_native in native.items():
+        if key in reference and reference[key].shape == grad_native.shape:
+            grad_ref = reference[key]
+            denom = max(
+                float(np.abs(grad_ref).max()),
+                float(np.abs(grad_native).max()),
+                1e-9,
+            )
+            max_rel = max(
+                max_rel, float(np.abs(grad_native - grad_ref).max()) / denom
+            )
+    return max_rel
+
+
+@pytest.mark.parametrize("name", BACKWARD_COVERAGE_GAP_RECIPES)
+def test_materializing_k1_recipe_native_backward(name):
+    """Each materializing K1 variant now has a correct native backward.
+
+    The native input gradients must match the REFERENCE-backend gradient (the
+    trusted canonical gradient) on the recipe's coverage operands.
+    """
+    recipe = named_mixer_recipe(name)
+    spec = recipe.spec
+    operands = rc._rng_operands(spec, seed=0)
+    canonical = execute_canonical(spec, **_to_canonical_operands(operands))
+    loss_seed = np.random.default_rng(123).normal(size=canonical["output"].shape)
+    native_grads = _native_input_grads(name, loss_seed)
+    reference_grads = _reference_input_grads(name, loss_seed)
+    rel_err = _grad_rel_err(native_grads, reference_grads)
+    assert rel_err < GRAD_REL_TOL, (
+        f"{name} native backward grad rel err {rel_err:.3e} "
+        f"(native keys {sorted(native_grads)}, reference keys {sorted(reference_grads)})"
+    )
+
+
+# The 13 distinguished K2 recurrence operators whose native executors were
+# forward-only Triton kernels. Each is now wrapped in a ``torch.autograd.Function``
+# (``urm/backends/triton/recurrence/backward.py``) whose backward recomputes the
+# exact per-token recurrence in differentiable PyTorch and differentiates through
+# it, so the native input gradients match the REFERENCE-backend gradient.
+K2_RECURRENCE_BACKWARD_RECIPES = (
+    "rnn_core",  # tanh_rnn
+    "gru_core",  # gated_rnn
+    "m2rnn_core",  # multiplicative_rnn
+    "rwkv4_memory_core",  # rwkv4_scalar_state
+    "rwkv6_memory_core",  # rwkv6_bonus_corrected
+    "mamba2_ssm_core",  # mamba2_structured_ssm
+    "mamba3_siso_core",  # trapezoidal_ssm
+    "gated_oja_core",  # gated_oja_value_channel
+    "mesa_net_core",  # regularized_solve
+    "ttt_linear_core",  # layernorm_inner_state
+    "titans_linear_memory_core",  # momentum_inner_state
+    "gsa_core",  # slot_attention_two_stage
+    "abc_core",  # slot_attention_two_stage (slot_logits derivation)
+)
+
+
+@pytest.mark.parametrize("name", K2_RECURRENCE_BACKWARD_RECIPES)
+def test_k2_recurrence_recipe_native_backward(name):
+    """Each distinguished K2 recurrence operator now has a correct native backward.
+
+    The native executor is a forward-only Triton kernel wrapped in an autograd
+    Function with a differentiable-recomputation backward; its input gradients
+    must match the REFERENCE-backend gradient on the recipe's coverage operands.
+    """
+    recipe = named_mixer_recipe(name)
+    spec = recipe.spec
+    operands = rc._rng_operands(spec, seed=0)
+    canonical = execute_canonical(spec, **_to_canonical_operands(operands))
+    loss_seed = np.random.default_rng(123).normal(size=canonical["output"].shape)
+    native_grads = _native_input_grads(name, loss_seed)
+    reference_grads = _reference_input_grads(name, loss_seed)
+    rel_err = _grad_rel_err(native_grads, reference_grads)
+    assert rel_err < GRAD_REL_TOL, (
+        f"{name} native backward grad rel err {rel_err:.3e} "
+        f"(native keys {sorted(native_grads)}, reference keys {sorted(reference_grads)})"
+    )
+
+
+# The K2 matrix-state variant recipes whose native Triton recurrence
+# (``urm/backends/triton/recurrence/matrix_state.py``) was forward-only: the
+# reverse (adjoint) scan implemented only the plain delta/additive path and
+# raised ``NotImplementedError`` for the dual-gate (gdn2), retrieval-key
+# (comba), query/key normalizer (linear/based/rebased), multi-rank
+# (gated_delta_product), factored left-transition (generalized-delta IPLR/DPLR,
+# rwkv7), and non-identity feature-map (mom_selected_memory) configurations.
+# The reverse scan now covers the full canonical-core envelope, so each recipe's
+# native input gradients must match the REFERENCE-backend gradient (the trusted
+# canonical gradient) on the recipe's coverage operands. ``momentum_delta_core``
+# is a distinct recurrence operator (``momentum_delta_two_matrix_state``) that
+# routes to its own executor, not the matrix-state kernel, so it is not here.
+MATRIX_STATE_VARIANT_BACKWARD_RECIPES = (
+    "based_attention_core",  # polynomial basis + query/key normalizer
+    "rebased_attention_core",  # polynomial basis + query/key normalizer
+    "linear_attention",  # elu_plus_one feature map + query/key normalizer
+    "comba_core",  # dual-key delta (separate retrieval key) + head decay
+    "gdn2_core",  # dual-gate delta + key-channel decay
+    "generalized_delta_iplr_core",  # factored left transition
+    "generalized_delta_dplr_core",  # factored left transition + key-channel decay
+    "gated_delta_product_core",  # multi-rank ordered updates + head decay
+    "mom_selected_memory_core",  # l2_normalize feature map + head decay delta
+    "rwkv7_transition_core",  # generalized_delta_dplr variant
+)
+
+
+@pytest.mark.parametrize("name", MATRIX_STATE_VARIANT_BACKWARD_RECIPES)
+def test_matrix_state_variant_native_backward(name):
+    """Each matrix-state variant recipe now has a correct native backward.
+
+    The native matrix-state reverse scan must produce input gradients matching
+    the REFERENCE-backend gradient (the trusted canonical gradient) on the
+    recipe's coverage operands, and the plan must report the backward as
+    supported (``backward_supported`` metadata + a non-None ``grad_fn``).
+    """
+    recipe = named_mixer_recipe(name)
+    spec = recipe.spec
+    operands = rc._rng_operands(spec, seed=0)
+    canonical = execute_canonical(spec, **_to_canonical_operands(operands))
+    loss_seed = np.random.default_rng(123).normal(size=canonical["output"].shape)
+    native_grads = _native_input_grads(name, loss_seed)
+    reference_grads = _reference_input_grads(name, loss_seed)
+    rel_err = _grad_rel_err(native_grads, reference_grads)
+    assert rel_err < GRAD_REL_TOL, (
+        f"{name} native backward grad rel err {rel_err:.3e} "
+        f"(native keys {sorted(native_grads)}, reference keys {sorted(reference_grads)})"
+    )
+
+
 def test_all_covered_recipes_run_natively():
     """The full check: every covered K1/K2 recipe runs under NATIVE.
 

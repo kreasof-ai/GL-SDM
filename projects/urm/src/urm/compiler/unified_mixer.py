@@ -2769,6 +2769,12 @@ def _execute_native_positional_attention(plan, torch, **operands):
     With softmax probabilities P and secondary scores S = r.k, the output is
     ``(P V)(1 + sum(P*S)) - (P*S) V``. P is materialized by the native
     softmax-probs kernel; the corrections are CUDA tensor arithmetic.
+
+    Backward: the softmax-probs kernel is forward-only, so the autograd graph
+    through the materialized P would miss the softmax normalization state. The
+    probabilities are therefore recomputed with differentiable torch ops (the
+    same masked-softmax reduction the kernel performs) whenever any input
+    requires a gradient, giving the exact canonical input gradients.
     """
     spec = plan.spec
     query = operands.pop("query")
@@ -2785,7 +2791,27 @@ def _execute_native_positional_attention(plan, torch, **operands):
     from urm.backends.triton.softmax.online import execute_softmax_probs
 
     scale = spec.attention_scale or key_dim**-0.5
-    probs = execute_softmax_probs(query, key, causal=spec.causal, strict=False, scale=scale)
+    needs_grad = any(
+        torch.is_tensor(item) and item.requires_grad
+        for item in (query, secondary, key, value)
+    )
+    if needs_grad:
+        # Differentiable recomputation of P (BTHD -> BHTS) for autograd.
+        q = query.float().transpose(1, 2)
+        k = key.float().transpose(1, 2)
+        logits = torch.matmul(q, k.transpose(-1, -2)) * scale
+        if spec.causal:
+            q_len, k_len = query.shape[1], key.shape[1]
+            q_pos = torch.arange(q_len, device=query.device) + (k_len - q_len)
+            k_pos = torch.arange(k_len, device=query.device)
+            visible = k_pos[None, :] <= q_pos[:, None]
+            logits = logits.masked_fill(~visible[None, None], float("-inf"))
+        probs = torch.softmax(logits, dim=-1)
+        probs = torch.nan_to_num(probs, nan=0.0)  # fully masked rows -> zero
+    else:
+        probs = execute_softmax_probs(
+            query, key, causal=spec.causal, strict=False, scale=scale
+        )
     # Secondary scores with the same (now shared) head count: S = r.k, no scale.
     secondary_scores = torch.einsum(
         "bthk,bshk->bhts", secondary.float(), key.float()
@@ -2801,14 +2827,20 @@ def _execute_native_positional_attention(plan, torch, **operands):
         metadata={
             "anchor": plan.anchor,
             "execution": "urm_native_positional_softmax_probs_composition",
-            "backward_supported": False,
+            "backward_supported": True,
             "composition": "K1 softmax probabilities + secondary-score correction",
         },
     )
 
 
 def _execute_native_positive_feature_attention(plan, torch, **operands):
-    """KATA positive-feature attention via the native grouped-squared-score kernel."""
+    """KATA positive-feature attention via the native grouped-squared-score kernel.
+
+    Backward: the grouped-squared-score kernel is forward-only, so the scores
+    are recomputed with differentiable torch ops (the same grouped squared
+    reduction + L1 normalization) whenever any input requires a gradient,
+    giving the exact canonical input gradients. Self-attention only (Tq == Tk).
+    """
     query = operands.pop("query")
     key = operands.pop("key")
     value = operands.pop("value")
@@ -2821,20 +2853,53 @@ def _execute_native_positive_feature_attention(plan, torch, **operands):
     key, value = _expand_kv_to_query_heads(key, value, query_heads)
     from urm.backends.triton.softmax.online import execute_positive_feature
 
-    output = execute_positive_feature(query, key, value, num_groups=int(num_groups))
+    num_groups = int(num_groups)
+    needs_grad = any(
+        torch.is_tensor(item) and item.requires_grad
+        for item in (query, key, value)
+    )
+    if needs_grad:
+        # Differentiable recomputation of the canonical grouped-squared-score
+        # reduction for autograd.
+        batch, sequence, heads, dim = query.shape
+        group_dim = dim // num_groups
+        q_grouped = query.float().view(batch, sequence, heads, num_groups, group_dim)
+        k_grouped = key.float().view(batch, sequence, heads, num_groups, group_dim)
+        group_scores = torch.einsum("bthme,bshme->bhtsm", q_grouped, k_grouped) * (
+            group_dim**-0.5
+        )
+        scores = group_scores.square().sum(dim=-1)
+        causal = torch.ones(
+            sequence, sequence, dtype=torch.bool, device=query.device
+        ).tril()
+        scores = scores.masked_fill(~causal.view(1, 1, sequence, sequence), 0.0)
+        denominator = scores.sum(dim=-1, keepdim=True).clamp_min(1e-12)
+        probabilities = scores / denominator
+        output = torch.einsum("bhts,bshv->bthv", probabilities, value.float()).to(
+            value.dtype
+        )
+    else:
+        output = execute_positive_feature(query, key, value, num_groups=num_groups)
     return MixerResult(
         output,
         metadata={
             "anchor": plan.anchor,
             "execution": "urm_native_positive_feature_grouped_squared_scores",
-            "backward_supported": False,
+            "backward_supported": True,
             "composition": "grouped squared scores + L1 normalization",
         },
     )
 
 
 def _execute_native_thresholded_attention(plan, torch, **operands):
-    """TDA thresholded differential attention via the native thresholded kernel."""
+    """TDA thresholded differential attention via the native thresholded kernel.
+
+    Backward: the thresholded kernel is forward-only, so each branch's scores
+    are recomputed with differentiable torch ops (L2-normalized Q/K, thresholded
+    squared-relu, unnormalized causal reduction) whenever any input requires a
+    gradient, giving the exact canonical input gradients. Uses the paired Q/K
+    branches combined by the clamped lambda coefficient.
+    """
     query_a = operands.pop("query_a")
     query_b = operands.pop("query_b")
     key_a = operands.pop("key_a")
@@ -2851,17 +2916,48 @@ def _execute_native_thresholded_attention(plan, torch, **operands):
     key_b, _ = _expand_kv_to_query_heads(key_b, value, query_heads)
     from urm.backends.triton.softmax.online import execute_thresholded_attend
 
-    beta_value = float(beta)
-    attend_a = execute_thresholded_attend(query_a, key_a, value, beta=beta_value)
-    attend_b = execute_thresholded_attend(query_b, key_b, value, beta=beta_value)
-    coefficient = min(max(float(lambda_weight), 0.0), 1.0)
+    beta_value = float(beta.detach() if torch.is_tensor(beta) else beta)
+    coefficient = min(
+        max(float(lambda_weight.detach() if torch.is_tensor(lambda_weight) else lambda_weight), 0.0),
+        1.0,
+    )
+    needs_grad = any(
+        torch.is_tensor(item) and item.requires_grad
+        for item in (query_a, query_b, key_a, key_b, value)
+    )
+    if needs_grad:
+        # Differentiable recomputation of each thresholded branch for autograd.
+        sequence = query_a.shape[1]
+        dim = query_a.shape[-1]
+        positions = torch.arange(
+            1, sequence + 1, device=query_a.device, dtype=torch.float32
+        )
+        threshold = beta_value * torch.sqrt(2.0 * torch.log(positions) / dim)
+        causal = torch.ones(
+            (sequence, sequence), dtype=torch.bool, device=query_a.device
+        ).tril()
+
+        def attend(query, key):
+            qn = torch.nn.functional.normalize(query.float(), p=2, dim=-1)
+            kn = torch.nn.functional.normalize(key.float(), p=2, dim=-1)
+            scores = torch.einsum("bthd,bshd->bhts", qn, kn)
+            scores = torch.where(causal, scores, torch.zeros_like(scores))
+            rectified = torch.relu(scores - threshold.view(1, 1, sequence, 1))
+            weights = rectified.square()
+            return torch.einsum("bhts,bshv->bthv", weights, value.float())
+
+        attend_a = attend(query_a, key_a)
+        attend_b = attend(query_b, key_b)
+    else:
+        attend_a = execute_thresholded_attend(query_a, key_a, value, beta=beta_value)
+        attend_b = execute_thresholded_attend(query_b, key_b, value, beta=beta_value)
     output = (attend_a - coefficient * attend_b).to(value.dtype)
     return MixerResult(
         output,
         metadata={
             "anchor": plan.anchor,
             "execution": "urm_native_thresholded_squared_relu_differential",
-            "backward_supported": False,
+            "backward_supported": True,
             "composition": "two thresholded squared-relu reductions + lambda combine",
         },
     )
@@ -2874,6 +2970,11 @@ def _execute_native_delta_transform_attention(plan, torch, **operands):
     ``(I + beta*P) v' = v``; the output is the causal softmax reduction over
     ``v'``. P comes from the native softmax-probs kernel, the solve is a CUDA
     triangular solve, and the final reduction reuses the online-softmax kernel.
+
+    Backward: the softmax-probs kernel is forward-only, so the strict-causal P
+    and the final causal reduction are recomputed with differentiable torch ops
+    whenever any input requires a gradient (the triangular solve is already
+    differentiable), giving the exact canonical input gradients.
     """
     query = operands.pop("query")
     key = operands.pop("key")
@@ -2891,28 +2992,60 @@ def _execute_native_delta_transform_attention(plan, torch, **operands):
     )
 
     scale = key_dim**-0.5
-    probs = execute_softmax_probs(query, key, causal=True, strict=True, scale=scale)
-    beta_h = beta.float().transpose(1, 2)  # [B,H,T]
-    eye = torch.eye(sequence, device=query.device, dtype=torch.float32)
-    system = eye.view(1, 1, sequence, sequence) + beta_h.unsqueeze(-1) * probs
-    value_h = value.float().transpose(1, 2)  # [B,H,T,V]
-    transformed = torch.linalg.solve_triangular(system, value_h, upper=False)
-    transformed = transformed.transpose(1, 2).to(value.dtype)  # [B,T,H,V]
-    output = execute_online_softmax(
-        query,
-        key,
-        transformed,
-        attention_mask=None,
-        score_bias=None,
-        causal=True,
-        scale=scale,
+    needs_grad = any(
+        torch.is_tensor(item) and item.requires_grad
+        for item in (query, key, value, beta)
     )
+    if needs_grad:
+        # Differentiable recomputation of the strict-causal P + triangular solve
+        # + causal reduction for autograd.
+        q = query.float().transpose(1, 2)  # [B,H,T,K]
+        k = key.float().transpose(1, 2)
+        v = value.float().transpose(1, 2)  # [B,H,T,V]
+        beta_h = beta.float().transpose(1, 2)  # [B,H,T]
+        scores = torch.matmul(q, k.transpose(-1, -2)) * scale
+        positions = torch.arange(sequence, device=query.device)
+        strict_causal = positions[None, :] < positions[:, None]
+        masked_scores = scores.masked_fill(~strict_causal, -float("inf"))
+        row_max = masked_scores.amax(dim=-1, keepdim=True)
+        row_max = torch.where(torch.isfinite(row_max), row_max, 0.0)
+        unnormalized = torch.where(
+            strict_causal,
+            torch.exp(scores - row_max),
+            0.0,
+        )
+        probs = unnormalized / unnormalized.sum(dim=-1, keepdim=True).clamp_min(1e-20)
+        eye = torch.eye(sequence, device=query.device, dtype=torch.float32)
+        system = eye.view(1, 1, sequence, sequence) + beta_h.unsqueeze(-1) * probs
+        transformed = torch.linalg.solve_triangular(system, v, upper=False)
+        causal = positions[None, :] <= positions[:, None]
+        causal_scores = scores.masked_fill(~causal, -float("inf"))
+        attention = torch.softmax(causal_scores, dim=-1)
+        output = torch.matmul(attention, transformed)
+        output = output.transpose(1, 2).to(value.dtype)
+    else:
+        probs = execute_softmax_probs(query, key, causal=True, strict=True, scale=scale)
+        beta_h = beta.float().transpose(1, 2)  # [B,H,T]
+        eye = torch.eye(sequence, device=query.device, dtype=torch.float32)
+        system = eye.view(1, 1, sequence, sequence) + beta_h.unsqueeze(-1) * probs
+        value_h = value.float().transpose(1, 2)  # [B,H,T,V]
+        transformed = torch.linalg.solve_triangular(system, value_h, upper=False)
+        transformed = transformed.transpose(1, 2).to(value.dtype)  # [B,T,H,V]
+        output = execute_online_softmax(
+            query,
+            key,
+            transformed,
+            attention_mask=None,
+            score_bias=None,
+            causal=True,
+            scale=scale,
+        )
     return MixerResult(
         output,
         metadata={
             "anchor": plan.anchor,
             "execution": "urm_native_delta_transform_triangular_solve_online_softmax",
-            "backward_supported": False,
+            "backward_supported": True,
             "composition": "strict-causal P + triangular value solve + K1 reduction",
         },
     )
@@ -8013,6 +8146,10 @@ def _execute_native_matrix_state_recurrence(
             "urm_compiler_verified": True,
             "runtime_compiler_binding": "cached_semantic_shape",
             "runtime_binding_cache_size": _compile_native_matrix_state_binding.cache_info().currsize,
+            # The native matrix-state backward covers the full canonical-core
+            # envelope (plain delta/additive plus the dual-gate, retrieval-key,
+            # normalizer, multi-rank, left-transition, and feature-map variants).
+            "backward_supported": True,
         },
     )
 
@@ -8051,14 +8188,21 @@ def _polynomial_features_torch(
 # ----------------------------------------------------------------------
 
 
-def _native_k2_result(plan: CompiledMixerPlan, output, final_state, execution: str):
+def _native_k2_result(
+    plan: CompiledMixerPlan,
+    output,
+    final_state,
+    execution: str,
+    *,
+    backward_supported: bool = False,
+):
     return MixerResult(
         output,
         final_state=final_state,
         metadata={
             "anchor": plan.anchor,
             "execution": execution,
-            "backward_supported": False,
+            "backward_supported": backward_supported,
         },
     )
 
@@ -8070,12 +8214,12 @@ def _execute_native_tanh_rnn(plan, torch, **operands):
     initial_state = operands.pop("initial_state")
     if operands:
         raise TypeError(f"unexpected native tanh_rnn operands: {sorted(operands)}")
-    from urm.backends.triton.recurrence.nonlinear import execute_tanh_rnn
+    from urm.backends.triton.recurrence.backward import _tanh_rnn_backwardable
 
-    output, final = execute_tanh_rnn(
-        query=query, weight=weight, initial_state=initial_state
+    output, final = _tanh_rnn_backwardable(query, weight, initial_state)
+    return _native_k2_result(
+        plan, output, final, "urm_native_tanh_rnn", backward_supported=True
     )
-    return _native_k2_result(plan, output, final, "urm_native_tanh_rnn")
 
 
 def _execute_native_gated_rnn(plan, torch, **operands):
@@ -8089,14 +8233,15 @@ def _execute_native_gated_rnn(plan, torch, **operands):
     initial_state = operands.pop("initial_state")
     if operands:
         raise TypeError(f"unexpected native gated_rnn operands: {sorted(operands)}")
-    from urm.backends.triton.recurrence.nonlinear import execute_gated_rnn
+    from urm.backends.triton.recurrence.backward import _gated_rnn_backwardable
 
-    output, final = execute_gated_rnn(
-        query=query, weight=weight, forget_input=forget_input,
-        forget_weight=forget_weight, reset_input=reset_input,
-        reset_weight=reset_weight, initial_state=initial_state,
+    output, final = _gated_rnn_backwardable(
+        query, weight, forget_input, forget_weight, reset_input, reset_weight,
+        initial_state,
     )
-    return _native_k2_result(plan, output, final, "urm_native_gated_rnn")
+    return _native_k2_result(
+        plan, output, final, "urm_native_gated_rnn", backward_supported=True
+    )
 
 
 def _execute_native_multiplicative_rnn(plan, torch, **operands):
@@ -8111,13 +8256,17 @@ def _execute_native_multiplicative_rnn(plan, torch, **operands):
         raise TypeError(
             f"unexpected native multiplicative_rnn operands: {sorted(operands)}"
         )
-    from urm.backends.triton.recurrence.nonlinear import execute_multiplicative_rnn
-
-    output, final = execute_multiplicative_rnn(
-        query=query, key=key, value=value, weight=weight,
-        forget_input=forget_input, initial_state=initial_state,
+    from urm.backends.triton.recurrence.backward import (
+        _multiplicative_rnn_backwardable,
     )
-    return _native_k2_result(plan, output, final, "urm_native_multiplicative_rnn")
+
+    output, final = _multiplicative_rnn_backwardable(
+        query, key, value, weight, forget_input, initial_state
+    )
+    return _native_k2_result(
+        plan, output, final, "urm_native_multiplicative_rnn",
+        backward_supported=True,
+    )
 
 
 def _execute_native_rwkv4_scalar_state(plan, torch, **operands):
@@ -8129,12 +8278,13 @@ def _execute_native_rwkv4_scalar_state(plan, torch, **operands):
     state = operands.pop("state")
     if operands:
         raise TypeError(f"unexpected native rwkv4 operands: {sorted(operands)}")
-    from urm.backends.triton.recurrence.nonlinear import execute_rwkv4_scalar_state
+    from urm.backends.triton.recurrence.backward import _rwkv4_backwardable
 
-    output, final = execute_rwkv4_scalar_state(
-        w=w, u=u, key=key, value=value, state_input=state
+    output, final = _rwkv4_backwardable(w, u, key, value, state)
+    return _native_k2_result(
+        plan, output, final, "urm_native_rwkv4_scalar_state",
+        backward_supported=True,
     )
-    return _native_k2_result(plan, output, final, "urm_native_rwkv4_scalar_state")
 
 
 def _execute_native_rwkv6_bonus_corrected(plan, torch, **operands):
@@ -8147,13 +8297,15 @@ def _execute_native_rwkv6_bonus_corrected(plan, torch, **operands):
     initial_state = operands.pop("initial_state", None)
     if operands:
         raise TypeError(f"unexpected native rwkv6 operands: {sorted(operands)}")
-    from urm.backends.triton.recurrence.nonlinear import execute_rwkv6_bonus_corrected
+    from urm.backends.triton.recurrence.backward import _rwkv6_backwardable
 
-    output, final = execute_rwkv6_bonus_corrected(
-        query=query, key=key, value=value, log_decay=log_decay, bonus=bonus,
-        initial_state=initial_state,
+    output, final = _rwkv6_backwardable(
+        query, key, value, log_decay, bonus, initial_state
     )
-    return _native_k2_result(plan, output, final, "urm_native_rwkv6_bonus_corrected")
+    return _native_k2_result(
+        plan, output, final, "urm_native_rwkv6_bonus_corrected",
+        backward_supported=True,
+    )
 
 
 def _execute_native_mamba2_structured_ssm(plan, torch, **operands):
@@ -8166,12 +8318,13 @@ def _execute_native_mamba2_structured_ssm(plan, torch, **operands):
     initial_states = operands.pop("initial_states", None)
     if operands:
         raise TypeError(f"unexpected native mamba2 operands: {sorted(operands)}")
-    from urm.backends.triton.recurrence.nonlinear import execute_mamba2_structured_ssm
+    from urm.backends.triton.recurrence.backward import _mamba2_backwardable
 
-    output, final = execute_mamba2_structured_ssm(
-        x=x, dt=dt, A=a, B=b, C=c, initial_states=initial_states
+    output, final = _mamba2_backwardable(x, dt, a, b, c, initial_states)
+    return _native_k2_result(
+        plan, output, final, "urm_native_mamba2_structured_ssm",
+        backward_supported=True,
     )
-    return _native_k2_result(plan, output, final, "urm_native_mamba2_structured_ssm")
 
 
 def _execute_native_trapezoidal_ssm(plan, torch, **operands):
@@ -8189,13 +8342,14 @@ def _execute_native_trapezoidal_ssm(plan, torch, **operands):
         raise TypeError(
             f"unexpected native trapezoidal_ssm operands: {sorted(operands)}"
         )
-    from urm.backends.triton.recurrence.nonlinear import execute_trapezoidal_ssm
+    from urm.backends.triton.recurrence.backward import _trapezoidal_ssm_backwardable
 
-    output, final = execute_trapezoidal_ssm(
-        query=query, key=key, value=value, adt=adt, dt=dt, trap=trap,
-        query_bias=query_bias, key_bias=key_bias, angles=angles,
+    output, final = _trapezoidal_ssm_backwardable(
+        query, key, value, adt, dt, trap, query_bias, key_bias, angles
     )
-    return _native_k2_result(plan, output, final, "urm_native_trapezoidal_ssm")
+    return _native_k2_result(
+        plan, output, final, "urm_native_trapezoidal_ssm", backward_supported=True
+    )
 
 
 def _execute_native_fft_convolution(plan, torch, **operands):
@@ -8264,12 +8418,16 @@ def _execute_native_regularized_solve(plan, torch, **operands):
         raise TypeError(
             f"unexpected native regularized_solve operands: {sorted(operands)}"
         )
-    from urm.backends.triton.recurrence.inner_state import execute_regularized_solve
-
-    output, final = execute_regularized_solve(
-        query=query, key=key, value=value, log_decay=log_decay, beta=beta, lamb=lamb
+    from urm.backends.triton.recurrence.backward import (
+        _regularized_solve_backwardable,
     )
-    return _native_k2_result(plan, output, final, "urm_native_regularized_solve")
+
+    output, final = _regularized_solve_backwardable(
+        query, key, value, log_decay, beta, lamb
+    )
+    return _native_k2_result(
+        plan, output, final, "urm_native_regularized_solve", backward_supported=True
+    )
 
 
 def _execute_native_layernorm_inner_state(plan, torch, **operands):
@@ -8288,16 +8446,18 @@ def _execute_native_layernorm_inner_state(plan, torch, **operands):
         raise TypeError(
             f"unexpected native layernorm_inner_state operands: {sorted(operands)}"
         )
-    from urm.backends.triton.recurrence.inner_state import (
-        execute_layernorm_inner_state,
+    from urm.backends.triton.recurrence.backward import (
+        _layernorm_inner_state_backwardable,
     )
 
-    output, final = execute_layernorm_inner_state(
-        query=query, key=key, value=value, w=w, b=b, eta=eta,
-        initial_state=initial_state, initial_state_bias=initial_state_bias,
-        chunk_size=chunk_size, eps=eps,
+    output, final = _layernorm_inner_state_backwardable(
+        query, key, value, w, b, eta, initial_state, initial_state_bias,
+        chunk_size, eps,
     )
-    return _native_k2_result(plan, output, final, "urm_native_layernorm_inner_state")
+    return _native_k2_result(
+        plan, output, final, "urm_native_layernorm_inner_state",
+        backward_supported=True,
+    )
 
 
 def _execute_native_momentum_inner_state(plan, torch, **operands):
@@ -8317,15 +8477,18 @@ def _execute_native_momentum_inner_state(plan, torch, **operands):
         raise TypeError(
             f"unexpected native momentum_inner_state operands: {sorted(operands)}"
         )
-    from urm.backends.triton.recurrence.inner_state import (
-        execute_momentum_inner_state,
+    from urm.backends.triton.recurrence.backward import (
+        _momentum_inner_state_backwardable,
     )
 
-    output, final = execute_momentum_inner_state(
-        query=query, key=key, value=value, w=w, b=b, theta=theta, alpha=alpha,
-        eta=eta, initial_state=initial_state, chunk_size=chunk_size, eps=eps,
+    output, final = _momentum_inner_state_backwardable(
+        query, key, value, w, b, theta, alpha, eta, initial_state, chunk_size,
+        eps,
     )
-    return _native_k2_result(plan, output, final, "urm_native_momentum_inner_state")
+    return _native_k2_result(
+        plan, output, final, "urm_native_momentum_inner_state",
+        backward_supported=True,
+    )
 
 
 def _execute_native_momentum_delta(plan, torch, **operands):
@@ -8345,14 +8508,15 @@ def _execute_native_momentum_delta(plan, torch, **operands):
         raise TypeError(
             f"unexpected native momentum_delta operands: {sorted(operands)}"
         )
-    from urm.backends.triton.recurrence.inner_state import execute_momentum_delta
+    from urm.backends.triton.recurrence.backward import _momentum_delta_backwardable
 
-    output, final = execute_momentum_delta(
-        query=query, key=key, value=value, p=p, log_alpha=log_alpha, log_mu=log_mu,
-        beta=beta, eta=eta, initial_state=initial_state,
-        initial_momentum=initial_momentum, scale=spec.read_scale,
+    output, final = _momentum_delta_backwardable(
+        query, key, value, p, log_alpha, log_mu, beta, eta, initial_state,
+        initial_momentum, spec.read_scale,
     )
-    return _native_k2_result(plan, output, final, "urm_native_momentum_delta")
+    return _native_k2_result(
+        plan, output, final, "urm_native_momentum_delta", backward_supported=True
+    )
 
 
 def _execute_native_gated_oja(plan, torch, **operands):
@@ -8366,13 +8530,14 @@ def _execute_native_gated_oja(plan, torch, **operands):
     initial_state = operands.pop("initial_state", None)
     if operands:
         raise TypeError(f"unexpected native gated_oja operands: {sorted(operands)}")
-    from urm.backends.triton.recurrence.inner_state import execute_gated_oja
+    from urm.backends.triton.recurrence.backward import _gated_oja_backwardable
 
-    output, final = execute_gated_oja(
-        query=query, key=key, value=value, gate=gate, beta=beta,
-        initial_state=initial_state, scale=spec.read_scale,
+    output, final = _gated_oja_backwardable(
+        query, key, value, gate, beta, initial_state, spec.read_scale
     )
-    return _native_k2_result(plan, output, final, "urm_native_gated_oja")
+    return _native_k2_result(
+        plan, output, final, "urm_native_gated_oja", backward_supported=True
+    )
 
 
 def _execute_native_slot_attention_two_stage(plan, torch, **operands):
@@ -8395,16 +8560,18 @@ def _execute_native_slot_attention_two_stage(plan, torch, **operands):
         raise TypeError(
             f"unexpected native slot_attention operands: {sorted(operands)}"
         )
-    from urm.backends.triton.recurrence.inner_state import (
-        execute_slot_attention_two_stage,
+    from urm.backends.triton.recurrence.backward import (
+        _slot_attention_backwardable,
     )
 
     group_size = query.shape[2] // key.shape[2]
-    output, final = execute_slot_attention_two_stage(
-        query=query, key=key, value=value, slot_weights=slot_weights,
-        log_decay=log_decay, group_size=group_size,
+    output, final = _slot_attention_backwardable(
+        query, key, value, slot_weights, log_decay, group_size
     )
-    return _native_k2_result(plan, output, final, "urm_native_slot_attention_two_stage")
+    return _native_k2_result(
+        plan, output, final, "urm_native_slot_attention_two_stage",
+        backward_supported=True,
+    )
 
 
 _NATIVE_K2_OPERATOR_EXECUTORS = {
