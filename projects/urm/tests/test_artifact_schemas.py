@@ -735,6 +735,26 @@ def test_upstream_comparison_table_matches_committed_artifacts() -> None:
     )
 
 
+def test_inference_throughput_table_matches_committed_artifacts() -> None:
+    """The inference throughput + MFU doc must regenerate exactly.
+
+    The table is a rollup over the committed release-gate artifacts (native and
+    upstream wall times per case/dtype/mode); this keeps the serving comparison
+    from drifting from the validated measurements.
+    """
+    import inference_report
+
+    documented = (
+        PROJECT_ROOT / "docs" / "validation" / "inference-throughput.md"
+    ).read_text(encoding="utf-8")
+    regenerated = inference_report.render_markdown(inference_report.build_rows())
+    assert documented == regenerated, (
+        "docs/validation/inference-throughput.md is out of sync with the "
+        "committed artifacts; regenerate it with "
+        "`PYTHONPATH=src:benchmarks python benchmarks/inference_report.py`"
+    )
+
+
 def _comparison_artifact(cases: dict[str, str]) -> dict:
     """Build a minimal artifact whose cases carry only a parity status."""
     return {
