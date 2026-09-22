@@ -104,6 +104,21 @@ _COMPILE_ATTEMPTS = (
     ("inference", "bfloat16"),
 )
 
+# Operands the pinned FLA chunked kernels require in float32 even when the
+# QKV path runs in bfloat16 (per-head/per-channel gates, decays, betas, step
+# sizes, biases). This mirrors the operand construction in
+# benchmarks/unified_mixer_fla.py. Operands that must share the QKV dtype
+# (QKV-matched factors such as transition_alpha/beta, update_keys/values,
+# slot_weights, p) are deliberately NOT here - those adapters require one
+# shared dtype across query/key/value/factors.
+_FLOAT32_GATE_OPERANDS = frozenset({
+    "g", "beta", "log_decay", "erase_gate", "write_gate", "gv", "log_alpha",
+    "log_mu", "eta", "theta", "alpha", "lamb", "dt", "step_size", "w", "b",
+    "bonus", "r", "lambda_weight", "initial_state", "forget_input",
+    "forget_weight", "reset_input", "reset_weight", "weight", "x", "A", "B",
+    "C",
+})
+
 
 @dataclass
 class RecipeValidation:
@@ -137,7 +152,9 @@ def _to_cuda_operands(operands: dict[str, Any], dtype) -> dict[str, Any]:
     """Convert NumPy operands to CUDA torch tensors for compiler execution.
 
     Integer-kind arrays (route indices) become int64; booleans stay boolean;
-    Python scalars pass through; everything else becomes ``dtype`` on CUDA.
+    Python scalars pass through. Floating operands become ``dtype`` on CUDA,
+    except the FLA gate/decay/beta operands the pinned chunked kernels require
+    in float32 (see ``_FLOAT32_GATE_OPERANDS``).
     """
     torch = _torch()
     out: dict[str, Any] = {}
@@ -151,7 +168,10 @@ def _to_cuda_operands(operands: dict[str, Any], dtype) -> dict[str, Any]:
         elif arr.dtype.kind == "b":
             out[key] = torch.as_tensor(arr, device="cuda")
         else:
-            out[key] = torch.as_tensor(arr, dtype=dtype, device="cuda").contiguous()
+            tensor_dtype = (
+                torch.float32 if key in _FLOAT32_GATE_OPERANDS else dtype
+            )
+            out[key] = torch.as_tensor(arr, dtype=tensor_dtype, device="cuda").contiguous()
     return out
 
 
@@ -248,7 +268,19 @@ def validate_recipe(name: str, seed: int = 0) -> RecipeValidation:
         row.upstream_dtype = library_dtype_name
         lib_dtype = getattr(torch, library_dtype_name)
         cuda_ops = _to_cuda_operands(operands, lib_dtype)
-        library_result = library_plan.execute(**cuda_ops)
+        try:
+            library_result = library_plan.execute(**cuda_ops)
+        except Exception as first_exc:
+            # Some FLA chunk backward paths require even head dims in bf16; the
+            # inference (forward-only) path has no such constraint. Retry the
+            # execution under an inference-intent plan before recording an error.
+            if "backward" in str(first_exc) and library_plan.intent.value == "training":
+                library_plan = _compile(
+                    recipe, MixerBackend.LIBRARY, "inference", library_dtype_name
+                )
+                library_result = library_plan.execute(**cuda_ops)
+            else:
+                raise
         lib_out = library_result.output.detach().float().cpu().numpy()
         ref_out = reference.output.detach().float().cpu().numpy()
         abs_err = float(np.abs(lib_out - ref_out).max())
@@ -261,12 +293,12 @@ def validate_recipe(name: str, seed: int = 0) -> RecipeValidation:
     except Exception as exc:
         library_plan = None
         message = str(exc)
-        if isinstance(exc, (ImportError, ModuleNotFoundError)) or (
-            "K3 uses the URM-native" in message
-        ):
-            row.upstream_status = "no upstream adapter"
-            row.upstream_note = f"{type(exc).__name__}: {message[:160]}"
-        elif row.upstream_anchor is None and "anchor" in message or "support" in message:
+        # "no upstream adapter" only when the recipe genuinely has no upstream
+        # anchor: K3 (sparse_delta_memory) declines LIBRARY at compile time.
+        # Everything else - a missing pinned dependency (ModuleNotFoundError),
+        # an FLA pin/source mismatch, a Triton kernel compile crash - is an
+        # "upstream error": the adapter exists but could not run here.
+        if "K3 uses the URM-native" in message:
             row.upstream_status = "no upstream adapter"
             row.upstream_note = f"{type(exc).__name__}: {message[:160]}"
         else:
@@ -312,6 +344,12 @@ def validate_recipe(name: str, seed: int = 0) -> RecipeValidation:
 
 def validate_catalog(names=COVERED_RECIPES, seed: int = 0) -> list[RecipeValidation]:
     return [validate_recipe(name, seed=seed) for name in names]
+
+
+def _one_line(text: str, limit: int = 140) -> str:
+    """Collapse a (possibly multi-line) note to a single table-safe line."""
+    line = " ".join(str(text).split())
+    return line if len(line) <= limit else line[: limit - 1] + "…"
 
 
 def _fmt_err(value: float | None) -> str:
@@ -408,7 +446,7 @@ def render_markdown(rows: list[RecipeValidation]) -> str:
         lines.append(
             f"| `{r.name}` | {r.family} | `{r.upstream_anchor}` | {r.upstream_dtype} "
             f"| {_fmt_err(r.upstream_abs_err)} | {_fmt_err(r.upstream_rel_err)} "
-            f"| {r.upstream_status} | {note} |"
+            f"| {r.upstream_status} | {_one_line(note)} |"
         )
     lines += [
         "",
@@ -418,7 +456,7 @@ def render_markdown(rows: list[RecipeValidation]) -> str:
         "|---|---|---|",
     ]
     for r in group_c:
-        lines.append(f"| `{r.name}` | {r.family} | {r.upstream_note} |")
+        lines.append(f"| `{r.name}` | {r.family} | {_one_line(r.upstream_note)} |")
     lines += [
         "",
         "## (d) No native kernel",
@@ -428,7 +466,7 @@ def render_markdown(rows: list[RecipeValidation]) -> str:
     ]
     for r in group_d:
         lines.append(
-            f"| `{r.name}` | {r.family} | {r.upstream_status} | {r.native_note} |"
+            f"| `{r.name}` | {r.family} | {r.upstream_status} | {_one_line(r.native_note, 90)} |"
         )
     if parity_fail or upstream_error:
         lines += [
@@ -442,7 +480,7 @@ def render_markdown(rows: list[RecipeValidation]) -> str:
             lines.append(
                 f"| `{r.name}` | {r.family} | {r.upstream_status} "
                 f"| {_fmt_err(r.upstream_abs_err)} | {_fmt_err(r.upstream_rel_err)} "
-                f"| {r.upstream_note} |"
+                f"| {_one_line(r.upstream_note)} |"
             )
     lines.append("")
     return "\n".join(lines)

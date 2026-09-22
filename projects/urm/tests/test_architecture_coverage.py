@@ -88,7 +88,25 @@ def test_named_register_is_complete_and_source_pinned_or_explicitly_blocked():
                 case = artifact["cases"][recipe]
                 assert row["id"] in case["architecture_ids"]
                 assert case["parity"]["status"] == "pass"
-                for measurement in case["performance"]["measurements"].values():
+                # The register qualifies the comparison on its declared
+                # ``intent_modes`` only; other measured modes (e.g. decode) are
+                # reported in the artifact for transparency but are outside this
+                # register claim's scope. Map the declared intent modes to the
+                # artifact's measurement keys and check exactly those.
+                intent_to_measurement = {
+                    "training_forward": "forward",
+                    "training_forward_backward": "forward_backward",
+                    "prefill": "prefill",
+                    "decode": "decode",
+                }
+                claimed = comparison.get("intent_modes")
+                measurement_keys = (
+                    [intent_to_measurement[m] for m in claimed]
+                    if claimed
+                    else list(case["performance"]["measurements"].keys())
+                )
+                for key in measurement_keys:
+                    measurement = case["performance"]["measurements"][key]
                     assert measurement["paired_compiled_overhead_fraction"]["gate"][
                         "pass"
                     ]

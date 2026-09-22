@@ -107,7 +107,7 @@ natively, and `docs/planning/production-matrix.md` plus
 
 | Architecture | Upstream | Parity | Forward overhead | Fwd+Bwd overhead | Scope |
 |---|---|---|---|---|---|
-| Sparse Delta Memory | sdm | pass | -9.0% | -44.7% | compiled native K3 state slice; direct pinned SDM gated_write_read; score/projection stages excluded |
+| Sparse Delta Memory | sdm | pass | -21.5% | -46.6% | compiled native K3 state slice; direct pinned SDM gated_write_read; score/projection stages excluded |
 
 ## other
 
