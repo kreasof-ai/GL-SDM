@@ -172,17 +172,17 @@ class SparseStateDecodeSession:
         )
 
         dtype = DType("float32" if self.memory.dtype is torch.float32 else "bfloat16")
-        # Backends are constructed once and reused across every decode step.
-        self._route_spec = SparseRouteSelectionSpec(
-            parallel=batch, sequence=1, source_extent=slots,
-            route_width=read_width, dtype=dtype, output_index_dtype=DType("int32"),
-        )
-        self._route_backend = TritonSparseRouteBackend(self._route_spec)
-        self._write_route_spec = SparseRouteSelectionSpec(
-            parallel=batch, sequence=1, source_extent=slots,
-            route_width=write_width, dtype=dtype, output_index_dtype=DType("int32"),
-        )
-        self._write_route_backend = TritonSparseRouteBackend(self._write_route_spec)
+        self._dtype = dtype
+        self._batch = batch
+        self._slots = slots
+        # The state backend is constructed once and reused across every step.
+        # The route backends are built lazily on the first ``step`` (route-score
+        # path); the explicit-routes path (``step_explicit``) never needs them,
+        # so it also works for non-square slot counts the route kernel declines.
+        self._route_backend = None
+        self._write_route_backend = None
+        self._route_spec = None
+        self._write_route_spec = None
         self._state_spec = SparseStateMixerSpec(
             parallel=batch, sequence=1, slots_per_partition=slots, value_dim=value_dim,
             writes=write_width, reads=read_width, dtype=dtype,
@@ -216,9 +216,28 @@ class SparseStateDecodeSession:
         )
         from urm.backends.triton.sparse_state.route_backend import (
             CertifiedSparseRouteScores,
+            TritonSparseRouteBackend,
+        )
+        from urm.compiler.semantic import (
+            DType,
+            SparseRouteSelectionSpec,
         )
 
         batch = self.memory.shape[0]
+        # Build the route backends lazily on the first route-score step.
+        if self._route_backend is None:
+            self._route_spec = SparseRouteSelectionSpec(
+                parallel=batch, sequence=1, source_extent=self._slots,
+                route_width=self.read_width, dtype=self._dtype,
+                output_index_dtype=DType("int32"),
+            )
+            self._route_backend = TritonSparseRouteBackend(self._route_spec)
+            self._write_route_spec = SparseRouteSelectionSpec(
+                parallel=batch, sequence=1, source_extent=self._slots,
+                route_width=self.write_width, dtype=self._dtype,
+                output_index_dtype=DType("int32"),
+            )
+            self._write_route_backend = TritonSparseRouteBackend(self._write_route_spec)
         read_out = self._route_backend.generate_certified(
             CertifiedSparseRouteScores.certify(self._route_spec, read_scores)
         )
@@ -226,11 +245,58 @@ class SparseStateDecodeSession:
             CertifiedSparseRouteScores.certify(self._write_route_spec, write_scores)
         )
         # Trusted bridge: native route-kernel output is self-certifying, so no
-        # GPU value-scan certification is paid per step.
+        # GPU value-scan certification is paid per step. The cheap prepare bridge
+        # (_prepare_generated_routes) likewise skips the per-call isfinite()
+        # host syncs, since the operands come from the same trusted pipeline.
         routes = CertifiedSparseStateRoutes.from_native_generation(
             self._state_spec, read_out, write_output=write_out
         )
-        prepared = self._state_backend.prepare(
+        prepared = self._state_backend._prepare_generated_routes(
+            routes,
+            values=values,
+            beta=beta.reshape(batch, 1, 1),
+            log_decay=log_decay.reshape(batch, 1, 1),
+        )
+        state = SparseState(self.memory)
+        readings, updated = self._state_backend.execute(state, prepared)
+        self.memory = updated.memory
+        return readings
+
+    def step_explicit(
+        self,
+        *,
+        read_indices: Any,
+        read_weights: Any,
+        write_indices: Any,
+        write_weights: Any,
+        values: Any,
+        beta: Any,
+        log_decay: Any,
+    ) -> Any:
+        """One decode step given explicit pre-computed routes (trusted well-formed).
+
+        This is the apples-to-apples decode comparison against an upstream that
+        takes explicit route indices: the route/score generation is excluded
+        (the matrix scope excludes it), so both paths receive the same routes and
+        only the state update is measured. The routes are certified via the
+        trusted path (no GPU value scans); the caller must guarantee they are
+        well-formed (in-bounds, strictly increasing and unique within each token,
+        finite nonnegative normalized weights).
+        """
+        from urm.backends.triton.sparse_state.backend import (
+            CertifiedSparseStateRoutes,
+            SparseState,
+        )
+
+        batch = self.memory.shape[0]
+        routes = CertifiedSparseStateRoutes.certify_trusted(
+            self._state_spec,
+            read_indices,
+            read_weights,
+            write_indices=write_indices,
+            write_weights=write_weights,
+        )
+        prepared = self._state_backend._prepare_generated_routes(
             routes,
             values=values,
             beta=beta.reshape(batch, 1, 1),

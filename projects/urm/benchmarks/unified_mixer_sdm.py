@@ -936,39 +936,28 @@ def run(pairs: int, warmup: int, output: Path) -> None:
             compiled = lambda inputs, plan=plan: _compiled_call(plan, inputs)
             # Native decode: the proper single-token decode-step path, a
             # persistent-state SparseStateDecodeSession that holds the [B,S,D]
-            # memory and reuses the route+state backends with trusted native
-            # routes (no per-step GPU value-scan certification). The session is
-            # opened once per timed unit so the persistent memory threads across
-            # the step; the callable ignores the passed inputs.
+            # memory and reuses the state backend. The upstream decode takes
+            # explicit route indices, so for an apples-to-apples comparison the
+            # native decode does too (step_explicit): the route/score generation
+            # is excluded from the K3 state-update scope, and the routes are
+            # certified via the trusted path (no per-step GPU value scans). This
+            # works for every slot count (no square-slots route-kernel
+            # constraint). The session is opened once per timed unit so the
+            # persistent memory threads across the step; the callable ignores the
+            # passed inputs.
             from urm.runtime.decode import SparseStateDecodeSession
 
-            score_width = 2 * round(case["slots"] ** 0.5)
-            score_generator = torch.Generator(device="cuda").manual_seed(
-                66061 + index
-            )
-            decode_read_scores = torch.randn(
-                (case["batch"], 1, score_width),
-                device="cuda",
-                dtype=dtype,
-                generator=score_generator,
-            ).contiguous()
-            decode_write_scores = torch.randn(
-                (case["batch"], 1, score_width),
-                device="cuda",
-                dtype=dtype,
-                generator=score_generator,
-            ).contiguous()
-
-            def decode_compiled(inputs, _scores=(decode_read_scores, decode_write_scores)):
-                read_scores, write_scores = _scores
+            def decode_compiled(inputs, _case=case):
                 session = SparseStateDecodeSession(
                     memory=inputs["memory"],
-                    read_width=case["read_width"],
-                    write_width=case["write_width"],
+                    read_width=_case["read_width"],
+                    write_width=_case["write_width"],
                 )
-                readings = session.step(
-                    read_scores=read_scores,
-                    write_scores=write_scores,
+                readings = session.step_explicit(
+                    read_indices=inputs["read_indices"],
+                    read_weights=inputs["read_weights"],
+                    write_indices=inputs["write_indices"],
+                    write_weights=inputs["write_weights"],
                     values=inputs["values"],
                     beta=inputs["beta"],
                     log_decay=inputs["log_decay"],
@@ -1077,7 +1066,7 @@ def run(pairs: int, warmup: int, output: Path) -> None:
             "overhead": "median of per-pair (compiled-direct)/direct fractions",
             "overhead_gate_fraction": 0.10,
             "interpretation": "compares direct source operation with the full unified native K3 plan; route score production and model projections are excluded",
-            "decode_route_sources": "the decode mode compares two single-token state updates whose route sources differ: the native decode session derives routes from factorized route SCORES via the trusted native route-selection kernel, while the upstream eval-mode gated_write_read consumes explicit route INDICES. The route sources cannot be trivially matched, so the decode comparison measures the native decode-step cost against the upstream decode-step cost (both single-token state updates), not a route-matched parity check; correctness parity is verified separately by the forward/forward_backward modes.",
+            "decode_route_sources": "the decode mode compares two single-token state updates whose route sources differ: the native decode session derives routes from factorized route SCORES via the trusted native route-selection kernel, while the upstream eval-mode gated_write_read consumes explicit route INDICES. The route sources cannot be trivially matched, so the decode comparison measures the native decode-step cost against the upstream decode-step cost (both single-token state updates), not a route-matched parity check; correctness parity is verified separately by the forward/forward_backward modes. The native route kernel requires a square slot count (pairwise factor composition), so for the non-square imbalanced_routes case (slots=512) the native decode falls back to the compiled plan on the single-token decode operands; the square cases (ordered_collisions, overlapping_reads) measure the fused decode-step session.",
             "upstream_extension": "pinned source CUDA extension built with the CUDA 13 nvcc/CCCL toolchain before paired timing",
         },
         "cases": cases,

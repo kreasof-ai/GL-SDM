@@ -142,6 +142,74 @@ class CertifiedSparseStateRoutes:
         )
 
     @classmethod
+    def certify_trusted(
+        cls,
+        spec: SparseStateMixerSpec,
+        read_indices: object,
+        read_weights: object,
+        *,
+        write_indices: object | None = None,
+        write_weights: object | None = None,
+    ) -> CertifiedSparseStateRoutes:
+        """Certify routes the caller asserts are well-formed, without GPU value scans.
+
+        This is the trusted-input path for decode sessions and trusted route
+        producers: it performs the cheap host-side structural validation (shape,
+        dtype, device, contiguity) but NOT the GPU value scans (in-bounds,
+        strictly-increasing, normalized) that ``certify`` pays per call. The
+        caller MUST guarantee the routes are well-formed - partition-local
+        in-bounds addresses, strictly increasing and unique within each token,
+        and finite nonnegative normalized weights. Passing malformed routes here
+        is a caller bug that produces undefined kernel behavior, not a caught
+        error. When in doubt, use ``certify``.
+        """
+        import torch
+
+        expected_read = (spec.parallel, spec.sequence, spec.reads)
+        if tuple(read_indices.shape) != expected_read:
+            raise ValueError(f"read indices must have shape {expected_read}")
+        if tuple(read_weights.shape) != expected_read:
+            raise ValueError(f"read weights must have shape {expected_read}")
+        if spec.operation is SparseStateOperation.UPDATE:
+            expected_write = (spec.parallel, spec.sequence, spec.writes)
+            if write_indices is None or tuple(write_indices.shape) != expected_write:
+                raise ValueError(f"write indices must have shape {expected_write}")
+            if write_weights is None or tuple(write_weights.shape) != expected_write:
+                raise ValueError(f"write weights must have shape {expected_write}")
+        elif write_indices is not None or write_weights is not None:
+            raise ValueError("read-only routes must not contain write tensors")
+        indices = tuple(
+            item for item in (read_indices, write_indices) if item is not None
+        )
+        weights = tuple(
+            item for item in (read_weights, write_weights) if item is not None
+        )
+        tensors = (*indices, *weights)
+        if not tensors or not all(tensor.is_contiguous() for tensor in tensors):
+            raise ValueError("route tensors must be contiguous")
+        if len({tensor.device for tensor in tensors}) != 1:
+            raise ValueError("route tensors must share one device")
+        if any(tensor.dtype not in (torch.int32, torch.int64) for tensor in indices):
+            raise ValueError("route addresses must use int32 or int64")
+        if len({tensor.dtype for tensor in indices}) != 1:
+            raise ValueError("read/write address dtypes must match")
+        expected_dtype = {
+            DType.FLOAT32: torch.float32,
+            DType.BFLOAT16: torch.bfloat16,
+        }[spec.dtype]
+        if any(tensor.dtype != expected_dtype for tensor in weights):
+            raise ValueError("route weights must match the semantic state dtype")
+        return cls(
+            spec,
+            read_indices,
+            read_weights,
+            write_indices,
+            write_weights,
+            tuple(tensor._version for tensor in tensors),
+            _ROUTE_CERTIFICATE,
+        )
+
+    @classmethod
     def from_native_generation(
         cls,
         spec: SparseStateMixerSpec,
