@@ -4,35 +4,191 @@
   "accounting": "Verdicts are derived from frozen-matrix coverage (every mandatory case, dtype, mode, and correctness component, with passing parity and performance gates), not from an artifact's self-declared verdict.",
   "production_progress": {
     "qualified": 0,
-    "partial_coverage": 5,
+    "partial_coverage": 0,
     "total_mandatory": 6,
     "fraction": 0.0,
-    "headline": "Production qualification incomplete: 0/6 mandatory workloads fully qualified against the frozen matrix (5 passing benchmark slices only)"
+    "headline": "Production qualification incomplete: 0/6 mandatory workloads fully qualified against the frozen matrix"
   },
   "workloads": {
     "k1-mha": {
       "workload": "k1-mha",
-      "verdict": "partial_coverage",
+      "verdict": "gate_failed",
       "artifact_self_declared_verdict": "correct_below_target",
-      "coverage_complete": false,
-      "missing_coverage": [
-        "latency_small: no matching artifact case",
-        "throughput_medium: dtype float16 not measured",
-        "throughput_medium: mode decode not measured",
-        "throughput_medium: mode prefill not measured",
-        "throughput_long: no matching artifact case",
-        "decode_step: no matching artifact case"
-      ],
+      "coverage_complete": true,
       "cases": {
-        "mha": {
+        "latency_small/bfloat16": {
           "forward": {
-            "median_overhead": 0.38408262539367055,
-            "ci95_upper": 0.38473420004259185,
+            "median_overhead": 3.0437234357737206,
+            "ci95_upper": 3.0632629451797317,
             "gate_pass": false
           },
           "forward_backward": {
-            "median_overhead": 0.5364105608356127,
-            "ci95_upper": 0.5376576495228651,
+            "median_overhead": 0.8673921948390719,
+            "ci95_upper": 1.076247929990335,
+            "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 3.08173148466167,
+            "ci95_upper": 3.231270284563049,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": 3.373723394519395,
+            "ci95_upper": 3.4839292611598522,
+            "gate_pass": false
+          }
+        },
+        "latency_small/float16": {
+          "forward": {
+            "median_overhead": 2.4953132213998863,
+            "ci95_upper": 2.8827001657612805,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 0.6227969719285936,
+            "ci95_upper": 0.7038590418358217,
+            "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 3.498366637045753,
+            "ci95_upper": 4.06775295977363,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": 4.069860093072025,
+            "ci95_upper": 4.302382175508739,
+            "gate_pass": false
+          }
+        },
+        "throughput_medium/bfloat16": {
+          "forward": {
+            "median_overhead": 0.3252041229646703,
+            "ci95_upper": 0.34097224897676986,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 0.537223345718118,
+            "ci95_upper": 0.5404309481123382,
+            "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 0.3519523698948175,
+            "ci95_upper": 0.35329379534988403,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": 1.0262521893270216,
+            "ci95_upper": 1.0328039322892655,
+            "gate_pass": false
+          }
+        },
+        "throughput_medium/float16": {
+          "forward": {
+            "median_overhead": 0.38657521511023907,
+            "ci95_upper": 0.3971369077484714,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 0.5380556502983583,
+            "ci95_upper": 0.5438904390689603,
+            "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 0.35672262643977315,
+            "ci95_upper": 0.3607727146625648,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": 1.6203044489840726,
+            "ci95_upper": 2.13724330377443,
+            "gate_pass": false
+          }
+        },
+        "throughput_long/bfloat16": {
+          "forward": {
+            "median_overhead": 0.14110794390194178,
+            "ci95_upper": 0.14444802003533896,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 0.6848036041495722,
+            "ci95_upper": 0.6882043817618758,
+            "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 0.15001042849799542,
+            "ci95_upper": 0.15135092127212035,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": 0.9550042854725254,
+            "ci95_upper": 1.0539551548962582,
+            "gate_pass": false
+          }
+        },
+        "throughput_long/float16": {
+          "forward": {
+            "median_overhead": 0.1432322389306459,
+            "ci95_upper": 0.14405401050630912,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 0.6757850372075311,
+            "ci95_upper": 0.6773063712605483,
+            "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 0.15129623893429794,
+            "ci95_upper": 0.15394294526089902,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": 0.9070710991893365,
+            "ci95_upper": 1.0139830559082161,
+            "gate_pass": false
+          }
+        },
+        "decode_step/bfloat16": {
+          "forward": {
+            "median_overhead": 2.1049015072551263,
+            "ci95_upper": 2.483215944595738,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 0.5115087259176923,
+            "ci95_upper": 0.528740517938573,
+            "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 2.8214958495273166,
+            "ci95_upper": 3.25155171842634,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": 2.886940524816759,
+            "ci95_upper": 3.231496387754876,
+            "gate_pass": false
+          }
+        },
+        "decode_step/float16": {
+          "forward": {
+            "median_overhead": 2.3986272819895182,
+            "ci95_upper": 2.5328299954325892,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 0.5285561504991028,
+            "ci95_upper": 0.5933400607400796,
+            "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 2.6400842960273767,
+            "ci95_upper": 2.9207261496668924,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": 2.5276288391737154,
+            "ci95_upper": 2.6402374237290864,
             "gate_pass": false
           }
         }
@@ -40,24 +196,139 @@
     },
     "k1-gqa": {
       "workload": "k1-gqa",
-      "verdict": "partial_coverage",
+      "verdict": "gate_failed",
       "artifact_self_declared_verdict": "correct_below_target",
-      "coverage_complete": false,
-      "missing_coverage": [
-        "latency_small: no matching artifact case",
-        "throughput_long: no matching artifact case",
-        "decode_step: no matching artifact case"
-      ],
+      "coverage_complete": true,
       "cases": {
-        "mha": {
+        "latency_small/bfloat16": {
           "forward": {
-            "median_overhead": 0.2514708213023516,
-            "ci95_upper": 0.25197590004516646,
+            "median_overhead": 3.161127881580401,
+            "ci95_upper": 3.3818319021702794,
             "gate_pass": false
           },
           "forward_backward": {
-            "median_overhead": 0.14630514209921358,
-            "ci95_upper": 0.1492979684825535,
+            "median_overhead": 0.7357154284532142,
+            "ci95_upper": 0.8629251604108725,
+            "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 3.2127699445001157,
+            "ci95_upper": 3.5180608958390898,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": 2.9437383011158555,
+            "ci95_upper": 3.074020696707354,
+            "gate_pass": false
+          }
+        },
+        "latency_small/float16": {
+          "forward": {
+            "median_overhead": 2.88883581605342,
+            "ci95_upper": 2.8963208174474957,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 0.4977567373927687,
+            "ci95_upper": 0.6068298181196685,
+            "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 3.375689057287542,
+            "ci95_upper": 3.9223652674268497,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": 2.56511876144601,
+            "ci95_upper": 2.6681559736293,
+            "gate_pass": false
+          }
+        },
+        "throughput_long/bfloat16": {
+          "forward": {
+            "median_overhead": 0.10349355017690409,
+            "ci95_upper": 0.10464527735264875,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 0.2613090594790796,
+            "ci95_upper": 0.2635352175109352,
+            "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 0.11602844213383831,
+            "ci95_upper": 0.1185441241540159,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": 1.5135250614516653,
+            "ci95_upper": 1.6154133004589757,
+            "gate_pass": false
+          }
+        },
+        "throughput_long/float16": {
+          "forward": {
+            "median_overhead": 0.10341139351091164,
+            "ci95_upper": 0.10763776553464616,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 0.26199200967609293,
+            "ci95_upper": 0.263239081130583,
+            "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 0.10881980225590111,
+            "ci95_upper": 0.11633076042453129,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": 1.7089641570790497,
+            "ci95_upper": 2.010176176772895,
+            "gate_pass": false
+          }
+        },
+        "decode_step/bfloat16": {
+          "forward": {
+            "median_overhead": 2.201861315177629,
+            "ci95_upper": 2.2074831879195753,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 0.5785802328091599,
+            "ci95_upper": 0.5979051583842924,
+            "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 2.522749974009577,
+            "ci95_upper": 2.756602279068149,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": 2.2712623332133193,
+            "ci95_upper": 2.2818443493735376,
+            "gate_pass": false
+          }
+        },
+        "decode_step/float16": {
+          "forward": {
+            "median_overhead": 2.079087862155554,
+            "ci95_upper": 2.2046683365770057,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 0.5249849701630079,
+            "ci95_upper": 0.6088857746741271,
+            "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 2.395890765037322,
+            "ci95_upper": 2.400574900637616,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": 2.2829206120082173,
+            "ci95_upper": 2.355353985144926,
             "gate_pass": false
           }
         }
@@ -70,25 +341,183 @@
     },
     "k2-diagonal-recurrence": {
       "workload": "k2-diagonal-recurrence",
-      "verdict": "partial_coverage",
-      "artifact_self_declared_verdict": "qualified",
-      "coverage_complete": false,
-      "missing_coverage": [
-        "latency_short: no matching artifact case",
-        "throughput_medium: no matching artifact case",
-        "continuation_nonzero_state: no matching artifact case",
-        "decode_step: no matching artifact case"
-      ],
+      "verdict": "gate_failed",
+      "artifact_self_declared_verdict": "correct_below_target",
+      "coverage_complete": true,
       "cases": {
-        "hgrn_ssm_core": {
+        "latency_short/float32": {
           "forward": {
-            "median_overhead": 0.01971263945442068,
-            "ci95_upper": 0.02371139553691298,
+            "median_overhead": 0.02987689828408342,
+            "ci95_upper": 0.06540797442774747,
             "gate_pass": true
           },
           "forward_backward": {
-            "median_overhead": 0.014639480127045745,
-            "ci95_upper": 0.028798881511189717,
+            "median_overhead": -0.018826171291599414,
+            "ci95_upper": -0.013086836983105182,
+            "gate_pass": true
+          },
+          "prefill": {
+            "median_overhead": -0.06930708412239922,
+            "ci95_upper": -0.022236028905924743,
+            "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": -0.013646909859754253,
+            "ci95_upper": 0.044941738363680706,
+            "gate_pass": true
+          }
+        },
+        "latency_short/bfloat16": {
+          "forward": {
+            "median_overhead": -0.041258675800418025,
+            "ci95_upper": 0.02165045572093685,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.07788115992639716,
+            "ci95_upper": -0.06538051968847086,
+            "gate_pass": true
+          },
+          "prefill": {
+            "median_overhead": -0.15036082007960516,
+            "ci95_upper": -0.12451783575533845,
+            "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": -0.11322847075202945,
+            "ci95_upper": -0.09040669729326631,
+            "gate_pass": true
+          }
+        },
+        "throughput_medium/float32": {
+          "forward": {
+            "median_overhead": 0.4918577413667792,
+            "ci95_upper": 0.49306377666917134,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 1.0921160633739226,
+            "ci95_upper": 1.0974720576240613,
+            "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 0.4605454157430051,
+            "ci95_upper": 0.4643812487622291,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": 0.04635342071546403,
+            "ci95_upper": 0.04670165081677669,
+            "gate_pass": true
+          }
+        },
+        "throughput_medium/bfloat16": {
+          "forward": {
+            "median_overhead": 0.29212317526595755,
+            "ci95_upper": 0.30556283651575833,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 0.4316686242529888,
+            "ci95_upper": 0.43262445330076105,
+            "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 0.30676183443168553,
+            "ci95_upper": 0.31222216177409995,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": -0.09345746463079377,
+            "ci95_upper": -0.08084072249285323,
+            "gate_pass": true
+          }
+        },
+        "continuation_nonzero_state/float32": {
+          "forward": {
+            "median_overhead": 0.005974184068341086,
+            "ci95_upper": 0.020927459491194914,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.05985746378392085,
+            "ci95_upper": -0.052269175627799036,
+            "gate_pass": true
+          },
+          "prefill": {
+            "median_overhead": -0.021505706952723698,
+            "ci95_upper": 0.058201048927976146,
+            "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": -0.09232764697951071,
+            "ci95_upper": -0.031259418442681645,
+            "gate_pass": true
+          }
+        },
+        "continuation_nonzero_state/bfloat16": {
+          "forward": {
+            "median_overhead": -0.06723434022711824,
+            "ci95_upper": -0.06081950778053733,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.017416916561683777,
+            "ci95_upper": -0.0105017671452013,
+            "gate_pass": true
+          },
+          "prefill": {
+            "median_overhead": -0.1252592958260825,
+            "ci95_upper": -0.11521977392929116,
+            "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": -0.12052231745865247,
+            "ci95_upper": -0.11231063671221637,
+            "gate_pass": true
+          }
+        },
+        "decode_step/float32": {
+          "forward": {
+            "median_overhead": 0.07445173788319258,
+            "ci95_upper": 0.08127420486102951,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.036600537794281546,
+            "ci95_upper": 0.00890281929349691,
+            "gate_pass": true
+          },
+          "prefill": {
+            "median_overhead": -0.04144594020024794,
+            "ci95_upper": -0.00268328760715315,
+            "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": -0.04306715406986087,
+            "ci95_upper": -0.0294278884397376,
+            "gate_pass": true
+          }
+        },
+        "decode_step/bfloat16": {
+          "forward": {
+            "median_overhead": -0.06749889183861306,
+            "ci95_upper": -0.06587638145194984,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.1253216501930985,
+            "ci95_upper": -0.09907927571063407,
+            "gate_pass": true
+          },
+          "prefill": {
+            "median_overhead": -0.12720286658756913,
+            "ci95_upper": -0.11525870504199985,
+            "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": -0.15689605977860627,
+            "ci95_upper": -0.15269756917702243,
             "gate_pass": true
           }
         }
@@ -96,119 +525,183 @@
     },
     "k2-gated-delta-recurrence": {
       "workload": "k2-gated-delta-recurrence",
-      "verdict": "partial_coverage",
-      "artifact_self_declared_verdict": "numeric_failed",
-      "coverage_complete": false,
-      "missing_coverage": [
-        "latency_short: mode decode not measured",
-        "latency_short: mode prefill not measured",
-        "throughput_medium: mode decode not measured",
-        "throughput_medium: mode prefill not measured",
-        "continuation_nonzero_state: mode decode not measured",
-        "continuation_nonzero_state: mode prefill not measured",
-        "decode_step: mode decode not measured",
-        "decode_step: mode prefill not measured"
-      ],
-      "correctness_gaps": [
-        "latency_short: correctness component state_gradients not verified",
-        "throughput_medium: correctness component state_gradients not verified",
-        "continuation_nonzero_state: correctness component state_gradients not verified",
-        "decode_step: correctness component state_gradients not verified"
-      ],
+      "verdict": "gate_failed",
+      "artifact_self_declared_verdict": "correct_below_target",
+      "coverage_complete": true,
       "cases": {
         "latency_short/float32": {
           "forward": {
-            "median_overhead": -0.7703401012391367,
-            "ci95_upper": -0.7686490210109879,
+            "median_overhead": -0.7459899112057061,
+            "ci95_upper": -0.7432761866897887,
             "gate_pass": true
           },
           "forward_backward": {
-            "median_overhead": -0.6662005720312001,
-            "ci95_upper": -0.6587318008894423,
+            "median_overhead": -0.6403367562111741,
+            "ci95_upper": -0.6297513471704318,
+            "gate_pass": true
+          },
+          "prefill": {
+            "median_overhead": -0.7476456260363342,
+            "ci95_upper": -0.7341665586615039,
+            "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": -0.7597438152696001,
+            "ci95_upper": -0.7421767129620942,
             "gate_pass": true
           }
         },
         "latency_short/bfloat16": {
           "forward": {
-            "median_overhead": -0.750536345599055,
-            "ci95_upper": -0.7265833305220024,
+            "median_overhead": -0.7463723979344381,
+            "ci95_upper": -0.7248265094580187,
             "gate_pass": true
           },
           "forward_backward": {
-            "median_overhead": -0.6358040012996762,
-            "ci95_upper": -0.6301103117492466,
+            "median_overhead": -0.6149650653404573,
+            "ci95_upper": -0.6118498157399268,
+            "gate_pass": true
+          },
+          "prefill": {
+            "median_overhead": -0.7632733694473334,
+            "ci95_upper": -0.7259082538284363,
+            "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": -0.7452246711531942,
+            "ci95_upper": -0.7440501315999511,
             "gate_pass": true
           }
         },
         "throughput_medium/float32": {
           "forward": {
-            "median_overhead": 2.082004339406943,
-            "ci95_upper": 2.092773238048254,
+            "median_overhead": 2.0743225055072325,
+            "ci95_upper": 2.080765197076577,
             "gate_pass": false
           },
           "forward_backward": {
-            "median_overhead": 0.9794580047313267,
-            "ci95_upper": 0.9818306341817857,
+            "median_overhead": 0.9760566387563765,
+            "ci95_upper": 0.9836472148785882,
             "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 2.087756775355049,
+            "ci95_upper": 2.1061522860997384,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": -0.7513454948798737,
+            "ci95_upper": -0.7424641738366473,
+            "gate_pass": true
           }
         },
         "throughput_medium/bfloat16": {
           "forward": {
-            "median_overhead": 3.5593780468781975,
-            "ci95_upper": 3.750422561418344,
+            "median_overhead": 3.389232057245118,
+            "ci95_upper": 3.412312833433262,
             "gate_pass": false
           },
           "forward_backward": {
-            "median_overhead": 2.202131122943528,
-            "ci95_upper": 2.2437883921369868,
+            "median_overhead": 2.1935045952350847,
+            "ci95_upper": 2.2426389826366644,
             "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 3.315855974438896,
+            "ci95_upper": 3.3836774798230826,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": -0.7441048747767787,
+            "ci95_upper": -0.71934349658985,
+            "gate_pass": true
           }
         },
         "continuation_nonzero_state/float32": {
           "forward": {
-            "median_overhead": -0.294037475535161,
-            "ci95_upper": -0.2901088867212657,
+            "median_overhead": -0.29016947276347593,
+            "ci95_upper": -0.27448522970960604,
             "gate_pass": true
           },
           "forward_backward": {
-            "median_overhead": -0.4189134511111381,
-            "ci95_upper": -0.41433073633946466,
+            "median_overhead": -0.5132600994708035,
+            "ci95_upper": -0.48915481819439416,
+            "gate_pass": true
+          },
+          "prefill": {
+            "median_overhead": -0.3103528631222936,
+            "ci95_upper": -0.28708311716376794,
+            "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": -0.7693395294489191,
+            "ci95_upper": -0.7467073799393372,
             "gate_pass": true
           }
         },
         "continuation_nonzero_state/bfloat16": {
           "forward": {
-            "median_overhead": -0.2756610076755087,
-            "ci95_upper": -0.2687118953102364,
+            "median_overhead": -0.5163005196913837,
+            "ci95_upper": -0.5151513262807195,
             "gate_pass": true
           },
           "forward_backward": {
-            "median_overhead": -0.4367865890137854,
-            "ci95_upper": -0.4349401680333522,
+            "median_overhead": -0.5319633809367641,
+            "ci95_upper": -0.5264180687756506,
+            "gate_pass": true
+          },
+          "prefill": {
+            "median_overhead": -0.5297980761833476,
+            "ci95_upper": -0.5271174035583486,
+            "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": -0.7378623297558549,
+            "ci95_upper": -0.7291582498173763,
             "gate_pass": true
           }
         },
         "decode_step/float32": {
           "forward": {
-            "median_overhead": -0.7356204138830167,
-            "ci95_upper": -0.7311594079246055,
+            "median_overhead": -0.7493933823557442,
+            "ci95_upper": -0.7416639732489083,
             "gate_pass": true
           },
           "forward_backward": {
-            "median_overhead": -0.6247237066868558,
-            "ci95_upper": -0.6223167552574287,
+            "median_overhead": -0.6549396943598558,
+            "ci95_upper": -0.6375704269070577,
+            "gate_pass": true
+          },
+          "prefill": {
+            "median_overhead": -0.7386504301106573,
+            "ci95_upper": -0.7276908819763888,
+            "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": -0.7349375089108598,
+            "ci95_upper": -0.7196594497909367,
             "gate_pass": true
           }
         },
         "decode_step/bfloat16": {
           "forward": {
-            "median_overhead": -0.7464705684989665,
-            "ci95_upper": -0.7402958546275471,
+            "median_overhead": -0.7309078402741467,
+            "ci95_upper": -0.7178029870213849,
             "gate_pass": true
           },
           "forward_backward": {
-            "median_overhead": -0.6067518137360834,
-            "ci95_upper": -0.6023224006053777,
+            "median_overhead": -0.6279497914039112,
+            "ci95_upper": -0.626823503292244,
+            "gate_pass": true
+          },
+          "prefill": {
+            "median_overhead": -0.7280812760807263,
+            "ci95_upper": -0.7186393364214329,
+            "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": -0.7367689873587424,
+            "ci95_upper": -0.7161579255042562,
             "gate_pass": true
           }
         }
@@ -216,40 +709,110 @@
     },
     "k3-sparse-state": {
       "workload": "k3-sparse-state",
-      "verdict": "partial_coverage",
-      "artifact_self_declared_verdict": "qualified",
-      "coverage_complete": false,
-      "missing_coverage": [
-        "ordered_collisions: mode decode not measured",
-        "imbalanced_routes: no matching artifact case",
-        "overlapping_reads: no matching artifact case"
-      ],
-      "correctness_gaps": [
-        "ordered_collisions: correctness component state_gradients not verified"
-      ],
+      "verdict": "numeric_failed",
+      "artifact_self_declared_verdict": "numeric_failed",
+      "coverage_complete": true,
       "cases": {
-        "float32": {
+        "ordered_collisions/float32": {
           "forward": {
-            "median_overhead": -0.08957380132144883,
-            "ci95_upper": 0.004542449609380072,
+            "median_overhead": -0.23457307409652695,
+            "ci95_upper": -0.1879541540029557,
             "gate_pass": true
           },
           "forward_backward": {
-            "median_overhead": -0.4629093068362948,
-            "ci95_upper": -0.4501507666882399,
+            "median_overhead": -0.3667567152908321,
+            "ci95_upper": -0.3542573079728066,
             "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": 5.211151727706577,
+            "ci95_upper": 5.34912519445458,
+            "gate_pass": false
           }
         },
-        "bfloat16": {
+        "ordered_collisions/bfloat16": {
           "forward": {
-            "median_overhead": -0.23356369959411827,
-            "ci95_upper": -0.2045767889701802,
+            "median_overhead": -0.33335917154263695,
+            "ci95_upper": -0.2984038237234696,
             "gate_pass": true
           },
           "forward_backward": {
-            "median_overhead": -0.4469973639939,
-            "ci95_upper": -0.4434859061672841,
+            "median_overhead": -0.31054114983174747,
+            "ci95_upper": -0.23806605243233445,
             "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": 4.734013718880677,
+            "ci95_upper": 4.7354592749292275,
+            "gate_pass": false
+          }
+        },
+        "imbalanced_routes/float32": {
+          "forward": {
+            "median_overhead": -0.38095574744625005,
+            "ci95_upper": -0.37901694194994634,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.48899477977726513,
+            "ci95_upper": -0.4549008888844749,
+            "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": 5.32633824057522,
+            "ci95_upper": 5.505082804955743,
+            "gate_pass": false
+          }
+        },
+        "imbalanced_routes/bfloat16": {
+          "forward": {
+            "median_overhead": -0.3598940210758508,
+            "ci95_upper": -0.3368228331424805,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.47013325899894265,
+            "ci95_upper": -0.46682248769845236,
+            "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": 5.211257871428963,
+            "ci95_upper": 5.481927388589152,
+            "gate_pass": false
+          }
+        },
+        "overlapping_reads/float32": {
+          "forward": {
+            "median_overhead": -0.20479898832818977,
+            "ci95_upper": -0.2042054598903733,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.4297336936111354,
+            "ci95_upper": -0.42728661317896915,
+            "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": 5.2296605644564265,
+            "ci95_upper": 5.557613244290527,
+            "gate_pass": false
+          }
+        },
+        "overlapping_reads/bfloat16": {
+          "forward": {
+            "median_overhead": -0.2573864857143847,
+            "ci95_upper": -0.2377933348701928,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.4488627553583431,
+            "ci95_upper": -0.4395207742802392,
+            "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": 4.736595639733783,
+            "ci95_upper": 4.74148863786604,
+            "gate_pass": false
           }
         }
       }

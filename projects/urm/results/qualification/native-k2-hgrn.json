@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "generated_utc": "2026-09-22T00:29:44.406808+00:00",
+  "generated_utc": "2026-09-22T09:01:01.599464+00:00",
   "purpose": "qualify URM-native K2 diagonal recurrence against the pinned FLA HGRN operator (native replacement, not dispatch overhead)",
   "matrix_workload": "k2-diagonal-recurrence",
-  "verdict": "qualified",
+  "verdict": "correct_below_target",
   "native_anchor": "urm_native_diagonal_recurrence_v1",
   "upstream": {
     "repository": "https://github.com/fla-org/flash-linear-attention",
@@ -13,10 +13,10 @@
     "kernel_source_sha256": {}
   },
   "provenance": {
-    "git_revision": "701354086ca664a68bc66f0468b561f757fd1f57",
+    "git_revision": "accc4b9836b9042225da1c3cf959cb6303df0a6c",
     "dirty_tree": false,
     "benchmark_command": "PYTHONPATH=src python benchmarks/qualify_native_k2_hgrn.py",
-    "config_hash": "f9395325e100d569341129a8f0ea99e38d20f6331bf59b58597a119ce7f2f435",
+    "config_hash": "9287761a9d1114975b071d034ad3c1c3add79ec7612adc4a59594a560e158edc",
     "solver_version": null,
     "python": "3.12.14",
     "platform": "Linux-6.12.103-127.188.amzn2023.x86_64-x86_64-with-glibc2.39",
@@ -42,10 +42,10 @@
     "driver_version": "595.91.07",
     "sm_clock_mhz": 1710,
     "memory_clock_mhz": 6251,
-    "power_draw_w": 68.04,
+    "power_draw_w": 106.0,
     "power_limit_w": 300.0,
-    "temperature_c": 35,
-    "gpu_utilization_pct": 8,
+    "temperature_c": 34,
+    "gpu_utilization_pct": 6,
     "memory_utilization_pct": 0,
     "persistence_mode": "Enabled",
     "compute_mode": "Default",
@@ -60,9 +60,9 @@
     "exclusive_process_mode": false,
     "all_compute_processes": [
       {
-        "pid": 56233,
+        "pid": 69282,
         "process_name": "/opt/conda/bin/python",
-        "used_memory": "426 MiB"
+        "used_memory": "758 MiB"
       }
     ],
     "external_compute_processes": [],
@@ -70,9 +70,9 @@
   },
   "methodology": {
     "comparison": "URM-native diagonal recurrence kernel vs pinned FLA HGRN; the two share no kernel",
-    "correctness_comparator": "fla.ops.hgrn.fused_recurrent_hgrn (exact sequential recurrence) plus an independent eager oracle",
+    "correctness_comparator": "fla.ops.hgrn.fused_recurrent_hgrn (exact sequential recurrence) plus an independent eager oracle; output/final-state/input-gradients/state-gradients verified",
     "performance_comparator": "fla.ops.hgrn.chunk_hgrn (competitive chunked parallel kernel); the fastest compatible upstream kernel is the performance baseline, not a slow reference",
-    "timed_work": "one native plan call or one upstream call, optionally followed by output and final-state backward",
+    "timed_work": "one native plan call or one upstream call, in each matrix mode (training forward, training forward+backward, inference prefill, single-token decode)",
     "sampling": "paired interleaved native/direct calls, order alternates, synchronized wall and CUDA event timing; each timed unit is a block of invocations to amortize per-call mistiming overhead",
     "warmup": 1,
     "pairs": 2,
@@ -82,43 +82,50 @@
     "gate_basis": "the 95% confidence-interval upper bound must meet the budget"
   },
   "cases": {
-    "hgrn_ssm_core": {
+    "latency_short/float32": {
       "semantic_scope": "diagonal gated recurrence core; projections and output projection excluded",
       "shape": {
         "batch": 1,
-        "sequence": 1024,
-        "channels": 1024,
-        "dtype": "float32"
+        "sequence": 64,
+        "heads": 4,
+        "key_dim": 32,
+        "value_dim": 32,
+        "dtype": "float32",
+        "initial_state": "zero"
       },
       "upstream_callable": "fla.ops.hgrn.fused_recurrent_hgrn",
       "performance_comparator_callable": "fla.ops.hgrn.chunk_hgrn",
       "native_anchor": "urm_native_diagonal_recurrence_v1",
-      "compiler_plan_build_ms": 45.211265998659655,
+      "compiler_plan_build_ms": 45.46988398942631,
       "parity": {
         "status": "pass",
-        "output_max_abs_error_vs_upstream": 1.6689300537109375e-06,
-        "final_state_max_abs_error_vs_upstream": 7.152557373046875e-07,
-        "output_max_abs_error_vs_oracle": 4.76837158203125e-06,
-        "final_state_max_abs_error_vs_oracle": 2.6226043701171875e-06,
+        "output_max_abs_error_vs_upstream": 5.960464477539062e-07,
+        "final_state_max_abs_error_vs_upstream": 4.76837158203125e-07,
+        "output_max_abs_error_vs_oracle": 1.6689300537109375e-06,
+        "final_state_max_abs_error_vs_oracle": 1.3113021850585938e-06,
         "input_gradient_max_abs_errors_vs_upstream": {
-          "x": 2.3283064365386963e-09,
-          "log_decay": 8.381903171539307e-09,
-          "initial_state": 5.093170329928398e-11
+          "x": 9.313225746154785e-09,
+          "log_decay": 2.2351741790771484e-08,
+          "initial_state": 5.587935447692871e-09
+        },
+        "state_gradient_max_abs_errors": {
+          "initial_state": 5.587935447692871e-09
         },
         "tolerances": {
-          "output_atol": 2e-05,
-          "gradient_atol": 2e-05,
-          "relative_tolerance": 0.0002
+          "output_atol": 0.02,
+          "state_atol": 0.02,
+          "gradient_atol": 0.02,
+          "relative_tolerance": 0.0001
         }
       },
       "performance": {
         "first_direct_forward_call_ms": {
-          "wall": 0.8343981004145462,
-          "device": 0.8266752243041992
+          "wall": 0.8066431997576728,
+          "device": 0.8003583908081054
         },
         "first_compiled_forward_call_after_warmup_ms": {
-          "wall": 0.17984350051847287,
-          "device": 0.17704960107803344
+          "wall": 0.16767119959695265,
+          "device": 0.16476160287857056
         },
         "warmup_calls_per_backend_per_mode": 1,
         "paired_samples_per_mode": 2,
@@ -126,30 +133,30 @@
           "forward": {
             "direct_wall": {
               "sample_count": 2,
-              "median_ms": 0.15941754973027855,
-              "p95_ms": 0.1596448446798604,
+              "median_ms": 0.15300735030905344,
+              "p95_ms": 0.1569660452514654,
               "raw_samples_ms": [
-                0.15967009967425838,
-                0.15916499978629872
+                0.15740590024506673,
+                0.14860880037304014
               ]
             },
             "compiled_wall": {
               "sample_count": 2,
-              "median_ms": 0.16256110029644333,
-              "p95_ms": 0.16336660053639207,
+              "median_ms": 0.15742245013825593,
+              "p95_ms": 0.15823834590264596,
               "raw_samples_ms": [
-                0.16345610056305304,
-                0.16166610002983361
+                0.15651589928893372,
+                0.15832900098757818
               ]
             },
             "paired_native_overhead_fraction": {
-              "median": 0.01971263945442068,
-              "p95": 0.02331151992866375,
-              "ci95_lower": 0.01571388337192838,
-              "ci95_upper": 0.02371139553691298,
+              "median": 0.02987689828408342,
+              "p95": 0.06185486681338106,
+              "ci95_lower": -0.00565417785958063,
+              "ci95_upper": 0.06540797442774747,
               "raw_samples": [
-                0.02371139553691298,
-                0.01571388337192838
+                -0.00565417785958063,
+                0.06540797442774747
               ],
               "gate": {
                 "limit_fraction": 0.1,
@@ -164,30 +171,1527 @@
           "forward_backward": {
             "direct_wall": {
               "sample_count": 2,
-              "median_ms": 0.830386449888465,
-              "p95_ms": 0.8364773349967436,
+              "median_ms": 0.7977459499670658,
+              "p95_ms": 0.8163672652881359,
               "raw_samples_ms": [
-                0.8236187997681554,
-                0.8371541000087745
+                0.8184363003238104,
+                0.7770555996103212
               ]
             },
             "compiled_wall": {
               "sample_count": 2,
-              "median_ms": 0.8424470499448944,
-              "p95_ms": 0.8468489949882496,
+              "median_ms": 0.7826086992281489,
+              "p95_ms": 0.7967587688472122,
               "raw_samples_ms": [
-                0.8473380999930669,
-                0.8375559998967219
+                0.7983309988048859,
+                0.7668863996514119
               ]
             },
             "paired_native_overhead_fraction": {
-              "median": 0.014639480127045745,
-              "p95": 0.02738294137277532,
-              "ci95_lower": 0.0004800787429017745,
-              "ci95_upper": 0.028798881511189717,
+              "median": -0.018826171291599414,
+              "p95": -0.013660770413954606,
+              "ci95_lower": -0.02456550560009365,
+              "ci95_upper": -0.013086836983105182,
               "raw_samples": [
-                0.028798881511189717,
-                0.0004800787429017745
+                -0.02456550560009365,
+                -0.013086836983105182
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "prefill": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.15810145050636493,
+              "p95_ms": 0.15966164552082773,
+              "raw_samples_ms": [
+                0.15636790049029514,
+                0.1598350005224347
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.14706229994772002,
+              "p95_ms": 0.15230803939630277,
+              "raw_samples_ms": [
+                0.1528908993350342,
+                0.14123370056040585
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": -0.06930708412239922,
+              "p95": -0.026943134427572193,
+              "ci95_lower": -0.1163781393388737,
+              "ci95_upper": -0.022236028905924743,
+              "raw_samples": [
+                -0.022236028905924743,
+                -0.1163781393388737
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "decode": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.14999534978414886,
+              "p95_ms": 0.1526778449624544,
+              "raw_samples_ms": [
+                0.14701479958603159,
+                0.15297589998226613
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.1477737503591925,
+              "p95_ms": 0.15303708525607362,
+              "raw_samples_ms": [
+                0.15362190024461597,
+                0.141925600473769
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": -0.013646909859754253,
+              "p95": 0.0390828735413372,
+              "ci95_lower": -0.07223555808318921,
+              "ci95_upper": 0.044941738363680706,
+              "raw_samples": [
+                0.044941738363680706,
+                -0.07223555808318921
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          }
+        }
+      }
+    },
+    "latency_short/bfloat16": {
+      "semantic_scope": "diagonal gated recurrence core; projections and output projection excluded",
+      "shape": {
+        "batch": 1,
+        "sequence": 64,
+        "heads": 4,
+        "key_dim": 32,
+        "value_dim": 32,
+        "dtype": "bfloat16",
+        "initial_state": "zero"
+      },
+      "upstream_callable": "fla.ops.hgrn.fused_recurrent_hgrn",
+      "performance_comparator_callable": "fla.ops.hgrn.chunk_hgrn",
+      "native_anchor": "urm_native_diagonal_recurrence_v1",
+      "compiler_plan_build_ms": 1.5855389938224107,
+      "parity": {
+        "status": "pass",
+        "output_max_abs_error_vs_upstream": 1.9073486328125e-06,
+        "final_state_max_abs_error_vs_upstream": 0.00604701042175293,
+        "output_max_abs_error_vs_oracle": 0.00775909423828125,
+        "final_state_max_abs_error_vs_oracle": 1.430511474609375e-06,
+        "input_gradient_max_abs_errors_vs_upstream": {
+          "x": 0.000244140625,
+          "log_decay": 0.00048828125,
+          "initial_state": 1.8825987353920937e-05
+        },
+        "state_gradient_max_abs_errors": {
+          "initial_state": 1.8825987353920937e-05
+        },
+        "tolerances": {
+          "output_atol": 0.02,
+          "state_atol": 0.02,
+          "gradient_atol": 0.02,
+          "relative_tolerance": 0.0001
+        }
+      },
+      "performance": {
+        "first_direct_forward_call_ms": {
+          "wall": 0.39818250079406425,
+          "device": 0.393830394744873
+        },
+        "first_compiled_forward_call_after_warmup_ms": {
+          "wall": 0.15840399864828214,
+          "device": 0.15575040578842161
+        },
+        "warmup_calls_per_backend_per_mode": 1,
+        "paired_samples_per_mode": 2,
+        "measurements": {
+          "forward": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.16798015058157034,
+              "p95_ms": 0.17129939536971506,
+              "raw_samples_ms": [
+                0.17166820034617558,
+                0.1642921008169651
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.16081750000012107,
+              "p95_ms": 0.16714593970391434,
+              "raw_samples_ms": [
+                0.15378590032923967,
+                0.16784909967100248
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": -0.041258675800418025,
+              "p95": 0.015359542568801371,
+              "ci95_lower": -0.1041678073217729,
+              "ci95_upper": 0.02165045572093685,
+              "raw_samples": [
+                -0.1041678073217729,
+                0.02165045572093685
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "forward_backward": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.914663149160333,
+              "p95_ms": 0.9245461843966041,
+              "raw_samples_ms": [
+                0.9036819988978095,
+                0.9256442994228564
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.8432908507529646,
+              "p95_ms": 0.8444680052343756,
+              "raw_samples_ms": [
+                0.8445988001767546,
+                0.8419829013291746
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": -0.07788115992639716,
+              "p95": -0.06663058371226349,
+              "ci95_lower": -0.09038180016432344,
+              "ci95_upper": -0.06538051968847086,
+              "raw_samples": [
+                -0.06538051968847086,
+                -0.09038180016432344
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "prefill": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.17151670035673305,
+              "p95_ms": 0.17564734022016637,
+              "raw_samples_ms": [
+                0.1669271005084738,
+                0.1761063002049923
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.14560869967681353,
+              "p95_ms": 0.14608839926950168,
+              "raw_samples_ms": [
+                0.1461416992242448,
+                0.1450757001293823
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": -0.15036082007960516,
+              "p95": -0.12710213418776511,
+              "ci95_lower": -0.17620380440387187,
+              "ci95_upper": -0.12451783575533845,
+              "raw_samples": [
+                -0.12451783575533845,
+                -0.17620380440387187
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "decode": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.16096409963211045,
+              "p95_ms": 0.16207739972742274,
+              "raw_samples_ms": [
+                0.1597270995262079,
+                0.162201099738013
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.1427101502486039,
+              "p95_ms": 0.14502904501568992,
+              "raw_samples_ms": [
+                0.14528669998981059,
+                0.1401336005073972
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": -0.11322847075202945,
+              "p95": -0.09268887463914263,
+              "ci95_lower": -0.1360502442107926,
+              "ci95_upper": -0.09040669729326631,
+              "raw_samples": [
+                -0.09040669729326631,
+                -0.1360502442107926
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          }
+        }
+      }
+    },
+    "throughput_medium/float32": {
+      "semantic_scope": "diagonal gated recurrence core; projections and output projection excluded",
+      "shape": {
+        "batch": 8,
+        "sequence": 1024,
+        "heads": 8,
+        "key_dim": 64,
+        "value_dim": 64,
+        "dtype": "float32",
+        "initial_state": "zero"
+      },
+      "upstream_callable": "fla.ops.hgrn.fused_recurrent_hgrn",
+      "performance_comparator_callable": "fla.ops.hgrn.chunk_hgrn",
+      "native_anchor": "urm_native_diagonal_recurrence_v1",
+      "compiler_plan_build_ms": 1.593180000782013,
+      "parity": {
+        "status": "pass",
+        "output_max_abs_error_vs_upstream": 1.5497207641601562e-06,
+        "final_state_max_abs_error_vs_upstream": 9.5367431640625e-07,
+        "output_max_abs_error_vs_oracle": 4.291534423828125e-06,
+        "final_state_max_abs_error_vs_oracle": 3.337860107421875e-06,
+        "input_gradient_max_abs_errors_vs_upstream": {
+          "x": 6.984919309616089e-10,
+          "log_decay": 2.3283064365386963e-09,
+          "initial_state": 1.6370904631912708e-11
+        },
+        "state_gradient_max_abs_errors": {
+          "initial_state": 1.6370904631912708e-11
+        },
+        "tolerances": {
+          "output_atol": 0.02,
+          "state_atol": 0.02,
+          "gradient_atol": 0.02,
+          "relative_tolerance": 0.0001
+        }
+      },
+      "performance": {
+        "first_direct_forward_call_ms": {
+          "wall": 0.5443593006930314,
+          "device": 0.5406720161437988
+        },
+        "first_compiled_forward_call_after_warmup_ms": {
+          "wall": 0.37954610015731305,
+          "device": 0.3768320083618164
+        },
+        "warmup_calls_per_backend_per_mode": 1,
+        "paired_samples_per_mode": 2,
+        "measurements": {
+          "forward": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.2499832000466995,
+              "p95_ms": 0.2504516502085607,
+              "raw_samples_ms": [
+                0.25050370022654533,
+                0.24946269986685365
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.3729399999429006,
+              "p95_ms": 0.373910200651153,
+              "raw_samples_ms": [
+                0.3740180007298477,
+                0.3718619991559535
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 0.4918577413667792,
+              "p95": 0.4929431731389321,
+              "ci95_lower": 0.49065170606438707,
+              "ci95_upper": 0.49306377666917134,
+              "raw_samples": [
+                0.49306377666917134,
+                0.49065170606438707
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "forward_backward": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 1.0429570502310526,
+              "p95_ms": 1.0469391450897092,
+              "raw_samples_ms": [
+                1.0473816000740044,
+                1.0385325003881007
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 2.18196350033395,
+              "p95_ms": 2.185267040185863,
+              "raw_samples_ms": [
+                2.185634100169409,
+                2.178292900498491
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 1.0921160633739226,
+              "p95": 1.0969364581990475,
+              "ci95_lower": 1.086760069123784,
+              "ci95_upper": 1.0974720576240613,
+              "raw_samples": [
+                1.086760069123784,
+                1.0974720576240613
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "prefill": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.2550577999500092,
+              "p95_ms": 0.25636009951995226,
+              "raw_samples_ms": [
+                0.2565047994721681,
+                0.25361080042785034
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.3725179500179365,
+              "p95_ms": 0.3735394944669679,
+              "raw_samples_ms": [
+                0.37365299940574914,
+                0.3713829006301239
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 0.4605454157430051,
+              "p95": 0.4639976654603067,
+              "ci95_lower": 0.45670958272378115,
+              "ci95_upper": 0.4643812487622291,
+              "raw_samples": [
+                0.45670958272378115,
+                0.4643812487622291
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "decode": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.14817175033385865,
+              "p95_ms": 0.14915909465344157,
+              "raw_samples_ms": [
+                0.14926879957783967,
+                0.14707470108987764
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.15504039984080006,
+              "p95_ms": 0.15611994902428705,
+              "raw_samples_ms": [
+                0.15623989893356338,
+                0.1538409007480368
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 0.04635342071546403,
+              "p95": 0.046666827806645425,
+              "ci95_lower": 0.04600519061415136,
+              "ci95_upper": 0.04670165081677669,
+              "raw_samples": [
+                0.04670165081677669,
+                0.04600519061415136
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          }
+        }
+      }
+    },
+    "throughput_medium/bfloat16": {
+      "semantic_scope": "diagonal gated recurrence core; projections and output projection excluded",
+      "shape": {
+        "batch": 8,
+        "sequence": 1024,
+        "heads": 8,
+        "key_dim": 64,
+        "value_dim": 64,
+        "dtype": "bfloat16",
+        "initial_state": "zero"
+      },
+      "upstream_callable": "fla.ops.hgrn.fused_recurrent_hgrn",
+      "performance_comparator_callable": "fla.ops.hgrn.chunk_hgrn",
+      "native_anchor": "urm_native_diagonal_recurrence_v1",
+      "compiler_plan_build_ms": 1.6918420005822554,
+      "parity": {
+        "status": "pass",
+        "output_max_abs_error_vs_upstream": 0.015625,
+        "final_state_max_abs_error_vs_upstream": 0.007771968841552734,
+        "output_max_abs_error_vs_oracle": 0.015500068664550781,
+        "final_state_max_abs_error_vs_oracle": 3.0994415283203125e-06,
+        "input_gradient_max_abs_errors_vs_upstream": {
+          "x": 7.62939453125e-06,
+          "log_decay": 3.0517578125e-05,
+          "initial_state": 6.939444574527442e-10
+        },
+        "state_gradient_max_abs_errors": {
+          "initial_state": 6.939444574527442e-10
+        },
+        "tolerances": {
+          "output_atol": 0.02,
+          "state_atol": 0.02,
+          "gradient_atol": 0.02,
+          "relative_tolerance": 0.0001
+        }
+      },
+      "performance": {
+        "first_direct_forward_call_ms": {
+          "wall": 0.47454479936277494,
+          "device": 0.47073278427124027
+        },
+        "first_compiled_forward_call_after_warmup_ms": {
+          "wall": 0.3681129004689865,
+          "device": 0.3655679941177368
+        },
+        "warmup_calls_per_backend_per_mode": 1,
+        "paired_samples_per_mode": 2,
+        "measurements": {
+          "forward": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.2802428003633395,
+              "p95_ms": 0.28298284974880517,
+              "raw_samples_ms": [
+                0.2771983010461554,
+                0.2832872996805236
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.36206730001140386,
+              "p95_ms": 0.3622180498496163,
+              "raw_samples_ms": [
+                0.36189980019116774,
+                0.36223479983164
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 0.29212317526595755,
+              "p95": 0.3042188703907782,
+              "ci95_lower": 0.2786835140161567,
+              "ci95_upper": 0.30556283651575833,
+              "raw_samples": [
+                0.30556283651575833,
+                0.2786835140161567
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "forward_backward": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 1.2277750989596825,
+              "p95_ms": 1.2283276988455327,
+              "raw_samples_ms": [
+                1.2283890988328494,
+                1.2271610990865156
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 1.7577664999407716,
+              "p95_ms": 1.7580315488157794,
+              "raw_samples_ms": [
+                1.757472001190763,
+                1.7580609986907803
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 0.4316686242529888,
+              "p95": 0.4325288703959838,
+              "ci95_lower": 0.4307127952052166,
+              "ci95_upper": 0.43262445330076105,
+              "raw_samples": [
+                0.4307127952052166,
+                0.43262445330076105
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "prefill": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.2777321496978402,
+              "p95_ms": 0.27930179465329275,
+              "raw_samples_ms": [
+                0.279476199648343,
+                0.2759880997473374
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.3629202503361739,
+              "p95_ms": 0.3636065448517911,
+              "raw_samples_ms": [
+                0.3636827997979708,
+                0.36215770087437704
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 0.30676183443168553,
+              "p95": 0.31167612903985853,
+              "ci95_lower": 0.3013015070892711,
+              "ci95_upper": 0.31222216177409995,
+              "raw_samples": [
+                0.3013015070892711,
+                0.31222216177409995
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "decode": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.15623040017089806,
+              "p95_ms": 0.15702555007010233,
+              "raw_samples_ms": [
+                0.1571139000589028,
+                0.15534690028289333
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.14164064996293746,
+              "p95_ms": 0.1441354939743178,
+              "raw_samples_ms": [
+                0.14441269886447117,
+                0.13886860106140375
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": -0.09345746463079377,
+              "p95": -0.08210239670664729,
+              "ci95_lower": -0.10607420676873429,
+              "ci95_upper": -0.08084072249285323,
+              "raw_samples": [
+                -0.08084072249285323,
+                -0.10607420676873429
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          }
+        }
+      }
+    },
+    "continuation_nonzero_state/float32": {
+      "semantic_scope": "diagonal gated recurrence core; projections and output projection excluded",
+      "shape": {
+        "batch": 2,
+        "sequence": 256,
+        "heads": 8,
+        "key_dim": 64,
+        "value_dim": 64,
+        "dtype": "float32",
+        "initial_state": "nonzero"
+      },
+      "upstream_callable": "fla.ops.hgrn.fused_recurrent_hgrn",
+      "performance_comparator_callable": "fla.ops.hgrn.chunk_hgrn",
+      "native_anchor": "urm_native_diagonal_recurrence_v1",
+      "compiler_plan_build_ms": 1.6850620013428852,
+      "parity": {
+        "status": "pass",
+        "output_max_abs_error_vs_upstream": 1.1920928955078125e-06,
+        "final_state_max_abs_error_vs_upstream": 7.152557373046875e-07,
+        "output_max_abs_error_vs_oracle": 3.814697265625e-06,
+        "final_state_max_abs_error_vs_oracle": 2.6226043701171875e-06,
+        "input_gradient_max_abs_errors_vs_upstream": {
+          "x": 2.3283064365386963e-09,
+          "log_decay": 8.381903171539307e-09,
+          "initial_state": 1.7462298274040222e-10
+        },
+        "state_gradient_max_abs_errors": {
+          "initial_state": 1.7462298274040222e-10
+        },
+        "tolerances": {
+          "output_atol": 0.02,
+          "state_atol": 0.02,
+          "gradient_atol": 0.02,
+          "relative_tolerance": 0.0001
+        }
+      },
+      "performance": {
+        "first_direct_forward_call_ms": {
+          "wall": 0.16674710059305653,
+          "device": 0.16261119842529298
+        },
+        "first_compiled_forward_call_after_warmup_ms": {
+          "wall": 0.1671071004238911,
+          "device": 0.1644544005393982
+        },
+        "warmup_calls_per_backend_per_mode": 1,
+        "paired_samples_per_mode": 2,
+        "measurements": {
+          "forward": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.15605944936396554,
+              "p95_ms": 0.15984084413503297,
+              "raw_samples_ms": [
+                0.16026099910959601,
+                0.15185789961833507
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.15692895030952062,
+              "p95_ms": 0.15863269589317497,
+              "raw_samples_ms": [
+                0.15882200095802546,
+                0.15503589966101572
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 0.005974184068341086,
+              "p95": 0.019432131948909526,
+              "ci95_lower": -0.008979091354512742,
+              "ci95_upper": 0.020927459491194914,
+              "raw_samples": [
+                -0.008979091354512742,
+                0.020927459491194914
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "forward_backward": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.8407577501202468,
+              "p95_ms": 0.8449949953501346,
+              "raw_samples_ms": [
+                0.8360496998648159,
+                0.8454658003756776
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.790467849583365,
+              "p95_ms": 0.8001933849300258,
+              "raw_samples_ms": [
+                0.7796616991981864,
+                0.8012739999685436
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": -0.05985746378392085,
+              "p95": -0.053028004443411214,
+              "ci95_lower": -0.06744575194004267,
+              "ci95_upper": -0.052269175627799036,
+              "raw_samples": [
+                -0.06744575194004267,
+                -0.052269175627799036
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "prefill": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.16607359939371236,
+              "p95_ms": 0.1675806492130505,
+              "raw_samples_ms": [
+                0.16774809919297695,
+                0.16439909959444776
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.16236860028584488,
+              "p95_ms": 0.17280742969887797,
+              "raw_samples_ms": [
+                0.15076990093803033,
+                0.17396729963365942
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": -0.021505706952723698,
+              "p95": 0.05023037333990614,
+              "ci95_lower": -0.10121246283342354,
+              "ci95_upper": 0.058201048927976146,
+              "raw_samples": [
+                -0.10121246283342354,
+                0.058201048927976146
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "decode": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.17735585061018355,
+              "p95_ms": 0.19871730568411294,
+              "raw_samples_ms": [
+                0.20109080069232732,
+                0.15362090052803978
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.1595315508893691,
+              "p95_ms": 0.1691730262245983,
+              "raw_samples_ms": [
+                0.17024430126184598,
+                0.14881880051689222
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": -0.09232764697951071,
+              "p95": -0.037366241296364566,
+              "ci95_lower": -0.15339587551633976,
+              "ci95_upper": -0.031259418442681645,
+              "raw_samples": [
+                -0.15339587551633976,
+                -0.031259418442681645
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          }
+        }
+      }
+    },
+    "continuation_nonzero_state/bfloat16": {
+      "semantic_scope": "diagonal gated recurrence core; projections and output projection excluded",
+      "shape": {
+        "batch": 2,
+        "sequence": 256,
+        "heads": 8,
+        "key_dim": 64,
+        "value_dim": 64,
+        "dtype": "bfloat16",
+        "initial_state": "nonzero"
+      },
+      "upstream_callable": "fla.ops.hgrn.fused_recurrent_hgrn",
+      "performance_comparator_callable": "fla.ops.hgrn.chunk_hgrn",
+      "native_anchor": "urm_native_diagonal_recurrence_v1",
+      "compiler_plan_build_ms": 1.4975079975556582,
+      "parity": {
+        "status": "pass",
+        "output_max_abs_error_vs_upstream": 0.00390625,
+        "final_state_max_abs_error_vs_upstream": 0.007718801498413086,
+        "output_max_abs_error_vs_oracle": 0.012680530548095703,
+        "final_state_max_abs_error_vs_oracle": 2.1457672119140625e-06,
+        "input_gradient_max_abs_errors_vs_upstream": {
+          "x": 3.0517578125e-05,
+          "log_decay": 0.0001220703125,
+          "initial_state": 3.263994585722685e-08
+        },
+        "state_gradient_max_abs_errors": {
+          "initial_state": 3.263994585722685e-08
+        },
+        "tolerances": {
+          "output_atol": 0.02,
+          "state_atol": 0.02,
+          "gradient_atol": 0.02,
+          "relative_tolerance": 0.0001
+        }
+      },
+      "performance": {
+        "first_direct_forward_call_ms": {
+          "wall": 0.1856646005762741,
+          "device": 0.18155200481414793
+        },
+        "first_compiled_forward_call_after_warmup_ms": {
+          "wall": 0.17018819926306605,
+          "device": 0.16752640008926392
+        },
+        "warmup_calls_per_backend_per_mode": 1,
+        "paired_samples_per_mode": 2,
+        "measurements": {
+          "forward": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.17145869933301583,
+              "p95_ms": 0.1756307392497547,
+              "raw_samples_ms": [
+                0.17609429924050346,
+                0.1668230994255282
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.15990105021046475,
+              "p95_ms": 0.16280269483104348,
+              "raw_samples_ms": [
+                0.16312509978888556,
+                0.15667700063204393
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": -0.06723434022711824,
+              "p95": -0.06146099102519542,
+              "ci95_lower": -0.07364917267369916,
+              "ci95_upper": -0.06081950778053733,
+              "raw_samples": [
+                -0.07364917267369916,
+                -0.06081950778053733
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "forward_backward": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.913299649982946,
+              "p95_ms": 0.9464792755170492,
+              "raw_samples_ms": [
+                0.950165900576394,
+                0.8764333993894979
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.8971378505520989,
+              "p95_ms": 0.9240555461292389,
+              "raw_samples_ms": [
+                0.9270464011933655,
+                0.8672292999108322
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": -0.017416916561683777,
+              "p95": -0.011193282086849547,
+              "ci95_lower": -0.024332065978166253,
+              "ci95_upper": -0.0105017671452013,
+              "raw_samples": [
+                -0.024332065978166253,
+                -0.0105017671452013
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "prefill": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.17127475075540133,
+              "p95_ms": 0.17283044573559891,
+              "raw_samples_ms": [
+                0.17300330073339865,
+                0.169546200777404
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.14983834989834577,
+              "p95_ms": 0.15274674457032233,
+              "raw_samples_ms": [
+                0.1530698995338753,
+                0.14660680026281625
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": -0.1252592958260825,
+              "p95": -0.11622372611897029,
+              "ci95_lower": -0.13529881772287383,
+              "ci95_upper": -0.11521977392929116,
+              "raw_samples": [
+                -0.11521977392929116,
+                -0.13529881772287383
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "decode": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.16333009989466518,
+              "p95_ms": 0.16447850051918067,
+              "raw_samples_ms": [
+                0.16205409920075908,
+                0.16460610058857128
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.14363469963427633,
+              "p95_ms": 0.14383180008735508,
+              "raw_samples_ms": [
+                0.14385370013769716,
+                0.1434156991308555
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": -0.12052231745865247,
+              "p95": -0.11313180478685998,
+              "ci95_lower": -0.12873399820508857,
+              "ci95_upper": -0.11231063671221637,
+              "raw_samples": [
+                -0.11231063671221637,
+                -0.12873399820508857
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          }
+        }
+      }
+    },
+    "decode_step/float32": {
+      "semantic_scope": "diagonal gated recurrence core; projections and output projection excluded",
+      "shape": {
+        "batch": 1,
+        "sequence": 1,
+        "heads": 8,
+        "key_dim": 64,
+        "value_dim": 64,
+        "dtype": "float32",
+        "initial_state": "nonzero"
+      },
+      "upstream_callable": "fla.ops.hgrn.fused_recurrent_hgrn",
+      "performance_comparator_callable": "fla.ops.hgrn.chunk_hgrn",
+      "native_anchor": "urm_native_diagonal_recurrence_v1",
+      "compiler_plan_build_ms": 1.5200180059764534,
+      "parity": {
+        "status": "pass",
+        "output_max_abs_error_vs_upstream": 0.0,
+        "final_state_max_abs_error_vs_upstream": 0.0,
+        "output_max_abs_error_vs_oracle": 2.9802322387695312e-08,
+        "final_state_max_abs_error_vs_oracle": 2.9802322387695312e-08,
+        "input_gradient_max_abs_errors_vs_upstream": {
+          "x": 0.0,
+          "log_decay": 0.0,
+          "initial_state": 0.0
+        },
+        "state_gradient_max_abs_errors": {
+          "initial_state": 0.0
+        },
+        "tolerances": {
+          "output_atol": 0.02,
+          "state_atol": 0.02,
+          "gradient_atol": 0.02,
+          "relative_tolerance": 0.0001
+        }
+      },
+      "performance": {
+        "first_direct_forward_call_ms": {
+          "wall": 0.16718209953978658,
+          "device": 0.16343040466308595
+        },
+        "first_compiled_forward_call_after_warmup_ms": {
+          "wall": 0.16097899933811277,
+          "device": 0.15840959548950195
+        },
+        "warmup_calls_per_backend_per_mode": 1,
+        "paired_samples_per_mode": 2,
+        "measurements": {
+          "forward": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.15130730025703087,
+              "p95_ms": 0.15208445067401047,
+              "raw_samples_ms": [
+                0.1521708007203415,
+                0.15044379979372025
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.16256650051218458,
+              "p95_ms": 0.16266055004962254,
+              "raw_samples_ms": [
+                0.1624620010261424,
+                0.16267099999822676
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 0.07445173788319258,
+              "p95": 0.08059195816324582,
+              "ci95_lower": 0.06762927090535564,
+              "ci95_upper": 0.08127420486102951,
+              "raw_samples": [
+                0.06762927090535564,
+                0.08127420486102951
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "forward_backward": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.7854392504668795,
+              "p95_ms": 0.81308009539498,
+              "raw_samples_ms": [
+                0.8161513003869914,
+                0.7547272005467676
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.7552942501206418,
+              "p95_ms": 0.7608311853982741,
+              "raw_samples_ms": [
+                0.7491420998121612,
+                0.7614464004291221
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": -0.036600537794281546,
+              "p95": 0.004352483584719069,
+              "ci95_lower": -0.08210389488206,
+              "ci95_upper": 0.00890281929349691,
+              "raw_samples": [
+                -0.08210389488206,
+                0.00890281929349691
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "prefill": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.1569784501043614,
+              "p95_ms": 0.1644310353003675,
+              "raw_samples_ms": [
+                0.16525910032214597,
+                0.14869779988657683
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.15015135068097152,
+              "p95_ms": 0.15181864546320867,
+              "raw_samples_ms": [
+                0.1520039004390128,
+                0.14829880092293024
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": -0.04144594020024794,
+              "p95": -0.006559552866462634,
+              "ci95_lower": -0.08020859279334272,
+              "ci95_upper": -0.00268328760715315,
+              "raw_samples": [
+                -0.08020859279334272,
+                -0.00268328760715315
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "decode": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.15280985026038252,
+              "p95_ms": 0.15307809539081063,
+              "raw_samples_ms": [
+                0.1525118001154624,
+                0.15310790040530264
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.1462246997107286,
+              "p95_ms": 0.14784379985940177,
+              "raw_samples_ms": [
+                0.148023699875921,
+                0.1444256995455362
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": -0.04306715406986087,
+              "p95": -0.03079181500274993,
+              "ci95_lower": -0.05670641969998414,
+              "ci95_upper": -0.0294278884397376,
+              "raw_samples": [
+                -0.0294278884397376,
+                -0.05670641969998414
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          }
+        }
+      }
+    },
+    "decode_step/bfloat16": {
+      "semantic_scope": "diagonal gated recurrence core; projections and output projection excluded",
+      "shape": {
+        "batch": 1,
+        "sequence": 1,
+        "heads": 8,
+        "key_dim": 64,
+        "value_dim": 64,
+        "dtype": "bfloat16",
+        "initial_state": "nonzero"
+      },
+      "upstream_callable": "fla.ops.hgrn.fused_recurrent_hgrn",
+      "performance_comparator_callable": "fla.ops.hgrn.chunk_hgrn",
+      "native_anchor": "urm_native_diagonal_recurrence_v1",
+      "compiler_plan_build_ms": 1.4691980031784624,
+      "parity": {
+        "status": "pass",
+        "output_max_abs_error_vs_upstream": 0.0,
+        "final_state_max_abs_error_vs_upstream": 0.0015279650688171387,
+        "output_max_abs_error_vs_oracle": 0.0015279650688171387,
+        "final_state_max_abs_error_vs_oracle": 2.9802322387695312e-08,
+        "input_gradient_max_abs_errors_vs_upstream": {
+          "x": 0.0,
+          "log_decay": 3.814697265625e-06,
+          "initial_state": 5.723442882299423e-06
+        },
+        "state_gradient_max_abs_errors": {
+          "initial_state": 5.723442882299423e-06
+        },
+        "tolerances": {
+          "output_atol": 0.02,
+          "state_atol": 0.02,
+          "gradient_atol": 0.02,
+          "relative_tolerance": 0.0001
+        }
+      },
+      "performance": {
+        "first_direct_forward_call_ms": {
+          "wall": 0.17171030049212277,
+          "device": 0.1682432055473328
+        },
+        "first_compiled_forward_call_after_warmup_ms": {
+          "wall": 0.1602510004886426,
+          "device": 0.157695996761322
+        },
+        "warmup_calls_per_backend_per_mode": 1,
+        "paired_samples_per_mode": 2,
+        "measurements": {
+          "forward": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.16965964969131167,
+              "p95_ms": 0.1697366446751403,
+              "raw_samples_ms": [
+                0.16957409970927984,
+                0.16974519967334345
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.15820795015315525,
+              "p95_ms": 0.15852749515033793,
+              "raw_samples_ms": [
+                0.1578529001562856,
+                0.1585630001500249
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": -0.06749889183861306,
+              "p95": -0.06603863249061616,
+              "ci95_lower": -0.06912140222527628,
+              "ci95_upper": -0.06587638145194984,
+              "raw_samples": [
+                -0.06912140222527628,
+                -0.06587638145194984
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "forward_backward": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.9218513492669445,
+              "p95_ms": 0.9497977440332761,
+              "raw_samples_ms": [
+                0.890799799526576,
+                0.952902899007313
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.8055085505475289,
+              "p95_ms": 0.8081802455126308,
+              "raw_samples_ms": [
+                0.8025400005863048,
+                0.8084771005087532
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": -0.1253216501930985,
+              "p95": -0.10170351315888052,
+              "ci95_lower": -0.1515640246755629,
+              "ci95_upper": -0.09907927571063407,
+              "raw_samples": [
+                -0.09907927571063407,
+                -0.1515640246755629
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "prefill": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.17207020064233802,
+              "p95_ms": 0.17624629072088283,
+              "raw_samples_ms": [
+                0.17671030072961003,
+                0.16743010055506602
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.15023779997136444,
+              "p95_ms": 0.155732390267076,
+              "raw_samples_ms": [
+                0.1563429002999328,
+                0.14413269964279607
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": -0.12720286658756913,
+              "p95": -0.11645312119655678,
+              "ci95_lower": -0.13914702813313842,
+              "ci95_upper": -0.11525870504199985,
+              "raw_samples": [
+                -0.11525870504199985,
+                -0.13914702813313842
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "decode": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.17468730002292435,
+              "p95_ms": 0.1797786899987841,
+              "raw_samples_ms": [
+                0.18034439999610186,
+                0.16903020004974678
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.14725579967489466,
+              "p95_ms": 0.1508882899361197,
+              "raw_samples_ms": [
+                0.1512918999651447,
+                0.14321969938464463
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": -0.15689605977860627,
+              "p95": -0.1531174182371808,
+              "ci95_lower": -0.16109455038019008,
+              "ci95_upper": -0.15269756917702243,
+              "raw_samples": [
+                -0.16109455038019008,
+                -0.15269756917702243
               ],
               "gate": {
                 "limit_fraction": 0.1,

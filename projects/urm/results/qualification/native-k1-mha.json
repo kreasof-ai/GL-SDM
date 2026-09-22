@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_utc": "2026-09-22T00:29:27.998548+00:00",
+  "generated_utc": "2026-09-22T09:00:43.877880+00:00",
   "purpose": "qualify URM-native K1 online-softmax attention against a competitive fused-attention upstream (native replacement, not dispatch overhead)",
   "matrix_workload": "k1-mha",
   "verdict": "correct_below_target",
@@ -11,10 +11,10 @@
     "scope_note": "flash_attn is not installable in this torch 2.14/cu130 + nvcc 12.9 environment; SDPA is the available competitive fused-attention upstream. Budgets and tolerances unchanged."
   },
   "provenance": {
-    "git_revision": "701354086ca664a68bc66f0468b561f757fd1f57",
+    "git_revision": "accc4b9836b9042225da1c3cf959cb6303df0a6c",
     "dirty_tree": false,
     "benchmark_command": "PYTHONPATH=src python benchmarks/qualify_native_k1_attention.py",
-    "config_hash": "b188305a094886c867451aff7b779d6f849d124bfe300d0332989d47ed2f00eb",
+    "config_hash": "f2753984de3d8f2a5403bf374e21b3c6d97039d56a79444d023c34e4f98fe0e0",
     "solver_version": null,
     "python": "3.12.14",
     "platform": "Linux-6.12.103-127.188.amzn2023.x86_64-x86_64-with-glibc2.39",
@@ -40,11 +40,11 @@
     "driver_version": "595.91.07",
     "sm_clock_mhz": 1710,
     "memory_clock_mhz": 6251,
-    "power_draw_w": 74.61,
+    "power_draw_w": 205.79,
     "power_limit_w": 300.0,
-    "temperature_c": 36,
-    "gpu_utilization_pct": 0,
-    "memory_utilization_pct": 0,
+    "temperature_c": 38,
+    "gpu_utilization_pct": 97,
+    "memory_utilization_pct": 94,
     "persistence_mode": "Enabled",
     "compute_mode": "Default",
     "application_clocks_fixed": null,
@@ -58,9 +58,9 @@
     "exclusive_process_mode": false,
     "all_compute_processes": [
       {
-        "pid": 56185,
+        "pid": 69190,
         "process_name": "/opt/conda/bin/python",
-        "used_memory": "1636 MiB"
+        "used_memory": "9834 MiB"
       }
     ],
     "external_compute_processes": [],
@@ -70,7 +70,7 @@
     "comparison": "URM-native K1 online-softmax kernel vs SDPA fused attention; the two share no kernel",
     "correctness_comparator": "SDPA plus an independent eager attention oracle",
     "performance_comparator": "SDPA fused attention (competitive production kernel)",
-    "timed_work": "one native plan call or one upstream call, optionally followed by output backward",
+    "timed_work": "one native plan call or one upstream call, optionally followed by output backward; prefill and decode run under no_grad",
     "sampling": "paired interleaved native/direct calls, order alternates, synchronized wall timing",
     "warmup": 1,
     "pairs": 2,
@@ -79,68 +79,69 @@
     "gate_basis": "the 95% confidence-interval upper bound must meet the budget"
   },
   "cases": {
-    "mha": {
+    "latency_small/bfloat16": {
       "semantic_scope": "normalized causal attention core; projections excluded",
       "shape": {
-        "batch": 8,
-        "query_length": 1024,
-        "key_length": 1024,
-        "query_heads": 16,
-        "kv_heads": 16,
+        "batch": 1,
+        "query_length": 128,
+        "key_length": 128,
+        "query_heads": 8,
+        "key_value_heads": 8,
         "key_dim": 64,
         "value_dim": 64,
         "dtype": "bfloat16"
       },
       "native_anchor": "urm_native_k1_online_softmax_v1",
-      "compiler_plan_build_ms": 57.529372003045864,
+      "compiler_plan_build_ms": 83.85997399454936,
       "parity": {
         "status": "pass",
-        "output_max_abs_error_vs_upstream": 0.0078125,
-        "output_max_abs_error_vs_oracle": 0.00921630859375,
+        "output_max_abs_error_vs_upstream": 0.00390625,
+        "output_max_abs_error_vs_oracle": 0.009016275405883789,
         "input_gradient_max_abs_errors_vs_upstream": {
-          "query": 1.862645149230957e-09,
-          "key": 3.725290298461914e-09,
-          "value": 7.450580596923828e-09
+          "query": 5.960464477539063e-08,
+          "key": 2.384185791015625e-07,
+          "value": 2.384185791015625e-07
         },
         "tolerances": {
           "output_atol": 0.02,
+          "output_oracle_atol": 0.044291992187500004,
           "gradient_atol": 0.02,
           "relative_tolerance": 0.02
         }
       },
       "performance": {
-        "first_direct_forward_call_ms": 0.43989800178678706,
-        "first_compiled_forward_call_after_warmup_ms": 0.6743529993400443,
+        "first_direct_forward_call_ms": 0.09822699939832091,
+        "first_compiled_forward_call_after_warmup_ms": 0.4220930059091188,
         "warmup_calls_per_backend_per_mode": 1,
         "paired_samples_per_mode": 2,
         "measurements": {
           "forward": {
             "direct_wall": {
               "sample_count": 2,
-              "median_ms": 0.4178955005045282,
-              "p95_ms": 0.4187977485344163,
+              "median_ms": 0.06758149902452715,
+              "p95_ms": 0.07020049997663591,
               "raw_samples_ms": [
-                0.418897998315515,
-                0.41689300269354135
+                0.07049150008242577,
+                0.06467149796662852
               ]
             },
             "compiled_wall": {
               "sample_count": 2,
-              "median_ms": 0.5784012482763501,
-              "p95_ms": 0.5794049729956896,
+              "median_ms": 0.27333775142324157,
+              "p95_ms": 0.28511672535387333,
               "raw_samples_ms": [
-                0.5795164979645051,
-                0.5772859985881951
+                0.28642550023505464,
+                0.2602500026114285
               ]
             },
             "paired_native_overhead_fraction": {
-              "median": 0.38408262539367055,
-              "p95": 0.38466904257769974,
-              "ci95_lower": 0.38343105074474926,
-              "ci95_upper": 0.38473420004259185,
+              "median": 3.0437234357737206,
+              "p95": 3.0613089942391305,
+              "ci95_lower": 3.0241839263677095,
+              "ci95_upper": 3.0632629451797317,
               "raw_samples": [
-                0.38343105074474926,
-                0.38473420004259185
+                3.0632629451797317,
+                3.0241839263677095
               ],
               "gate": {
                 "limit_fraction": 0.1,
@@ -155,30 +156,1443 @@
           "forward_backward": {
             "direct_wall": {
               "sample_count": 2,
-              "median_ms": 2.583056999355904,
-              "p95_ms": 2.5867042486424907,
+              "median_ms": 0.44728850116371177,
+              "p95_ms": 0.46156295102264266,
               "raw_samples_ms": [
-                2.579004500148585,
-                2.5871094985632226
+                0.4631490010069683,
+                0.4314280013204552
               ]
             },
             "compiled_wall": {
               "sample_count": 2,
-              "median_ms": 3.9686309992248425,
-              "p95_ms": 3.971335500500573,
+              "median_ms": 0.8319504995597526,
+              "p95_ms": 0.8893713951692916,
               "raw_samples_ms": [
-                3.965625997807365,
-                3.97163600064232
+                0.7681495044380426,
+                0.8957514946814626
               ]
             },
             "paired_native_overhead_fraction": {
-              "median": 0.5364105608356127,
-              "p95": 0.5375329406541398,
-              "ci95_lower": 0.5351634721483604,
-              "ci95_upper": 0.5376576495228651,
+              "median": 0.8673921948390719,
+              "p95": 1.0553623564752086,
+              "ci95_lower": 0.6585364596878088,
+              "ci95_upper": 1.076247929990335,
               "raw_samples": [
-                0.5376576495228651,
-                0.5351634721483604
+                0.6585364596878088,
+                1.076247929990335
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "prefill": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.0678412543493323,
+              "p95_ms": 0.0693129790306557,
+              "raw_samples_ms": [
+                0.06947650399524719,
+                0.06620600470341742
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.27666525056702085,
+              "p95_ms": 0.2797884753817925,
+              "raw_samples_ms": [
+                0.2731950007728301,
+                0.2801355003612116
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 3.08173148466167,
+              "p95": 3.216316404572911,
+              "ci95_lower": 2.932192684760291,
+              "ci95_upper": 3.231270284563049,
+              "raw_samples": [
+                2.932192684760291,
+                3.231270284563049
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "decode": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.06223125092219561,
+              "p95_ms": 0.06269902660278603,
+              "raw_samples_ms": [
+                0.06275100167840719,
+                0.061711500165984035
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.2721249984460883,
+              "p95_ms": 0.276251501054503,
+              "raw_samples_ms": [
+                0.2675399955478497,
+                0.2767100013443269
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 3.373723394519395,
+              "p95": 3.4729086744958066,
+              "ci95_lower": 3.2635175278789372,
+              "ci95_upper": 3.4839292611598522,
+              "raw_samples": [
+                3.2635175278789372,
+                3.4839292611598522
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          }
+        }
+      }
+    },
+    "latency_small/float16": {
+      "semantic_scope": "normalized causal attention core; projections excluded",
+      "shape": {
+        "batch": 1,
+        "query_length": 128,
+        "key_length": 128,
+        "query_heads": 8,
+        "key_value_heads": 8,
+        "key_dim": 64,
+        "value_dim": 64,
+        "dtype": "float16"
+      },
+      "native_anchor": "urm_native_k1_online_softmax_v1",
+      "compiler_plan_build_ms": 1.8449240014888346,
+      "parity": {
+        "status": "pass",
+        "output_max_abs_error_vs_upstream": 0.00048828125,
+        "output_max_abs_error_vs_oracle": 0.0009090900421142578,
+        "input_gradient_max_abs_errors_vs_upstream": {
+          "query": 5.960464477539063e-08,
+          "key": 5.960464477539063e-08,
+          "value": 5.960464477539063e-08
+        },
+        "tolerances": {
+          "output_atol": 0.02,
+          "output_oracle_atol": 0.0228228759765625,
+          "gradient_atol": 0.02,
+          "relative_tolerance": 0.02
+        }
+      },
+      "performance": {
+        "first_direct_forward_call_ms": 0.08510149928042665,
+        "first_compiled_forward_call_after_warmup_ms": 0.38434250018326566,
+        "warmup_calls_per_backend_per_mode": 1,
+        "paired_samples_per_mode": 2,
+        "measurements": {
+          "forward": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.07458149775629863,
+              "p95_ms": 0.08050800097407773,
+              "raw_samples_ms": [
+                0.06799649418098852,
+                0.08116650133160874
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.2581347507657483,
+              "p95_ms": 0.2634224743815139,
+              "raw_samples_ms": [
+                0.26400999922771007,
+                0.2522595023037866
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 2.4953132213998863,
+              "p95": 2.843961471325141,
+              "ci95_lower": 2.107926277038492,
+              "ci95_upper": 2.8827001657612805,
+              "raw_samples": [
+                2.8827001657612805,
+                2.107926277038492
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "forward_backward": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.5182222485018428,
+              "p95_ms": 0.5476052228914341,
+              "raw_samples_ms": [
+                0.5508699978236109,
+                0.4855744991800748
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.8383230015169829,
+              "p95_ms": 0.8481982520606834,
+              "raw_samples_ms": [
+                0.8492955021210946,
+                0.8273505009128712
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 0.6227969719285936,
+              "p95": 0.6957528348450989,
+              "ci95_lower": 0.5417349020213655,
+              "ci95_upper": 0.7038590418358217,
+              "raw_samples": [
+                0.5417349020213655,
+                0.7038590418358217
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "prefill": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.06489149745902978,
+              "p95_ms": 0.06745649407093879,
+              "raw_samples_ms": [
+                0.06774149369448423,
+                0.062041501223575324
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.2902829983213451,
+              "p95_ms": 0.3119982011412503,
+              "raw_samples_ms": [
+                0.266154995188117,
+                0.3144110014545731
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 3.498366637045753,
+              "p95": 4.010814327500842,
+              "ci95_lower": 2.9289803143178754,
+              "ci95_upper": 4.06775295977363,
+              "raw_samples": [
+                2.9289803143178754,
+                4.06775295977363
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "decode": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.06571875201188959,
+              "p95_ms": 0.06666172594123054,
+              "raw_samples_ms": [
+                0.06467100320151076,
+                0.06676650082226843
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.3334285029268358,
+              "p95_ms": 0.3519622037856607,
+              "raw_samples_ms": [
+                0.3128355019725859,
+                0.35402150388108566
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 4.069860093072025,
+              "p95": 4.279129967265067,
+              "ci95_lower": 3.8373380106353117,
+              "ci95_upper": 4.302382175508739,
+              "raw_samples": [
+                3.8373380106353117,
+                4.302382175508739
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          }
+        }
+      }
+    },
+    "throughput_medium/bfloat16": {
+      "semantic_scope": "normalized causal attention core; projections excluded",
+      "shape": {
+        "batch": 8,
+        "query_length": 1024,
+        "key_length": 1024,
+        "query_heads": 16,
+        "key_value_heads": 16,
+        "key_dim": 64,
+        "value_dim": 64,
+        "dtype": "bfloat16"
+      },
+      "native_anchor": "urm_native_k1_online_softmax_v1",
+      "compiler_plan_build_ms": 1.7457630019634962,
+      "parity": {
+        "status": "pass",
+        "output_max_abs_error_vs_upstream": 0.00390625,
+        "output_max_abs_error_vs_oracle": 0.008019685745239258,
+        "input_gradient_max_abs_errors_vs_upstream": {
+          "query": 3.725290298461914e-09,
+          "key": 7.450580596923828e-09,
+          "value": 3.725290298461914e-09
+        },
+        "tolerances": {
+          "output_atol": 0.02,
+          "output_oracle_atol": 0.049663085937500004,
+          "gradient_atol": 0.02,
+          "relative_tolerance": 0.02
+        }
+      },
+      "performance": {
+        "first_direct_forward_call_ms": 0.41622749995440245,
+        "first_compiled_forward_call_after_warmup_ms": 0.5977010005153716,
+        "warmup_calls_per_backend_per_mode": 1,
+        "paired_samples_per_mode": 2,
+        "measurements": {
+          "forward": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.4185877514828462,
+              "p95_ms": 0.42138247772527393,
+              "raw_samples_ms": [
+                0.415482500102371,
+                0.42169300286332145
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.554665250092512,
+              "p95_ms": 0.5569019773247419,
+              "raw_samples_ms": [
+                0.5571505025727674,
+                0.5521799976122566
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 0.3252041229646703,
+              "p95": 0.3393954363755599,
+              "ci95_lower": 0.3094359969525706,
+              "ci95_upper": 0.34097224897676986,
+              "raw_samples": [
+                0.34097224897676986,
+                0.3094359969525706
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "forward_backward": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 2.576785998826381,
+              "p95_ms": 2.577724248112645,
+              "raw_samples_ms": [
+                2.5757434996194206,
+                2.577828498033341
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 3.9610922503925394,
+              "p95_ms": 3.9670887261308962,
+              "raw_samples_ms": [
+                3.967755001212936,
+                3.954429499572143
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 0.537223345718118,
+              "p95": 0.5401101878729162,
+              "ci95_lower": 0.5340157433238979,
+              "ci95_upper": 0.5404309481123382,
+              "raw_samples": [
+                0.5404309481123382,
+                0.5340157433238979
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "prefill": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.4130252491449937,
+              "p95_ms": 0.41959322334150784,
+              "raw_samples_ms": [
+                0.4203229982522316,
+                0.4057275000377558
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.5584002537943888,
+              "p95_ms": 0.5677784803992836,
+              "raw_samples_ms": [
+                0.5688205055776052,
+                0.5479800020111725
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 0.3519523698948175,
+              "p95": 0.3531596528043774,
+              "ci95_lower": 0.35061094443975094,
+              "ci95_upper": 0.35329379534988403,
+              "raw_samples": [
+                0.35329379534988403,
+                0.35061094443975094
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "decode": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.13443525313050486,
+              "p95_ms": 0.13687672799278516,
+              "raw_samples_ms": [
+                0.13714800297748297,
+                0.13172250328352675
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.27241749921813607,
+              "p95_ms": 0.27815724970423616,
+              "raw_samples_ms": [
+                0.2787949997582473,
+                0.26603999867802486
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 1.0262521893270216,
+              "p95": 1.032148757993041,
+              "ci95_lower": 1.0197004463647776,
+              "ci95_upper": 1.0328039322892655,
+              "raw_samples": [
+                1.0328039322892655,
+                1.0197004463647776
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          }
+        }
+      }
+    },
+    "throughput_medium/float16": {
+      "semantic_scope": "normalized causal attention core; projections excluded",
+      "shape": {
+        "batch": 8,
+        "query_length": 1024,
+        "key_length": 1024,
+        "query_heads": 16,
+        "key_value_heads": 16,
+        "key_dim": 64,
+        "value_dim": 64,
+        "dtype": "float16"
+      },
+      "native_anchor": "urm_native_k1_online_softmax_v1",
+      "compiler_plan_build_ms": 1.7729039973346516,
+      "parity": {
+        "status": "pass",
+        "output_max_abs_error_vs_upstream": 0.00048828125,
+        "output_max_abs_error_vs_oracle": 0.0010068416595458984,
+        "input_gradient_max_abs_errors_vs_upstream": {
+          "query": 5.960464477539063e-08,
+          "key": 5.960464477539063e-08,
+          "value": 5.960464477539063e-08
+        },
+        "tolerances": {
+          "output_atol": 0.02,
+          "output_oracle_atol": 0.023986358642578125,
+          "gradient_atol": 0.02,
+          "relative_tolerance": 0.02
+        }
+      },
+      "performance": {
+        "first_direct_forward_call_ms": 0.43380300485296175,
+        "first_compiled_forward_call_after_warmup_ms": 0.6300164968706667,
+        "warmup_calls_per_backend_per_mode": 1,
+        "paired_samples_per_mode": 2,
+        "measurements": {
+          "forward": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.4092129966011271,
+              "p95_ms": 0.412331496772822,
+              "raw_samples_ms": [
+                0.40574799641035497,
+                0.4126779967918992
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.567368002521107,
+              "p95_ms": 0.5678022538631922,
+              "raw_samples_ms": [
+                0.5668855010299012,
+                0.5678505040123127
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 0.38657521511023907,
+              "p95": 0.39608073848464814,
+              "ci95_lower": 0.3760135224720068,
+              "ci95_upper": 0.3971369077484714,
+              "raw_samples": [
+                0.3971369077484714,
+                0.3760135224720068
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "forward_backward": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 2.5769557505554985,
+              "p95_ms": 2.584567726808018,
+              "raw_samples_ms": [
+                2.56849799916381,
+                2.585413501947187
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 3.9634520035178866,
+              "p95_ms": 3.9652767536608735,
+              "raw_samples_ms": [
+                3.965479503676761,
+                3.9614245033590123
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 0.5380556502983583,
+              "p95": 0.5433069601919001,
+              "ci95_lower": 0.5322208615277564,
+              "ci95_upper": 0.5438904390689603,
+              "raw_samples": [
+                0.5438904390689603,
+                0.5322208615277564
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "prefill": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.4133477486902848,
+              "p95_ms": 0.42001697365776636,
+              "raw_samples_ms": [
+                0.4207579986541532,
+                0.4059374987264164
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.5608282554021571,
+              "p95_ms": 0.5713832291803556,
+              "raw_samples_ms": [
+                0.5725560040445998,
+                0.5491005067597143
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 0.35672262643977315,
+              "p95": 0.3603677058402856,
+              "ci95_lower": 0.35267253821698147,
+              "ci95_upper": 0.3607727146625648,
+              "raw_samples": [
+                0.3607727146625648,
+                0.35267253821698147
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "decode": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.13542500164476223,
+              "p95_ms": 0.13810925047437195,
+              "raw_samples_ms": [
+                0.13840750034432858,
+                0.13244250294519588
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.3563965037756134,
+              "p95_ms": 0.4264358536602231,
+              "raw_samples_ms": [
+                0.43421800364740193,
+                0.27857500390382484
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 1.6203044489840726,
+              "p95": 2.085549418295394,
+              "ci95_lower": 1.1033655941937153,
+              "ci95_upper": 2.13724330377443,
+              "raw_samples": [
+                2.13724330377443,
+                1.1033655941937153
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          }
+        }
+      }
+    },
+    "throughput_long/bfloat16": {
+      "semantic_scope": "normalized causal attention core; projections excluded",
+      "shape": {
+        "batch": 4,
+        "query_length": 4096,
+        "key_length": 4096,
+        "query_heads": 16,
+        "key_value_heads": 16,
+        "key_dim": 64,
+        "value_dim": 64,
+        "dtype": "bfloat16"
+      },
+      "native_anchor": "urm_native_k1_online_softmax_v1",
+      "compiler_plan_build_ms": 1.7638130084378645,
+      "parity": {
+        "status": "pass",
+        "output_max_abs_error_vs_upstream": 0.00390625,
+        "output_max_abs_error_vs_oracle": 0.008020639419555664,
+        "input_gradient_max_abs_errors_vs_upstream": {
+          "query": 4.656612873077393e-10,
+          "key": 1.862645149230957e-09,
+          "value": 3.725290298461914e-09
+        },
+        "tolerances": {
+          "output_atol": 0.02,
+          "output_oracle_atol": 0.049174804687500004,
+          "gradient_atol": 0.02,
+          "relative_tolerance": 0.02
+        }
+      },
+      "performance": {
+        "first_direct_forward_call_ms": 2.446201498969458,
+        "first_compiled_forward_call_after_warmup_ms": 2.8943145007360727,
+        "warmup_calls_per_backend_per_mode": 1,
+        "paired_samples_per_mode": 2,
+        "measurements": {
+          "forward": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 2.458991246385267,
+              "p95_ms": 2.4608630203147186,
+              "raw_samples_ms": [
+                2.4610709951957688,
+                2.4569114975747652
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 2.8059674987161998,
+              "p95_ms": 2.8112234987929696,
+              "raw_samples_ms": [
+                2.8001274986309,
+                2.8118074988014996
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 0.14110794390194178,
+              "p95": 0.14411401242199925,
+              "ci95_lower": 0.1377678677685446,
+              "ci95_upper": 0.14444802003533896,
+              "raw_samples": [
+                0.1377678677685446,
+                0.14444802003533896
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "forward_backward": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 11.026874250092078,
+              "p95_ms": 11.032425224402687,
+              "raw_samples_ms": [
+                11.020706500858068,
+                11.033041999326088
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 18.57809650391573,
+              "p95_ms": 18.602494154765736,
+              "raw_samples_ms": [
+                18.60520500486018,
+                18.55098800297128
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 0.6848036041495722,
+              "p95": 0.6878643040006455,
+              "ci95_lower": 0.6814028265372686,
+              "ci95_upper": 0.6882043817618758,
+              "raw_samples": [
+                0.6882043817618758,
+                0.6814028265372686
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "prefill": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 2.434203252050793,
+              "p95_ms": 2.439659723677323,
+              "raw_samples_ms": [
+                2.4402659983024932,
+                2.4281405057990924
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 2.799367252009688,
+              "p95_ms": 2.8085789799661143,
+              "raw_samples_ms": [
+                2.809602505294606,
+                2.78913199872477
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 0.15001042849799542,
+              "p95": 0.15121687199470785,
+              "ci95_lower": 0.1486699357238705,
+              "ci95_upper": 0.15135092127212035,
+              "raw_samples": [
+                0.15135092127212035,
+                0.1486699357238705
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "decode": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.21010925047448836,
+              "p95_ms": 0.2266559753479669,
+              "raw_samples_ms": [
+                0.22849450033390895,
+                0.19172400061506778
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.40894524863688275,
+              "p95_ms": 0.42258272296749055,
+              "raw_samples_ms": [
+                0.42409799789311364,
+                0.39379249938065186
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 0.9550042854725254,
+              "p95": 1.044060067953885,
+              "ci95_lower": 0.8560534160487925,
+              "ci95_upper": 1.0539551548962582,
+              "raw_samples": [
+                0.8560534160487925,
+                1.0539551548962582
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          }
+        }
+      }
+    },
+    "throughput_long/float16": {
+      "semantic_scope": "normalized causal attention core; projections excluded",
+      "shape": {
+        "batch": 4,
+        "query_length": 4096,
+        "key_length": 4096,
+        "query_heads": 16,
+        "key_value_heads": 16,
+        "key_dim": 64,
+        "value_dim": 64,
+        "dtype": "float16"
+      },
+      "native_anchor": "urm_native_k1_online_softmax_v1",
+      "compiler_plan_build_ms": 1.786944005289115,
+      "parity": {
+        "status": "pass",
+        "output_max_abs_error_vs_upstream": 0.00048828125,
+        "output_max_abs_error_vs_oracle": 0.0009677410125732422,
+        "input_gradient_max_abs_errors_vs_upstream": {
+          "query": 5.960464477539063e-08,
+          "key": 5.960464477539063e-08,
+          "value": 5.960464477539063e-08
+        },
+        "tolerances": {
+          "output_atol": 0.02,
+          "output_oracle_atol": 0.0241351318359375,
+          "gradient_atol": 0.02,
+          "relative_tolerance": 0.02
+        }
+      },
+      "performance": {
+        "first_direct_forward_call_ms": 2.432315501209814,
+        "first_compiled_forward_call_after_warmup_ms": 2.8377530034049414,
+        "warmup_calls_per_backend_per_mode": 1,
+        "paired_samples_per_mode": 2,
+        "measurements": {
+          "forward": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 2.448223498504376,
+              "p95_ms": 2.4542831986764213,
+              "raw_samples_ms": [
+                2.4414904983132146,
+                2.4549564986955374
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 2.7988824986096006,
+              "p95_ms": 2.803999450770789,
+              "raw_samples_ms": [
+                2.7931969962082803,
+                2.804568001010921
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 0.1432322389306459,
+              "p95": 0.1439718333487428,
+              "ci95_lower": 0.14241046735498267,
+              "ci95_upper": 0.14405401050630912,
+              "raw_samples": [
+                0.14405401050630912,
+                0.14241046735498267
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "forward_backward": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 11.031069501768798,
+              "p95_ms": 11.032084249018226,
+              "raw_samples_ms": [
+                11.032196998712607,
+                11.029942004824989
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 18.48569950016099,
+              "p95_ms": 18.499102749410667,
+              "raw_samples_ms": [
+                18.470807000994682,
+                18.5005919993273
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 0.6757850372075311,
+              "p95": 0.6771542378552465,
+              "ci95_lower": 0.6742637031545139,
+              "ci95_upper": 0.6773063712605483,
+              "raw_samples": [
+                0.6742637031545139,
+                0.6773063712605483
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "prefill": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 2.4287732485390734,
+              "p95_ms": 2.4398227742494782,
+              "raw_samples_ms": [
+                2.441050499328412,
+                2.4164959977497347
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 2.7962700005446095,
+              "p95_ms": 2.8147767025075154,
+              "raw_samples_ms": [
+                2.816833002725616,
+                2.775706998363603
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 0.15129623893429794,
+              "p95": 0.1536782746282389,
+              "ci95_lower": 0.1486495326076969,
+              "ci95_upper": 0.15394294526089902,
+              "raw_samples": [
+                0.15394294526089902,
+                0.1486495326076969
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "decode": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.18538099902798422,
+              "p95_ms": 0.18938374741992448,
+              "raw_samples_ms": [
+                0.18982849724125117,
+                0.18093350081471726
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.3530592548486311,
+              "p95_ms": 0.3632632298831595,
+              "raw_samples_ms": [
+                0.3417215048102662,
+                0.364397004886996
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 0.9070710991893365,
+              "p95": 1.003291860236328,
+              "ci95_lower": 0.8001591424704568,
+              "ci95_upper": 1.0139830559082161,
+              "raw_samples": [
+                0.8001591424704568,
+                1.0139830559082161
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          }
+        }
+      }
+    },
+    "decode_step/bfloat16": {
+      "semantic_scope": "normalized causal attention core; projections excluded",
+      "shape": {
+        "batch": 1,
+        "query_length": 1,
+        "key_length": 2048,
+        "query_heads": 8,
+        "key_value_heads": 8,
+        "key_dim": 64,
+        "value_dim": 64,
+        "dtype": "bfloat16"
+      },
+      "native_anchor": "urm_native_k1_online_softmax_v1",
+      "compiler_plan_build_ms": 1.8442650034558028,
+      "parity": {
+        "status": "pass",
+        "output_max_abs_error_vs_upstream": 0.00048828125,
+        "output_max_abs_error_vs_oracle": 0.00030344724655151367,
+        "input_gradient_max_abs_errors_vs_upstream": {
+          "query": 1.1920928955078125e-07,
+          "key": 5.960464477539063e-08,
+          "value": 5.960464477539063e-08
+        },
+        "tolerances": {
+          "output_atol": 0.02,
+          "output_oracle_atol": 0.021104542519897223,
+          "gradient_atol": 0.02,
+          "relative_tolerance": 0.02
+        }
+      },
+      "performance": {
+        "first_direct_forward_call_ms": 0.09532699914416298,
+        "first_compiled_forward_call_after_warmup_ms": 0.5311999993864447,
+        "warmup_calls_per_backend_per_mode": 1,
+        "paired_samples_per_mode": 2,
+        "measurements": {
+          "forward": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.08861624883138575,
+              "p95_ms": 0.09954697416105773,
+              "raw_samples_ms": [
+                0.10076149919768795,
+                0.07647099846508354
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.27055000100517645,
+              "p95_ms": 0.2743165008723736,
+              "raw_samples_ms": [
+                0.2747350008576177,
+                0.2663650011527352
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 2.1049015072551263,
+              "p95": 2.445384500861677,
+              "ci95_lower": 1.7265870699145145,
+              "ci95_upper": 2.483215944595738,
+              "raw_samples": [
+                1.7265870699145145,
+                2.483215944595738
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "forward_backward": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.49700425370247103,
+              "p95_ms": 0.5100364793179324,
+              "raw_samples_ms": [
+                0.511484504386317,
+                0.4825240030186251
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.7509767456213012,
+              "p95_ms": 0.7629672218172345,
+              "raw_samples_ms": [
+                0.764299496950116,
+                0.7376539942924865
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 0.5115087259176923,
+              "p95": 0.5270173387364849,
+              "ci95_lower": 0.49427693389681154,
+              "ci95_upper": 0.528740517938573,
+              "raw_samples": [
+                0.49427693389681154,
+                0.528740517938573
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "prefill": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.077121498179622,
+              "p95_ms": 0.07932199659990147,
+              "raw_samples_ms": [
+                0.07956649642437696,
+                0.07467649993486702
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.29366799935814925,
+              "p95_ms": 0.31510870139754843,
+              "raw_samples_ms": [
+                0.26984499709215015,
+                0.31749100162414834
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 2.8214958495273166,
+              "p95": 3.2085461315364374,
+              "ci95_lower": 2.391439980628293,
+              "ci95_upper": 3.25155171842634,
+              "raw_samples": [
+                2.391439980628293,
+                3.25155171842634
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "decode": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.08806899859337136,
+              "p95_ms": 0.09334524947917089,
+              "raw_samples_ms": [
+                0.09393149957759306,
+                0.08220649760914966
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.34029900052701123,
+              "p95_ms": 0.34710074796748813,
+              "raw_samples_ms": [
+                0.3327415033709258,
+                0.3478564976830967
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 2.886940524816759,
+              "p95": 3.1970408014610645,
+              "ci95_lower": 2.542384661878642,
+              "ci95_upper": 3.231496387754876,
+              "raw_samples": [
+                2.542384661878642,
+                3.231496387754876
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          }
+        }
+      }
+    },
+    "decode_step/float16": {
+      "semantic_scope": "normalized causal attention core; projections excluded",
+      "shape": {
+        "batch": 1,
+        "query_length": 1,
+        "key_length": 2048,
+        "query_heads": 8,
+        "key_value_heads": 8,
+        "key_dim": 64,
+        "value_dim": 64,
+        "dtype": "float16"
+      },
+      "native_anchor": "urm_native_k1_online_softmax_v1",
+      "compiler_plan_build_ms": 1.7389330023434013,
+      "parity": {
+        "status": "pass",
+        "output_max_abs_error_vs_upstream": 6.103515625e-05,
+        "output_max_abs_error_vs_oracle": 4.665553569793701e-05,
+        "input_gradient_max_abs_errors_vs_upstream": {
+          "query": 5.960464477539063e-08,
+          "key": 5.960464477539063e-08,
+          "value": 5.960464477539063e-08
+        },
+        "tolerances": {
+          "output_atol": 0.02,
+          "output_oracle_atol": 0.020116541123134084,
+          "gradient_atol": 0.02,
+          "relative_tolerance": 0.02
+        }
+      },
+      "performance": {
+        "first_direct_forward_call_ms": 0.18825349980033934,
+        "first_compiled_forward_call_after_warmup_ms": 0.361446502211038,
+        "warmup_calls_per_backend_per_mode": 1,
+        "paired_samples_per_mode": 2,
+        "measurements": {
+          "forward": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.07644899960723706,
+              "p95_ms": 0.07672125102544669,
+              "raw_samples_ms": [
+                0.07675150118302554,
+                0.07614649803144857
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.25986225227825344,
+              "p95_ms": 0.2700212302443106,
+              "raw_samples_ms": [
+                0.2711500055738725,
+                0.2485744989826344
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 2.3986272819895182,
+              "p95": 2.5194097240882822,
+              "ci95_lower": 2.2644245685464472,
+              "ci95_upper": 2.5328299954325892,
+              "raw_samples": [
+                2.5328299954325892,
+                2.2644245685464472
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "forward_backward": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.5009442502341699,
+              "p95_ms": 0.5116679752973141,
+              "raw_samples_ms": [
+                0.48902900016400963,
+                0.5128595003043301
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.7649494982615579,
+              "p95_ms": 0.777765496968641,
+              "raw_samples_ms": [
+                0.7791894968249835,
+                0.7507094996981323
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 0.5285561504991028,
+              "p95": 0.5868616697159819,
+              "ci95_lower": 0.4637722402581258,
+              "ci95_upper": 0.5933400607400796,
+              "raw_samples": [
+                0.5933400607400796,
+                0.4637722402581258
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "prefill": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.07787899812683463,
+              "p95_ms": 0.08191775268642232,
+              "raw_samples_ms": [
+                0.08236650319304317,
+                0.07339149306062609
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.2847454998118337,
+              "p95_ms": 0.31911740261421073,
+              "raw_samples_ms": [
+                0.32293650292558596,
+                0.2465544966980815
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 2.6400842960273767,
+              "p95": 2.892661964302941,
+              "ci95_lower": 2.3594424423878615,
+              "ci95_upper": 2.9207261496668924,
+              "raw_samples": [
+                2.9207261496668924,
+                2.3594424423878615
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect"
+            ]
+          },
+          "decode": {
+            "direct_wall": {
+              "sample_count": 2,
+              "median_ms": 0.07438899410772137,
+              "p95_ms": 0.07628124476468656,
+              "raw_samples_ms": [
+                0.0764914948376827,
+                0.07228649337776005
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 2,
+              "median_ms": 0.26218000130029395,
+              "p95_ms": 0.26304399871150963,
+              "raw_samples_ms": [
+                0.261220004176721,
+                0.2631399984238669
+              ]
+            },
+            "paired_native_overhead_fraction": {
+              "median": 2.5276288391737154,
+              "p95": 2.6289765652735495,
+              "ci95_lower": 2.415020254618345,
+              "ci95_upper": 2.6402374237290864,
+              "raw_samples": [
+                2.415020254618345,
+                2.6402374237290864
               ],
               "gate": {
                 "limit_fraction": 0.1,
