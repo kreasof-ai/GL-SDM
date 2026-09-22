@@ -587,7 +587,60 @@ def _kernels():
             carry0 = tl.sum(tl.where((token == 0)[:, None], sc * decay, 0.0), axis=0)
             tl.store(GRAD_INITIAL + batch * C * N + channel * N + state_index, carry0, state_mask)
 
-    return triton, forward_kernel, backward_kernel, backward_kernel_parallel
+    @triton.jit
+    def diagonal_decode_step_kernel(
+        X,  # [B, C] single token
+        INPUT_GATE,
+        READ_GATE,
+        LOG_DECAY,
+        STATE,  # persistent [B, C, N], updated in place
+        OUTPUT,  # [B, C]
+        SKIP,  # [C] skip connection
+        C: tl.constexpr,
+        N: tl.constexpr,
+        READ_BEFORE: tl.constexpr,
+        GATES_ONE: tl.constexpr,
+        BLOCK_N: tl.constexpr,
+    ):
+        """One fused single-token diagonal recurrence decode step, in place.
+
+        Follows the ATMA decode-kernel pattern: the persistent [C, N] state is
+        read and written once, in place, under no_grad with no per-step state
+        history and no host sync, so the step is CUDA-graph capturable. One
+        program owns one (batch, channel) pair.
+        """
+        row = tl.program_id(0)
+        batch = row // C
+        channel = row % C
+        state_index = tl.arange(0, BLOCK_N)
+        state_mask = state_index < N
+        state_offset = batch * C * N + channel * N + state_index
+        state = tl.load(STATE + state_offset, state_mask, other=0.0).to(tl.float32)
+        x = tl.load(X + batch * C + channel).to(tl.float32)
+        if GATES_ONE:
+            input_gate = tl.full((BLOCK_N,), 1.0, tl.float32)
+            read_gate = tl.full((BLOCK_N,), 1.0, tl.float32)
+        else:
+            input_gate = tl.load(
+                INPUT_GATE + batch * C * N + channel * N + state_index, state_mask, other=0.0
+            ).to(tl.float32)
+            read_gate = tl.load(
+                READ_GATE + batch * C * N + channel * N + state_index, state_mask, other=0.0
+            ).to(tl.float32)
+        log_decay = tl.load(
+            LOG_DECAY + batch * C * N + channel * N + state_index, state_mask, other=0.0
+        ).to(tl.float32)
+        skip = tl.load(SKIP + channel).to(tl.float32)
+        if READ_BEFORE:
+            output = tl.sum(state * read_gate, 0) + x * skip
+            tl.store(OUTPUT + batch * C + channel, output)
+        state = tl.exp(log_decay) * state + x * input_gate
+        if not READ_BEFORE:
+            output = tl.sum(state * read_gate, 0) + x * skip
+            tl.store(OUTPUT + batch * C + channel, output)
+        tl.store(STATE + state_offset, state, state_mask)
+
+    return triton, forward_kernel, backward_kernel, backward_kernel_parallel, diagonal_decode_step_kernel
 
 
 def execute_diagonal_recurrence(
@@ -611,7 +664,7 @@ def execute_diagonal_recurrence(
     """
     import torch
 
-    triton, forward_kernel, backward_kernel, backward_kernel_parallel = _kernels()
+    triton, forward_kernel, backward_kernel, backward_kernel_parallel, _ = _kernels()
     if x.device.type != "cuda":
         raise ValueError("native diagonal SSM requires CUDA tensors")
     # The kernels accumulate in fp32 throughout (every load is upcast with
@@ -699,7 +752,7 @@ def _scan_class(
 ):
     import torch
 
-    triton, forward_kernel, backward_kernel, backward_kernel_parallel = _kernels()
+    triton, forward_kernel, backward_kernel, backward_kernel_parallel, _ = _kernels()
     batch = None  # batch varies per call; read from x inside forward/backward
 
     class _DiagonalScan(torch.autograd.Function):
@@ -927,4 +980,62 @@ def _skip_tensor(skip: Any, device: Any):
     return torch.as_tensor(skip, device=device, dtype=torch.float32)
 
 
-__all__ = ["execute_diagonal_recurrence"]
+def execute_diagonal_decode_step(
+    *,
+    x: Any,
+    log_decay: Any,
+    input_gate: Any | None,
+    read_gate: Any | None,
+    state: Any,
+    read_before: bool,
+) -> Any:
+    """Run one fused single-token diagonal recurrence decode step, in place.
+
+    The persistent ``[B, C, N]`` fp32 state is read and written once, in place,
+    under ``torch.no_grad()`` with no per-step state-history allocation and no
+    autograd graph, so the step is CUDA-graph capturable. ``x`` is ``[B, C]``;
+    ``log_decay``/``input_gate``/``read_gate`` are ``[B, C, N]`` (or ``[B, C]``
+    for the HGRN gates-one path); ``state`` is the persistent ``[B, C, N]`` fp32
+    tensor updated in place. Returns the output ``[B, C]``.
+    """
+    import torch
+
+    triton, _, _, _, decode_step_kernel = _kernels()
+    if x.device.type != "cuda":
+        raise ValueError("native diagonal decode step requires CUDA tensors")
+    batch, channels = x.shape
+    if tuple(state.shape)[:2] != (batch, channels):
+        raise ValueError("state must use [B,C,N] matching x")
+    if state.dtype is not torch.float32:
+        raise ValueError("the persistent diagonal state is fp32")
+    state_width = state.shape[-1]
+    gates_one = input_gate is None and read_gate is None
+    skip_tensor = _skip_tensor(0.0, x.device)
+    # Expand gates/log_decay to [B,C,N].
+    def _expand(gate, name):
+        if gate is None:
+            return log_decay  # placeholder; never loaded when gates_one
+        if gate.dim() == 2:
+            gate = gate.unsqueeze(-1)
+        if gate.shape != (batch, channels, state_width):
+            gate = gate.expand(batch, channels, state_width)
+        return gate.contiguous()
+
+    log_decay_e = log_decay.unsqueeze(-1) if log_decay.dim() == 2 else log_decay
+    log_decay_e = log_decay_e.expand(batch, channels, state_width).contiguous()
+    ig = _expand(input_gate, "input_gate")
+    rg = _expand(read_gate, "read_gate")
+    output = torch.empty((batch, channels), device=x.device, dtype=torch.float32)
+    block_n = triton.next_power_of_2(state_width)
+    skip_c = skip_tensor.contiguous()
+    if skip_c.numel() == 1:
+        skip_c = skip_c.expand(channels).contiguous()
+    with torch.no_grad():
+        decode_step_kernel[(batch * channels,)](
+            x.contiguous(), ig, rg, log_decay_e, state, output, skip_c,
+            channels, state_width, read_before, gates_one, block_n, num_warps=4,
+        )
+    return output
+
+
+__all__ = ["execute_diagonal_recurrence", "execute_diagonal_decode_step"]

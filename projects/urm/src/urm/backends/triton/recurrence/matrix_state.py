@@ -315,7 +315,74 @@ def _kernels():
                 kv_mask,
             )
 
-    return triton, forward_kernel, backward_kernel
+    @triton.jit
+    def decode_step_kernel(
+        Q,
+        K,
+        V,
+        G,  # log_decay [B,H] (head decay)
+        BETA,  # [B,H]
+        STATE,  # persistent [B,H,K,V], updated in place
+        OUTPUT,  # [B,H,V]
+        H: tl.constexpr,
+        K_DIM: tl.constexpr,
+        V_DIM: tl.constexpr,
+        SCALE: tl.constexpr,
+        DECAY: tl.constexpr,
+        IS_DELTA: tl.constexpr,
+        READ_BEFORE: tl.constexpr,
+        BLOCK_K: tl.constexpr,
+        BLOCK_V: tl.constexpr,
+    ):
+        """One fused single-token matrix-state decode step, in place on STATE.
+
+        Follows the ATMA decode-kernel pattern: the persistent per-head [K, V]
+        state is read and written once, in place; there is no per-step state
+        history allocation, no autograd graph, and no host sync, so the step is
+        CUDA-graph capturable. One program owns one (batch, head) pair.
+        """
+        row = tl.program_id(0)
+        batch = row // H
+        head = row % H
+        k_index = tl.arange(0, BLOCK_K)
+        v_index = tl.arange(0, BLOCK_V)
+        k_mask = k_index < K_DIM
+        v_mask = v_index < V_DIM
+        kv_mask = k_mask[:, None] & v_mask[None, :]
+        state_offset = ((batch * H + head) * K_DIM) * V_DIM + k_index[:, None] * V_DIM + v_index[None, :]
+        state = tl.load(STATE + state_offset, kv_mask, other=0.0).to(tl.float32)
+        qk_base = (batch * H + head) * K_DIM
+        v_base = (batch * H + head) * V_DIM
+        gb_base = batch * H + head
+        k_t = tl.load(K + qk_base + k_index, k_mask, other=0.0).to(tl.float32)
+        v_t = tl.load(V + v_base + v_index, v_mask, other=0.0).to(tl.float32)
+        q_t = tl.load(Q + qk_base + k_index, k_mask, other=0.0).to(tl.float32)
+        # Decay broadcast by granularity (head / key_channel / value_channel / none).
+        if DECAY == 1:  # head: scalar per head
+            g_t = tl.load(G + gb_base).to(tl.float32)
+            state = tl.exp(g_t) * state
+        elif DECAY == 2:  # key_channel: per-K, broadcast over V
+            g_t = tl.load(G + qk_base + k_index, k_mask, other=0.0).to(tl.float32)
+            state = tl.exp(g_t)[:, None] * state
+        elif DECAY == 3:  # value_channel: per-V, broadcast over K
+            g_t = tl.load(G + v_base + v_index, v_mask, other=0.0).to(tl.float32)
+            state = tl.exp(g_t)[None, :] * state
+        if READ_BEFORE:
+            output = SCALE * tl.sum(state * q_t[:, None], axis=0)
+            tl.store(OUTPUT + v_base + v_index, output, v_mask)
+        if IS_DELTA:
+            beta_t = tl.load(BETA + gb_base).to(tl.float32)
+            retrieved = tl.sum(state * k_t[:, None], axis=0)
+            delta = beta_t * (v_t - retrieved)
+        else:
+            delta = v_t
+        state = state + k_t[:, None] * delta[None, :]
+        if not READ_BEFORE:
+            output = SCALE * tl.sum(state * q_t[:, None], axis=0)
+            tl.store(OUTPUT + v_base + v_index, output, v_mask)
+        tl.store(STATE + state_offset, state, kv_mask)
+
+    return triton, forward_kernel, backward_kernel, decode_step_kernel
 
 
 def execute_matrix_state_recurrence(
@@ -343,7 +410,7 @@ def execute_matrix_state_recurrence(
     """
     import torch
 
-    triton, forward_kernel, backward_kernel = _kernels()
+    triton, forward_kernel, backward_kernel, _ = _kernels()
     if query.device.type != "cuda":
         raise ValueError("native matrix-state recurrence requires CUDA tensors")
     batch, sequence, heads, key_dim = query.shape
@@ -455,4 +522,76 @@ def execute_matrix_state_recurrence(
     return _MatrixState.apply(query_c, key_c, value_c, log_decay_c, beta_c, initial_tensor)
 
 
-__all__ = ["execute_matrix_state_recurrence"]
+def execute_matrix_state_decode_step(
+    *,
+    query: Any,
+    key: Any,
+    value: Any,
+    log_decay: Any | None,
+    beta: Any | None,
+    state: Any,
+    scale: float | None,
+    decay_granularity: str,
+    is_delta: bool,
+    read_before: bool,
+) -> Any:
+    """Run one fused single-token matrix-state decode step, in place on ``state``.
+
+    This is the decode-path counterpart to :func:`execute_matrix_state_recurrence`:
+    the persistent per-head ``[K, V]`` state is read and written once, in place,
+    under ``torch.no_grad()`` with no per-step state-history allocation and no
+    autograd graph, so the step is CUDA-graph capturable. ``query``/``key`` use
+    ``[B, H, K]``, ``value`` uses ``[B, H, V]``, ``state`` is the persistent
+    ``[B, H, K, V]`` fp32 tensor updated in place. Returns the output ``[B, H, V]``.
+    """
+    import torch
+
+    triton, _, _, decode_step_kernel = _kernels()
+    if query.device.type != "cuda":
+        raise ValueError("native matrix-state decode step requires CUDA tensors")
+    batch, heads, key_dim = query.shape
+    value_dim = value.shape[-1]
+    if key.shape != query.shape:
+        raise ValueError("key must match query shape [B,H,K]")
+    if value.shape[:2] != (batch, heads):
+        raise ValueError("value must use [B,H,V] matching query heads")
+    if tuple(state.shape) != (batch, heads, key_dim, value_dim):
+        raise ValueError("state must use [B,H,K,V]")
+    if state.dtype is not torch.float32:
+        raise ValueError("the persistent matrix state is fp32")
+    decay_code = {
+        "none": _DECAY_NONE,
+        "head": _DECAY_HEAD,
+        "key_channel": _DECAY_KEY_CHANNEL,
+        "value_channel": _DECAY_VALUE_CHANNEL,
+    }[decay_granularity]
+    if is_delta and beta is None:
+        raise ValueError("the delta update rule requires beta")
+    if decay_code != _DECAY_NONE and log_decay is None:
+        raise ValueError("this recurrence requires log_decay")
+    resolved_scale = float(scale) if scale is not None else 1.0
+    block_k = triton.next_power_of_2(key_dim)
+    block_v = triton.next_power_of_2(value_dim)
+    log_decay_c = (
+        log_decay.contiguous()
+        if log_decay is not None
+        else torch.zeros((batch, heads), device=query.device, dtype=torch.float32)
+    )
+    beta_c = (
+        beta.contiguous()
+        if beta is not None
+        else torch.zeros((batch, heads), device=query.device, dtype=torch.float32)
+    )
+    output = torch.empty((batch, heads, value_dim), device=query.device, dtype=torch.float32)
+    with torch.no_grad():
+        decode_step_kernel[(batch * heads,)](
+            query.contiguous(), key.contiguous(), value.contiguous(),
+            log_decay_c, beta_c, state, output,
+            heads, key_dim, value_dim, resolved_scale,
+            decay_code, is_delta, read_before,
+            block_k, block_v, num_warps=4,
+        )
+    return output
+
+
+__all__ = ["execute_matrix_state_recurrence", "execute_matrix_state_decode_step"]

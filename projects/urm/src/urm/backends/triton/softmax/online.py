@@ -696,6 +696,97 @@ def _online_softmax_backward_kv_tiled(
     )
 
 
+@triton.jit
+def _online_softmax_decode_kernel(
+    Q,
+    K,
+    V,
+    OUTPUT,
+    S: tl.constexpr,
+    HQ: tl.constexpr,
+    HK: tl.constexpr,
+    D: tl.constexpr,
+    DV: tl.constexpr,
+    SCALE: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_D: tl.constexpr,
+    BLOCK_V: tl.constexpr,
+):
+    """One fused single-query online-softmax decode step against the KV cache.
+
+    Follows the ATMA decode-kernel pattern: one program owns one
+    ``(batch, query_head)`` pair and streams the persistent KV cache once in
+    ``BLOCK_N`` chunks, accumulating the online softmax (running max, running
+    sum, running value) in fp32 so the ``[1, S]`` score tensor is never
+    materialized. There is no autograd graph, no per-call spec construction,
+    and a fixed launch shape, so the step is CUDA-graph capturable.
+
+    Decode semantics: the single query token sits at the latest position
+    ``S - 1``, so causal attention sees the full history (all ``S`` keys).
+    GQA-aware: ``key_head = query_head // (HQ // HK)``.
+    """
+    batch = tl.program_id(0)
+    query_head = tl.program_id(1)
+    key_head = query_head // (HQ // HK)
+    key_dims = tl.arange(0, BLOCK_D)
+    value_dims = tl.arange(0, BLOCK_V)
+    key_offsets = tl.arange(0, BLOCK_N)
+    # Query: [B, HQ, D] single token, contiguous.
+    query = tl.load(
+        Q + (batch * HQ + query_head) * D + key_dims,
+        key_dims < D,
+        other=0.0,
+    ).to(tl.float32)
+    LOG2E: tl.constexpr = 1.4426950408889634
+    running_max = float("-inf")
+    running_sum = 0.0
+    running_value = tl.zeros((BLOCK_V,), tl.float32)
+    for key_start in range(0, S, BLOCK_N):
+        keys = key_start + key_offsets
+        key_valid = keys < S
+        # Key cache: [B, S, HK, D] (BTHD), contiguous.
+        key = tl.load(
+            K + ((batch * S + keys[:, None]) * HK + key_head) * D + key_dims[None, :],
+            key_valid[:, None] & (key_dims[None, :] < D),
+            other=0.0,
+        ).to(tl.float32)
+        # Single-query scores: [BLOCK_N], fp32 (no tensor-core dot needed for a
+        # vector-matrix product; the exp2 trick folds log2(e) into the scale).
+        scores = tl.sum(key * query[None, :], axis=1) * (SCALE * LOG2E)
+        scores = tl.where(key_valid, scores, float("-inf"))
+        block_max = tl.max(scores, axis=0)
+        next_max = tl.maximum(running_max, block_max)
+        old_scale = tl.where(
+            running_sum > 0.0, tl.exp2(running_max - next_max), 0.0
+        )
+        safe_max = tl.where(next_max == float("-inf"), 0.0, next_max)
+        probabilities = tl.where(
+            scores == float("-inf"), 0.0, tl.exp2(scores - safe_max)
+        )
+        # Value cache: [B, S, HK, DV] (BTHD), contiguous.
+        values = tl.load(
+            V + ((batch * S + keys[:, None]) * HK + key_head) * DV + value_dims[None, :],
+            key_valid[:, None] & (value_dims[None, :] < DV),
+            other=0.0,
+        ).to(tl.float32)
+        running_value = (
+            running_value * old_scale
+            + tl.sum(probabilities[:, None] * values, axis=0)
+        )
+        running_sum = running_sum * old_scale + tl.sum(probabilities, axis=0)
+        running_max = next_max
+    output = tl.where(
+        running_sum > 0.0,
+        running_value / tl.maximum(running_sum, 1.0e-30),
+        0.0,
+    )
+    tl.store(
+        OUTPUT + (batch * HQ + query_head) * DV + value_dims,
+        output,
+        value_dims < DV,
+    )
+
+
 def _broadcast_strides_4d(tensor: Any | None, target: tuple[int, int, int, int]):
     if tensor is None:
         return (0, 0, 0, 0)
@@ -995,4 +1086,88 @@ def execute_online_softmax(
     return _OnlineSoftmax.apply(query, key, value, mask, bias)
 
 
-__all__ = ["execute_online_softmax"]
+@torch.no_grad()
+def execute_online_softmax_decode(
+    query: Any,
+    key: Any,
+    value: Any,
+    *,
+    scale: float,
+    causal: bool = True,
+) -> Any:
+    """Run one fused single-query K1 decode step against a persistent KV cache.
+
+    This is the decode-path counterpart to :func:`execute_online_softmax`: the
+    single query token (``query`` ``[B, HQ, K]``) attends to the full KV cache
+    (``key``/``value`` ``[B, S, HK, K]``/``[B, S, HK, DV]``, BTHD) with the
+    online-softmax accumulation, so the ``[1, S]`` score tensor is never
+    materialized. The cache is read only — the caller appends the new token to
+    it before or after this call. Runs under ``torch.no_grad()`` with no
+    autograd-class construction, no host sync, and a fixed launch shape, so the
+    step is CUDA-graph capturable.
+
+    Decode semantics: the query token sits at the latest position ``S - 1``,
+    so ``causal=True`` attends to the full history (all ``S`` keys); this
+    matches the native kernel's qlen=1 causal output exactly. ``causal`` is
+    accepted for interface symmetry — at the latest position causal and
+    non-causal decode are identical (the full cache is visible either way).
+
+    Returns the output ``[B, HQ, DV]`` in the input dtype.
+    """
+    if query.device.type != "cuda":
+        raise ValueError("native K1 decode requires CUDA tensors")
+    if query.ndim != 3 or key.ndim != 4 or value.ndim != 4:
+        raise ValueError(
+            "K1 decode query uses [B,HQ,K], key/value use [B,S,HK,K]/[B,S,HK,DV]"
+        )
+    batch, query_heads, key_dim = query.shape
+    batch_k, key_length, key_heads, key_dim_k = key.shape
+    value_dim = value.shape[-1]
+    if min(batch, query_heads, key_dim, key_length, key_heads, value_dim) <= 0:
+        raise ValueError("K1 decode dimensions must be positive")
+    if key_dim > 128 or value_dim > 128:
+        raise ValueError("native K1 decode supports key and value widths up to 128")
+    if (batch, key_dim) != (batch_k, key_dim_k) or value.shape[:3] != (
+        batch,
+        key_length,
+        key_heads,
+    ):
+        raise ValueError("K1 decode query/key/value dimensions do not agree")
+    if query_heads % key_heads:
+        raise ValueError("query heads must be divisible by key/value heads")
+    if not (query.dtype == key.dtype == value.dtype) or not query.is_floating_point():
+        raise ValueError("K1 decode query/key/value must use one floating-point dtype")
+    if query.dtype not in (torch.float16, torch.bfloat16, torch.float32):
+        raise ValueError("native K1 decode supports float16, bfloat16, and float32")
+    if not (query.device == key.device == value.device):
+        raise ValueError("K1 decode query/key/value must share one CUDA device")
+    query_c = query.contiguous()
+    key_c = key.contiguous()
+    value_c = value.contiguous()
+    output = torch.empty(
+        (batch, query_heads, value_dim), device=query.device, dtype=query.dtype
+    )
+    block_n = 64
+    block_d = max(16, triton.next_power_of_2(key_dim))
+    block_v = max(16, triton.next_power_of_2(value_dim))
+    _online_softmax_decode_kernel[(batch, query_heads)](
+        query_c,
+        key_c,
+        value_c,
+        output,
+        key_length,
+        query_heads,
+        key_heads,
+        key_dim,
+        value_dim,
+        scale,
+        block_n,
+        block_d,
+        block_v,
+        num_warps=4,
+        num_stages=3,
+    )
+    return output
+
+
+__all__ = ["execute_online_softmax", "execute_online_softmax_decode"]

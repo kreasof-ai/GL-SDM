@@ -371,6 +371,60 @@ class CompiledMixerPlan:
 
     __call__ = execute
 
+    def open_decode_session(self, **kwargs: Any):
+        """Open a persistent-state single-token decode session for this plan.
+
+        This is the decode/inference counterpart to :meth:`execute`. The training
+        path is built for sequence throughput (autograd graph, per-token state
+        history, per-call route certification); a decode session instead holds the
+        persistent state, updates it in place with one fused single-token kernel
+        per step under ``torch.no_grad()``, and does no per-step host work, so the
+        step is CUDA-graph capturable. This is the correct way to use the kernel
+        for decode; see ``urm/runtime/decode.py``.
+
+        The session type is selected from the spec family:
+        - K2 matrix-state: ``MatrixStateDecodeSession`` (persistent [B,H,K,V]).
+        - K2 diagonal: ``DiagonalDecodeSession`` (persistent [B,C,N]).
+        - K3 sparse-state: ``SparseStateDecodeSession`` (persistent [B,S,D] memory,
+          trusted native routes).
+        """
+        from urm.runtime.decode import (
+            DiagonalDecodeSession,
+            MatrixStateDecodeSession,
+            SparseStateDecodeSession,
+        )
+
+        if self.backend is not MixerBackend.NATIVE:
+            raise RuntimeError(
+                "decode sessions run the URM-native kernel; compile with "
+                "backend=MixerBackend.NATIVE"
+            )
+        if self.spec.family is MixerKernelFamily.RECURRENCE:
+            if self.spec.recurrent_layout is RecurrentLayout.MATRIX:
+                return MatrixStateDecodeSession(
+                    initial_state=kwargs["initial_state"],
+                    scale=kwargs.get("scale"),
+                    decay_granularity=kwargs.get("decay_granularity", "head"),
+                    is_delta=kwargs.get("is_delta", True),
+                    read_before=kwargs.get("read_before", False),
+                )
+            return DiagonalDecodeSession(
+                initial_state=kwargs["initial_state"],
+                read_before=kwargs.get("read_before", False),
+            )
+        if self.spec.family is MixerKernelFamily.SPARSE_DELTA:
+            return SparseStateDecodeSession(
+                memory=kwargs["memory"],
+                read_width=kwargs["read_width"],
+                write_width=kwargs["write_width"],
+                read_timing_before_update=kwargs.get("read_timing_before_update", True),
+            )
+        raise RuntimeError(
+            f"no decode session for family {self.spec.family.value}; "
+            "K1 attention decode uses execute_online_softmax_decode directly "
+            "(the KV cache is the persistent state)"
+        )
+
 
 def compile_mixer(
     spec: UnifiedMixerSpec | MixerRecipe,

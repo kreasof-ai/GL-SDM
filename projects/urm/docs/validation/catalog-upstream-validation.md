@@ -22,29 +22,29 @@ match their independent equation), this table records three measurements:
 
 | Recipe | Family | upstream anchor | dtype | abs err | overhead (native vs upstream) | native ms | upstream ms |
 |---|---|---|---|---|---|---|---|
-| `gated_delta_net` | RECURRENCE | `fla_gated_delta_rule_adapter` | bfloat16 | 7.10e-02 | -69.5% | 0.235 | 0.773 |
-| `delta_net` | RECURRENCE | `fla_chunk_delta_rule_adapter` | bfloat16 | 1.23e-01 | -62.0% | 0.322 | 0.843 |
-| `lightnet_gla_core` | RECURRENCE | `fla_chunk_gla_adapter` | float32 | 1.10e-02 | -58.4% | 0.196 | 0.460 |
-| `hgrn2_ssm_core` | RECURRENCE | `fla_chunk_gla_adapter` | float32 | 1.10e-02 | -57.8% | 0.197 | 0.461 |
-| `gla` | RECURRENCE | `fla_chunk_gla_adapter` | float32 | 1.10e-02 | -56.9% | 0.197 | 0.459 |
-| `mom_selected_memory_core` | RECURRENCE | `fla_gated_delta_rule_adapter` | bfloat16 | 4.31e-03 | -55.6% | 0.363 | 0.801 |
-| `rodimus_gla_core` | RECURRENCE | `fla_chunk_gla_adapter` | float32 | 1.37e-03 | -49.9% | 0.228 | 0.468 |
-| `simple_gla` | RECURRENCE | `fla_chunk_simple_gla_adapter` | float32 | 1.18e-02 | -45.8% | 0.193 | 0.348 |
-| `nsa_selected_attention_core` | SOFTMAX | `torch.nn.functional.scaled_dot_product_attention` | float32 | 2.38e-07 | +12.2% | 0.282 | 0.255 |
-| `dsa_attention_core` | SOFTMAX | `torch.nn.functional.scaled_dot_product_attention` | float32 | 2.38e-07 | +18.1% | 0.365 | 0.316 |
-| `sparse_attention_core` | SOFTMAX | `torch.nn.functional.scaled_dot_product_attention` | float32 | 2.38e-07 | +21.5% | 0.296 | 0.245 |
-| `cat_attention_core` | SOFTMAX | `torch.nn.functional.scaled_dot_product_attention` | float32 | 2.38e-07 | +25.5% | 0.394 | 0.317 |
-| `differential_attention_core` | SOFTMAX | `torch.nn.functional.scaled_dot_product_attention` | float32 | 1.79e-07 | +98.3% | 0.398 | 0.208 |
-| `mha` | SOFTMAX | `torch.nn.functional.scaled_dot_product_attention` | float32 | 2.38e-07 | +170.7% | 0.269 | 0.098 |
-| `mla_attention_core` | SOFTMAX | `torch.nn.functional.scaled_dot_product_attention` | float32 | 2.38e-07 | +178.3% | 0.266 | 0.098 |
-| `mqa` | SOFTMAX | `torch.nn.functional.scaled_dot_product_attention` | float32 | 2.38e-07 | +183.5% | 0.265 | 0.098 |
-| `pattention_core` | SOFTMAX | `torch.nn.functional.scaled_dot_product_attention` | float32 | 1.79e-07 | +184.4% | 0.266 | 0.095 |
-| `samba_attention_core` | SOFTMAX | `torch.nn.functional.scaled_dot_product_attention` | float32 | 2.38e-07 | +191.0% | 0.264 | 0.095 |
-| `conformer_attention_core` | SOFTMAX | `torch.nn.functional.scaled_dot_product_attention` | float32 | 2.09e-07 | +193.1% | 0.308 | 0.108 |
-| `tpa_attention_core` | SOFTMAX | `torch.nn.functional.scaled_dot_product_attention` | float32 | 2.38e-07 | +207.4% | 0.271 | 0.094 |
-| `hopfield_attention_core` | SOFTMAX | `torch.nn.functional.scaled_dot_product_attention` | float32 | 1.79e-07 | +213.7% | 0.275 | 0.096 |
-| `gqa` | SOFTMAX | `torch.nn.functional.scaled_dot_product_attention` | float32 | 2.38e-07 | +216.6% | 0.271 | 0.089 |
-| `foveal_attention_core` | SOFTMAX | `torch.nn.functional.scaled_dot_product_attention` | float32 | 2.38e-07 | +223.1% | 0.361 | 0.119 |
+| `gated_delta_net` | RECURRENCE | `fla_gated_delta_rule_adapter` | bfloat16 | 7.10e-02 | -69.4% | 0.183 | 0.590 |
+| `delta_net` | RECURRENCE | `fla_chunk_delta_rule_adapter` | bfloat16 | 1.23e-01 | -63.8% | 0.205 | 0.563 |
+| `hgrn2_ssm_core` | RECURRENCE | `fla_chunk_gla_adapter` | float32 | 1.10e-02 | -60.4% | 0.202 | 0.479 |
+| `lightnet_gla_core` | RECURRENCE | `fla_chunk_gla_adapter` | float32 | 1.10e-02 | -57.9% | 0.192 | 0.458 |
+| `gla` | RECURRENCE | `fla_chunk_gla_adapter` | float32 | 1.10e-02 | -57.8% | 0.197 | 0.467 |
+| `mom_selected_memory_core` | RECURRENCE | `fla_gated_delta_rule_adapter` | bfloat16 | 4.31e-03 | -55.7% | 0.356 | 0.794 |
+| `rodimus_gla_core` | RECURRENCE | `fla_chunk_gla_adapter` | float32 | 1.37e-03 | -52.5% | 0.224 | 0.464 |
+| `simple_gla` | RECURRENCE | `fla_chunk_simple_gla_adapter` | float32 | 1.18e-02 | -44.6% | 0.196 | 0.353 |
+| `dsa_attention_core` | SOFTMAX | `torch.nn.functional.scaled_dot_product_attention` | float32 | 2.38e-07 | +16.9% | 0.290 | 0.256 |
+| `nsa_selected_attention_core` | SOFTMAX | `torch.nn.functional.scaled_dot_product_attention` | float32 | 2.38e-07 | +19.1% | 0.280 | 0.243 |
+| `cat_attention_core` | SOFTMAX | `torch.nn.functional.scaled_dot_product_attention` | float32 | 2.38e-07 | +20.1% | 0.387 | 0.322 |
+| `sparse_attention_core` | SOFTMAX | `torch.nn.functional.scaled_dot_product_attention` | float32 | 2.38e-07 | +22.4% | 0.292 | 0.247 |
+| `differential_attention_core` | SOFTMAX | `torch.nn.functional.scaled_dot_product_attention` | float32 | 1.79e-07 | +92.5% | 0.325 | 0.167 |
+| `mla_attention_core` | SOFTMAX | `torch.nn.functional.scaled_dot_product_attention` | float32 | 2.38e-07 | +162.3% | 0.265 | 0.096 |
+| `conformer_attention_core` | SOFTMAX | `torch.nn.functional.scaled_dot_product_attention` | float32 | 2.09e-07 | +197.1% | 0.284 | 0.098 |
+| `samba_attention_core` | SOFTMAX | `torch.nn.functional.scaled_dot_product_attention` | float32 | 2.38e-07 | +204.8% | 0.266 | 0.089 |
+| `mqa` | SOFTMAX | `torch.nn.functional.scaled_dot_product_attention` | float32 | 2.38e-07 | +206.3% | 0.264 | 0.097 |
+| `gqa` | SOFTMAX | `torch.nn.functional.scaled_dot_product_attention` | float32 | 2.38e-07 | +206.5% | 0.272 | 0.094 |
+| `tpa_attention_core` | SOFTMAX | `torch.nn.functional.scaled_dot_product_attention` | float32 | 2.38e-07 | +208.9% | 0.277 | 0.096 |
+| `foveal_attention_core` | SOFTMAX | `torch.nn.functional.scaled_dot_product_attention` | float32 | 2.38e-07 | +212.1% | 0.259 | 0.090 |
+| `mha` | SOFTMAX | `torch.nn.functional.scaled_dot_product_attention` | float32 | 2.38e-07 | +216.6% | 0.279 | 0.098 |
+| `hopfield_attention_core` | SOFTMAX | `torch.nn.functional.scaled_dot_product_attention` | float32 | 1.79e-07 | +217.4% | 0.285 | 0.099 |
+| `pattention_core` | SOFTMAX | `torch.nn.functional.scaled_dot_product_attention` | float32 | 1.79e-07 | +222.8% | 0.297 | 0.096 |
 
 ## (b) Upstream parity only (no native-vs-upstream timing)
 
