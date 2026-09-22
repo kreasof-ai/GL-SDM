@@ -30,6 +30,7 @@ shape (in both dtypes) instead of the full matrix case set.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import statistics
 import time
 from datetime import UTC, datetime
@@ -245,6 +246,12 @@ def _measure_pair(direct, compiled, direct_inputs, compiled_inputs, pairs, warmu
     }
 
 
+def _stable_seed(*parts) -> int:
+    """Deterministic operand seed, stable across processes (PYTHONHASHSEED-safe)."""
+    digest = hashlib.sha256(repr(parts).encode()).hexdigest()
+    return int(digest[:8], 16) % (2**31)
+
+
 def _run_case(case, dtype_name, dtype, pairs, warmup, block):
     """Run one frozen case in one dtype; return (case_key, result, all_pass, numeric_fail)."""
     batch, qlen, klen = case["batch"], case["query_length"], case["key_length"]
@@ -260,7 +267,7 @@ def _run_case(case, dtype_name, dtype, pairs, warmup, block):
     # shapes, full-history (non-causal) for the single-token decode shape.
     causal = case["causal"] and qlen == klen
     operands = _inputs(
-        hash((case["id"], dtype_name)) % (2**31),
+        _stable_seed(case["id"], dtype_name),
         batch, qlen, klen, qheads, kvheads, key_dim, value_dim, dtype,
     )
     direct_inputs = {n: t.detach().clone().requires_grad_() for n, t in operands.items()}
@@ -333,7 +340,7 @@ def _run_case(case, dtype_name, dtype, pairs, warmup, block):
     from urm.backends.triton.softmax.online import execute_online_softmax_decode
 
     decode_operands = _inputs(
-        hash((case["id"], dtype_name, "decode")) % (2**31),
+        _stable_seed(case["id"], dtype_name, "decode"),
         batch, 1, klen, qheads, kvheads, key_dim, value_dim, dtype,
     )
 

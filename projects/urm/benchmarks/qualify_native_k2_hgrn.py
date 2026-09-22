@@ -278,6 +278,12 @@ def _measure_pair(direct, compiled, direct_inputs, compiled_inputs, pairs, warmu
     }
 
 
+def _stable_seed(*parts) -> int:
+    """Deterministic operand seed, stable across processes (PYTHONHASHSEED-safe)."""
+    digest = hashlib.sha256(repr(parts).encode()).hexdigest()
+    return int(digest[:8], 16) % (2**31)
+
+
 def _run_case(case, dtype_name, dtype, pairs, warmup, block):
     """Run one frozen case in one dtype; return (case_key, case_result, all_pass, numeric_fail)."""
     batch, sequence = case["batch"], case["sequence"]
@@ -285,7 +291,7 @@ def _run_case(case, dtype_name, dtype, pairs, warmup, block):
     # HGRN is a per-channel scalar diagonal recurrence: channels = heads * key_dim.
     channels = heads * key_dim
     operands = _inputs(
-        hash((case["id"], dtype_name)) % (2**31), batch, sequence, channels, dtype, case["initial"],
+        _stable_seed(case["id"], dtype_name), batch, sequence, channels, dtype, case["initial"],
     )
     direct_inputs = {n: t.detach().clone().requires_grad_() for n, t in operands.items()}
     compiled_inputs = {n: t.detach().clone().requires_grad_() for n, t in operands.items()}
@@ -351,7 +357,7 @@ def _run_case(case, dtype_name, dtype, pairs, warmup, block):
     )
 
     decode_operands = _inputs(
-        hash((case["id"], dtype_name, "decode")) % (2**31), batch, 1, channels, dtype, case["initial"],
+        _stable_seed(case["id"], dtype_name, "decode"), batch, 1, channels, dtype, case["initial"],
     )
     decode_x = decode_operands["x"][:, 0].detach().float()  # [B, C] single token
     decode_log_decay = decode_operands["log_decay"][:, 0].detach().float()  # [B, C]

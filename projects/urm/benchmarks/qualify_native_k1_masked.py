@@ -34,6 +34,7 @@ zero output and zero gradients, which this runner verifies explicitly.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import statistics
 import time
 from datetime import UTC, datetime
@@ -266,6 +267,12 @@ def _measure_pair(direct, compiled, direct_inputs, compiled_inputs, pairs, warmu
     }
 
 
+def _stable_seed(*parts) -> int:
+    """Deterministic operand seed, stable across processes (PYTHONHASHSEED-safe)."""
+    digest = hashlib.sha256(repr(parts).encode()).hexdigest()
+    return int(digest[:8], 16) % (2**31)
+
+
 def _run_case(case, dtype_name, dtype, pairs, warmup, block):
     """Run one frozen case in one dtype; return (case_key, result, all_pass, numeric_fail)."""
     batch, qlen, klen = case["batch"], case["query_length"], case["key_length"]
@@ -273,7 +280,7 @@ def _run_case(case, dtype_name, dtype, pairs, warmup, block):
     key_dim, value_dim = case["key_dim"], case["value_dim"]
     scale = key_dim**-0.5
     operands = _inputs(
-        hash((case["id"], dtype_name)) % (2**31),
+        _stable_seed(case["id"], dtype_name),
         batch, qlen, klen, qheads, kvheads, key_dim, value_dim, dtype,
     )
     mask = _build_mask(case, batch, qlen, klen, operands["query"].device)

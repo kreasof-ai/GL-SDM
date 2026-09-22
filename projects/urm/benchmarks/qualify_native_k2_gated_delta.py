@@ -282,13 +282,25 @@ def _measure_pair(direct, compiled, direct_inputs, compiled_inputs, pairs, warmu
     return measurements
 
 
+def _stable_seed(*parts) -> int:
+    """Deterministic operand seed, stable across processes.
+
+    ``hash()`` of a string is randomized per process (PYTHONHASHSEED), which made
+    the qualification non-deterministic: a borderline case could flip pass/fail
+    between runs. Use a SHA-256-derived seed so every run measures the same
+    operands.
+    """
+    digest = hashlib.sha256(repr(parts).encode()).hexdigest()
+    return int(digest[:8], 16) % (2**31)
+
+
 def _run_case(case, dtype_name, dtype, pairs, warmup, block):
     """Run one frozen case in one dtype; return (case_result, all_pass, any_fail)."""
     batch, sequence = case["batch"], case["sequence"]
     heads, key_dim, value_dim = case["heads"], case["key_dim"], case["value_dim"]
     scale = 1.0
     operands = _inputs(
-        hash((case["id"], dtype_name)) % (2**31),
+        _stable_seed(case["id"], dtype_name),
         batch, sequence, heads, key_dim, value_dim, dtype, case["initial"],
     )
     direct_inputs = {n: t.detach().clone().requires_grad_() for n, t in operands.items()}
@@ -366,7 +378,7 @@ def _run_case(case, dtype_name, dtype, pairs, warmup, block):
     )
 
     decode_operands = _inputs(
-        hash((case["id"], dtype_name, "decode")) % (2**31),
+        _stable_seed(case["id"], dtype_name, "decode"),
         batch, 1, heads, key_dim, value_dim, dtype, case["initial"],
     )
     decode_initial = decode_operands["initial_state"].detach().clone()
