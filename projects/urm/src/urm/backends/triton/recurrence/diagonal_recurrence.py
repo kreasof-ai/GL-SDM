@@ -614,17 +614,21 @@ def execute_diagonal_recurrence(
     triton, forward_kernel, backward_kernel, backward_kernel_parallel = _kernels()
     if x.device.type != "cuda":
         raise ValueError("native diagonal SSM requires CUDA tensors")
-    if x.dtype is not torch.float32:
-        raise ValueError("native diagonal SSM currently supports float32")
+    # The kernels accumulate in fp32 throughout (every load is upcast with
+    # ``.to(tl.float32)`` and the output store downcasts to ``x.dtype``), so the
+    # input may be float32, bfloat16, or float16; the state stays fp32.
+    _SUPPORTED_DTYPES = (torch.float32, torch.bfloat16, torch.float16)
+    if x.dtype not in _SUPPORTED_DTYPES:
+        raise ValueError("native diagonal SSM supports float32, bfloat16, float16")
     batch, sequence, channels = x.shape
     state_width = input_gate.shape[-1]
     if max(batch, sequence, channels, state_width) <= 0:
         raise ValueError("native diagonal SSM dimensions must be positive")
     if any(
-        tensor.dtype is not torch.float32
+        tensor.dtype not in _SUPPORTED_DTYPES
         for tensor in (input_gate, read_gate, log_decay)
     ):
-        raise ValueError("native diagonal SSM gates must be float32")
+        raise ValueError("native diagonal SSM gates must be float32, bfloat16, or float16")
     if initial_state is None:
         # The kernel never loads the initial state when has_initial is False, so a
         # minimal cached placeholder avoids a per-call [B,C,N] zeros allocation.

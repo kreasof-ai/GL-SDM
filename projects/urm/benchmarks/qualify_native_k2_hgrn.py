@@ -40,10 +40,23 @@ from urm.frontend.mixer_recipes import named_mixer_recipe
 EXPECTED_FLA_REVISION = "864a87f6ce5be8828bef81eb22baafd41937cdf2"
 # Frozen production-matrix budget for k2-diagonal-recurrence.
 SLOWDOWN_BUDGET_FRACTION = 0.10
-# Correctness tolerances (fp32 native kernel vs bf16-capable upstream).
-OUTPUT_ATOL = 2e-5
-GRADIENT_ATOL = 2e-5
-RELATIVE_TOLERANCE = 2e-4
+# Frozen production-matrix correctness tolerances (benchmarks/production-matrix.json).
+OUTPUT_ATOL = 0.02
+STATE_ATOL = 0.02
+GRADIENT_ATOL = 0.02
+RELATIVE_TOLERANCE = 1e-4
+
+# The four frozen cases for k2-diagonal-recurrence. HGRN is a per-channel scalar
+# diagonal recurrence (state [B, C] with unit state width), so the matrix's
+# (heads, key_dim, value_dim) map onto channels = heads * key_dim (diagonal:
+# key_dim == value_dim per head).
+CASES = (
+    {"id": "latency_short", "batch": 1, "sequence": 64, "heads": 4, "key_dim": 32, "value_dim": 32, "initial": "zero"},
+    {"id": "throughput_medium", "batch": 8, "sequence": 1024, "heads": 8, "key_dim": 64, "value_dim": 64, "initial": "zero"},
+    {"id": "continuation_nonzero_state", "batch": 2, "sequence": 256, "heads": 8, "key_dim": 64, "value_dim": 64, "initial": "nonzero"},
+    {"id": "decode_step", "batch": 1, "sequence": 1, "heads": 8, "key_dim": 64, "value_dim": 64, "initial": "nonzero"},
+)
+DTYPES = (("float32", torch.float32), ("bfloat16", torch.bfloat16))
 
 
 def _source_identity() -> tuple[Path, str]:
@@ -85,13 +98,17 @@ def _oracle_hgrn(x, log_decay, initial_state):
     return output, state
 
 
-def _inputs(seed: int, batch: int, sequence: int, channels: int) -> dict[str, torch.Tensor]:
+def _inputs(seed: int, batch: int, sequence: int, channels: int, dtype: torch.dtype, initial: str) -> dict[str, torch.Tensor]:
     generator = torch.Generator(device="cuda").manual_seed(seed)
-    x = torch.randn((batch, sequence, channels), device="cuda", generator=generator) * 0.2
+    x = (torch.randn((batch, sequence, channels), device="cuda", generator=generator) * 0.2).to(dtype)
     log_decay = (
         -torch.rand((batch, sequence, channels), device="cuda", generator=generator) * 0.05
-    )
-    initial_state = torch.randn((batch, channels), device="cuda", generator=generator) * 0.1
+    ).to(dtype)
+    # The recurrent state is fp32 (the accumulator), regardless of the input dtype.
+    if initial == "zero":
+        initial_state = torch.zeros((batch, channels), device="cuda", dtype=torch.float32)
+    else:
+        initial_state = torch.randn((batch, channels), device="cuda", generator=generator) * 0.1
     return {
         "x": x.requires_grad_(),
         "log_decay": log_decay.requires_grad_(),
@@ -143,7 +160,7 @@ def _forward_backward(call, inputs):
     return output, state, tuple(inputs[name].grad for name in inputs)
 
 
-def _time_one(call, inputs, *, backward: bool, block: int = 1):
+def _time_one(call, inputs, *, backward: bool, block: int = 1, no_grad: bool = False):
     """Time a block of ``block`` invocations, returning per-call wall and device time.
 
     Timing a block (sync only at the block boundaries) lets the CPU dispatch of
@@ -161,9 +178,13 @@ def _time_one(call, inputs, *, backward: bool, block: int = 1):
     for _ in range(block):
         for tensor in inputs.values():
             tensor.grad = None
-        output, state = call(inputs)
-        if backward:
-            _loss(output, state).backward()
+        if no_grad:
+            with torch.no_grad():
+                call(inputs)
+        else:
+            output, state = call(inputs)
+            if backward:
+                _loss(output, state).backward()
     end_event.record()
     torch.cuda.synchronize()
     return (
@@ -181,15 +202,34 @@ def _summary(samples):
     }
 
 
-def _measure_pair(direct, compiled, direct_inputs, compiled_inputs, pairs, warmup, block):
+def _measure_pair(direct, compiled, direct_inputs, compiled_inputs, pairs, warmup, block,
+                  decode_direct_inputs=None, decode_compiled_inputs=None):
+    """Measure every matrix mode: training forward, training forward+backward,
+    inference prefill (forward under no_grad), and single-token decode.
+
+    ``decode_*_inputs`` carry the single-token (sequence=1) decode-step operands;
+    when omitted the decode mode reuses the training inputs (already a single
+    token for the decode_step case).
+    """
     cold_direct = _time_one(direct, direct_inputs, backward=False, block=block)
     cold_compiled = _time_one(compiled, compiled_inputs, backward=False, block=block)
+    # (mode key, backward, no_grad, use decode inputs)
+    mode_specs = [
+        ("forward", False, False, False),
+        ("forward_backward", True, False, False),
+        ("prefill", False, True, False),
+        ("decode", False, True, True),
+    ]
     for _ in range(warmup):
-        for backward in (False, True):
-            _time_one(direct, direct_inputs, backward=backward, block=block)
-            _time_one(compiled, compiled_inputs, backward=backward, block=block)
+        for _, backward, no_grad, use_decode in mode_specs:
+            d_in = decode_direct_inputs if use_decode else direct_inputs
+            c_in = decode_compiled_inputs if use_decode else compiled_inputs
+            _time_one(direct, d_in, backward=backward, block=block, no_grad=no_grad)
+            _time_one(compiled, c_in, backward=backward, block=block, no_grad=no_grad)
     measurements = {}
-    for mode, backward in (("forward", False), ("forward_backward", True)):
+    for mode, backward, no_grad, use_decode in mode_specs:
+        d_in = decode_direct_inputs if use_decode else direct_inputs
+        c_in = decode_compiled_inputs if use_decode else compiled_inputs
         direct_wall, compiled_wall, overhead, order = [], [], [], []
         for index in range(pairs):
             first, second = (
@@ -198,10 +238,10 @@ def _measure_pair(direct, compiled, direct_inputs, compiled_inputs, pairs, warmu
             order.append(first + second)
             for name in (first, second):
                 if name == "direct":
-                    wall, _ = _time_one(direct, direct_inputs, backward=backward, block=block)
+                    wall, _ = _time_one(direct, d_in, backward=backward, block=block, no_grad=no_grad)
                     direct_wall.append(wall)
                 else:
-                    wall, _ = _time_one(compiled, compiled_inputs, backward=backward, block=block)
+                    wall, _ = _time_one(compiled, c_in, backward=backward, block=block, no_grad=no_grad)
                     compiled_wall.append(wall)
             pair_index = len(overhead)
             overhead.append(
@@ -236,11 +276,15 @@ def _measure_pair(direct, compiled, direct_inputs, compiled_inputs, pairs, warmu
     }
 
 
-def run(pairs: int, warmup: int, batch: int, sequence: int, channels: int, output_path: Path, block: int = 1) -> dict:
-    if not torch.cuda.is_available():
-        raise RuntimeError("native K2 HGRN qualification requires CUDA")
-    source, revision = _source_identity()
-    operands = _inputs(seed=61227, batch=batch, sequence=sequence, channels=channels)
+def _run_case(case, dtype_name, dtype, pairs, warmup, block):
+    """Run one frozen case in one dtype; return (case_key, case_result, all_pass, numeric_fail)."""
+    batch, sequence = case["batch"], case["sequence"]
+    heads, key_dim, value_dim = case["heads"], case["key_dim"], case["value_dim"]
+    # HGRN is a per-channel scalar diagonal recurrence: channels = heads * key_dim.
+    channels = heads * key_dim
+    operands = _inputs(
+        hash((case["id"], dtype_name)) % (2**31), batch, sequence, channels, dtype, case["initial"],
+    )
     direct_inputs = {n: t.detach().clone().requires_grad_() for n, t in operands.items()}
     compiled_inputs = {n: t.detach().clone().requires_grad_() for n, t in operands.items()}
 
@@ -249,7 +293,7 @@ def run(pairs: int, warmup: int, batch: int, sequence: int, channels: int, outpu
         named_mixer_recipe("hgrn_ssm_core"),
         backend=MixerBackend.NATIVE,
         intent=MixerIntent.TRAINING,
-        dtype="float32",
+        dtype=dtype_name,
     )
     plan_build_ms = (time.perf_counter() - plan_started) * 1000
     native_anchor = plan.anchor
@@ -261,36 +305,109 @@ def run(pairs: int, warmup: int, batch: int, sequence: int, channels: int, outpu
         operands["x"], operands["log_decay"], operands["initial_state"]
     )
 
-    output_error_upstream = (direct_result[0] - compiled_result[0]).abs().max().item()
-    state_error_upstream = (direct_result[1] - compiled_result[1]).abs().max().item()
-    output_error_oracle = (oracle_output - compiled_result[0]).abs().max().item()
-    state_error_oracle = (oracle_state - compiled_result[1]).abs().max().item()
+    output_error_upstream = (direct_result[0].float() - compiled_result[0].float()).abs().max().item()
+    state_error_upstream = (direct_result[1].float() - compiled_result[1].float()).abs().max().item()
+    output_error_oracle = (oracle_output - compiled_result[0].float()).abs().max().item()
+    state_error_oracle = (oracle_state - compiled_result[1].float()).abs().max().item()
     gradient_errors_upstream = {
-        name: (left - right).abs().max().item()
+        name: (left.float() - right.float()).abs().max().item()
         for name, left, right in zip(operands, direct_result[2], compiled_result[2], strict=True)
     }
+    # State-gradient component (matrix: "state_gradients"): the gradient flowing
+    # into the initial state, verified against the upstream backward.
+    state_gradient_error = {"initial_state": gradient_errors_upstream["initial_state"]}
 
+    # The oracle is fp32; for low-precision dtypes allow one ulp of the output
+    # dtype at the observed magnitude on top of the contract tolerance.
+    output_oracle_atol = OUTPUT_ATOL
+    state_oracle_atol = STATE_ATOL
+    if dtype in (torch.bfloat16, torch.float16):
+        output_oracle_atol = OUTPUT_ATOL + float(torch.finfo(dtype).eps) * float(oracle_output.abs().max())
+        state_oracle_atol = STATE_ATOL + float(torch.finfo(dtype).eps) * float(oracle_state.abs().max())
     correctness_pass = True
     try:
-        torch.testing.assert_close(compiled_result[0], direct_result[0], atol=OUTPUT_ATOL, rtol=RELATIVE_TOLERANCE)
-        torch.testing.assert_close(compiled_result[1], direct_result[1], atol=OUTPUT_ATOL, rtol=RELATIVE_TOLERANCE)
-        # Native vs independent oracle (looser: oracle is fp32 sequential).
-        torch.testing.assert_close(compiled_result[0], oracle_output, atol=OUTPUT_ATOL, rtol=RELATIVE_TOLERANCE)
-        torch.testing.assert_close(compiled_result[1], oracle_state, atol=OUTPUT_ATOL, rtol=RELATIVE_TOLERANCE)
+        torch.testing.assert_close(compiled_result[0].float(), direct_result[0].float(), atol=OUTPUT_ATOL, rtol=RELATIVE_TOLERANCE)
+        torch.testing.assert_close(compiled_result[1].float(), direct_result[1].float(), atol=STATE_ATOL, rtol=RELATIVE_TOLERANCE)
+        # Native vs independent oracle (dtype-aware tolerance).
+        torch.testing.assert_close(compiled_result[0].float(), oracle_output, atol=output_oracle_atol, rtol=RELATIVE_TOLERANCE)
+        torch.testing.assert_close(compiled_result[1].float(), oracle_state, atol=state_oracle_atol, rtol=RELATIVE_TOLERANCE)
         for actual, expected in zip(compiled_result[2], direct_result[2], strict=True):
-            torch.testing.assert_close(actual, expected, atol=GRADIENT_ATOL, rtol=RELATIVE_TOLERANCE)
+            torch.testing.assert_close(actual.float(), expected.float(), atol=GRADIENT_ATOL, rtol=RELATIVE_TOLERANCE)
     except AssertionError:
         correctness_pass = False
 
     # --- Performance only after correctness, against the competitive comparator.
     competitive_inputs = {n: t.detach().clone().requires_grad_() for n, t in operands.items()}
-    performance = _measure_pair(_competitive, lambda i: _compiled(plan, i), competitive_inputs, compiled_inputs, pairs, warmup, block)
+    # Single-token decode-step operands (sequence=1) for the decode mode.
+    decode_operands = _inputs(
+        hash((case["id"], dtype_name, "decode")) % (2**31), batch, 1, channels, dtype, case["initial"],
+    )
+    decode_competitive = {n: t.detach().clone() for n, t in decode_operands.items()}
+    decode_compiled = {n: t.detach().clone() for n, t in decode_operands.items()}
+    performance = _measure_pair(
+        _competitive, lambda i: _compiled(plan, i), competitive_inputs, compiled_inputs, pairs, warmup, block,
+        decode_direct_inputs=decode_competitive, decode_compiled_inputs=decode_compiled,
+    )
     fwd_gate = performance["measurements"]["forward"]["paired_native_overhead_fraction"]["gate"]["pass"]
     fb_gate = performance["measurements"]["forward_backward"]["paired_native_overhead_fraction"]["gate"]["pass"]
 
-    if not correctness_pass:
+    case_key = f"{case['id']}/{dtype_name}"
+    result = {
+        "semantic_scope": "diagonal gated recurrence core; projections and output projection excluded",
+        "shape": {"batch": batch, "sequence": sequence, "heads": heads,
+                  "key_dim": key_dim, "value_dim": value_dim, "dtype": dtype_name,
+                  "initial_state": case["initial"]},
+        "upstream_callable": "fla.ops.hgrn.fused_recurrent_hgrn",
+        "performance_comparator_callable": "fla.ops.hgrn.chunk_hgrn",
+        "native_anchor": native_anchor,
+        "compiler_plan_build_ms": plan_build_ms,
+        "parity": {
+            "status": "pass" if correctness_pass else "fail",
+            "output_max_abs_error_vs_upstream": output_error_upstream,
+            "final_state_max_abs_error_vs_upstream": state_error_upstream,
+            "output_max_abs_error_vs_oracle": output_error_oracle,
+            "final_state_max_abs_error_vs_oracle": state_error_oracle,
+            "input_gradient_max_abs_errors_vs_upstream": gradient_errors_upstream,
+            "state_gradient_max_abs_errors": state_gradient_error,
+            "tolerances": {
+                "output_atol": OUTPUT_ATOL,
+                "state_atol": STATE_ATOL,
+                "gradient_atol": GRADIENT_ATOL,
+                "relative_tolerance": RELATIVE_TOLERANCE,
+            },
+        },
+        "performance": performance,
+    }
+    all_pass = correctness_pass and fwd_gate and fb_gate
+    return case_key, result, all_pass, not correctness_pass
+
+
+def run(pairs: int, warmup: int, output_path: Path, block: int = 1, only_case=None) -> dict:
+    if not torch.cuda.is_available():
+        raise RuntimeError("native K2 HGRN qualification requires CUDA")
+    source, revision = _source_identity()
+
+    cases = {}
+    all_qualified = True
+    any_numeric_fail = False
+    native_anchor = None
+    for case in CASES:
+        if only_case and case["id"] != only_case:
+            continue
+        for dtype_name, dtype in DTYPES:
+            case_key, result, all_pass, numeric_fail = _run_case(
+                case, dtype_name, dtype, pairs, warmup, block
+            )
+            cases[case_key] = result
+            native_anchor = result["native_anchor"]
+            if numeric_fail:
+                any_numeric_fail = True
+            if not all_pass:
+                all_qualified = False
+
+    if any_numeric_fail:
         verdict = "numeric_failed"
-    elif fwd_gate and fb_gate:
+    elif all_qualified:
         verdict = "qualified"
     else:
         verdict = "correct_below_target"
@@ -312,7 +429,7 @@ def run(pairs: int, warmup: int, batch: int, sequence: int, channels: int, outpu
         "provenance": provenance(
             "PYTHONPATH=src python benchmarks/qualify_native_k2_hgrn.py",
             {"recipe": "hgrn_ssm_core", "pairs": pairs, "warmup": warmup,
-             "shape": [batch, sequence, channels], "dtype": "float32"},
+             "cases": [c["id"] for c in CASES], "dtypes": [d for d, _ in DTYPES]},
         ),
         "hardware": {
             "gpu": torch.cuda.get_device_name(0),
@@ -323,9 +440,9 @@ def run(pairs: int, warmup: int, batch: int, sequence: int, channels: int, outpu
         "gpu_operating_conditions": capture_gpu_operating_conditions(),
         "methodology": {
             "comparison": "URM-native diagonal recurrence kernel vs pinned FLA HGRN; the two share no kernel",
-            "correctness_comparator": "fla.ops.hgrn.fused_recurrent_hgrn (exact sequential recurrence) plus an independent eager oracle",
+            "correctness_comparator": "fla.ops.hgrn.fused_recurrent_hgrn (exact sequential recurrence) plus an independent eager oracle; output/final-state/input-gradients/state-gradients verified",
             "performance_comparator": "fla.ops.hgrn.chunk_hgrn (competitive chunked parallel kernel); the fastest compatible upstream kernel is the performance baseline, not a slow reference",
-            "timed_work": "one native plan call or one upstream call, optionally followed by output and final-state backward",
+            "timed_work": "one native plan call or one upstream call, in each matrix mode (training forward, training forward+backward, inference prefill, single-token decode)",
             "sampling": "paired interleaved native/direct calls, order alternates, synchronized wall and CUDA event timing; each timed unit is a block of invocations to amortize per-call mistiming overhead",
             "warmup": warmup,
             "pairs": pairs,
@@ -334,30 +451,7 @@ def run(pairs: int, warmup: int, batch: int, sequence: int, channels: int, outpu
             "slowdown_budget_fraction": SLOWDOWN_BUDGET_FRACTION,
             "gate_basis": "the 95% confidence-interval upper bound must meet the budget",
         },
-        "cases": {
-            "hgrn_ssm_core": {
-                "semantic_scope": "diagonal gated recurrence core; projections and output projection excluded",
-                "shape": {"batch": batch, "sequence": sequence, "channels": channels, "dtype": "float32"},
-                "upstream_callable": "fla.ops.hgrn.fused_recurrent_hgrn",
-                "performance_comparator_callable": "fla.ops.hgrn.chunk_hgrn",
-                "native_anchor": native_anchor,
-                "compiler_plan_build_ms": plan_build_ms,
-                "parity": {
-                    "status": "pass" if correctness_pass else "fail",
-                    "output_max_abs_error_vs_upstream": output_error_upstream,
-                    "final_state_max_abs_error_vs_upstream": state_error_upstream,
-                    "output_max_abs_error_vs_oracle": output_error_oracle,
-                    "final_state_max_abs_error_vs_oracle": state_error_oracle,
-                    "input_gradient_max_abs_errors_vs_upstream": gradient_errors_upstream,
-                    "tolerances": {
-                        "output_atol": OUTPUT_ATOL,
-                        "gradient_atol": GRADIENT_ATOL,
-                        "relative_tolerance": RELATIVE_TOLERANCE,
-                    },
-                },
-                "performance": performance,
-            }
-        },
+        "cases": cases,
     }
     write_artifact(output_path, payload)
     return payload
@@ -367,23 +461,22 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--pairs", type=int, default=30)
     parser.add_argument("--warmup", type=int, default=5)
-    parser.add_argument("--batch", type=int, default=1)
-    parser.add_argument("--sequence", type=int, default=1024)
-    parser.add_argument("--channels", type=int, default=1024)
     parser.add_argument("--block", type=int, default=10,
                         help="invocations per timed unit; amortizes per-call mistiming overhead")
+    parser.add_argument("--case", type=str, default=None,
+                        help="run only one frozen case id (default: all four)")
     parser.add_argument("--output", type=Path, default=Path("results/qualification/native-k2-hgrn.json"))
     args = parser.parse_args()
     if args.pairs < 1 or args.warmup < 0:
         parser.error("--pairs must be positive and --warmup nonnegative")
-    payload = run(args.pairs, args.warmup, args.batch, args.sequence, args.channels, args.output, args.block)
-    case = payload["cases"]["hgrn_ssm_core"]
-    fwd = case["performance"]["measurements"]["forward"]["paired_native_overhead_fraction"]
-    fb = case["performance"]["measurements"]["forward_backward"]["paired_native_overhead_fraction"]
+    payload = run(args.pairs, args.warmup, args.output, args.block, args.case)
     print(f"verdict: {payload['verdict']}")
-    print(f"parity: {case['parity']['status']}  (output err vs upstream {case['parity']['output_max_abs_error_vs_upstream']:.2e})")
-    print(f"forward  overhead: median {fwd['median']*100:+.2f}%  ci95 [{fwd['ci95_lower']*100:+.2f}%, {fwd['ci95_upper']*100:+.2f}%]  gate {'PASS' if fwd['gate']['pass'] else 'FAIL'}")
-    print(f"fwd+bwd  overhead: median {fb['median']*100:+.2f}%  ci95 [{fb['ci95_lower']*100:+.2f}%, {fb['ci95_upper']*100:+.2f}%]  gate {'PASS' if fb['gate']['pass'] else 'FAIL'}")
+    for case_key, case in payload["cases"].items():
+        fwd = case["performance"]["measurements"]["forward"]["paired_native_overhead_fraction"]
+        fb = case["performance"]["measurements"]["forward_backward"]["paired_native_overhead_fraction"]
+        print(f"  {case_key}: parity={case['parity']['status']}  "
+              f"fwd {fwd['median']*100:+.1f}% (ci95 hi {fwd['ci95_upper']*100:+.1f}%)  "
+              f"fwd+bwd {fb['median']*100:+.1f}% (ci95 hi {fb['ci95_upper']*100:+.1f}%)")
 
 
 if __name__ == "__main__":

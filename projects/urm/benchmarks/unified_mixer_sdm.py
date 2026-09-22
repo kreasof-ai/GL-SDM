@@ -24,10 +24,6 @@ from urm.compiler.unified_mixer import (
 from urm.frontend.mixer_recipes import sparse_delta_spec
 
 EXPECTED_SDM_REVISION = "183e7df809131b80ad4393741029d0f20fc3640b"
-ROUTE_WIDTH = 4
-SLOTS = 256
-SEQUENCE = 16
-VALUE_DIM = 32
 DTYPES = (torch.float32, torch.bfloat16)
 GRADIENT_NAMES = (
     "memory",
@@ -37,6 +33,47 @@ GRADIENT_NAMES = (
     "log_decay",
     "read_weights",
 )
+
+# Full frozen production matrix for the k3-sparse-state workload. Each entry
+# matches a case in benchmarks/production-matrix.json (id "k3-sparse-state").
+CASES = (
+    {
+        "id": "ordered_collisions",
+        "batch": 1,
+        "sequence": 16,
+        "slots": 256,
+        "value_dim": 32,
+        "read_width": 4,
+        "write_width": 4,
+        "route_pattern": "ordered_collisions",
+    },
+    {
+        "id": "imbalanced_routes",
+        "batch": 2,
+        "sequence": 64,
+        "slots": 512,
+        "value_dim": 64,
+        "read_width": 8,
+        "write_width": 8,
+        "route_pattern": "imbalanced_routes",
+    },
+    {
+        "id": "overlapping_reads",
+        "batch": 1,
+        "sequence": 32,
+        "slots": 256,
+        "value_dim": 32,
+        "read_width": 4,
+        "write_width": 4,
+        "route_pattern": "overlapping_reads",
+    },
+)
+
+_ROUTE_PATTERN_DESCRIPTIONS = {
+    "ordered_collisions": "write routes repeat across tokens; read routes are disjoint; each route is unique within its token",
+    "imbalanced_routes": "skewed route histogram concentrating reads and writes on a few hot slots; each route is unique within its token",
+    "overlapping_reads": "read addresses equal write addresses at every token with persistent state; addresses are unique within each token",
+}
 
 
 def _source_identity() -> tuple[Path, str]:
@@ -61,42 +98,152 @@ def _source_identity() -> tuple[Path, str]:
     return source, revision
 
 
-def _routes(
-    dtype: torch.dtype, *, offset: int, seed: int
-) -> tuple[torch.Tensor, torch.Tensor]:
-    indices = (
+def _unique_sorted(indices: torch.Tensor) -> torch.Tensor:
+    """Sort each token's route indices so they are unique within the token."""
+    return indices.sort(dim=-1).values.contiguous()
+
+
+def _route_weights(
+    dtype: torch.dtype, batch: int, sequence: int, width: int, seed: int
+) -> torch.Tensor:
+    generator = torch.Generator(device="cuda").manual_seed(seed)
+    return torch.softmax(
+        torch.randn(
+            (batch, sequence, width), device="cuda", generator=generator
+        ).to(dtype),
+        dim=-1,
+    ).contiguous()
+
+
+def _ordered_collisions_routes(
+    dtype: torch.dtype, case: dict, seed: int
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Write routes repeat across tokens; read routes stay disjoint."""
+    batch, sequence = case["batch"], case["sequence"]
+    slots, width = case["slots"], case["write_width"]
+    write_indices = _unique_sorted(
         torch.tensor(
             [
                 [
-                    [(offset + route * 11) % SLOTS for route in range(ROUTE_WIDTH)]
-                    for _ in range(SEQUENCE)
+                    [(1 + route * 11) % slots for route in range(width)]
+                    for _ in range(sequence)
                 ]
+                for _ in range(batch)
             ],
             dtype=torch.int64,
             device="cuda",
         )
-        .sort(dim=-1)
-        .values.contiguous()
     )
-    generator = torch.Generator(device="cuda").manual_seed(seed)
-    weights = torch.softmax(
-        torch.randn((1, SEQUENCE, ROUTE_WIDTH), device="cuda", generator=generator).to(
-            dtype
-        ),
-        dim=-1,
-    ).contiguous()
-    return indices, weights
+    read_indices = _unique_sorted(
+        torch.tensor(
+            [
+                [
+                    [(2 + route * 11) % slots for route in range(width)]
+                    for _ in range(sequence)
+                ]
+                for _ in range(batch)
+            ],
+            dtype=torch.int64,
+            device="cuda",
+        )
+    )
+    write_weights = _route_weights(dtype, batch, sequence, width, seed + 1)
+    read_weights = _route_weights(dtype, batch, sequence, width, seed + 2)
+    return read_indices, read_weights, write_indices, write_weights
 
 
-def _inputs(dtype: torch.dtype, seed: int) -> dict[str, torch.Tensor]:
+def _skewed_indices(
+    batch: int, sequence: int, slots: int, width: int, seed: int
+) -> torch.Tensor:
+    """Draw route indices from a skewed distribution with a few hot slots.
+
+    A Zipf-like permutation ranks a small set of hot slots far above the rest,
+    then each token samples ``width`` distinct slots so indices stay unique
+    within the token.
+    """
     generator = torch.Generator(device="cuda").manual_seed(seed)
-    write_indices, write_weights = _routes(dtype, offset=1, seed=seed + 1)
-    # Distinct product-key lanes keep reads separate while writes collide across tokens.
-    read_indices, read_weights = _routes(dtype, offset=2, seed=seed + 2)
+    # Zipf-like sampling probabilities: hot slots dominate the histogram.
+    ranks = torch.arange(1, slots + 1, device="cuda", dtype=torch.float64)
+    probabilities = (1.0 / ranks).softmax(dim=-1)
+    indices = torch.empty(
+        (batch, sequence, width), dtype=torch.int64, device="cuda"
+    )
+    for b in range(batch):
+        for t in range(sequence):
+            indices[b, t] = torch.multinomial(
+                probabilities, width, replacement=False, generator=generator
+            )
+    return _unique_sorted(indices)
+
+
+def _imbalanced_routes(
+    dtype: torch.dtype, case: dict, seed: int
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Skewed route histogram with hot slots for both reads and writes."""
+    batch, sequence = case["batch"], case["sequence"]
+    slots = case["slots"]
+    write_indices = _skewed_indices(
+        batch, sequence, slots, case["write_width"], seed + 1
+    )
+    read_indices = _skewed_indices(
+        batch, sequence, slots, case["read_width"], seed + 2
+    )
+    write_weights = _route_weights(
+        dtype, batch, sequence, case["write_width"], seed + 3
+    )
+    read_weights = _route_weights(
+        dtype, batch, sequence, case["read_width"], seed + 4
+    )
+    return read_indices, read_weights, write_indices, write_weights
+
+
+def _overlapping_reads_routes(
+    dtype: torch.dtype, case: dict, seed: int
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Read routes equal write routes at every token (persistent state)."""
+    batch, sequence = case["batch"], case["sequence"]
+    slots, width = case["slots"], case["write_width"]
+    write_indices = _unique_sorted(
+        torch.tensor(
+            [
+                [
+                    [(1 + route * 11) % slots for route in range(width)]
+                    for _ in range(sequence)
+                ]
+                for _ in range(batch)
+            ],
+            dtype=torch.int64,
+            device="cuda",
+        )
+    )
+    write_weights = _route_weights(dtype, batch, sequence, width, seed + 1)
+    # Reads overlap writes exactly.
+    read_indices = write_indices.clone()
+    read_weights = write_weights.clone()
+    return read_indices, read_weights, write_indices, write_weights
+
+
+_ROUTE_BUILDERS = {
+    "ordered_collisions": _ordered_collisions_routes,
+    "imbalanced_routes": _imbalanced_routes,
+    "overlapping_reads": _overlapping_reads_routes,
+}
+
+
+def _inputs(dtype: torch.dtype, case: dict, seed: int) -> dict[str, torch.Tensor]:
+    generator = torch.Generator(device="cuda").manual_seed(seed)
+    batch, sequence = case["batch"], case["sequence"]
+    slots, value_dim = case["slots"], case["value_dim"]
+    read_indices, read_weights, write_indices, write_weights = _ROUTE_BUILDERS[
+        case["route_pattern"]
+    ](dtype, case, seed)
     return {
         "memory": (
             torch.randn(
-                (1, SLOTS, VALUE_DIM), device="cuda", dtype=dtype, generator=generator
+                (batch, slots, value_dim),
+                device="cuda",
+                dtype=dtype,
+                generator=generator,
             )
             * 0.05
         ).contiguous(),
@@ -106,7 +253,7 @@ def _inputs(dtype: torch.dtype, seed: int) -> dict[str, torch.Tensor]:
         "write_weights": write_weights,
         "values": (
             torch.randn(
-                (1, SEQUENCE, VALUE_DIM),
+                (batch, sequence, value_dim),
                 device="cuda",
                 dtype=dtype,
                 generator=generator,
@@ -114,15 +261,45 @@ def _inputs(dtype: torch.dtype, seed: int) -> dict[str, torch.Tensor]:
             * 0.05
         ).contiguous(),
         "beta": torch.rand(
-            (1, SEQUENCE, 1), device="cuda", dtype=dtype, generator=generator
+            (batch, sequence, 1), device="cuda", dtype=dtype, generator=generator
         ).contiguous(),
         "log_decay": (
             -torch.rand(
-                (1, SEQUENCE, 1), device="cuda", dtype=dtype, generator=generator
+                (batch, sequence, 1), device="cuda", dtype=dtype, generator=generator
             )
             * 0.1
         ).contiguous(),
     }
+
+
+def _decode_inputs(
+    dtype: torch.dtype, case: dict, seed: int
+) -> dict[str, torch.Tensor]:
+    """Single-token (sequence=1) decode operands with persistent state."""
+    single = dict(case)
+    single["sequence"] = 1
+    return _inputs(dtype, single, seed)
+
+
+def _build_layer(case: dict, args: SparseDeltaMemoryArgs) -> SparseDeltaMemory:
+    """Build the SDM layer for a case.
+
+    The runner drives ``gated_write_read`` directly with explicit route indices,
+    so the product-key projections (and their perfect-square constraint on
+    ``slots_per_head``) are unused. ``gated_write_read`` reads
+    ``self.slots_per_head`` only as the route bound at call time, so when a case
+    declares a non-square slot count we construct the layer with a valid square
+    and then set the attribute to the declared slots.
+    """
+    import dataclasses
+
+    slots = case["slots"]
+    sph_sqrt = int(round(slots ** 0.5))
+    if sph_sqrt * sph_sqrt != slots:
+        args = dataclasses.replace(args, slots_per_head=sph_sqrt * sph_sqrt)
+    layer = SparseDeltaMemory(args, layer_id=0).cuda()
+    layer.slots_per_head = slots
+    return layer
 
 
 def _fresh_inputs(
@@ -213,7 +390,15 @@ def _summary(samples: list[float]) -> dict[str, object]:
 
 
 def _measure_pair(
-    direct, compiled, template, output_cotangent, state_cotangent, pairs, warmup
+    direct,
+    compiled,
+    template,
+    output_cotangent,
+    state_cotangent,
+    pairs,
+    warmup,
+    decode_template=None,
+    decode_direct=None,
 ):
     cold_direct = _time_one(
         direct, template, output_cotangent, state_cotangent, backward=False, direct=True
@@ -244,9 +429,34 @@ def _measure_pair(
                 backward=backward,
                 direct=False,
             )
+        if decode_template is not None:
+            _time_one(
+                decode_direct,
+                decode_template,
+                output_cotangent,
+                state_cotangent,
+                backward=False,
+                direct=True,
+            )
+            _time_one(
+                compiled,
+                decode_template,
+                output_cotangent,
+                state_cotangent,
+                backward=False,
+                direct=False,
+            )
 
     measurements = {}
-    for label, backward in (("forward", False), ("forward_backward", True)):
+    # (label, backward, template, direct call) — decode is a single-token
+    # forward-only step that uses the eval-mode pinned SDM operator.
+    mode_specs = [
+        ("forward", False, template, direct),
+        ("forward_backward", True, template, direct),
+    ]
+    if decode_template is not None:
+        mode_specs.append(("decode", False, decode_template, decode_direct))
+    for label, backward, mode_template, mode_direct in mode_specs:
         direct_wall, compiled_wall = [], []
         direct_device, compiled_device, overhead, order = [], [], [], []
         for index in range(pairs):
@@ -257,8 +467,8 @@ def _measure_pair(
             for name in (first, second):
                 if name == "direct":
                     wall, device = _time_one(
-                        direct,
-                        template,
+                        mode_direct,
+                        mode_template,
                         output_cotangent,
                         state_cotangent,
                         backward=backward,
@@ -269,7 +479,7 @@ def _measure_pair(
                 else:
                     wall, device = _time_one(
                         compiled,
-                        template,
+                        mode_template,
                         output_cotangent,
                         state_cotangent,
                         backward=backward,
@@ -315,13 +525,15 @@ def _measure_pair(
     }
 
 
-def _check_parity(layer, plan, template, dtype):
+def _check_parity(layer, plan, template, case, dtype):
     generator = torch.Generator(device="cuda").manual_seed(20260947)
+    batch, sequence = case["batch"], case["sequence"]
+    slots, value_dim = case["slots"], case["value_dim"]
     output_cotangent = torch.randn(
-        (1, SEQUENCE, VALUE_DIM), device="cuda", generator=generator
+        (batch, sequence, value_dim), device="cuda", generator=generator
     )
     state_cotangent = torch.randn(
-        (1, SLOTS, VALUE_DIM), device="cuda", generator=generator
+        (batch, slots, value_dim), device="cuda", generator=generator
     )
     direct_inputs = _fresh_inputs(template, backward=True)
     compiled_inputs = _fresh_inputs(template, backward=True)
@@ -335,32 +547,38 @@ def _check_parity(layer, plan, template, dtype):
     gradient_atol, gradient_rtol = (
         (3e-2, 3e-2) if dtype is torch.bfloat16 else (3e-5, 3e-4)
     )
-    torch.testing.assert_close(
-        compiled_output.float(), direct_output.float(), atol=value_atol, rtol=value_rtol
-    )
-    torch.testing.assert_close(
-        compiled_state.float(), direct_state.float(), atol=value_atol, rtol=value_rtol
-    )
+
+    def _close(compiled, direct, atol, rtol) -> bool:
+        return bool(
+            torch.allclose(compiled.float(), direct.float(), atol=atol, rtol=rtol)
+        )
+
+    output_error = (compiled_output.float() - direct_output.float()).abs().max().item()
+    state_error = (compiled_state.float() - direct_state.float()).abs().max().item()
     gradients = {}
+    gradient_pass = True
     for name in GRADIENT_NAMES:
         direct_grad = direct_inputs[name].grad.float()
         compiled_grad = compiled_inputs[name].grad.float()
-        torch.testing.assert_close(
-            compiled_grad, direct_grad, atol=gradient_atol, rtol=gradient_rtol, msg=name
-        )
         gradients[name] = (compiled_grad - direct_grad).abs().max().item()
+        gradient_pass = gradient_pass and _close(
+            compiled_grad, direct_grad, gradient_atol, gradient_rtol
+        )
+    passed = (
+        _close(compiled_output, direct_output, value_atol, value_rtol)
+        and _close(compiled_state, direct_state, value_atol, value_rtol)
+        and gradient_pass
+    )
     return (
         {
-            "status": "pass",
-            "output_max_abs_error": (compiled_output.float() - direct_output.float())
-            .abs()
-            .max()
-            .item(),
-            "final_state_max_abs_error": (compiled_state.float() - direct_state.float())
-            .abs()
-            .max()
-            .item(),
+            # Correctness before performance: a numeric failure is recorded as
+            # "fail" (never raised) so the run completes and reports it.
+            "status": "pass" if passed else "fail",
+            "output_max_abs_error": output_error,
+            "final_state_max_abs_error": state_error,
             "input_gradient_max_abs_errors": gradients,
+            # The "memory" gradient IS the state gradient (∂L/∂initial memory).
+            "state_gradient_max_abs_errors": {"memory": gradients["memory"]},
             "tolerances": {
                 "output_atol": value_atol,
                 "output_rtol": value_rtol,
@@ -398,22 +616,36 @@ def _distribution_version() -> str | None:
     return None
 
 
+# The overlap diagnostic retains its original ordered_collisions shape.
+_DIAGNOSTIC_CASE = {
+    "id": "ordered_collisions",
+    "batch": 1,
+    "sequence": 16,
+    "slots": 256,
+    "value_dim": 32,
+    "read_width": 4,
+    "write_width": 4,
+    "route_pattern": "ordered_collisions",
+}
+
+
 def diagnose_overlapping_routes(output: Path) -> None:
     """Record equation parity and the pinned SDM VJP on overlapping routes."""
     if not torch.cuda.is_available():
         raise RuntimeError("the SDM overlap diagnostic requires CUDA")
     source, revision = _source_identity()
+    case = _DIAGNOSTIC_CASE
     cases = {}
     for index, dtype in enumerate(DTYPES):
         dtype_name = "bfloat16" if dtype is torch.bfloat16 else "float32"
-        template = _inputs(dtype, seed=7731 + index)
+        template = _inputs(dtype, case, seed=7731 + index)
         template["read_indices"] = template["write_indices"].clone()
         template["read_weights"] = template["write_weights"].clone()
         args = SparseDeltaMemoryArgs(
-            dim=VALUE_DIM,
-            num_writes=ROUTE_WIDTH,
-            num_reads=ROUTE_WIDTH,
-            slots_per_head=SLOTS,
+            dim=case["value_dim"],
+            num_writes=case["write_width"],
+            num_reads=case["read_width"],
+            slots_per_head=case["slots"],
             memory_block_size=64,
             backprop_on_memory=False,
             snapshot_quant="none",
@@ -431,10 +663,14 @@ def diagnose_overlapping_routes(output: Path) -> None:
         )
         generator = torch.Generator(device="cuda").manual_seed(20260947)
         output_cotangent = torch.randn(
-            (1, SEQUENCE, VALUE_DIM), device="cuda", generator=generator
+            (case["batch"], case["sequence"], case["value_dim"]),
+            device="cuda",
+            generator=generator,
         )
         state_cotangent = torch.randn(
-            (1, SLOTS, VALUE_DIM), device="cuda", generator=generator
+            (case["batch"], case["slots"], case["value_dim"]),
+            device="cuda",
+            generator=generator,
         )
 
         direct_inputs = _fresh_inputs(template, backward=True)
@@ -513,12 +749,12 @@ def diagnose_overlapping_routes(output: Path) -> None:
             "architecture_ids": ["arch-047"],
             "semantic_scope": "K3 state update with read and write routes overlapping at every token",
             "shape": {
-                "batch": 1,
-                "sequence": SEQUENCE,
-                "slots": SLOTS,
-                "value_dim": VALUE_DIM,
-                "read_width": ROUTE_WIDTH,
-                "write_width": ROUTE_WIDTH,
+                "batch": case["batch"],
+                "sequence": case["sequence"],
+                "slots": case["slots"],
+                "value_dim": case["value_dim"],
+                "read_width": case["read_width"],
+                "write_width": case["write_width"],
                 "route_pattern": "read addresses equal write addresses; writes repeat across tokens; addresses are unique within each token",
                 "dtype": dtype_name,
             },
@@ -558,10 +794,10 @@ def diagnose_overlapping_routes(output: Path) -> None:
 
     config = {
         "dtypes": ["float32", "bfloat16"],
-        "sequence": SEQUENCE,
-        "slots": SLOTS,
-        "value_dim": VALUE_DIM,
-        "route_width": ROUTE_WIDTH,
+        "sequence": case["sequence"],
+        "slots": case["slots"],
+        "value_dim": case["value_dim"],
+        "route_width": case["write_width"],
         "route_pattern": "read addresses equal write addresses",
     }
     payload = {
@@ -601,67 +837,92 @@ def run(pairs: int, warmup: int, output: Path) -> None:
         raise RuntimeError("the SDM unified mixer profile requires CUDA")
     source, revision = _source_identity()
     cases = {}
-    for index, dtype in enumerate(DTYPES):
-        template = _inputs(dtype, seed=44047 + index)
-        args = SparseDeltaMemoryArgs(
-            dim=VALUE_DIM,
-            num_writes=ROUTE_WIDTH,
-            num_reads=ROUTE_WIDTH,
-            slots_per_head=SLOTS,
-            memory_block_size=64,
-            backprop_on_memory=False,
-            snapshot_quant="none",
-        )
-        layer = SparseDeltaMemory(args, layer_id=0).cuda().train()
-        plan = compile_mixer(
-            sparse_delta_spec(),
-            backend=MixerBackend.NATIVE,
-            intent=MixerIntent.TRAINING,
-            dtype="bfloat16" if dtype is torch.bfloat16 else "float32",
-        )
-        direct = lambda inputs, cotangent=None, layer=layer: _direct_call(
-            layer, inputs, cotangent
-        )
-        compiled = lambda inputs, plan=plan: _compiled_call(plan, inputs)
-        parity, output_cotangent, state_cotangent = _check_parity(
-            layer, plan, template, dtype
-        )
-        performance = _measure_pair(
-            direct,
-            compiled,
-            template,
-            output_cotangent,
-            state_cotangent,
-            pairs,
-            warmup,
-        )
-        cases["float32" if dtype is torch.float32 else "bfloat16"] = {
-            "architecture_ids": ["arch-047"],
-            "semantic_scope": "K3 routed sparse delta state update; product-key score generation and model projections excluded",
-            "shape": {
-                "batch": 1,
-                "sequence": SEQUENCE,
-                "slots": SLOTS,
-                "value_dim": VALUE_DIM,
-                "read_width": ROUTE_WIDTH,
-                "write_width": ROUTE_WIDTH,
-                "route_pattern": "write routes repeat across tokens; read routes are disjoint; each route is unique within its token",
-                "dtype": "bfloat16" if dtype is torch.bfloat16 else "float32",
-            },
-            "upstream_callable": "lingua.sparse_delta_memory.layer.SparseDeltaMemory.gated_write_read",
-            "compiled_anchor": plan.anchor,
-            "parity": parity,
-            "performance": performance,
-        }
+    for case in CASES:
+        for index, dtype in enumerate(DTYPES):
+            dtype_name = "bfloat16" if dtype is torch.bfloat16 else "float32"
+            template = _inputs(dtype, case, seed=44047 + index)
+            decode_template = _decode_inputs(dtype, case, seed=55051 + index)
+            args = SparseDeltaMemoryArgs(
+                dim=case["value_dim"],
+                num_writes=case["write_width"],
+                num_reads=case["read_width"],
+                slots_per_head=case["slots"],
+                memory_block_size=64,
+                backprop_on_memory=False,
+                snapshot_quant="none",
+            )
+            layer = _build_layer(case, args).train()
+            # Decode runs the pinned SDM operator in eval mode so the single-token
+            # (sequence=1) step uses the fused decode path; the training autograd
+            # path requires chunk_size >= 2.
+            decode_layer = _build_layer(case, args).eval()
+            plan = compile_mixer(
+                sparse_delta_spec(),
+                backend=MixerBackend.NATIVE,
+                intent=MixerIntent.TRAINING,
+                dtype=dtype_name,
+            )
+            direct = lambda inputs, cotangent=None, layer=layer: _direct_call(
+                layer, inputs, cotangent
+            )
+            decode_direct = (
+                lambda inputs, cotangent=None, layer=decode_layer: _direct_call(
+                    layer, inputs, cotangent
+                )
+            )
+            compiled = lambda inputs, plan=plan: _compiled_call(plan, inputs)
+            parity, output_cotangent, state_cotangent = _check_parity(
+                layer, plan, template, case, dtype
+            )
+            performance = _measure_pair(
+                direct,
+                compiled,
+                template,
+                output_cotangent,
+                state_cotangent,
+                pairs,
+                warmup,
+                decode_template=decode_template,
+                decode_direct=decode_direct,
+            )
+            cases[f"{case['id']}/{dtype_name}"] = {
+                "architecture_ids": ["arch-047"],
+                "semantic_scope": "K3 routed sparse delta state update; product-key score generation and model projections excluded",
+                "shape": {
+                    "batch": case["batch"],
+                    "sequence": case["sequence"],
+                    "slots": case["slots"],
+                    "value_dim": case["value_dim"],
+                    "read_width": case["read_width"],
+                    "write_width": case["write_width"],
+                    "route_pattern": _ROUTE_PATTERN_DESCRIPTIONS[
+                        case["route_pattern"]
+                    ],
+                    "dtype": dtype_name,
+                },
+                "upstream_callable": "lingua.sparse_delta_memory.layer.SparseDeltaMemory.gated_write_read",
+                "compiled_anchor": plan.anchor,
+                "parity": parity,
+                "performance": performance,
+            }
 
     config = {
         "dtypes": ["float32", "bfloat16"],
         "pairs": pairs,
         "warmup": warmup,
-        "sequence": SEQUENCE,
-        "slots": SLOTS,
-        "value_dim": VALUE_DIM,
-        "route_width": ROUTE_WIDTH,
+        "cases": [
+            {
+                "id": case["id"],
+                "batch": case["batch"],
+                "sequence": case["sequence"],
+                "slots": case["slots"],
+                "value_dim": case["value_dim"],
+                "read_width": case["read_width"],
+                "write_width": case["write_width"],
+                "route_pattern": case["route_pattern"],
+            }
+            for case in CASES
+        ],
     }
     # Compute the workload verdict from every case's parity and performance gates.
     # The confidence-interval upper bound (not the point estimate) must meet budget.

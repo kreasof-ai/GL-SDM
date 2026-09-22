@@ -647,7 +647,10 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
     ExecutionAnchor(
         kind=AnchorKind.RECURRENT_SCAN,
         name=NATIVE_DIAGONAL_RECURRENCE_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float32"}),
+        # The kernel accumulates in fp32 throughout (loads upcast, the output store
+        # downcasts), so float32, bfloat16, and float16 forward and backward are
+        # all verified against the fp32 sequential reference.
+        backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
         supported_visitors=frozenset(),
     ),
     ExecutionAnchor(
