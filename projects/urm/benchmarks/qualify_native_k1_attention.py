@@ -176,19 +176,17 @@ def _summary(samples):
 
 
 def _measure_pair(direct, compiled, direct_inputs, compiled_inputs, pairs, warmup, block,
-                  decode_direct_inputs=None, decode_compiled_inputs=None, decode_direct=None):
+                  decode_direct=None, decode_compiled=None):
     """Measure every matrix mode: training forward, training forward+backward,
     inference prefill (forward under no_grad), and single-token decode.
 
-    ``decode_*_inputs`` carry the single-token (query_length=1) decode-step
-    operands; when omitted the decode mode reuses the training inputs (already
-    a single query token for the decode_step case). ``decode_direct`` is the
-    comparator callable for the decode mode (full causal history); when omitted
-    it falls back to ``direct``.
+    ``decode_direct``/``decode_compiled`` are single-token decode-step callables
+    (the proper fused decode-step kernel against a persistent KV cache, not the
+    training plan on qlen=1). Each is ``call(inputs) -> output`` and closes over
+    its own operands; the inputs argument is ignored for decode. When omitted,
+    the decode mode falls back to the training callables under no_grad.
     """
-    if decode_direct is None:
-        decode_direct = direct
-    # (mode key, backward, no_grad, use decode inputs)
+    # (mode key, backward, no_grad, use decode callables)
     mode_specs = [
         ("forward", False, False, False),
         ("forward_backward", True, False, False),
@@ -199,25 +197,23 @@ def _measure_pair(direct, compiled, direct_inputs, compiled_inputs, pairs, warmu
     cold_compiled = _time_one(compiled, compiled_inputs, backward=False, block=block)
     for _ in range(warmup):
         for _, backward, no_grad, use_decode in mode_specs:
-            d_fn = decode_direct if use_decode else direct
-            d_in = decode_direct_inputs if use_decode else direct_inputs
-            c_in = decode_compiled_inputs if use_decode else compiled_inputs
-            _time_one(d_fn, d_in, backward=backward, block=block, no_grad=no_grad)
-            _time_one(compiled, c_in, backward=backward, block=block, no_grad=no_grad)
+            d_fn = (decode_direct or direct) if use_decode else direct
+            c_fn = (decode_compiled or compiled) if use_decode else compiled
+            _time_one(d_fn, direct_inputs, backward=backward, block=block, no_grad=no_grad)
+            _time_one(c_fn, compiled_inputs, backward=backward, block=block, no_grad=no_grad)
     measurements = {}
     for mode, backward, no_grad, use_decode in mode_specs:
-        d_fn = decode_direct if use_decode else direct
-        d_in = decode_direct_inputs if use_decode else direct_inputs
-        c_in = decode_compiled_inputs if use_decode else compiled_inputs
+        d_fn = (decode_direct or direct) if use_decode else direct
+        c_fn = (decode_compiled or compiled) if use_decode else compiled
         direct_wall, compiled_wall, overhead, order = [], [], [], []
         for index in range(pairs):
             first, second = ("direct", "compiled") if index % 2 == 0 else ("compiled", "direct")
             order.append(first + second)
             for name in (first, second):
                 if name == "direct":
-                    direct_wall.append(_time_one(d_fn, d_in, backward=backward, block=block, no_grad=no_grad))
+                    direct_wall.append(_time_one(d_fn, direct_inputs, backward=backward, block=block, no_grad=no_grad))
                 else:
-                    compiled_wall.append(_time_one(compiled, c_in, backward=backward, block=block, no_grad=no_grad))
+                    compiled_wall.append(_time_one(c_fn, compiled_inputs, backward=backward, block=block, no_grad=no_grad))
             pair_index = len(overhead)
             overhead.append(
                 (compiled_wall[pair_index] - direct_wall[pair_index]) / direct_wall[pair_index]
@@ -327,24 +323,45 @@ def _run_case(case, dtype_name, dtype, pairs, warmup, block):
     # --- Performance only after correctness.
     perf_inputs_d = {n: t.detach().clone().requires_grad_() for n, t in operands.items()}
     perf_inputs_c = {n: t.detach().clone().requires_grad_() for n, t in operands.items()}
-    # Single-token decode-step operands (query_length=1) with the case's
-    # key_length/heads/dims, for the decode mode. For the decode_step case this
-    # coincides with its shape. Prefill reuses the training operands under
-    # no_grad (inference forward, no autograd graph).
+    # Decode mode: the proper fused single-query decode-step kernel against a
+    # persistent KV cache, not the training plan on qlen=1. The native decode
+    # uses execute_online_softmax_decode; the upstream decode comparator is SDPA
+    # on a single query token against the full KV cache (is_causal=False because
+    # for a single query at the latest position all S keys are visible). Both
+    # callables close over their operands; the KV cache is read-only, so no
+    # state threading is needed.
+    from urm.backends.triton.softmax.online import execute_online_softmax_decode
+
     decode_operands = _inputs(
         hash((case["id"], dtype_name, "decode")) % (2**31),
         batch, 1, klen, qheads, kvheads, key_dim, value_dim, dtype,
     )
-    decode_direct = {n: t.detach().clone() for n, t in decode_operands.items()}
-    decode_compiled = {n: t.detach().clone() for n, t in decode_operands.items()}
-    # Decode comparator: a single query token attends to the full causal key
-    # history (non-causal mask), matching the kernel's single-token decode.
-    decode_causal = False
+
+    def _native_decode_step(_inputs):
+        q1 = decode_operands["query"][:, 0].detach().contiguous()  # [B, H, K]
+        k_cache = decode_operands["key"].detach().contiguous()      # [B, S, H_kv, K]
+        v_cache = decode_operands["value"].detach().contiguous()    # [B, S, H_kv, V]
+
+        def call(_):
+            return execute_online_softmax_decode(q1, k_cache, v_cache, scale=scale, causal=True)
+        return call
+
+    def _upstream_decode_step(_inputs):
+        qh = decode_operands["query"].detach().transpose(1, 2)  # [B, H, 1, K]
+        kh = decode_operands["key"].detach().transpose(1, 2)    # [B, H_kv, S, K]
+        vh = decode_operands["value"].detach().transpose(1, 2)  # [B, H_kv, S, V]
+        gqa = qh.shape[1] != kh.shape[1]
+
+        def call(_):
+            return F.scaled_dot_product_attention(
+                qh, kh, vh, is_causal=False, scale=scale, enable_gqa=gqa
+            )
+        return call
+
     performance = _measure_pair(
         lambda i: _direct(i, scale, causal), lambda i: _compiled(plan, i),
         perf_inputs_d, perf_inputs_c, pairs, warmup, block,
-        decode_direct_inputs=decode_direct, decode_compiled_inputs=decode_compiled,
-        decode_direct=lambda i: _direct(i, scale, decode_causal),
+        decode_direct=_upstream_decode_step(None), decode_compiled=_native_decode_step(None),
     )
     measurements = performance["measurements"]
     fwd_gate = measurements["forward"]["paired_native_overhead_fraction"]["gate"]["pass"]

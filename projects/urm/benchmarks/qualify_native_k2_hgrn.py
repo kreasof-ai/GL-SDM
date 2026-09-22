@@ -203,17 +203,19 @@ def _summary(samples):
 
 
 def _measure_pair(direct, compiled, direct_inputs, compiled_inputs, pairs, warmup, block,
-                  decode_direct_inputs=None, decode_compiled_inputs=None):
+                  decode_direct=None, decode_compiled=None):
     """Measure every matrix mode: training forward, training forward+backward,
     inference prefill (forward under no_grad), and single-token decode.
 
-    ``decode_*_inputs`` carry the single-token (sequence=1) decode-step operands;
-    when omitted the decode mode reuses the training inputs (already a single
-    token for the decode_step case).
+    ``decode_direct``/``decode_compiled`` are single-token decode-step callables
+    (the proper fused in-place decode path, not the training plan on T=1). Each
+    closes over its own persistent state and operands and ignores the inputs
+    passed by ``_time_one``. When omitted, the decode mode falls back to the
+    training callables under no_grad.
     """
     cold_direct = _time_one(direct, direct_inputs, backward=False, block=block)
     cold_compiled = _time_one(compiled, compiled_inputs, backward=False, block=block)
-    # (mode key, backward, no_grad, use decode inputs)
+    # (mode key, backward, no_grad, use decode callables)
     mode_specs = [
         ("forward", False, False, False),
         ("forward_backward", True, False, False),
@@ -222,14 +224,14 @@ def _measure_pair(direct, compiled, direct_inputs, compiled_inputs, pairs, warmu
     ]
     for _ in range(warmup):
         for _, backward, no_grad, use_decode in mode_specs:
-            d_in = decode_direct_inputs if use_decode else direct_inputs
-            c_in = decode_compiled_inputs if use_decode else compiled_inputs
-            _time_one(direct, d_in, backward=backward, block=block, no_grad=no_grad)
-            _time_one(compiled, c_in, backward=backward, block=block, no_grad=no_grad)
+            d_fn = (decode_direct or direct) if use_decode else direct
+            c_fn = (decode_compiled or compiled) if use_decode else compiled
+            _time_one(d_fn, direct_inputs, backward=backward, block=block, no_grad=no_grad)
+            _time_one(c_fn, compiled_inputs, backward=backward, block=block, no_grad=no_grad)
     measurements = {}
     for mode, backward, no_grad, use_decode in mode_specs:
-        d_in = decode_direct_inputs if use_decode else direct_inputs
-        c_in = decode_compiled_inputs if use_decode else compiled_inputs
+        d_fn = (decode_direct or direct) if use_decode else direct
+        c_fn = (decode_compiled or compiled) if use_decode else compiled
         direct_wall, compiled_wall, overhead, order = [], [], [], []
         for index in range(pairs):
             first, second = (
@@ -238,10 +240,10 @@ def _measure_pair(direct, compiled, direct_inputs, compiled_inputs, pairs, warmu
             order.append(first + second)
             for name in (first, second):
                 if name == "direct":
-                    wall, _ = _time_one(direct, d_in, backward=backward, block=block, no_grad=no_grad)
+                    wall, _ = _time_one(d_fn, direct_inputs, backward=backward, block=block, no_grad=no_grad)
                     direct_wall.append(wall)
                 else:
-                    wall, _ = _time_one(compiled, c_in, backward=backward, block=block, no_grad=no_grad)
+                    wall, _ = _time_one(c_fn, compiled_inputs, backward=backward, block=block, no_grad=no_grad)
                     compiled_wall.append(wall)
             pair_index = len(overhead)
             overhead.append(
