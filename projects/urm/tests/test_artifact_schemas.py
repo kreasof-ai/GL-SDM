@@ -755,6 +755,27 @@ def test_inference_throughput_table_matches_committed_artifacts() -> None:
     )
 
 
+def test_alignment_doc_matches_committed_artifacts() -> None:
+    """The gradient-alignment + decoding-KL doc must regenerate exactly.
+
+    The gradient-alignment rows come from the committed qualification artifacts;
+    the decoding KL divergence is a fixed-seed live measurement. This keeps the
+    alignment evidence from drifting from the validated numbers.
+    """
+    import alignment_report
+
+    documented = (
+        PROJECT_ROOT / "docs" / "validation" / "alignment.md"
+    ).read_text(encoding="utf-8")
+    regenerated = alignment_report.render_markdown(
+        alignment_report._gradient_rows(), alignment_report._kl_divergence_rows()
+    )
+    assert documented == regenerated, (
+        "docs/validation/alignment.md is out of sync; regenerate it with "
+        "`PYTHONPATH=src:benchmarks python benchmarks/alignment_report.py`"
+    )
+
+
 def _comparison_artifact(cases: dict[str, str]) -> dict:
     """Build a minimal artifact whose cases carry only a parity status."""
     return {
