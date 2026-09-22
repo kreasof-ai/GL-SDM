@@ -787,6 +787,249 @@ def _online_softmax_decode_kernel(
     )
 
 
+@triton.jit
+def _k1_softmax_probs_kernel(
+    Q,
+    K,
+    P,
+    TQ: tl.constexpr,
+    TK: tl.constexpr,
+    D: tl.constexpr,
+    CAUSAL: tl.constexpr,
+    STRICT: tl.constexpr,
+    SCALE: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_D: tl.constexpr,
+):
+    """Materialize one head's causal/strict-causal softmax probability matrix.
+
+    One program per ``(batch * head, query block)``; Q/K are already expanded to
+    a shared head count (GQA pre-expanded by the caller) in BTHD layout. The
+    reduction mirrors the canonical core exactly: row max subtraction, exp, then
+    division by the clipped row sum. ``STRICT`` excludes the diagonal (s < t);
+    ``CAUSAL`` keeps it (s <= t). Fully masked rows produce zero probabilities.
+    """
+    head_batch = tl.program_id(0)
+    query_start = tl.program_id(1) * BLOCK_M
+    query_offsets = query_start + tl.arange(0, BLOCK_M)
+    key_offsets = tl.arange(0, BLOCK_N)
+    key_dims = tl.arange(0, BLOCK_D)
+    query_valid = query_offsets < TQ
+    running_max = tl.full((BLOCK_M,), float("-inf"), tl.float32)
+    running_sum = tl.zeros((BLOCK_M,), tl.float32)
+    # Pass 1: online row max and unnormalized exp sum (the softmax denominator).
+    for key_start in range(0, tl.cdiv(TK, BLOCK_N)):
+        keys = key_start * BLOCK_N + key_offsets
+        key_valid = keys < TK
+        query = tl.load(
+            Q + (head_batch * TQ + query_offsets[:, None]) * D + key_dims[None, :],
+            query_valid[:, None] & (key_dims[None, :] < D),
+            other=0.0,
+        )
+        key = tl.load(
+            K + (head_batch * TK + keys[:, None]) * D + key_dims[None, :],
+            key_valid[:, None] & (key_dims[None, :] < D),
+            other=0.0,
+        )
+        scores = tl.dot(query, tl.trans(key), input_precision="ieee") * SCALE
+        score_valid = query_valid[:, None] & key_valid[None, :]
+        if STRICT:
+            visible = keys[None, :] < query_offsets[:, None] + (TK - TQ)
+        elif CAUSAL:
+            visible = keys[None, :] <= query_offsets[:, None] + (TK - TQ)
+        else:
+            visible = score_valid
+        scores = tl.where(score_valid & visible, scores, float("-inf"))
+        block_max = tl.max(scores, axis=1)
+        next_max = tl.maximum(running_max, block_max)
+        old_scale = tl.where(running_sum > 0.0, tl.exp(running_max - next_max), 0.0)
+        safe_max = tl.where(next_max == float("-inf"), 0.0, next_max)
+        probabilities = tl.where(
+            scores == float("-inf"), 0.0, tl.exp(scores - safe_max[:, None])
+        )
+        running_sum = running_sum * old_scale + tl.sum(probabilities, axis=1)
+        running_max = next_max
+    safe_max = tl.where(running_max == float("-inf"), 0.0, running_max)
+    denom = tl.maximum(running_sum, 1.0e-30)
+    # Pass 2: recompute the exp scores and store the normalized probabilities.
+    for key_start in range(0, tl.cdiv(TK, BLOCK_N)):
+        keys = key_start * BLOCK_N + key_offsets
+        key_valid = keys < TK
+        query = tl.load(
+            Q + (head_batch * TQ + query_offsets[:, None]) * D + key_dims[None, :],
+            query_valid[:, None] & (key_dims[None, :] < D),
+            other=0.0,
+        )
+        key = tl.load(
+            K + (head_batch * TK + keys[:, None]) * D + key_dims[None, :],
+            key_valid[:, None] & (key_dims[None, :] < D),
+            other=0.0,
+        )
+        scores = tl.dot(query, tl.trans(key), input_precision="ieee") * SCALE
+        score_valid = query_valid[:, None] & key_valid[None, :]
+        if STRICT:
+            visible = keys[None, :] < query_offsets[:, None] + (TK - TQ)
+        elif CAUSAL:
+            visible = keys[None, :] <= query_offsets[:, None] + (TK - TQ)
+        else:
+            visible = score_valid
+        scores = tl.where(score_valid & visible, scores, float("-inf"))
+        probabilities = tl.where(
+            scores == float("-inf"),
+            0.0,
+            tl.exp(scores - safe_max[:, None]) / denom[:, None],
+        )
+        store_offset = (head_batch * TQ + query_offsets[:, None]) * TK + keys[None, :]
+        tl.store(P + store_offset, probabilities, score_valid)
+
+
+@triton.jit
+def _positive_feature_forward_tiled(
+    Q,
+    K,
+    V,
+    OUTPUT,
+    TQ: tl.constexpr,
+    TK: tl.constexpr,
+    D: tl.constexpr,
+    DV: tl.constexpr,
+    NUM_GROUPS: tl.constexpr,
+    GROUP_DIM: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_G: tl.constexpr,
+    BLOCK_V: tl.constexpr,
+):
+    """KATA positive-feature attention: grouped squared scores, L1-normalized.
+
+    scores[t, s] = sum_m (q_m . k_m / sqrt(group_dim))^2 over the ``NUM_GROUPS``
+    head-dim groups, causal-masked to zero, then normalized by the row sum (L1,
+    not softmax). One program per ``(batch * head, query block)``; Q/K/V are
+    pre-expanded to a shared head count. Scores are non-negative, so no max
+    subtraction is needed: accumulate the row sum and weighted value, divide once.
+    """
+    head_batch = tl.program_id(0)
+    query_start = tl.program_id(1) * BLOCK_M
+    query_offsets = query_start + tl.arange(0, BLOCK_M)
+    key_offsets = tl.arange(0, BLOCK_N)
+    group_dims = tl.arange(0, BLOCK_G)
+    value_dims = tl.arange(0, BLOCK_V)
+    query_valid = query_offsets < TQ
+    running_sum = tl.zeros((BLOCK_M,), tl.float32)
+    running_value = tl.zeros((BLOCK_M, BLOCK_V), tl.float32)
+    # Causal early termination (same diagonal rule as the online-softmax kernel).
+    last_visible = query_start + BLOCK_M - 1 + (TK - TQ)
+    key_blocks = tl.cdiv(tl.minimum(last_visible + 1, TK), BLOCK_N)
+    for key_start in range(key_blocks):
+        keys = key_start * BLOCK_N + key_offsets
+        key_valid = keys < TK
+        scores = tl.zeros((BLOCK_M, BLOCK_N), tl.float32)
+        for group in range(NUM_GROUPS):
+            dims = group * GROUP_DIM + group_dims
+            dim_valid = group_dims < GROUP_DIM  # stay within this group's slice
+            query = tl.load(
+                Q + (head_batch * TQ + query_offsets[:, None]) * D + dims[None, :],
+                query_valid[:, None] & dim_valid[None, :],
+                other=0.0,
+            )
+            key = tl.load(
+                K + (head_batch * TK + keys[:, None]) * D + dims[None, :],
+                key_valid[:, None] & dim_valid[None, :],
+                other=0.0,
+            )
+            group_scores = tl.dot(
+                query, tl.trans(key), input_precision="ieee"
+            ) * (GROUP_DIM ** -0.5)
+            scores += group_scores * group_scores
+        visible = keys[None, :] <= query_offsets[:, None] + (TK - TQ)
+        score_valid = query_valid[:, None] & key_valid[None, :] & visible
+        scores = tl.where(score_valid, scores, 0.0)
+        values = tl.load(
+            V + (head_batch * TK + keys[:, None]) * DV + value_dims[None, :],
+            key_valid[:, None] & (value_dims[None, :] < DV),
+            other=0.0,
+        )
+        running_value += tl.dot(scores.to(values.dtype), values, input_precision="ieee")
+        running_sum += tl.sum(scores, axis=1)
+    output = running_value / tl.maximum(running_sum[:, None], 1.0e-12)
+    output_offset = (head_batch * TQ + query_offsets[:, None]) * DV + value_dims[None, :]
+    tl.store(
+        OUTPUT + output_offset,
+        output,
+        query_valid[:, None] & (value_dims[None, :] < DV),
+    )
+
+
+@triton.jit
+def _thresholded_attend_forward_tiled(
+    Q,
+    K,
+    V,
+    OUTPUT,
+    TQ: tl.constexpr,
+    TK: tl.constexpr,
+    D: tl.constexpr,
+    DV: tl.constexpr,
+    BETA: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_D: tl.constexpr,
+    BLOCK_V: tl.constexpr,
+):
+    """TDA thresholded attention (one branch): L2-normalized Q/K, squared-relu.
+
+    scores[t, s] = relu((qn . kn)[t, s] - beta * sqrt(2 log(t+1) / D))^2 on the
+    causal-visible keys (else zero), then the unnormalized weighted value sum.
+    One program per ``(batch * head, query block)``; Q/K/V are pre-expanded to a
+    shared head count. There is no softmax denominator (unnormalized reduction).
+    """
+    head_batch = tl.program_id(0)
+    query_start = tl.program_id(1) * BLOCK_M
+    query_offsets = query_start + tl.arange(0, BLOCK_M)
+    key_offsets = tl.arange(0, BLOCK_N)
+    key_dims = tl.arange(0, BLOCK_D)
+    value_dims = tl.arange(0, BLOCK_V)
+    query_valid = query_offsets < TQ
+    query = tl.load(
+        Q + (head_batch * TQ + query_offsets[:, None]) * D + key_dims[None, :],
+        query_valid[:, None] & (key_dims[None, :] < D),
+        other=0.0,
+    ).to(tl.float32)
+    query = query / tl.sqrt(tl.sum(query * query, axis=1))[:, None]
+    positions = (query_offsets + 1 + (TK - TQ)).to(tl.float32)
+    threshold = BETA * tl.sqrt(2.0 * tl.log(positions) / D)
+    running_value = tl.zeros((BLOCK_M, BLOCK_V), tl.float32)
+    last_visible = query_start + BLOCK_M - 1 + (TK - TQ)
+    key_blocks = tl.cdiv(tl.minimum(last_visible + 1, TK), BLOCK_N)
+    for key_start in range(key_blocks):
+        keys = key_start * BLOCK_N + key_offsets
+        key_valid = keys < TK
+        key = tl.load(
+            K + (head_batch * TK + keys[:, None]) * D + key_dims[None, :],
+            key_valid[:, None] & (key_dims[None, :] < D),
+            other=0.0,
+        ).to(tl.float32)
+        key = key / tl.sqrt(tl.sum(key * key, axis=1))[:, None]
+        scores = tl.dot(query, tl.trans(key), input_precision="ieee")
+        visible = keys[None, :] <= query_offsets[:, None] + (TK - TQ)
+        score_valid = query_valid[:, None] & key_valid[None, :] & visible
+        rectified = tl.maximum(scores - threshold[:, None], 0.0)
+        weights = tl.where(score_valid, rectified * rectified, 0.0)
+        values = tl.load(
+            V + (head_batch * TK + keys[:, None]) * DV + value_dims[None, :],
+            key_valid[:, None] & (value_dims[None, :] < DV),
+            other=0.0,
+        )
+        running_value += tl.dot(weights.to(values.dtype), values, input_precision="ieee")
+    output_offset = (head_batch * TQ + query_offsets[:, None]) * DV + value_dims[None, :]
+    tl.store(
+        OUTPUT + output_offset,
+        running_value,
+        query_valid[:, None] & (value_dims[None, :] < DV),
+    )
+
+
 def _broadcast_strides_4d(tensor: Any | None, target: tuple[int, int, int, int]):
     if tensor is None:
         return (0, 0, 0, 0)
@@ -1086,6 +1329,199 @@ def execute_online_softmax(
     return _OnlineSoftmax.apply(query, key, value, mask, bias)
 
 
+def _check_k1_operands(query: Any, key: Any, value: Any, *, op: str) -> tuple:
+    """Shared BTHD operand validation for the operation-specific K1 kernels."""
+    if query.device.type != "cuda":
+        raise ValueError(f"URM-native K1 {op} requires CUDA tensors")
+    if query.ndim != 4 or key.ndim != 4 or value.ndim != 4:
+        raise ValueError(f"K1 {op} query/key/value use BTHD rank-4 layout")
+    batch, query_length, query_heads, key_dim = query.shape
+    _, key_length, key_heads, _ = key.shape
+    value_dim = value.shape[-1]
+    if min(batch, query_length, query_heads, key_dim, key_length, key_heads, value_dim) <= 0:
+        raise ValueError(f"K1 {op} dimensions must be positive")
+    if key_dim > 128 or value_dim > 128:
+        raise ValueError(f"native K1 {op} supports key and value widths up to 128")
+    if not (query.dtype == key.dtype == value.dtype) or not query.is_floating_point():
+        raise ValueError(f"K1 {op} query/key/value must use one floating-point dtype")
+    if not (query.device == key.device == value.device):
+        raise ValueError(f"K1 {op} query/key/value must share one CUDA device")
+    return batch, query_length, query_heads, key_dim, key_length, value_dim
+
+
+def execute_softmax_probs(
+    query: Any,
+    key: Any,
+    *,
+    causal: bool,
+    strict: bool,
+    scale: float,
+) -> Any:
+    """Materialize the causal/strict-causal softmax probability matrix P.
+
+    ``query``/``key`` are BTHD rank-4 and must already share one head count (the
+    caller pre-expands any GQA group). Returns ``P`` in ``[B, H, Tq, Tk]`` fp32,
+    matching the canonical ``attention_probs`` reduction. Used by the positional
+    and delta-transform K1 compositions, which need P explicitly.
+    """
+    value = query  # only q/k shapes matter; reuse the shared validation
+    batch, query_length, query_heads, key_dim, key_length, _ = _check_k1_operands(
+        query, key, value, op="softmax_probs"
+    )
+    if query.shape[2] != key.shape[2]:
+        raise ValueError("softmax_probs expects pre-expanded (shared) head counts")
+    query_c, key_c = query.contiguous(), key.contiguous()
+    probs = torch.zeros(
+        (batch, query_heads, query_length, key_length),
+        device=query.device,
+        dtype=torch.float32,
+    )
+    block_m = min(64, max(16, triton.next_power_of_2(query_length)))
+    block_n = min(64, max(16, triton.next_power_of_2(key_length)))
+    block_d = max(16, triton.next_power_of_2(key_dim))
+    # Q/K are [B, T, H, D]; the kernel indexes them as [B*H, T, D], so fold the
+    # head axis into the batch via a [B, H, T, D] view made contiguous.
+    q_flat = query_c.permute(0, 2, 1, 3).contiguous()
+    k_flat = key_c.permute(0, 2, 1, 3).contiguous()
+    _k1_softmax_probs_kernel[
+        (batch * query_heads, triton.cdiv(query_length, block_m))
+    ](
+        q_flat,
+        k_flat,
+        probs,
+        query_length,
+        key_length,
+        key_dim,
+        causal,
+        strict,
+        scale,
+        block_m,
+        block_n,
+        block_d,
+        num_warps=4,
+        num_stages=2,
+    )
+    return probs
+
+
+def execute_positive_feature(
+    query: Any,
+    key: Any,
+    value: Any,
+    *,
+    num_groups: int,
+) -> Any:
+    """KATA positive-feature attention: grouped squared scores, L1-normalized.
+
+    ``query``/``key``/``value`` are BTHD rank-4 with a shared head count (the
+    caller pre-expands any GQA group). Always causal, mirroring the canonical
+    core. Returns the output in the input dtype.
+    """
+    batch, query_length, query_heads, key_dim, key_length, value_dim = _check_k1_operands(
+        query, key, value, op="positive_feature"
+    )
+    if query.shape[2] != key.shape[2]:
+        raise ValueError("positive_feature expects pre-expanded (shared) head counts")
+    if query.shape[1] != key.shape[1]:
+        raise ValueError("positive_feature is self-attention (Tq must equal Tk)")
+    if key_dim % num_groups:
+        raise ValueError("positive_feature head dim must be divisible by num_groups")
+    group_dim = key_dim // num_groups
+    query_c, key_c, value_c = query.contiguous(), key.contiguous(), value.contiguous()
+    output = torch.empty(
+        (batch, query_length, query_heads, value_dim),
+        device=query.device,
+        dtype=query.dtype,
+    )
+    block_m = min(64, max(16, triton.next_power_of_2(query_length)))
+    block_n = min(64, max(16, triton.next_power_of_2(key_length)))
+    block_g = max(16, triton.next_power_of_2(group_dim))
+    block_v = max(16, triton.next_power_of_2(value_dim))
+    q_flat = query_c.permute(0, 2, 1, 3).contiguous()
+    k_flat = key_c.permute(0, 2, 1, 3).contiguous()
+    v_flat = value_c.permute(0, 2, 1, 3).contiguous()
+    out_flat = torch.empty(
+        (batch, query_heads, query_length, value_dim),
+        device=query.device,
+        dtype=torch.float32,
+    )
+    _positive_feature_forward_tiled[
+        (batch * query_heads, triton.cdiv(query_length, block_m))
+    ](
+        q_flat,
+        k_flat,
+        v_flat,
+        out_flat,
+        query_length,
+        key_length,
+        key_dim,
+        value_dim,
+        num_groups,
+        group_dim,
+        block_m,
+        block_n,
+        block_g,
+        block_v,
+        num_warps=4,
+        num_stages=2,
+    )
+    output = out_flat.permute(0, 2, 1, 3).to(query.dtype)
+    return output
+
+
+def execute_thresholded_attend(
+    query: Any,
+    key: Any,
+    value: Any,
+    *,
+    beta: float,
+) -> Any:
+    """TDA thresholded attention (one branch): L2-normalized squared-relu scores.
+
+    ``query``/``key``/``value`` are BTHD rank-4 with a shared head count (the
+    caller pre-expands any GQA group). Always causal and unnormalized, mirroring
+    the canonical core. Returns the output in fp32.
+    """
+    batch, query_length, query_heads, key_dim, key_length, value_dim = _check_k1_operands(
+        query, key, value, op="thresholded"
+    )
+    if query.shape[2] != key.shape[2]:
+        raise ValueError("thresholded expects pre-expanded (shared) head counts")
+    query_c, key_c, value_c = query.contiguous(), key.contiguous(), value.contiguous()
+    block_m = min(64, max(16, triton.next_power_of_2(query_length)))
+    block_n = min(64, max(16, triton.next_power_of_2(key_length)))
+    block_d = max(16, triton.next_power_of_2(key_dim))
+    block_v = max(16, triton.next_power_of_2(value_dim))
+    q_flat = query_c.permute(0, 2, 1, 3).contiguous()
+    k_flat = key_c.permute(0, 2, 1, 3).contiguous()
+    v_flat = value_c.permute(0, 2, 1, 3).contiguous()
+    out_flat = torch.empty(
+        (batch, query_heads, query_length, value_dim),
+        device=query.device,
+        dtype=torch.float32,
+    )
+    _thresholded_attend_forward_tiled[
+        (batch * query_heads, triton.cdiv(query_length, block_m))
+    ](
+        q_flat,
+        k_flat,
+        v_flat,
+        out_flat,
+        query_length,
+        key_length,
+        key_dim,
+        value_dim,
+        float(beta),
+        block_m,
+        block_n,
+        block_d,
+        block_v,
+        num_warps=4,
+        num_stages=2,
+    )
+    return out_flat.permute(0, 2, 1, 3)
+
+
 @torch.no_grad()
 def execute_online_softmax_decode(
     query: Any,
@@ -1170,4 +1606,10 @@ def execute_online_softmax_decode(
     return output
 
 
-__all__ = ["execute_online_softmax", "execute_online_softmax_decode"]
+__all__ = [
+    "execute_online_softmax",
+    "execute_online_softmax_decode",
+    "execute_softmax_probs",
+    "execute_positive_feature",
+    "execute_thresholded_attend",
+]

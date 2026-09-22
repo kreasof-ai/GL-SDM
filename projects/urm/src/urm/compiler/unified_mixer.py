@@ -22,6 +22,7 @@ from urm.ir.mixer import (
     MixerKernelFamily,
     PolynomialBasis,
     ReadTiming,
+    RecurrenceOperator,
     RecurrentLayout,
     StateEffect,
     StateNormalizer,
@@ -276,6 +277,20 @@ class CompiledMixerPlan:
             if self.spec.family is MixerKernelFamily.SOFTMAX:
                 if self.spec.k1_operation is K1Operation.DIFFERENTIAL:
                     return _execute_native_differential_attention(self, torch, **operands)
+                if self.spec.k1_operation is K1Operation.PROJECTED:
+                    return _execute_native_projected_attention(self, torch, **operands)
+                if self.spec.k1_operation is K1Operation.LOCAL_WINDOW:
+                    return _execute_native_local_window_attention(self, torch, **operands)
+                if self.spec.k1_operation is K1Operation.GATED:
+                    return _execute_native_gated_attention(self, torch, **operands)
+                if self.spec.k1_operation is K1Operation.POSITIONAL:
+                    return _execute_native_positional_attention(self, torch, **operands)
+                if self.spec.k1_operation is K1Operation.POSITIVE_FEATURE:
+                    return _execute_native_positive_feature_attention(self, torch, **operands)
+                if self.spec.k1_operation is K1Operation.THRESHOLDED:
+                    return _execute_native_thresholded_attention(self, torch, **operands)
+                if self.spec.k1_operation is K1Operation.DELTA_TRANSFORM:
+                    return _execute_native_delta_transform_attention(self, torch, **operands)
                 from urm.backends.triton.softmax.online_backend import (
                     TritonOnlineSoftmaxBackend,
                 )
@@ -291,6 +306,15 @@ class CompiledMixerPlan:
                 )
             if self.spec.family is MixerKernelFamily.RECURRENCE:
                 if self.spec.recurrent_layout is RecurrentLayout.MATRIX:
+                    operator = self.spec.recurrence_operator
+                    if operator is not RecurrenceOperator.PLAIN:
+                        executor = _NATIVE_K2_OPERATOR_EXECUTORS.get(operator)
+                        if executor is None:
+                            raise RuntimeError(
+                                "no native executor for recurrence operator "
+                                f"{operator.value}"
+                            )
+                        return executor(self, torch, **operands)
                     return _execute_native_matrix_state_recurrence(
                         self, torch, **operands
                     )
@@ -494,20 +518,24 @@ def compile_mixer(
         or (
             spec.family is MixerKernelFamily.RECURRENCE
             and spec.recurrent_layout is RecurrentLayout.MATRIX
-            and _native_matrix_state_supported(spec)
+            and (
+                _native_matrix_state_supported(spec)
+                or spec.recurrence_operator in _NATIVE_K2_OPERATORS
+            )
         )
         or (
             spec.family is MixerKernelFamily.SOFTMAX
             and (
                 spec.is_normalized_softmax_attention()
-                or spec.k1_operation is K1Operation.DIFFERENTIAL
+                or spec.k1_operation in _NATIVE_K1_OPERATIONS
             )
         )
     ):
         raise ValueError(
-            "URM-native anchors support K1 normalized softmax (and its "
-            "differential composition), K3 sparse delta, K2 diagonal SSM "
-            "semantics, or the plain K2 matrix-state recurrence"
+            "URM-native anchors support K1 normalized softmax (and its covered "
+            "operation variants), K3 sparse delta, K2 diagonal SSM semantics, "
+            "the covered K2 matrix-state recurrences, or the distinguished K2 "
+            "recurrence operators"
         )
     if (
         resolved_backend is MixerBackend.LIBRARY
@@ -1202,30 +1230,78 @@ def _is_atma_gated_delta_decode_spec(spec: UnifiedMixerSpec) -> bool:
     return replace(spec, name=expected.name) == expected
 
 
+# K1 operations with a native executor wired into the NATIVE dispatch (each a
+# reparameterization or composition of the normalized routed reduction, mirrored
+# against the canonical K1 core).
+_NATIVE_K1_OPERATIONS = frozenset(
+    {
+        K1Operation.DIFFERENTIAL,
+        K1Operation.PROJECTED,
+        K1Operation.LOCAL_WINDOW,
+        K1Operation.GATED,
+        K1Operation.POSITIONAL,
+        K1Operation.POSITIVE_FEATURE,
+        K1Operation.THRESHOLDED,
+        K1Operation.DELTA_TRANSFORM,
+    }
+)
+
+
+# Distinguished K2 recurrence operators with a native executor wired into the
+# NATIVE dispatch (the nonlinear/inner-state/convolution equations, each mirrored
+# against its canonical executor).
+_NATIVE_K2_OPERATORS = frozenset(
+    {
+        RecurrenceOperator.TANH_RNN,
+        RecurrenceOperator.GATED_RNN,
+        RecurrenceOperator.MULTIPLICATIVE_RNN,
+        RecurrenceOperator.FFT_CONVOLUTION,
+        RecurrenceOperator.TWO_STAGE_FFT_CONVOLUTION,
+        RecurrenceOperator.SECOND_ORDER_CUMSUM,
+        RecurrenceOperator.REGULARIZED_SOLVE,
+        RecurrenceOperator.LAYERNORM_INNER_STATE,
+        RecurrenceOperator.MOMENTUM_INNER_STATE,
+        RecurrenceOperator.MOMENTUM_DELTA_STATE,
+        RecurrenceOperator.GATED_OJA_VALUE_CHANNEL,
+        RecurrenceOperator.SLOT_ATTENTION_TWO_STAGE,
+        RecurrenceOperator.RWKV4_SCALAR_STATE,
+        RecurrenceOperator.RWKV6_BONUS_CORRECTED,
+        RecurrenceOperator.MAMBA2_STRUCTURED_SSM,
+        RecurrenceOperator.TRAPEZOIDAL_SSM,
+    }
+)
+
+
 def _native_matrix_state_supported(spec: UnifiedMixerSpec) -> bool:
     """Whether the native matrix-state recurrence kernel computes this spec's equation.
 
-    The native generator lowers only the plain matrix-state recurrence
-    ``Z_t = decay*M, M_t = Z_t + k delta^T, y_t = scale * q^T M_t``. A spec
-    qualifies only when every semantic field is at the plain default and the
-    supported axes stay in range: additive/delta update, head/key-channel decay,
-    before/after read timing, identity feature map, no normalizer, pointwise
-    decay transition, no polynomial basis, functional state effect, and every
-    exotic composition flag off.
+    The native generator lowers the matrix-state recurrence
+    ``Z_t = decay*M, M_t = Z_t + k delta^T, y_t = scale * q^T M_t`` and the
+    canonical-core variants the fused kernel implements: the dual-gate delta
+    (gdn2), the dual-key delta (comba), the key-channel-decayed scaled read
+    (kda), the factored left transitions (generalized-delta IPLR/DPLR), the
+    multi-rank ordered delta updates (gated_delta_product), the query/key
+    denominator normalizer (linear/based/rebased/retention forms), the
+    polynomial quadratic bases (pre-expanded by the caller), the supported
+    feature maps, and static head decay. A spec qualifies only when its semantic
+    fields stay inside the validated envelope.
 
-    The additive/no-decay configuration is declined even though it looks plain:
-    the IR does not yet distinguish a plain additive recurrence from the exotic
-    additive equations that share its fields (a GRU's tanh/gate nonlinearity, an
-    FFT long convolution, a second-order correction, and similar are not
-    represented in the spec at all). Dispatching those on the spec alone would
-    silently compute the wrong equation, so the native kernel declines the whole
-    additive/no-decay group until the IR carries those equations explicitly.
-    Every other supported configuration is collision-free: no name-dependent
-    recipe shares its semantic signature.
+    The plain additive/no-decay configuration is declined even though it looks
+    plain: the IR does not yet distinguish a plain additive recurrence from the
+    exotic additive equations that share its fields (a GRU's tanh/gate
+    nonlinearity, an FFT long convolution, a second-order correction, and
+    similar are represented only by the ``recurrence_operator`` field, which the
+    distinguished-operator dispatch handles separately). Dispatching those on the
+    spec alone would silently compute the wrong equation, so the native kernel
+    declines the whole plain additive/no-decay group; the distinguished
+    operators route to their own kernels. Every other supported configuration is
+    collision-free: no name-dependent recipe shares its semantic signature.
     """
     if spec.family is not MixerKernelFamily.RECURRENCE:
         return False
     if spec.recurrent_layout is not RecurrentLayout.MATRIX:
+        return False
+    if spec.recurrence_operator is not RecurrenceOperator.PLAIN:
         return False
     if spec.update_rule not in (StateUpdateRule.ADDITIVE, StateUpdateRule.DELTA):
         return False
@@ -1235,41 +1311,50 @@ def _native_matrix_state_supported(spec: UnifiedMixerSpec) -> bool:
         DecayGranularity.KEY_CHANNEL,
     ):
         return False
-    # additive + no decay is the under-specified collision group; decline it.
+    # The polynomial bases, the query/key normalizer, and the generalized-delta
+    # factored transitions are additive-only forms, so their additive/no-decay
+    # signature is unambiguous (the IR pins the polynomial basis, the normalizer,
+    # and the factored transition explicitly). Every other additive/no-decay
+    # spec is the under-specified collision group; decline it.
     if (
         spec.update_rule is StateUpdateRule.ADDITIVE
         and spec.decay is DecayGranularity.NONE
+        and spec.polynomial_basis is PolynomialBasis.NONE
+        and spec.normalizer is not StateNormalizer.QUERY_KEY
+        and spec.transition is not StateTransition.FACTORED_MATRIX
     ):
         return False
-    if spec.feature_map not in (FeatureMap.IDENTITY, FeatureMap.L2_NORMALIZE):
+    if spec.feature_map not in (
+        FeatureMap.IDENTITY,
+        FeatureMap.L2_NORMALIZE,
+        FeatureMap.RELU,
+        FeatureMap.ELU_PLUS_ONE,
+    ):
         return False
-    if spec.normalizer is not StateNormalizer.NONE:
+    if spec.normalizer not in (StateNormalizer.NONE, StateNormalizer.QUERY_KEY):
         return False
-    if spec.transition is not StateTransition.POINTWISE:
-        return False
-    if spec.polynomial_basis is not PolynomialBasis.NONE:
+    if spec.transition is StateTransition.FACTORED_MATRIX:
+        # Only the generalized-delta factored transitions are canonical.
+        if not (spec.generalized_delta_iplr or spec.generalized_delta_dplr):
+            return False
+    elif spec.transition is not StateTransition.POINTWISE:
         return False
     if spec.read_timing not in (ReadTiming.BEFORE_UPDATE, ReadTiming.AFTER_UPDATE):
         return False
     if spec.state_effect is not StateEffect.FUNCTIONAL:
         return False
-    # Every exotic composition flag must be off; these change the equation.
+    # The supported variant flags; every other exotic composition flag must be
+    # off. static_head_decay_chunk accompanies static_head_decay (the same
+    # static head schedule read per chunk); both reduce to the time-constant
+    # head-decay form the kernel computes.
     if any(
         (
-            spec.static_head_decay,
-            spec.static_head_decay_chunk,
             spec.mamba2_ssm,
             spec.log_linear_attention,
-            spec.gdn2_ssm,
-            spec.kda_delta,
-            spec.gated_delta_product,
-            spec.generalized_delta_iplr,
-            spec.generalized_delta_dplr,
             spec.rwkv4_memory,
             spec.rwkv6_memory,
             spec.momentum_delta,
             spec.gated_oja,
-            spec.comba_rule,
             spec.preconditioned_gated_delta,
             spec.preconditioned_kda,
             spec.slot_attention,
@@ -2533,6 +2618,302 @@ def _execute_native_differential_attention(
             "execution": "urm_native_two_online_softmax_reductions_and_differential_combine",
             "backward_supported": True,
             "composition": "two K1 normalized reductions + learned per-head combine",
+        },
+    )
+
+
+def _expand_kv_to_query_heads(key: Any, value: Any, query_heads: int) -> tuple:
+    """Broadcast K/V heads over their query-head group (materialized, for the
+    operation-specific K1 kernels that need a shared head count)."""
+    kv_heads = key.shape[2]
+    group = query_heads // kv_heads
+    if group == 1:
+        return key, value
+    return (
+        key.repeat_interleave(group, dim=2),
+        value.repeat_interleave(group, dim=2),
+    )
+
+
+def _execute_native_projected_attention(plan, torch, **operands):
+    """Tucker projected attention: expand the low-rank query by B_pre, then plain K1."""
+    spec = plan.spec
+    query = operands.pop("query")
+    key = operands.pop("key")
+    value = operands.pop("value")
+    b_pre = operands.pop("B_pre")
+    if operands:
+        raise TypeError(
+            f"unexpected native projected K1 operands: {', '.join(sorted(operands))}"
+        )
+    # query [B,T,R], B_pre [H,R,K] -> expanded query [B,T,H,K]; K/V get a head axis.
+    expanded_query = torch.einsum(
+        "btr,hrk->bthk", query.float(), b_pre.float()
+    ).to(query.dtype)
+    if key.ndim == 3:
+        key = key[:, :, None, :]
+    if value.ndim == 3:
+        value = value[:, :, None, :]
+    from urm.backends.triton.softmax.online import execute_online_softmax
+
+    key_dim = expanded_query.shape[-1]
+    output = execute_online_softmax(
+        expanded_query,
+        key,
+        value,
+        attention_mask=None,
+        score_bias=None,
+        causal=spec.causal,
+        scale=spec.attention_scale or key_dim**-0.5,
+    )
+    return MixerResult(
+        output,
+        metadata={
+            "anchor": plan.anchor,
+            "execution": "urm_native_projected_query_online_softmax",
+            "backward_supported": True,
+            "composition": "low-rank query expansion (query @ B_pre) + K1 reduction",
+        },
+    )
+
+
+def _execute_native_local_window_attention(plan, torch, **operands):
+    """Longformer local-window attention: a sliding-window mask composed with K1."""
+    spec = plan.spec
+    query = operands.pop("query")
+    key = operands.pop("key")
+    value = operands.pop("value")
+    window = operands.pop("attention_window")
+    if operands:
+        raise TypeError(
+            f"unexpected native local-window K1 operands: {', '.join(sorted(operands))}"
+        )
+    if not isinstance(window, int) or window <= 0:
+        raise ValueError("local-window attention requires a positive attention_window")
+    sequence = query.shape[1]
+    positions = torch.arange(sequence, device=query.device)
+    local_mask = (positions[:, None] - positions[None, :]).abs() <= window
+    from urm.backends.triton.softmax.online import execute_online_softmax
+
+    key_dim = query.shape[-1]
+    output = execute_online_softmax(
+        query,
+        key,
+        value,
+        attention_mask=local_mask.view(1, 1, sequence, sequence),
+        score_bias=None,
+        causal=spec.causal,
+        scale=spec.attention_scale or key_dim**-0.5,
+    )
+    return MixerResult(
+        output,
+        metadata={
+            "anchor": plan.anchor,
+            "execution": "urm_native_local_window_mask_online_softmax",
+            "backward_supported": True,
+            "composition": "sliding-window boolean mask + K1 reduction",
+        },
+    )
+
+
+def _execute_native_gated_attention(plan, torch, **operands):
+    """Wall gated attention: a per-channel log-decay q/k transform composed with K1.
+
+    scores[t, s] = sum_k q[t, k] k[s, k] exp(prefix[t, k] - prefix[s, k]) with
+    ``prefix = cumsum(g)``. This factors as a per-channel feature map on Q and K:
+    ``q' = q * exp(prefix)``, ``k' = k * exp(-prefix)`` (K pre-expanded to the
+    query-head count, since the decay is per query head), then a plain K1
+    reduction. Note: the factored transform can overflow fp32 for long sequences
+    with large decays; it is exact for the canonical coverage shapes.
+    """
+    spec = plan.spec
+    query = operands.pop("query")
+    key = operands.pop("key")
+    value = operands.pop("value")
+    log_decay = operands.pop("g")
+    if operands:
+        raise TypeError(
+            f"unexpected native gated K1 operands: {', '.join(sorted(operands))}"
+        )
+    query_heads = query.shape[2]
+    key, value = _expand_kv_to_query_heads(key, value, query_heads)
+    prefix = log_decay.float().cumsum(dim=1)  # [B,T,H,K]
+    transformed_query = (query.float() * torch.exp(prefix)).to(query.dtype)
+    transformed_key = (key.float() * torch.exp(-prefix)).to(key.dtype)
+    from urm.backends.triton.softmax.online import execute_online_softmax
+
+    key_dim = query.shape[-1]
+    output = execute_online_softmax(
+        transformed_query,
+        transformed_key,
+        value,
+        attention_mask=None,
+        score_bias=None,
+        causal=spec.causal,
+        scale=spec.attention_scale or key_dim**-0.5,
+    )
+    return MixerResult(
+        output,
+        metadata={
+            "anchor": plan.anchor,
+            "execution": "urm_native_gated_decay_transform_online_softmax",
+            "backward_supported": True,
+            "composition": "per-channel log-decay q/k transform + K1 reduction",
+        },
+    )
+
+
+def _execute_native_positional_attention(plan, torch, **operands):
+    """Parallax positional attention: a composition on the canonical K1 reduction.
+
+    With softmax probabilities P and secondary scores S = r.k, the output is
+    ``(P V)(1 + sum(P*S)) - (P*S) V``. P is materialized by the native
+    softmax-probs kernel; the corrections are CUDA tensor arithmetic.
+    """
+    spec = plan.spec
+    query = operands.pop("query")
+    secondary = operands.pop("r")
+    key = operands.pop("key")
+    value = operands.pop("value")
+    if operands:
+        raise TypeError(
+            f"unexpected native positional K1 operands: {', '.join(sorted(operands))}"
+        )
+    query_heads = query.shape[2]
+    key_dim = query.shape[-1]
+    key, value = _expand_kv_to_query_heads(key, value, query_heads)
+    from urm.backends.triton.softmax.online import execute_softmax_probs
+
+    scale = spec.attention_scale or key_dim**-0.5
+    probs = execute_softmax_probs(query, key, causal=spec.causal, strict=False, scale=scale)
+    # Secondary scores with the same (now shared) head count: S = r.k, no scale.
+    secondary_scores = torch.einsum(
+        "bthk,bshk->bhts", secondary.float(), key.float()
+    )
+    value_h = value.float().transpose(1, 2)  # [B,H,T,V]
+    ordinary = torch.einsum("bhts,bhsv->bhtv", probs, value_h)
+    correction = probs * secondary_scores
+    correction_mean = correction.sum(dim=-1, keepdim=True)
+    correction_out = torch.einsum("bhts,bhsv->bhtv", correction, value_h)
+    output = (ordinary * (1.0 + correction_mean) - correction_out).transpose(1, 2)
+    return MixerResult(
+        output.to(value.dtype),
+        metadata={
+            "anchor": plan.anchor,
+            "execution": "urm_native_positional_softmax_probs_composition",
+            "backward_supported": False,
+            "composition": "K1 softmax probabilities + secondary-score correction",
+        },
+    )
+
+
+def _execute_native_positive_feature_attention(plan, torch, **operands):
+    """KATA positive-feature attention via the native grouped-squared-score kernel."""
+    query = operands.pop("query")
+    key = operands.pop("key")
+    value = operands.pop("value")
+    num_groups = operands.pop("num_groups")
+    if operands:
+        raise TypeError(
+            f"unexpected native positive-feature K1 operands: {', '.join(sorted(operands))}"
+        )
+    query_heads = query.shape[2]
+    key, value = _expand_kv_to_query_heads(key, value, query_heads)
+    from urm.backends.triton.softmax.online import execute_positive_feature
+
+    output = execute_positive_feature(query, key, value, num_groups=int(num_groups))
+    return MixerResult(
+        output,
+        metadata={
+            "anchor": plan.anchor,
+            "execution": "urm_native_positive_feature_grouped_squared_scores",
+            "backward_supported": False,
+            "composition": "grouped squared scores + L1 normalization",
+        },
+    )
+
+
+def _execute_native_thresholded_attention(plan, torch, **operands):
+    """TDA thresholded differential attention via the native thresholded kernel."""
+    query_a = operands.pop("query_a")
+    query_b = operands.pop("query_b")
+    key_a = operands.pop("key_a")
+    key_b = operands.pop("key_b")
+    value = operands.pop("value")
+    beta = operands.pop("beta")
+    lambda_weight = operands.pop("lambda_weight")
+    if operands:
+        raise TypeError(
+            f"unexpected native thresholded K1 operands: {', '.join(sorted(operands))}"
+        )
+    query_heads = query_a.shape[2]
+    key_a, value = _expand_kv_to_query_heads(key_a, value, query_heads)
+    key_b, _ = _expand_kv_to_query_heads(key_b, value, query_heads)
+    from urm.backends.triton.softmax.online import execute_thresholded_attend
+
+    beta_value = float(beta)
+    attend_a = execute_thresholded_attend(query_a, key_a, value, beta=beta_value)
+    attend_b = execute_thresholded_attend(query_b, key_b, value, beta=beta_value)
+    coefficient = min(max(float(lambda_weight), 0.0), 1.0)
+    output = (attend_a - coefficient * attend_b).to(value.dtype)
+    return MixerResult(
+        output,
+        metadata={
+            "anchor": plan.anchor,
+            "execution": "urm_native_thresholded_squared_relu_differential",
+            "backward_supported": False,
+            "composition": "two thresholded squared-relu reductions + lambda combine",
+        },
+    )
+
+
+def _execute_native_delta_transform_attention(plan, torch, **operands):
+    """DeltaFormer delta-transform attention: triangular value solve + K1 reduction.
+
+    Strict-causal softmax probabilities P feed a triangular value solve
+    ``(I + beta*P) v' = v``; the output is the causal softmax reduction over
+    ``v'``. P comes from the native softmax-probs kernel, the solve is a CUDA
+    triangular solve, and the final reduction reuses the online-softmax kernel.
+    """
+    query = operands.pop("query")
+    key = operands.pop("key")
+    value = operands.pop("value")
+    beta = operands.pop("beta")
+    if operands:
+        raise TypeError(
+            f"unexpected native delta-transform K1 operands: {', '.join(sorted(operands))}"
+        )
+    batch, sequence, heads, key_dim = query.shape
+    key, value = _expand_kv_to_query_heads(key, value, heads)
+    from urm.backends.triton.softmax.online import (
+        execute_online_softmax,
+        execute_softmax_probs,
+    )
+
+    scale = key_dim**-0.5
+    probs = execute_softmax_probs(query, key, causal=True, strict=True, scale=scale)
+    beta_h = beta.float().transpose(1, 2)  # [B,H,T]
+    eye = torch.eye(sequence, device=query.device, dtype=torch.float32)
+    system = eye.view(1, 1, sequence, sequence) + beta_h.unsqueeze(-1) * probs
+    value_h = value.float().transpose(1, 2)  # [B,H,T,V]
+    transformed = torch.linalg.solve_triangular(system, value_h, upper=False)
+    transformed = transformed.transpose(1, 2).to(value.dtype)  # [B,T,H,V]
+    output = execute_online_softmax(
+        query,
+        key,
+        transformed,
+        attention_mask=None,
+        score_bias=None,
+        causal=True,
+        scale=scale,
+    )
+    return MixerResult(
+        output,
+        metadata={
+            "anchor": plan.anchor,
+            "execution": "urm_native_delta_transform_triangular_solve_online_softmax",
+            "backward_supported": False,
+            "composition": "strict-causal P + triangular value solve + K1 reduction",
         },
     )
 
@@ -7446,13 +7827,23 @@ def _compile_native_diagonal_binding(
 def _execute_native_matrix_state_recurrence(
     plan: CompiledMixerPlan, torch: Any, **operands: Any
 ):
-    """Execute the native matrix-state K2 recurrence selected by semantic fields."""
+    """Execute the native matrix-state K2 recurrence selected by semantic fields.
+
+    Mirrors the canonical ``_execute_k2`` operand mapping: the plain form plus
+    the dual-gate (gdn2), dual-key (comba), key-channel-decayed scaled read
+    (kda), factored left transitions (generalized-delta IPLR/DPLR), multi-rank
+    ordered updates (gated_delta_product), the query/key normalizer
+    (linear/based/rebased/retention forms), the polynomial bases (pre-expanded),
+    the supported feature maps, and static head decay.
+    """
     spec = plan.spec
     if not _native_matrix_state_supported(spec):
         raise RuntimeError(
-            "the native matrix-state anchor implements only the plain K2 "
-            "matrix-state recurrence (delta/additive update, head/key-channel "
-            "decay, identity feature map, no normalizer, pointwise transition)"
+            "the native matrix-state anchor implements only the canonical K2 "
+            "matrix-state recurrences (delta/additive update, head/key-channel "
+            "decay, the covered feature maps and normalizer, pointwise and "
+            "generalized-delta factored transitions, dual-gate/dual-key/"
+            "multi-rank variants, and static head decay)"
         )
     query = operands.pop("query")
     key = operands.pop("key")
@@ -7460,19 +7851,33 @@ def _execute_native_matrix_state_recurrence(
     initial_state = operands.pop("initial_state", None)
     beta = operands.pop("beta", None)
     log_decay = operands.pop("log_decay", None)
+    erase_gate = operands.pop("erase_gate", None)
+    write_gate = operands.pop("write_gate", None)
+    # comba names its prediction key "p" and its (head) log decay "g".
+    prediction_key = operands.pop("prediction_key", operands.pop("p", None))
+    if spec.comba_rule and log_decay is None:
+        log_decay = operands.pop("g", None)
+    # generalized-delta factored transitions.
+    transition_alpha = operands.pop("transition_alpha", None)
+    transition_beta = operands.pop("transition_beta", None)
+    # gated-delta-product multi-rank updates.
+    update_keys = operands.pop("update_keys", None)
+    update_values = operands.pop("update_values", None)
     if operands:
         raise TypeError(
             "unexpected native matrix-state operands: "
             + ", ".join(sorted(operands))
         )
-    if query.ndim != 4 or key.ndim != 4 or value.ndim != 4:
-        raise ValueError("native matrix-state query/key/value use BTHD rank-4 layout")
-    if key.shape != query.shape:
-        raise ValueError("native matrix-state query and key must have identical shapes")
-    batch, sequence, heads, key_dim = query.shape
-    if value.shape[:3] != (batch, sequence, heads):
-        raise ValueError("native matrix-state value must use [B,T,H,V] matching query")
-    if spec.update_rule is StateUpdateRule.DELTA and beta is None:
+    if spec.gdn2_ssm and (erase_gate is None or write_gate is None):
+        raise ValueError("gdn2 dual-gate delta requires erase_gate and write_gate")
+    if spec.comba_rule and prediction_key is None:
+        raise ValueError("comba dual-key delta requires prediction_key (p)")
+    if (
+        spec.update_rule is StateUpdateRule.DELTA
+        and beta is None
+        and not spec.gdn2_ssm
+        and not spec.gated_delta_product
+    ):
         raise ValueError("the delta update rule requires beta")
     if spec.decay is not DecayGranularity.NONE and log_decay is None:
         raise ValueError("this matrix-state recurrence requires log_decay")
@@ -7489,27 +7894,86 @@ def _execute_native_matrix_state_recurrence(
         raise RuntimeError(
             f"UrmCompiler selected {bound_anchor!r} for the native matrix-state plan"
         )
-    # Match the reference oracle's read-scale convention for the plain
-    # matrix-state recurrence: read_scale, else attention_scale, else 1.0. (FLA
-    # defaults to key_dim**-0.5, but the URM reference for the plain delta/additive
-    # recurrence defaults to 1.0; the qualification runner aligns conventions.)
+    if query.ndim != 4 or key.ndim != 4 or value.ndim != 4:
+        raise ValueError("native matrix-state query/key/value use BTHD rank-4 layout")
+    if key.shape != query.shape:
+        raise ValueError("native matrix-state query and key must have identical shapes")
+    batch, sequence, heads, key_dim = query.shape
+    if value.shape[:3] != (batch, sequence, heads):
+        raise ValueError("native matrix-state value must use [B,T,H,V] matching query")
+    # Match the canonical oracle's read-scale convention: read_scale wins, then
+    # the dual-gate (gdn2), kda, comba, generalized-delta, and gated-delta-product
+    # forms default to key_dim**-0.5, then attention_scale, else 1.0.
     if spec.read_scale is not None:
         scale = spec.read_scale
+    elif (
+        spec.gdn2_ssm or spec.kda_delta or spec.comba_rule
+        or spec.generalized_delta_iplr or spec.generalized_delta_dplr
+        or spec.gated_delta_product
+    ):
+        scale = key_dim ** -0.5
     elif spec.attention_scale is not None:
         scale = spec.attention_scale
     else:
         scale = 1.0
-    # Apply the feature map to query/key (identity is a no-op; L2-normalize maps
-    # each vector to unit norm). This matches the reference oracle's _feature.
-    if spec.feature_map is not FeatureMap.IDENTITY:
-        query = _feature(torch, query, spec.feature_map)
-        key = _feature(torch, key, spec.feature_map)
+    # Feature construction: the polynomial bases pre-expand the feature dimension
+    # (the scale folds into the expansion); otherwise the kernel applies the
+    # feature map on load.
+    kernel_feature_map = "identity"
+    if spec.polynomial_basis is not PolynomialBasis.NONE:
+        poly_scale = spec.read_scale or key_dim ** -0.5
+        query = _polynomial_features_torch(
+            torch, query, spec.polynomial_basis, poly_scale, is_query=True
+        )
+        key = _polynomial_features_torch(
+            torch, key, spec.polynomial_basis, poly_scale, is_query=False
+        )
+        scale = 1.0  # the scale is folded into the polynomial features
+    elif spec.feature_map is not FeatureMap.IDENTITY:
+        kernel_feature_map = spec.feature_map.value
+    # Static head decay is a time-constant head schedule ([H] or [1]); expand it
+    # to the kernel's [B,T,H] head-decay layout.
+    if spec.static_head_decay and log_decay is not None:
+        static = log_decay.reshape(-1)
+        head_decay = (
+            static[:heads]
+            if static.numel() > 1
+            else static.expand(heads)
+        )
+        log_decay = (
+            head_decay.view(1, 1, heads)
+            .expand(batch, sequence, heads)
+            .contiguous()
+        )
+    # The generalized-delta factored transitions: left_t = I + beta_t⊗alpha_t
+    # (IPLR) or diag(exp(log_decay)) + beta_t⊗alpha_t (DPLR).
+    left_transitions = None
+    if spec.generalized_delta_iplr or spec.generalized_delta_dplr:
+        eye = torch.eye(key_dim, device=query.device, dtype=torch.float32)
+        rank_one = torch.einsum(
+            "bthk,bthl->bthkl", transition_beta.float(), transition_alpha.float()
+        )
+        if spec.generalized_delta_dplr:
+            left_transitions = torch.diag_embed(log_decay.float().exp()) + rank_one
+        else:
+            left_transitions = eye.view(1, 1, 1, key_dim, key_dim) + rank_one
+        left_transitions = left_transitions.contiguous()
+        # The factored transition replaces pointwise decay.
+        log_decay = None
     # The kernel holds the state as [B,H,K,V]; state_v_first recipes expose it as
     # [B,H,V,K], so transpose at the boundary (matching the reference oracle).
     kernel_initial = initial_state
     if initial_state is not None and spec.state_v_first:
         kernel_initial = initial_state.transpose(-1, -2).contiguous()
-    output, final_state = execute_matrix_state_recurrence(
+    # The kernel's is_delta flag selects the plain delta correction; the
+    # dual-gate (gdn2) and multi-rank (gated_delta_product) forms are exclusive
+    # of it (the canonical core dispatches them before the plain delta rule).
+    kernel_is_delta = (
+        spec.update_rule is StateUpdateRule.DELTA
+        and not spec.gdn2_ssm
+        and not spec.gated_delta_product
+    )
+    result = execute_matrix_state_recurrence(
         query=query,
         key=key,
         value=value,
@@ -7518,14 +7982,30 @@ def _execute_native_matrix_state_recurrence(
         initial_state=kernel_initial,
         scale=scale,
         decay_granularity=spec.decay.value,
-        is_delta=spec.update_rule is StateUpdateRule.DELTA,
+        is_delta=kernel_is_delta,
         read_before=spec.read_timing is ReadTiming.BEFORE_UPDATE,
+        retrieval_keys=prediction_key,
+        erase_gate=erase_gate,
+        write_gate=write_gate,
+        left_transitions=left_transitions,
+        update_keys=update_keys,
+        update_values=update_values,
+        rank_beta=beta if spec.gated_delta_product else None,
+        feature_map=kernel_feature_map,
+        normalizer=spec.normalizer is StateNormalizer.QUERY_KEY,
+        epsilon=spec.epsilon,
     )
+    if spec.normalizer is StateNormalizer.QUERY_KEY:
+        output, final_state, final_normalizer = result
+    else:
+        output, final_state = result
+        final_normalizer = None
     if spec.state_v_first:
         final_state = final_state.transpose(-1, -2).contiguous()
     return MixerResult(
         output,
         final_state=final_state,
+        final_normalizer_state=final_normalizer,
         metadata={
             "anchor": NATIVE_MATRIX_STATE_RECURRENCE_ANCHOR_NAME,
             "execution": "urm_native_triton",
@@ -7535,6 +8015,416 @@ def _execute_native_matrix_state_recurrence(
             "runtime_binding_cache_size": _compile_native_matrix_state_binding.cache_info().currsize,
         },
     )
+
+
+def _polynomial_features_torch(
+    torch: Any, x: Any, basis: PolynomialBasis, scale: float, *, is_query: bool
+):
+    """Quadratic feature expansion for the based/rebased polynomial bases.
+
+    The query is scaled by ``scale``; the key is left unscaled (matching the
+    canonical ``_polynomial_features``).
+    """
+    z = x.float() * scale if is_query else x.float()
+    quad = z.unsqueeze(-1) * z.unsqueeze(-2)  # [..., K, K]
+    if basis is PolynomialBasis.BASED_TAYLOR2:
+        return torch.cat(
+            [
+                torch.ones_like(z[..., :1]),
+                z,
+                quad.reshape(*z.shape[:-1], -1) / (2.0 ** 0.5),
+            ],
+            dim=-1,
+        ).contiguous()
+    if basis is PolynomialBasis.REBASED_SQUARE:
+        return quad.reshape(*z.shape[:-1], -1).contiguous()
+    raise ValueError(f"polynomial basis {basis} not supported natively")
+
+
+# ----------------------------------------------------------------------
+# Native executors for the distinguished K2 recurrence operators.
+#
+# Each wrapper pops the recipe's operands (the ``_rng_operands``/canonical
+# ``_execute_k2_operator`` names), calls the validated native kernel, and packs
+# the result into a ``MixerResult`` with the same final-state convention as the
+# canonical executor.
+# ----------------------------------------------------------------------
+
+
+def _native_k2_result(plan: CompiledMixerPlan, output, final_state, execution: str):
+    return MixerResult(
+        output,
+        final_state=final_state,
+        metadata={
+            "anchor": plan.anchor,
+            "execution": execution,
+            "backward_supported": False,
+        },
+    )
+
+
+def _execute_native_tanh_rnn(plan, torch, **operands):
+    """XMA tanh RNN: ``h_t = tanh(h_{t-1} @ W + x_t)``; output is the state."""
+    query = operands.pop("query")
+    weight = operands.pop("weight")
+    initial_state = operands.pop("initial_state")
+    if operands:
+        raise TypeError(f"unexpected native tanh_rnn operands: {sorted(operands)}")
+    from urm.backends.triton.recurrence.nonlinear import execute_tanh_rnn
+
+    output, final = execute_tanh_rnn(
+        query=query, weight=weight, initial_state=initial_state
+    )
+    return _native_k2_result(plan, output, final, "urm_native_tanh_rnn")
+
+
+def _execute_native_gated_rnn(plan, torch, **operands):
+    """XMA GRU: reset/update-gated nonlinear state update."""
+    query = operands.pop("query")
+    weight = operands.pop("weight")
+    forget_input = operands.pop("forget_input")
+    forget_weight = operands.pop("forget_weight")
+    reset_input = operands.pop("reset_input")
+    reset_weight = operands.pop("reset_weight")
+    initial_state = operands.pop("initial_state")
+    if operands:
+        raise TypeError(f"unexpected native gated_rnn operands: {sorted(operands)}")
+    from urm.backends.triton.recurrence.nonlinear import execute_gated_rnn
+
+    output, final = execute_gated_rnn(
+        query=query, weight=weight, forget_input=forget_input,
+        forget_weight=forget_weight, reset_input=reset_input,
+        reset_weight=reset_weight, initial_state=initial_state,
+    )
+    return _native_k2_result(plan, output, final, "urm_native_gated_rnn")
+
+
+def _execute_native_multiplicative_rnn(plan, torch, **operands):
+    """XMA second-order multiplicative RNN (matrix memory)."""
+    query = operands.pop("query")
+    key = operands.pop("key")
+    value = operands.pop("value")
+    weight = operands.pop("weight")
+    forget_input = operands.pop("forget_input")
+    initial_state = operands.pop("initial_state")
+    if operands:
+        raise TypeError(
+            f"unexpected native multiplicative_rnn operands: {sorted(operands)}"
+        )
+    from urm.backends.triton.recurrence.nonlinear import execute_multiplicative_rnn
+
+    output, final = execute_multiplicative_rnn(
+        query=query, key=key, value=value, weight=weight,
+        forget_input=forget_input, initial_state=initial_state,
+    )
+    return _native_k2_result(plan, output, final, "urm_native_multiplicative_rnn")
+
+
+def _execute_native_rwkv4_scalar_state(plan, torch, **operands):
+    """RWKV-4 time-mix with a stable three-scalar-per-channel state."""
+    w = operands.pop("w")
+    u = operands.pop("u")
+    key = operands.pop("k")
+    value = operands.pop("v")
+    state = operands.pop("state")
+    if operands:
+        raise TypeError(f"unexpected native rwkv4 operands: {sorted(operands)}")
+    from urm.backends.triton.recurrence.nonlinear import execute_rwkv4_scalar_state
+
+    output, final = execute_rwkv4_scalar_state(
+        w=w, u=u, key=key, value=value, state_input=state
+    )
+    return _native_k2_result(plan, output, final, "urm_native_rwkv4_scalar_state")
+
+
+def _execute_native_rwkv6_bonus_corrected(plan, torch, **operands):
+    """RWKV-6 key-channel-decayed matrix memory with a static bonus read."""
+    query = operands.pop("query")
+    key = operands.pop("key")
+    value = operands.pop("value")
+    log_decay = operands.pop("log_decay")
+    bonus = operands.pop("bonus")
+    initial_state = operands.pop("initial_state", None)
+    if operands:
+        raise TypeError(f"unexpected native rwkv6 operands: {sorted(operands)}")
+    from urm.backends.triton.recurrence.nonlinear import execute_rwkv6_bonus_corrected
+
+    output, final = execute_rwkv6_bonus_corrected(
+        query=query, key=key, value=value, log_decay=log_decay, bonus=bonus,
+        initial_state=initial_state,
+    )
+    return _native_k2_result(plan, output, final, "urm_native_rwkv6_bonus_corrected")
+
+
+def _execute_native_mamba2_structured_ssm(plan, torch, **operands):
+    """Mamba-2 SSD structured SSM with continuous-time head decay."""
+    x = operands.pop("x")
+    dt = operands.pop("dt")
+    a = operands.pop("A")
+    b = operands.pop("B")
+    c = operands.pop("C")
+    initial_states = operands.pop("initial_states", None)
+    if operands:
+        raise TypeError(f"unexpected native mamba2 operands: {sorted(operands)}")
+    from urm.backends.triton.recurrence.nonlinear import execute_mamba2_structured_ssm
+
+    output, final = execute_mamba2_structured_ssm(
+        x=x, dt=dt, A=a, B=b, C=c, initial_states=initial_states
+    )
+    return _native_k2_result(plan, output, final, "urm_native_mamba2_structured_ssm")
+
+
+def _execute_native_trapezoidal_ssm(plan, torch, **operands):
+    """Mamba-3 SISO rotary angle accumulator with trapezoidal four-state SSM."""
+    query = operands.pop("query")
+    key = operands.pop("key")
+    value = operands.pop("value")
+    adt = operands.pop("adt")
+    dt = operands.pop("dt")
+    trap = operands.pop("trap")
+    query_bias = operands.pop("query_bias")
+    key_bias = operands.pop("key_bias")
+    angles = operands.pop("angles")
+    if operands:
+        raise TypeError(
+            f"unexpected native trapezoidal_ssm operands: {sorted(operands)}"
+        )
+    from urm.backends.triton.recurrence.nonlinear import execute_trapezoidal_ssm
+
+    output, final = execute_trapezoidal_ssm(
+        query=query, key=key, value=value, adt=adt, dt=dt, trap=trap,
+        query_bias=query_bias, key_bias=key_bias, angles=angles,
+    )
+    return _native_k2_result(plan, output, final, "urm_native_trapezoidal_ssm")
+
+
+def _execute_native_fft_convolution(plan, torch, **operands):
+    """Hyena single implicit-filter causal FFT convolution (torch-native FFT)."""
+    query = operands.pop("query")
+    kernel = operands.pop("kernel")
+    direct = operands.pop("direct")
+    if operands:
+        raise TypeError(
+            f"unexpected native fft_convolution operands: {sorted(operands)}"
+        )
+    from urm.backends.triton.recurrence.inner_state import execute_fft_convolution
+
+    output, _ = execute_fft_convolution(query=query, kernel=kernel, direct=direct)
+    return _native_k2_result(plan, output, None, "urm_native_fft_convolution")
+
+
+def _execute_native_two_stage_fft_convolution(plan, torch, **operands):
+    """H3 two-stage causal FFT convolution (torch-native FFT)."""
+    query = operands.pop("query")
+    key = operands.pop("key")
+    value = operands.pop("value")
+    ssm_kernel = operands.pop("ssm_kernel")
+    ssm_k_kernel = operands.pop("ssm_k_kernel")
+    ssm_k_direct = operands.pop("ssm_k_direct")
+    skip = operands.pop("skip")
+    if operands:
+        raise TypeError(
+            f"unexpected native two_stage_fft_convolution operands: {sorted(operands)}"
+        )
+    from urm.backends.triton.recurrence.inner_state import (
+        execute_two_stage_fft_convolution,
+    )
+
+    output, _ = execute_two_stage_fft_convolution(
+        query=query, key=key, value=value, ssm_kernel=ssm_kernel,
+        ssm_k_kernel=ssm_k_kernel, ssm_k_direct=ssm_k_direct, skip=skip,
+    )
+    return _native_k2_result(plan, output, None, "urm_native_two_stage_fft_convolution")
+
+
+def _execute_native_second_order_cumsum(plan, torch, **operands):
+    """HLA masked second-order causal attention with exact streaming summaries."""
+    query = operands.pop("query")
+    key = operands.pop("key")
+    value = operands.pop("value")
+    if operands:
+        raise TypeError(
+            f"unexpected native second_order_cumsum operands: {sorted(operands)}"
+        )
+    from urm.backends.triton.recurrence.inner_state import execute_second_order_cumsum
+
+    output, _ = execute_second_order_cumsum(query=query, key=key, value=value)
+    return _native_k2_result(plan, output, None, "urm_native_second_order_cumsum")
+
+
+def _execute_native_regularized_solve(plan, torch, **operands):
+    """MesaNet dual covariance-state recurrence with a regularized per-token solve."""
+    query = operands.pop("query")
+    key = operands.pop("key")
+    value = operands.pop("value")
+    log_decay = operands.pop("log_decay")
+    beta = operands.pop("beta")
+    lamb = operands.pop("lamb")
+    if operands:
+        raise TypeError(
+            f"unexpected native regularized_solve operands: {sorted(operands)}"
+        )
+    from urm.backends.triton.recurrence.inner_state import execute_regularized_solve
+
+    output, final = execute_regularized_solve(
+        query=query, key=key, value=value, log_decay=log_decay, beta=beta, lamb=lamb
+    )
+    return _native_k2_result(plan, output, final, "urm_native_regularized_solve")
+
+
+def _execute_native_layernorm_inner_state(plan, torch, **operands):
+    """TTT-Linear chunkwise inner-loss update with matrix and bias memory states."""
+    query = operands.pop("query")
+    key = operands.pop("key")
+    value = operands.pop("value")
+    w = operands.pop("w")
+    b = operands.pop("b")
+    eta = operands.pop("eta")
+    initial_state = operands.pop("initial_state", None)
+    initial_state_bias = operands.pop("initial_state_bias", None)
+    chunk_size = int(operands.pop("chunk_size", 16))
+    eps = float(operands.pop("eps", 1e-6))
+    if operands:
+        raise TypeError(
+            f"unexpected native layernorm_inner_state operands: {sorted(operands)}"
+        )
+    from urm.backends.triton.recurrence.inner_state import (
+        execute_layernorm_inner_state,
+    )
+
+    output, final = execute_layernorm_inner_state(
+        query=query, key=key, value=value, w=w, b=b, eta=eta,
+        initial_state=initial_state, initial_state_bias=initial_state_bias,
+        chunk_size=chunk_size, eps=eps,
+    )
+    return _native_k2_result(plan, output, final, "urm_native_layernorm_inner_state")
+
+
+def _execute_native_momentum_inner_state(plan, torch, **operands):
+    """Titans tokenwise memory with momentum and a learned inner loss."""
+    query = operands.pop("query")
+    key = operands.pop("key")
+    value = operands.pop("value")
+    w = operands.pop("w")
+    b = operands.pop("b")
+    theta = operands.pop("theta")
+    alpha = operands.pop("alpha")
+    eta = operands.pop("eta")
+    initial_state = operands.pop("initial_state", None)
+    chunk_size = int(operands.pop("chunk_size", 16))
+    eps = float(operands.pop("eps", 1e-6))
+    if operands:
+        raise TypeError(
+            f"unexpected native momentum_inner_state operands: {sorted(operands)}"
+        )
+    from urm.backends.triton.recurrence.inner_state import (
+        execute_momentum_inner_state,
+    )
+
+    output, final = execute_momentum_inner_state(
+        query=query, key=key, value=value, w=w, b=b, theta=theta, alpha=alpha,
+        eta=eta, initial_state=initial_state, chunk_size=chunk_size, eps=eps,
+    )
+    return _native_k2_result(plan, output, final, "urm_native_momentum_inner_state")
+
+
+def _execute_native_momentum_delta(plan, torch, **operands):
+    """Momentum DeltaNet with coupled fast-weight and momentum matrix states."""
+    spec = plan.spec
+    query = operands.pop("query")
+    key = operands.pop("key")
+    value = operands.pop("value")
+    p = operands.pop("p")
+    log_alpha = operands.pop("log_alpha")
+    log_mu = operands.pop("log_mu")
+    beta = operands.pop("beta")
+    eta = operands.pop("eta")
+    initial_state = operands.pop("initial_state", None)
+    initial_momentum = operands.pop("initial_normalizer_state", None)
+    if operands:
+        raise TypeError(
+            f"unexpected native momentum_delta operands: {sorted(operands)}"
+        )
+    from urm.backends.triton.recurrence.inner_state import execute_momentum_delta
+
+    output, final = execute_momentum_delta(
+        query=query, key=key, value=value, p=p, log_alpha=log_alpha, log_mu=log_mu,
+        beta=beta, eta=eta, initial_state=initial_state,
+        initial_momentum=initial_momentum, scale=spec.read_scale,
+    )
+    return _native_k2_result(plan, output, final, "urm_native_momentum_delta")
+
+
+def _execute_native_gated_oja(plan, torch, **operands):
+    """Gated Oja value-channel recurrence with key residual correction."""
+    spec = plan.spec
+    query = operands.pop("query")
+    key = operands.pop("key")
+    value = operands.pop("value")
+    gate = operands.pop("gv")
+    beta = operands.pop("beta")
+    initial_state = operands.pop("initial_state", None)
+    if operands:
+        raise TypeError(f"unexpected native gated_oja operands: {sorted(operands)}")
+    from urm.backends.triton.recurrence.inner_state import execute_gated_oja
+
+    output, final = execute_gated_oja(
+        query=query, key=key, value=value, gate=gate, beta=beta,
+        initial_state=initial_state, scale=spec.read_scale,
+    )
+    return _native_k2_result(plan, output, final, "urm_native_gated_oja")
+
+
+def _execute_native_slot_attention_two_stage(plan, torch, **operands):
+    """ABC/GSA two-stage slot-addressed recurrence."""
+    spec = plan.spec
+    query = operands.pop("query")
+    key = operands.pop("key")
+    value = operands.pop("value")
+    if spec.name == "abc_core":
+        # ABC derives slot_weights and log_decay from slot_logits via a
+        # cumulative log-sum-exp over time (the composition derivation).
+        slot_logits = operands.pop("slot_logits").float()
+        cumulative = torch.logcumsumexp(slot_logits, dim=1)
+        log_decay = torch.cat((cumulative[:, :1], cumulative[:, :-1]), dim=1) - cumulative
+        slot_weights = torch.exp(slot_logits - cumulative)
+    else:
+        slot_weights = operands.pop("slot_weights")
+        log_decay = operands.pop("log_decay")
+    if operands:
+        raise TypeError(
+            f"unexpected native slot_attention operands: {sorted(operands)}"
+        )
+    from urm.backends.triton.recurrence.inner_state import (
+        execute_slot_attention_two_stage,
+    )
+
+    group_size = query.shape[2] // key.shape[2]
+    output, final = execute_slot_attention_two_stage(
+        query=query, key=key, value=value, slot_weights=slot_weights,
+        log_decay=log_decay, group_size=group_size,
+    )
+    return _native_k2_result(plan, output, final, "urm_native_slot_attention_two_stage")
+
+
+_NATIVE_K2_OPERATOR_EXECUTORS = {
+    RecurrenceOperator.TANH_RNN: _execute_native_tanh_rnn,
+    RecurrenceOperator.GATED_RNN: _execute_native_gated_rnn,
+    RecurrenceOperator.MULTIPLICATIVE_RNN: _execute_native_multiplicative_rnn,
+    RecurrenceOperator.RWKV4_SCALAR_STATE: _execute_native_rwkv4_scalar_state,
+    RecurrenceOperator.RWKV6_BONUS_CORRECTED: _execute_native_rwkv6_bonus_corrected,
+    RecurrenceOperator.MAMBA2_STRUCTURED_SSM: _execute_native_mamba2_structured_ssm,
+    RecurrenceOperator.TRAPEZOIDAL_SSM: _execute_native_trapezoidal_ssm,
+    RecurrenceOperator.FFT_CONVOLUTION: _execute_native_fft_convolution,
+    RecurrenceOperator.TWO_STAGE_FFT_CONVOLUTION: _execute_native_two_stage_fft_convolution,
+    RecurrenceOperator.SECOND_ORDER_CUMSUM: _execute_native_second_order_cumsum,
+    RecurrenceOperator.REGULARIZED_SOLVE: _execute_native_regularized_solve,
+    RecurrenceOperator.LAYERNORM_INNER_STATE: _execute_native_layernorm_inner_state,
+    RecurrenceOperator.MOMENTUM_INNER_STATE: _execute_native_momentum_inner_state,
+    RecurrenceOperator.MOMENTUM_DELTA_STATE: _execute_native_momentum_delta,
+    RecurrenceOperator.GATED_OJA_VALUE_CHANNEL: _execute_native_gated_oja,
+    RecurrenceOperator.SLOT_ATTENTION_TWO_STAGE: _execute_native_slot_attention_two_stage,
+}
 
 
 @lru_cache(maxsize=128)

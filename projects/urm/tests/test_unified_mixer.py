@@ -56,8 +56,10 @@ def test_backend_selection_is_explicit_and_family_checked():
     native_sparse = compile_mixer(sparse_delta_spec(), backend="native")
     assert attention.to_dict()["backend"] == "library"
     assert native_sparse.to_dict()["implementation"] == "urm_native_anchor"
-    with pytest.raises(ValueError, match="K3 sparse delta"):
-        compile_mixer(linear_attention_spec(), backend="native")
+    # The normalized additive linear-attention form is natively covered (the
+    # query/key denominator normalizer lowers to the matrix-state kernel).
+    native_linear = compile_mixer(linear_attention_spec(), backend="native")
+    assert native_linear.to_dict()["implementation"] == "urm_native_anchor"
     fla_linear = compile_mixer(
         linear_attention_spec(), backend="library", dtype="bfloat16"
     )
@@ -426,6 +428,29 @@ def test_representation_coverage_claims_match_compiler():
                 )
 
 
+# The distinguished K2 recurrence operators (abc/gsa slot attention, the XMA
+# nonlinear RNNs, the H3/Hyena/HLA convolutions, MesaNet, Mamba-3, RWKV-7, TTT,
+# and Titans) now lower into reusable semantic operations with validated native
+# kernels, so the native backend accepts them; only the genuinely external
+# opaque equation (BDH) still declines.
+_NATIVE_ACCEPTED_NAME_DEPENDENT = frozenset(
+    {
+        "abc_core",
+        "gru_core",
+        "h3_ssm_fft_core",
+        "hla_second_order_core",
+        "hyena_fftconv_core",
+        "m2rnn_core",
+        "mamba3_siso_core",
+        "mesa_net_core",
+        "rnn_core",
+        "rwkv7_transition_core",
+        "titans_linear_memory_core",
+        "ttt_linear_core",
+    }
+)
+
+
 @pytest.mark.parametrize("recipe_name", sorted(_NAME_DEPENDENT_RECIPES_UNFINISHED))
 def test_native_backend_declines_name_dependent_recipes(recipe_name):
     """The native production path must never silently name-dispatch.
@@ -434,8 +459,15 @@ def test_native_backend_declines_name_dependent_recipes(recipe_name):
     is legitimate for the LIBRARY/REFERENCE comparison boundary but must not
     reach the native generator. Until their equations are lowered into reusable
     semantic operations, the native backend must decline them explicitly rather
-    than substitute an equation selected by name.
+    than substitute an equation selected by name. The distinguished recurrence
+    operators now lowered into native kernels are enumerated in
+    ``_NATIVE_ACCEPTED_NAME_DEPENDENT`` and excluded here.
     """
+    if recipe_name in _NATIVE_ACCEPTED_NAME_DEPENDENT:
+        pytest.skip(
+            f"{recipe_name} now lowers into a validated native kernel; "
+            "see _NATIVE_ACCEPTED_NAME_DEPENDENT"
+        )
     spec = named_mixer_recipe(recipe_name).spec
     for dtype in ("float32", "bfloat16"):
         with pytest.raises(Exception):
@@ -4891,13 +4923,14 @@ def test_native_matrix_state_dispatch_matches_reference(recipe_name):
 
 @pytest.mark.parametrize("recipe_name", NAME_DEPENDENT_MATRIX_STATE_RECIPES)
 def test_native_matrix_state_declines_underdetermined_recipes(recipe_name):
-    """The native generator declines recipes whose equation the IR under-specifies.
+    """The native matrix-state anchor declines the under-specified plain form.
 
     These additive/no-decay recipes share semantic fields with a plain additive
     recurrence but compute different equations (GRU nonlinearity, FFT long
-    convolution, second-order correction, and similar). Dispatching them on the
-    spec alone would silently substitute the wrong equation, so the native path
-    must decline until the IR carries those equations explicitly.
+    convolution, second-order correction, and similar). The ``recurrence_operator``
+    IR field now distinguishes them: the native matrix-state gate still declines
+    their *plain* matrix-state form, and the distinguished operators route to
+    their own validated native kernels (so the native backend accepts them).
     """
     torch = _torch()
     pytest.importorskip("triton")
@@ -4909,8 +4942,21 @@ def test_native_matrix_state_declines_underdetermined_recipes(recipe_name):
 
     spec = named_mixer_recipe(recipe_name).spec
     assert not _native_matrix_state_supported(spec), recipe_name
-    with pytest.raises(ValueError):
-        compile_mixer(spec, backend=MixerBackend.NATIVE, intent="training", dtype="float32")
+    if spec.recurrence_operator in _native_k2_operators():
+        # The distinguished operator routes to its own native kernel.
+        plan = compile_mixer(
+            spec, backend=MixerBackend.NATIVE, intent="training", dtype="float32"
+        )
+        assert plan.anchor is not None
+    else:
+        with pytest.raises(ValueError):
+            compile_mixer(spec, backend=MixerBackend.NATIVE, intent="training", dtype="float32")
+
+
+def _native_k2_operators():
+    from urm.compiler.unified_mixer import _NATIVE_K2_OPERATORS
+
+    return _NATIVE_K2_OPERATORS
 
 
 def test_held_out_differential_attention_composes_natively():

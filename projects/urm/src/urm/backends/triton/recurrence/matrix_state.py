@@ -3,27 +3,41 @@
 This is the native generator for the K2 matrix-state class - the single largest
 recurrence group in the catalog. One reusable kernel covers the whole class; the
 compiler selects the decay granularity, update rule, and read timing from the
-semantic spec, never from an architecture name. The equation per token is the
-``urm/ir/recurrence.py`` contract::
+semantic spec, never from an architecture name. The equation per token mirrors
+the NumPy canonical core :func:`urm.oracles.matrix_state.recurrent`::
 
-    Z_t    = decay(G_t) * M_{t-1}         (decay broadcast by granularity)
-    h_t    = k_t^T Z_t                     (retrieved; delta rule only)
-    delta_t = beta_t * (v_t - c * h_t)     (c=1 delta, c=0 additive)
+    Z_t    = decay(G_t) * M_{t-1}        (or Z_t = left_t @ M_{t-1}, factored)
+    h_t    = retr_t^T Z_t                (retrieval; delta rule only)
+    delta_t = beta_t * (v_t - h_t)       (delta rule)
+            | write_gate*v_t - (erase_gate*k_t)^T Z_t   (dual-gate)
+            | v_t                                       (additive)
     M_t    = Z_t + k_t delta_t^T
-    y_t    = scale * q_t^T M_t             (read before or after the update)
+    y_t    = scale * q_t^T M_t           (read before or after the update)
+            [/ max(q_t^T z_t, epsilon)   (query/key normalizer)]
 
-Decay granularity (how ``exp(log_decay)`` broadcasts over the ``[K, V]`` state):
+The canonical-core options covered here, all in fp32 accumulation:
 
-- ``none``:          no decay.
-- ``head``:          one scalar per head, broadcast over ``[K, V]``.
-- ``key_channel``:   one per key channel, broadcast over ``V``.
-- ``value_channel``: one per value channel, broadcast over ``K``.
+- decay granularity ``none`` / ``head`` / ``key_channel`` / ``value_channel``
+  (how ``exp(log_decay)`` broadcasts over the ``[K, V]`` state), or a factored
+  left transition ``Z = left_t @ M`` (generalized-delta IPLR/DPLR).
+- delta / additive / dual-gate (``erase_gate``/``write_gate``) update rules, and
+  a separate retrieval key (``retrieval_keys``, the comba dual-key delta).
+- multi-rank updates: ``R`` sequential rank-1 delta updates within one token
+  (``update_keys``/``update_values``/``rank_beta``, gated_delta_product).
+- a query/key denominator normalizer (linear-attention form) tracked as a second
+  state and read as ``y = scale*(q^T M)/max(q^T z, epsilon)``.
+- feature maps (identity / l2_normalize / relu / elu_plus_one) applied to the
+  query/key on load. The polynomial quadratic feature bases expand the feature
+  dimension; the caller pre-expands the operands (matching the canonical core),
+  so the kernel sees the expanded width and needs no polynomial mode.
 
 The state ``M`` is a per-head ``[K, V]`` matrix held in fp32. One program owns
 one ``(batch, head)`` pair and scans the sequence, so the recurrence is exact
 (no chunked approximation). Forward stores the per-token states so the backward
-pass runs an exact reverse scan. This covers the delta and additive matrix-state
-recurrences (gated-delta, GLA, DeltaNet, and the broader class) natively.
+pass runs an exact reverse scan. The reverse (adjoint) scan is implemented for
+the plain delta/additive path; the dual-gate, retrieval-key, normalizer,
+multi-rank, left-transition, and non-identity-feature-map configurations are
+forward-only (their backward raises ``NotImplementedError``).
 """
 
 from __future__ import annotations
@@ -37,11 +51,37 @@ _DECAY_HEAD = 1
 _DECAY_KEY_CHANNEL = 2
 _DECAY_VALUE_CHANNEL = 3
 
+# Feature map encodings passed to the kernel as constexpr.
+_FEATURE_IDENTITY = 0
+_FEATURE_L2_NORMALIZE = 1
+_FEATURE_RELU = 2
+_FEATURE_ELU_PLUS_ONE = 3
+
+_FEATURE_MAPS = {
+    "identity": _FEATURE_IDENTITY,
+    "l2_normalize": _FEATURE_L2_NORMALIZE,
+    "relu": _FEATURE_RELU,
+    "elu_plus_one": _FEATURE_ELU_PLUS_ONE,
+}
+
 
 @lru_cache(maxsize=1)
 def _kernels():
     import triton
     import triton.language as tl
+    from triton.language.extra.cuda import libdevice
+
+    @triton.jit
+    def _apply_feature_map(x, FEATURE_MAP: tl.constexpr):
+        """Feature map applied to a [BLOCK_K] vector on load (fp32)."""
+        if FEATURE_MAP == 1:  # l2_normalize: x * rsqrt(sum(x^2) + 1e-6)
+            return x * tl.rsqrt(tl.sum(x * x, axis=0) + 1e-6)
+        elif FEATURE_MAP == 2:  # relu
+            return tl.maximum(x, 0.0)
+        elif FEATURE_MAP == 3:  # elu_plus_one: where(x > 0, x, expm1(x)) + 1
+            return tl.where(x > 0, x, libdevice.expm1(x)) + 1.0
+        else:  # identity
+            return x
 
     @triton.jit
     def forward_kernel(
@@ -50,19 +90,34 @@ def _kernels():
         V,
         G,  # log_decay: [B,T,H] (head), [B,T,H,K] (key_channel), [B,T,H,V] (value_channel)
         BETA,  # [B,T,H] or None
+        RETR,  # retrieval_keys [B,T,H,K] or None
+        ERASE,  # erase_gate [B,T,H,K] or None
+        WRITE,  # write_gate [B,T,H,V] or None
+        LEFT,  # left_transitions [B,T,H,K,K] or None
+        UK,  # update_keys [B,T,R,H,K] or None
+        UV,  # update_values [B,T,R,H,V] or None
+        RB,  # rank_beta [B,T,R,H] or None
         INITIAL,
         OUTPUT,
         STATES,
         FINAL,
+        FINAL_NORM,
         H: tl.constexpr,
         T: tl.constexpr,
         K_DIM: tl.constexpr,
         V_DIM: tl.constexpr,
+        RANK: tl.constexpr,
         SCALE: tl.constexpr,
+        EPSILON: tl.constexpr,
         DECAY: tl.constexpr,
         IS_DELTA: tl.constexpr,
         READ_BEFORE: tl.constexpr,
         HAS_INITIAL: tl.constexpr,
+        FEATURE_MAP: tl.constexpr,
+        DUAL_GATE: tl.constexpr,
+        HAS_RETR: tl.constexpr,
+        NORMALIZER: tl.constexpr,
+        HAS_LEFT: tl.constexpr,
         BLOCK_K: tl.constexpr,
         BLOCK_V: tl.constexpr,
     ):
@@ -80,50 +135,132 @@ def _kernels():
             state = tl.load(INITIAL + state_offset, kv_mask, other=0.0).to(tl.float32)
         else:
             state = tl.zeros((BLOCK_K, BLOCK_V), dtype=tl.float32)
+        # Query/key denominator normalizer state [K], tracked alongside M.
+        norm = tl.zeros((BLOCK_K,), dtype=tl.float32)
         qk_token_base = batch * (T * H * K_DIM) + head * K_DIM
         v_token_base = batch * (T * H * V_DIM) + head * V_DIM
         gb_token_base = batch * (T * H) + head
+        left_token_base = batch * (T * H * K_DIM * K_DIM) + head * (K_DIM * K_DIM)
+        uk_token_base = batch * (T * RANK * H * K_DIM) + head * K_DIM
+        uv_token_base = batch * (T * RANK * H * V_DIM) + head * V_DIM
+        rb_token_base = batch * (T * RANK * H) + head
         for token in range(T):
             k_t = tl.load(
                 K + qk_token_base + token * (H * K_DIM) + k_index, k_mask, other=0.0
             ).to(tl.float32)
+            k_t = _apply_feature_map(k_t, FEATURE_MAP)
             v_t = tl.load(
                 V + v_token_base + token * (H * V_DIM) + v_index, v_mask, other=0.0
             ).to(tl.float32)
             q_t = tl.load(
                 Q + qk_token_base + token * (H * K_DIM) + k_index, k_mask, other=0.0
             ).to(tl.float32)
-            # Decay broadcast by granularity.
-            if DECAY == 1:  # head: scalar per head
+            q_t = _apply_feature_map(q_t, FEATURE_MAP)
+            # Transition: factored left matrix Z = left_t @ M, or diagonal decay.
+            if HAS_LEFT:
+                left_t = tl.load(
+                    LEFT
+                    + left_token_base
+                    + token * (H * K_DIM * K_DIM)
+                    + k_index[:, None] * K_DIM
+                    + k_index[None, :],
+                    k_mask[:, None] & k_mask[None, :],
+                    other=0.0,
+                ).to(tl.float32)
+                state = tl.dot(left_t, state, input_precision="ieee")
+                # The canonical core does not combine a left transition with the
+                # denominator normalizer; no normalizer decay here.
+            elif DECAY == 1:  # head: scalar per head
                 g_t = tl.load(G + gb_token_base + token * H).to(tl.float32)
                 state = tl.exp(g_t) * state
+                if NORMALIZER:
+                    norm = tl.exp(g_t) * norm
             elif DECAY == 2:  # key_channel: per-K, broadcast over V
                 g_t = tl.load(
                     G + qk_token_base + token * (H * K_DIM) + k_index, k_mask, other=0.0
                 ).to(tl.float32)
                 state = tl.exp(g_t)[:, None] * state
+                if NORMALIZER:
+                    norm = tl.exp(g_t) * norm
             elif DECAY == 3:  # value_channel: per-V, broadcast over K
                 g_t = tl.load(
                     G + v_token_base + token * (H * V_DIM) + v_index, v_mask, other=0.0
                 ).to(tl.float32)
                 state = tl.exp(g_t)[None, :] * state
+                # value_channel decay does not apply to the [K] denominator.
             # else DECAY == 0: no decay
             if READ_BEFORE:
                 output = SCALE * tl.sum(state * q_t[:, None], axis=0)
+                if NORMALIZER:
+                    denom = tl.sum(norm * q_t, axis=0)
+                    output = output / tl.maximum(denom, EPSILON)
                 tl.store(
                     OUTPUT + v_token_base + token * (H * V_DIM) + v_index,
                     output,
                     v_mask,
                 )
-            if IS_DELTA:
+            if RANK > 0:
+                # Multi-rank delta: R sequential rank-1 delta updates within the token.
+                for r in tl.static_range(RANK):
+                    uk_r = tl.load(
+                        UK + uk_token_base + token * (RANK * H * K_DIM)
+                        + r * (H * K_DIM) + k_index,
+                        k_mask,
+                        other=0.0,
+                    ).to(tl.float32)
+                    uv_r = tl.load(
+                        UV + uv_token_base + token * (RANK * H * V_DIM)
+                        + r * (H * V_DIM) + v_index,
+                        v_mask,
+                        other=0.0,
+                    ).to(tl.float32)
+                    rb_r = tl.load(
+                        RB + rb_token_base + token * (RANK * H) + r * H
+                    ).to(tl.float32)
+                    retr_r = tl.sum(state * uk_r[:, None], axis=0)
+                    delta_r = rb_r * (uv_r - retr_r)
+                    state = state + uk_r[:, None] * delta_r[None, :]
+            elif DUAL_GATE:
+                # Dual-gate delta: retrieval uses erase*k, the write value uses
+                # write*v, and the outer product uses the (feature-mapped) key k.
+                erase_t = tl.load(
+                    ERASE + qk_token_base + token * (H * K_DIM) + k_index,
+                    k_mask,
+                    other=0.0,
+                ).to(tl.float32)
+                write_t = tl.load(
+                    WRITE + v_token_base + token * (H * V_DIM) + v_index,
+                    v_mask,
+                    other=0.0,
+                ).to(tl.float32)
+                retrieved = tl.sum(state * (erase_t * k_t)[:, None], axis=0)
+                delta = write_t * v_t - retrieved
+                state = state + k_t[:, None] * delta[None, :]
+            elif IS_DELTA:
                 beta_t = tl.load(BETA + gb_token_base + token * H).to(tl.float32)
-                retrieved = tl.sum(state * k_t[:, None], axis=0)
+                if HAS_RETR:
+                    # Separate retrieval key (comba dual-key); not feature-mapped.
+                    retr_t = tl.load(
+                        RETR + qk_token_base + token * (H * K_DIM) + k_index,
+                        k_mask,
+                        other=0.0,
+                    ).to(tl.float32)
+                else:
+                    retr_t = k_t
+                retrieved = tl.sum(state * retr_t[:, None], axis=0)
                 delta = beta_t * (v_t - retrieved)
+                state = state + k_t[:, None] * delta[None, :]
             else:
                 delta = v_t
-            state = state + k_t[:, None] * delta[None, :]
+                state = state + k_t[:, None] * delta[None, :]
+            if NORMALIZER:
+                # The denominator accumulates the (feature-mapped) write key.
+                norm = norm + k_t
             if not READ_BEFORE:
                 output = SCALE * tl.sum(state * q_t[:, None], axis=0)
+                if NORMALIZER:
+                    denom = tl.sum(norm * q_t, axis=0)
+                    output = output / tl.maximum(denom, EPSILON)
                 tl.store(
                     OUTPUT + v_token_base + token * (H * V_DIM) + v_index,
                     output,
@@ -137,6 +274,10 @@ def _kernels():
                 kv_mask,
             )
         tl.store(FINAL + state_offset, state, kv_mask)
+        if NORMALIZER:
+            tl.store(
+                FINAL_NORM + (batch * H + head) * K_DIM + k_index, norm, k_mask
+            )
 
     @triton.jit
     def backward_kernel(
@@ -397,6 +538,16 @@ def execute_matrix_state_recurrence(
     decay_granularity: str,
     is_delta: bool,
     read_before: bool,
+    retrieval_keys: Any | None = None,
+    erase_gate: Any | None = None,
+    write_gate: Any | None = None,
+    left_transitions: Any | None = None,
+    update_keys: Any | None = None,
+    update_values: Any | None = None,
+    rank_beta: Any | None = None,
+    feature_map: str = "identity",
+    normalizer: bool = False,
+    epsilon: float = 1e-6,
 ) -> tuple[Any, Any]:
     """Run the fused matrix-state recurrence selected by semantic fields.
 
@@ -406,7 +557,29 @@ def execute_matrix_state_recurrence(
     ``value_channel``; it is unused for ``none``. ``beta`` (``[B,T,H]``) is
     required for the delta rule and ignored for the additive rule. Returns
     ``(output, final_state)`` with output ``[B,T,H,V]`` and final state
-    ``[B,H,K,V]`` (fp32).
+    ``[B,H,K,V]`` (fp32); when ``normalizer`` is set, returns
+    ``(output, final_state, final_normalizer)`` with the denominator state
+    ``[B,H,K]``.
+
+    Canonical-core options (mirroring ``urm.oracles.matrix_state.recurrent``):
+
+    - ``retrieval_keys`` (``[B,T,H,K]``): a separate retrieval key for the delta
+      rule (comba dual-key); the write outer product still uses ``key``.
+    - ``erase_gate`` (``[B,T,H,K]``) / ``write_gate`` (``[B,T,H,V]``): the
+      dual-gate delta update ``write*v - (erase*k)^T Z`` (gdn2).
+    - ``left_transitions`` (``[B,T,H,K,K]``): a factored left transition
+      ``Z = left_t @ M`` replacing diagonal decay (generalized-delta IPLR/DPLR).
+    - ``update_keys``/``update_values``/``rank_beta`` (``[B,T,R,H,K]`` /
+      ``[B,T,R,H,V]`` / ``[B,T,R,H]``): ``R`` sequential rank-1 delta updates
+      within one token (gated_delta_product).
+    - ``feature_map``: identity / l2_normalize / relu / elu_plus_one applied to
+      the query/key on load. Polynomial quadratic bases are pre-expanded by the
+      caller (the kernel sees the expanded feature width).
+    - ``normalizer``/``epsilon``: track a query/key denominator state and read
+      ``y = scale*(q^T M)/max(q^T z, epsilon)`` (linear-attention form).
+
+    The reverse (adjoint) scan is implemented for the plain delta/additive path
+    only; the configurations above are forward-only.
     """
     import torch
 
@@ -425,11 +598,37 @@ def execute_matrix_state_recurrence(
         "key_channel": _DECAY_KEY_CHANNEL,
         "value_channel": _DECAY_VALUE_CHANNEL,
     }[decay_granularity]
-    if is_delta and beta is None:
+    feature_code = _FEATURE_MAPS[feature_map]
+    dual_gate = erase_gate is not None or write_gate is not None
+    has_retr = retrieval_keys is not None
+    has_left = left_transitions is not None
+    multi_rank = update_keys is not None
+    if multi_rank:
+        ranks = update_keys.shape[2]
+        if update_values is None or rank_beta is None:
+            raise ValueError("multi-rank updates require update_values and rank_beta")
+        if update_values.shape[2] != ranks or rank_beta.shape[2] != ranks:
+            raise ValueError("update_keys/update_values/rank_beta must share R")
+    else:
+        ranks = 0
+    if dual_gate and (erase_gate is None or write_gate is None):
+        raise ValueError("the dual-gate delta requires both erase_gate and write_gate")
+    if dual_gate and (is_delta or multi_rank):
+        raise ValueError("the dual-gate delta is exclusive of delta/multi-rank")
+    if multi_rank and is_delta:
+        raise ValueError("multi-rank updates are exclusive of the plain delta rule")
+    if has_retr and not is_delta:
+        raise ValueError("retrieval_keys require the delta update rule")
+    if has_left and decay_code != _DECAY_NONE:
+        raise ValueError("left_transitions replace pointwise decay")
+    if has_left and normalizer:
+        raise ValueError("the canonical core does not combine left transitions and a normalizer")
+    if is_delta and not dual_gate and beta is None:
         raise ValueError("the delta update rule requires beta")
     if decay_code != _DECAY_NONE and log_decay is None:
         raise ValueError("this recurrence requires log_decay")
     resolved_scale = float(scale) if scale is not None else 1.0
+    resolved_epsilon = float(epsilon)
     if initial_state is None:
         initial_tensor = torch.zeros(
             (batch, heads, key_dim, value_dim), device=query.device, dtype=torch.float32
@@ -453,14 +652,54 @@ def execute_matrix_state_recurrence(
         if beta is not None
         else torch.zeros((batch, sequence, heads), device=query.device, dtype=torch.float32)
     )
+
+    def _optional(tensor, shape, name):
+        if tensor is None:
+            # A minimal dummy: the kernel never dereferences an operand whose
+            # constexpr flag is off, so a single element suffices (avoids
+            # allocating a full [B,T,H,K,K] transition / [B,T,R,H,*] update).
+            return torch.zeros(1, device=query.device, dtype=torch.float32)
+        if tuple(tensor.shape) != tuple(shape):
+            raise ValueError(f"{name} must use shape {tuple(shape)}")
+        return tensor.contiguous()
+
+    retr_c = _optional(retrieval_keys, (batch, sequence, heads, key_dim), "retrieval_keys")
+    erase_c = _optional(erase_gate, (batch, sequence, heads, key_dim), "erase_gate")
+    write_c = _optional(write_gate, (batch, sequence, heads, value_dim), "write_gate")
+    left_c = _optional(
+        left_transitions, (batch, sequence, heads, key_dim, key_dim), "left_transitions"
+    )
+    uk_c = _optional(
+        update_keys, (batch, sequence, max(ranks, 1), heads, key_dim), "update_keys"
+    )
+    uv_c = _optional(
+        update_values, (batch, sequence, max(ranks, 1), heads, value_dim), "update_values"
+    )
+    rb_c = _optional(
+        rank_beta, (batch, sequence, max(ranks, 1), heads), "rank_beta"
+    )
     block_k = triton.next_power_of_2(key_dim)
     block_v = triton.next_power_of_2(value_dim)
+    if has_left:
+        # tl.dot requires the block dims to be at least 16; the transition and
+        # state are zero-padded, so the valid region is computed exactly.
+        block_k = max(block_k, 16)
+        block_v = max(block_v, 16)
     grid = (batch * heads,)
     warps = 4
+    # The reverse scan is implemented only for the plain delta/additive path.
+    forward_only = (
+        dual_gate
+        or has_retr
+        or normalizer
+        or has_left
+        or multi_rank
+        or feature_code != _FEATURE_IDENTITY
+    )
 
     class _MatrixState(torch.autograd.Function):
         @staticmethod
-        def forward(ctx, q, k, v, g, b, initial):
+        def forward(ctx, q, k, v, g, b, retr, erase, write, left, uk, uv, rb, initial):
             output = torch.empty(
                 (batch, sequence, heads, value_dim), device=q.device, dtype=q.dtype
             )
@@ -472,18 +711,35 @@ def execute_matrix_state_recurrence(
             final = torch.empty(
                 (batch, heads, key_dim, value_dim), device=q.device, dtype=torch.float32
             )
+            final_norm = (
+                torch.empty((batch, heads, key_dim), device=q.device, dtype=torch.float32)
+                if normalizer
+                else final  # unused placeholder when the normalizer is off
+            )
             forward_kernel[grid](
-                q, k, v, g, b, initial, output, states, final,
-                heads, sequence, key_dim, value_dim, resolved_scale,
+                q, k, v, g, b, retr, erase, write, left, uk, uv, rb,
+                initial, output, states, final, final_norm,
+                heads, sequence, key_dim, value_dim, ranks, resolved_scale,
+                resolved_epsilon,
                 decay_code, is_delta, read_before, has_initial,
+                feature_code, dual_gate, has_retr, normalizer, has_left,
                 block_k, block_v, num_warps=warps,
             )
             ctx.save_for_backward(q, k, v, g, b, initial, states)
             ctx.has_initial = has_initial
+            if normalizer:
+                return output, final, final_norm
             return output, final
 
         @staticmethod
-        def backward(ctx, grad_output, grad_final):
+        def backward(ctx, grad_output, grad_final, grad_final_norm=None):
+            if forward_only:
+                raise NotImplementedError(
+                    "the native matrix-state backward implements only the plain "
+                    "delta/additive path; dual-gate, retrieval-key, normalizer, "
+                    "multi-rank, left-transition, and non-identity feature-map "
+                    "configurations are forward-only"
+                )
             q, k, v, g, b, initial, states = ctx.saved_tensors
             grad_output = (
                 torch.zeros_like(v) if grad_output is None else grad_output.contiguous()
@@ -516,10 +772,20 @@ def execute_matrix_state_recurrence(
                 grad_v,
                 grad_g if log_decay is not None else None,
                 grad_b if beta is not None else None,
+                None,  # retr
+                None,  # erase
+                None,  # write
+                None,  # left
+                None,  # uk
+                None,  # uv
+                None,  # rb
                 grad_initial if ctx.has_initial else None,
             )
 
-    return _MatrixState.apply(query_c, key_c, value_c, log_decay_c, beta_c, initial_tensor)
+    return _MatrixState.apply(
+        query_c, key_c, value_c, log_decay_c, beta_c,
+        retr_c, erase_c, write_c, left_c, uk_c, uv_c, rb_c, initial_tensor,
+    )
 
 
 def execute_matrix_state_decode_step(
@@ -538,10 +804,10 @@ def execute_matrix_state_decode_step(
     """Run one fused single-token matrix-state decode step, in place on ``state``.
 
     This is the decode-path counterpart to :func:`execute_matrix_state_recurrence`:
-    the persistent per-head ``[K, V]`` state is read and written once, in place,
-    under ``torch.no_grad()`` with no per-step state-history allocation and no
-    autograd graph, so the step is CUDA-graph capturable. ``query``/``key`` use
-    ``[B, H, K]``, ``value`` uses ``[B, H, V]``, ``state`` is the persistent
+    the persistent per-head ``[B, H, K, V]`` state is read and written once, in
+    place, under ``torch.no_grad()`` with no per-step state-history allocation
+    and no autograd graph, so the step is CUDA-graph capturable. ``query``/``key``
+    use ``[B, H, K]``, ``value`` uses ``[B, H, V]``, ``state`` is the persistent
     ``[B, H, K, V]`` fp32 tensor updated in place. Returns the output ``[B, H, V]``.
     """
     import torch
