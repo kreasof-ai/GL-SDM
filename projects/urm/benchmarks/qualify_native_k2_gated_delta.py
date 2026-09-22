@@ -218,15 +218,15 @@ def _summary(samples):
 
 
 def _measure_pair(direct, compiled, direct_inputs, compiled_inputs, pairs, warmup, block,
-                  decode_direct_inputs=None, decode_compiled_inputs=None):
+                  decode_direct=None, decode_compiled=None):
     """Measure every matrix mode: training forward, training forward+backward,
     inference prefill (forward under no_grad), and single-token decode.
 
-    ``decode_*_inputs`` carry the single-token (sequence=1) decode-step operands;
-    when omitted the decode mode reuses the training inputs (already a single
-    token for the decode_step case).
+    ``decode_direct``/``decode_compiled`` are single-token decode-step callables
+    (the proper fused in-place decode path, not the training plan on T=1). When
+    omitted, the decode mode falls back to the training callables under no_grad.
     """
-    # (mode key, backward, no_grad, use decode inputs)
+    # (mode key, backward, no_grad, use decode callables)
     mode_specs = [
         ("forward", False, False, False),
         ("forward_backward", True, False, False),
@@ -235,14 +235,14 @@ def _measure_pair(direct, compiled, direct_inputs, compiled_inputs, pairs, warmu
     ]
     for _ in range(warmup):
         for _, backward, no_grad, use_decode in mode_specs:
-            d_in = decode_direct_inputs if use_decode else direct_inputs
-            c_in = decode_compiled_inputs if use_decode else compiled_inputs
-            _time_one(direct, d_in, backward=backward, block=block, no_grad=no_grad)
-            _time_one(compiled, c_in, backward=backward, block=block, no_grad=no_grad)
+            d_fn = (decode_direct or direct) if use_decode else direct
+            c_fn = (decode_compiled or compiled) if use_decode else compiled
+            _time_one(d_fn, direct_inputs, backward=backward, block=block, no_grad=no_grad)
+            _time_one(c_fn, compiled_inputs, backward=backward, block=block, no_grad=no_grad)
     measurements = {}
     for mode, backward, no_grad, use_decode in mode_specs:
-        d_in = decode_direct_inputs if use_decode else direct_inputs
-        c_in = decode_compiled_inputs if use_decode else compiled_inputs
+        d_fn = (decode_direct or direct) if use_decode else direct
+        c_fn = (decode_compiled or compiled) if use_decode else compiled
         direct_wall, compiled_wall, overhead, order = [], [], [], []
         for index in range(pairs):
             first, second = (
@@ -251,10 +251,10 @@ def _measure_pair(direct, compiled, direct_inputs, compiled_inputs, pairs, warmu
             order.append(first + second)
             for name in (first, second):
                 if name == "direct":
-                    wall, _ = _time_one(direct, d_in, backward=backward, block=block, no_grad=no_grad)
+                    wall, _ = _time_one(d_fn, direct_inputs, backward=backward, block=block, no_grad=no_grad)
                     direct_wall.append(wall)
                 else:
-                    wall, _ = _time_one(compiled, c_in, backward=backward, block=block, no_grad=no_grad)
+                    wall, _ = _time_one(c_fn, compiled_inputs, backward=backward, block=block, no_grad=no_grad)
                     compiled_wall.append(wall)
             pair_index = len(overhead)
             overhead.append(
@@ -356,19 +356,55 @@ def _run_case(case, dtype_name, dtype, pairs, warmup, block):
 
     # --- Performance only after correctness, against the competitive comparator. ---
     competitive_inputs = {n: t.detach().clone().requires_grad_() for n, t in operands.items()}
-    # Single-token decode-step operands (sequence=1) with the case's initial-state
-    # config, for the decode mode. Prefill reuses the training operands under
-    # no_grad (inference forward, no autograd graph).
+    # Decode mode: the proper single-token decode-step path (a fused in-place
+    # kernel against a persistent state), not the training plan run on T=1. The
+    # native decode uses execute_matrix_state_decode_step; the upstream decode
+    # uses the exact sequential fused_recurrent operator on a one-token step.
+    # Both thread a persistent state across steps (reset per timed unit).
+    from urm.backends.triton.recurrence.matrix_state import (
+        execute_matrix_state_decode_step,
+    )
+
     decode_operands = _inputs(
         hash((case["id"], dtype_name, "decode")) % (2**31),
         batch, 1, heads, key_dim, value_dim, dtype, case["initial"],
     )
-    decode_competitive = {n: t.detach().clone() for n, t in decode_operands.items()}
-    decode_compiled = {n: t.detach().clone() for n, t in decode_operands.items()}
+    decode_initial = decode_operands["initial_state"].detach().clone()
+
+    def _native_decode_step(_inputs):
+        state = decode_initial.clone()
+        q1 = decode_operands["q"][:, 0].float()
+        k1 = decode_operands["k"][:, 0].float()
+        v1 = decode_operands["v"][:, 0].float()
+        g1 = decode_operands["g"][:, 0].float()
+        b1 = decode_operands["beta"][:, 0].float()
+
+        def call(_):
+            return execute_matrix_state_decode_step(
+                query=q1, key=k1, value=v1, log_decay=g1, beta=b1, state=state,
+                scale=scale, decay_granularity="head", is_delta=True, read_before=False,
+            )
+        return call
+
+    def _upstream_decode_step(_inputs):
+        q1 = decode_operands["q"].detach().clone()
+        k1 = decode_operands["k"].detach().clone()
+        v1 = decode_operands["v"].detach().clone()
+        g1 = decode_operands["g"].detach().clone()
+        b1 = decode_operands["beta"].detach().clone()
+
+        def call(_):
+            state = decode_initial.clone()
+            return fused_recurrent_gated_delta_rule(
+                q1, k1, v1, g=g1, beta=b1, scale=scale,
+                initial_state=state, output_final_state=True,
+            )
+        return call
+
     measurements = _measure_pair(
         lambda i: _competitive(i, scale), lambda i: _compiled(plan, i),
         competitive_inputs, compiled_inputs, pairs, warmup, block,
-        decode_direct_inputs=decode_competitive, decode_compiled_inputs=decode_compiled,
+        decode_direct=_upstream_decode_step(None), decode_compiled=_native_decode_step(None),
     )
     fwd_gate = measurements["forward"]["paired_native_overhead_fraction"]["gate"]["pass"]
     fb_gate = measurements["forward_backward"]["paired_native_overhead_fraction"]["gate"]["pass"]
