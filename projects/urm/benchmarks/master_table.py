@@ -1617,7 +1617,7 @@ def _worker(name: str, out_path: str) -> None:
     Path(out_path).write_text(json.dumps(row, default=str), encoding="utf-8")
 
 
-if __name__ == "__main__":
+def main() -> None:
     import argparse
 
     parser = argparse.ArgumentParser()
@@ -1642,9 +1642,22 @@ if __name__ == "__main__":
             if not ok_u:
                 print(f"      upstream: {r['upstream']}")
     else:
-        tmpdir = Path(tempfile.mkdtemp(prefix="urm_master_rows_"))
+        # Resume-capable: cache each recipe's row in a persistent dir so a crash
+        # or timeout partway through does not discard completed work. A recipe with
+        # a cached row (any status) is reused; delete the cache to force a re-run.
+        tmpdir = Path(os.environ.get("URM_MASTER_ROW_CACHE", "/tmp/urm_master_rows_cache"))
+        tmpdir.mkdir(parents=True, exist_ok=True)
         rows = []
         for i, name in enumerate(COVERED_RECIPES):
+            cached = tmpdir / f"{name}.json"
+            if cached.exists():
+                try:
+                    row = json.loads(cached.read_text())
+                    rows.append(row)
+                    print(f"[{i+1}/{len(COVERED_RECIPES)}] {name}: (cached) native={row.get('native_status')} upstream={row.get('upstream_status')}", flush=True)
+                    continue
+                except Exception:
+                    pass  # corrupt cache -> re-run
             row = _run_one(name, tmpdir)
             rows.append(row)
             print(f"[{i+1}/{len(COVERED_RECIPES)}] {name}: native={row.get('native_status')} upstream={row.get('upstream_status')}", flush=True)
@@ -1734,3 +1747,7 @@ def render_markdown(rows: list[dict[str, Any]]) -> str:
     lines.append(f"`results/validation/master-table.json`.")
     lines.append("")
     return "\n".join(lines)
+
+
+if __name__ == "__main__":
+    main()
