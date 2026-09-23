@@ -2,11 +2,10 @@
 
 This is the honest measure of URM's unified-generator reach: the recipes
 URM computes with its **own** generated kernels, not by dispatching to an
-upstream library. The [upstream comparison table](upstream-comparison.md)
-measures dispatch overhead against pinned upstream sources; it does not
-establish that URM computes these operations natively. A unified generator
-that merely dispatches would be a thin wrapper - native coverage is what
-distinguishes a generator from a wrapper.
+upstream library. Dispatching a pinned upstream kernel through a library
+adapter does not establish that URM computes these operations natively. A
+unified generator that merely dispatches would be a thin wrapper - native
+coverage is what distinguishes a generator from a wrapper.
 
 **62 of 74 named recipes compile to a native kernel (83%).** The remaining 12 decline to
 the reference or an upstream adapter.

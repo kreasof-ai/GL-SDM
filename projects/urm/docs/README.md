@@ -17,8 +17,6 @@ Read in this order:
 7. [Named coverage register](planning/coverage.md): architecture-by-architecture comparisons.
    [Production replacement matrix](planning/production-matrix.md) freezes the
    mandatory workloads URM-native kernels must qualify against upstream.
-   [Upstream comparison table](validation/upstream-comparison.md) consolidates
-   coverage, parity, and dispatch overhead against pinned upstream sources.
    [Unification audit](planning/unification-audit.md) records source findings;
    [generality axes](compiler/generality-axes.md) specifies the required IR extensions.
 8. [Lowering coverage and remaining work](planning/lowering-roadmap.md): current family status and open barriers.

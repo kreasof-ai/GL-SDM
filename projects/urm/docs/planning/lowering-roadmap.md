@@ -10,8 +10,7 @@ hypotheses, not the supported architecture matrix.
 The three kernel contracts are [softmax](../kernels/softmax-attention.md),
 [linear/delta](../kernels/linear-delta.md), and
 [sparse delta](../kernels/sparse-delta.md). Each is implemented, with measured
-evidence in the [master coverage table](../validation/master-table.md) and the
-[upstream comparison table](../validation/upstream-comparison.md).
+evidence in the [master coverage table](../validation/master-table.md).
 
 | Family | Native status | Measured evidence | Remaining barrier |
 |---|---|---|---|

@@ -1,11 +1,11 @@
 """Measure true native-generation coverage versus dispatch-only coverage.
 
-The upstream comparison table measures dispatch overhead: for most rows the
-compiled plan invokes the pinned upstream kernel through a library adapter, so
-it answers "how much does URM's dispatch add?" not "does URM compute this
-natively?". That distinction is the whole value proposition: URM is a unified
-generator that should cover trivial and exotic operations with its own kernels,
-not a wrapper that dispatches to FLA/FlashAttention/etc.
+For most recipes the compiled plan can invoke the pinned upstream kernel through
+a library adapter, which answers "how much does URM's dispatch add?" rather than
+"does URM compute this natively?". That distinction is the whole value
+proposition: URM is a unified generator that should cover trivial and exotic
+operations with its own kernels, not a wrapper that dispatches to
+FLA/FlashAttention/etc.
 
 This report compiles every named recipe with the native backend and records
 whether URM emits a native kernel (it computes the operation itself) or declines
@@ -68,11 +68,10 @@ def render_markdown(coverage: dict[str, object]) -> str:
         "",
         "This is the honest measure of URM's unified-generator reach: the recipes",
         "URM computes with its **own** generated kernels, not by dispatching to an",
-        "upstream library. The [upstream comparison table](upstream-comparison.md)",
-        "measures dispatch overhead against pinned upstream sources; it does not",
-        "establish that URM computes these operations natively. A unified generator",
-        "that merely dispatches would be a thin wrapper - native coverage is what",
-        "distinguishes a generator from a wrapper.",
+        "upstream library. Dispatching a pinned upstream kernel through a library",
+        "adapter does not establish that URM computes these operations natively. A",
+        "unified generator that merely dispatches would be a thin wrapper - native",
+        "coverage is what distinguishes a generator from a wrapper.",
         "",
         f"**{native_count} of {total} named recipes compile to a native kernel "
         f"({native_count * 100 // total}%).** The remaining {len(declined)} decline to",

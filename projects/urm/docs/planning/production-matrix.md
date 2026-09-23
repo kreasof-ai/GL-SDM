@@ -96,11 +96,12 @@ envelope:
   [representation coverage](../validation/representation-coverage.md)).
 - **K3** has a native sparse-state candidate for Sparse Delta Memory.
 
-The [upstream comparison table](../validation/upstream-comparison.md) records
-kernel-slice parity and dispatch overhead for the wider catalog; those are
-kernel-slice results, not production qualification. This matrix defines what
-must be true for that to change, and its native-status column is kept honest by
-a compiler-backed test.
+The [master coverage table](../validation/master-table.md) records per-recipe
+model-level evidence and [native coverage](../validation/native-coverage.md)
+records which recipes URM computes natively; those are kernel- and model-slice
+results, not production qualification. This matrix defines what must be true for
+that to change, and its native-status column is kept honest by a compiler-backed
+test.
 
 ### Measured: k2-diagonal-recurrence
 

@@ -4,7 +4,7 @@ Index of every named architecture URM tracks, rendered from the [machine-readabl
 
 Of 80 catalog rows, 76 are mixer-relevant and 4 are classified outside K1/K2/K3 mixer scope. All 76 mixer-relevant rows have measured kernel-upstream parity and paired profiling evidence against a pinned source; 4 rows (MHA/MQA/GQA/BitAttention) additionally have a measured URM-native K1 profile. Every mixer row is a `kernel_prototype_only` slice: the equation core is qualified, while projections, frontends, caches and full-layer integration remain open per row.
 
-K1 = [softmax](../kernels/softmax-attention.md), K2 = [linear/delta](../kernels/linear-delta.md), K3 = [sparse delta](../kernels/sparse-delta.md). **Kernel** = output/state/gradient parity plus paired overhead vs the pinned upstream kernel slice. **Native** = a URM-generated kernel (not an upstream dispatch) measured against upstream. Per-recipe model-level numbers are in the [master coverage table](../validation/master-table.md); kernel-slice parity and dispatch overhead roll up in the [upstream comparison table](../validation/upstream-comparison.md).
+K1 = [softmax](../kernels/softmax-attention.md), K2 = [linear/delta](../kernels/linear-delta.md), K3 = [sparse delta](../kernels/sparse-delta.md). **Kernel** = output/state/gradient parity plus paired overhead vs the pinned upstream kernel slice. **Native** = a URM-generated kernel (not an upstream dispatch) measured against upstream. Per-recipe model-level numbers are in the [master coverage table](../validation/master-table.md); which recipes URM computes natively versus only dispatches is in [native coverage](../validation/native-coverage.md).
 
 ## Wave 1: Core native closure
 

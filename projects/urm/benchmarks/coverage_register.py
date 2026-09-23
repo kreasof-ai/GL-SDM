@@ -8,8 +8,7 @@ the machine-readable register. Regenerate with::
     python benchmarks/coverage_register.py > docs/planning/coverage.md
 
 The detailed per-architecture measurement prose lives in the committed kernel-slice
-artifacts under ``results/unified-mixer/`` and is rolled up by
-``docs/validation/upstream-comparison.md``; this table is the index, not the evidence.
+artifacts under ``results/unified-mixer/``; this table is the index, not the evidence.
 """
 
 from __future__ import annotations
@@ -92,9 +91,9 @@ def render_markdown(register: dict) -> str:
         "**Kernel** = output/state/gradient parity plus paired overhead vs the pinned "
         "upstream kernel slice. **Native** = a URM-generated kernel (not an upstream "
         "dispatch) measured against upstream. Per-recipe model-level numbers are in "
-        "the [master coverage table](../validation/master-table.md); kernel-slice "
-        "parity and dispatch overhead roll up in the "
-        "[upstream comparison table](../validation/upstream-comparison.md)."
+        "the [master coverage table](../validation/master-table.md); which recipes "
+        "URM computes natively versus only dispatches is in "
+        "[native coverage](../validation/native-coverage.md)."
     )
     out.append("")
 

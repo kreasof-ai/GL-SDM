@@ -667,28 +667,6 @@ def test_committed_epilogue_selection_agrees_with_exhaustive() -> None:
     assert z3["verification_failures"] == []
 
 
-def test_upstream_comparison_table_matches_committed_artifacts() -> None:
-    """The consolidated upstream comparison doc must regenerate exactly.
-
-    The table is a rollup over the committed per-architecture artifacts; this
-    keeps the documentation from drifting from the validated measurements.
-    """
-    import upstream_comparison_table
-
-    documented = (
-        PROJECT_ROOT / "docs" / "validation" / "upstream-comparison.md"
-    ).read_text(encoding="utf-8")
-    regenerated = upstream_comparison_table.render_markdown(
-        upstream_comparison_table.build_rows()
-    )
-    assert documented == regenerated, (
-        "docs/validation/upstream-comparison.md is out of sync with the "
-        "committed artifacts; regenerate it with "
-        "`python benchmarks/upstream_comparison_table.py > "
-        "docs/validation/upstream-comparison.md`"
-    )
-
-
 def test_inference_throughput_table_matches_committed_artifacts() -> None:
     """The inference throughput + MFU doc must regenerate exactly.
 
@@ -730,6 +708,70 @@ def test_alignment_doc_matches_committed_artifacts() -> None:
     )
 
 
+def _select_cases(data: dict | None, comparison: dict) -> tuple[list[dict], str | None]:
+    """Resolve the exact artifact cases a comparison is qualified on.
+
+    The register names cases explicitly (``recipe`` or ``recipes``); there is no
+    "all cases" fallback. Missing or malformed evidence returns an error so the
+    caller cannot emit a pass claim.
+    """
+    if not data or not isinstance(data.get("cases"), dict):
+        return [], "artifact_missing"
+    cases = data["cases"]
+    named = comparison.get("recipes")
+    if named is None:
+        recipe = comparison.get("recipe")
+        named = [recipe] if recipe is not None else []
+    if not named:
+        return [], "no_cases_named"
+    selected: list[dict] = []
+    for name in named:
+        case = cases.get(name)
+        if not isinstance(case, dict):
+            return [], f"case_missing:{name}"
+        selected.append(case)
+    return selected, None
+
+
+def _aggregate_status(statuses: list[str | None]) -> str:
+    """Combine per-case parity verdicts into one order-independent status."""
+    if any(status == "fail" for status in statuses):
+        return "fail"
+    if statuses and all(status == "pass" for status in statuses):
+        return "pass"
+    return "incomplete"
+
+
+def _aggregate_case(data: dict | None, comparison: dict) -> tuple[str, float | None, float | None]:
+    """Return (parity_status, worst forward overhead, worst fwd+bwd overhead)."""
+    selected, error = _select_cases(data, comparison)
+    if error is not None:
+        return "incomplete", None, None
+    statuses: list[str | None] = []
+    forwards: list[float] = []
+    forward_backwards: list[float] = []
+    for case in selected:
+        statuses.append(case.get("parity", {}).get("status"))
+        measurements = case.get("performance", {}).get("measurements", {})
+        forward = (
+            measurements.get("forward", {}).get("paired_compiled_overhead_fraction", {})
+            or {}
+        ).get("median")
+        forward_backward = (
+            measurements.get("forward_backward", {}).get("paired_compiled_overhead_fraction", {})
+            or {}
+        ).get("median")
+        if forward is not None:
+            forwards.append(forward)
+        if forward_backward is not None:
+            forward_backwards.append(forward_backward)
+    return (
+        _aggregate_status(statuses),
+        max(forwards) if forwards else None,
+        max(forward_backwards) if forward_backwards else None,
+    )
+
+
 def _comparison_artifact(cases: dict[str, str]) -> dict:
     """Build a minimal artifact whose cases carry only a parity status."""
     return {
@@ -742,45 +784,39 @@ def _comparison_artifact(cases: dict[str, str]) -> dict:
 
 def test_aggregate_case_never_hides_a_failure() -> None:
     """A failed case must fail the rollup regardless of case ordering."""
-    import upstream_comparison_table
-
     passing = _comparison_artifact({"a": "pass", "b": "pass"})
     comparison = {"recipes": ["a", "b"]}
-    assert upstream_comparison_table._aggregate_case(passing, comparison)[0] == "pass"
+    assert _aggregate_case(passing, comparison)[0] == "pass"
 
     # Same two cases, opposite insertion order: the verdict must not change.
     fail_last = _comparison_artifact({"a": "pass", "b": "fail"})
     fail_first = _comparison_artifact({"b": "fail", "a": "pass"})
-    assert upstream_comparison_table._aggregate_case(fail_last, comparison)[0] == "fail"
-    assert upstream_comparison_table._aggregate_case(fail_first, comparison)[0] == "fail"
+    assert _aggregate_case(fail_last, comparison)[0] == "fail"
+    assert _aggregate_case(fail_first, comparison)[0] == "fail"
 
 
 def test_aggregate_case_marks_incomplete_evidence() -> None:
     """Missing, malformed, or non-pass evidence must not surface as a pass."""
-    import upstream_comparison_table
-
     comparison = {"recipes": ["a", "b"]}
     # A case with no recorded status is incomplete, not a pass.
     partial = _comparison_artifact({"a": "pass", "b": None})
-    assert upstream_comparison_table._aggregate_case(partial, comparison)[0] == "incomplete"
+    assert _aggregate_case(partial, comparison)[0] == "incomplete"
     # A named case absent from the artifact is incomplete.
     missing = _comparison_artifact({"a": "pass"})
-    assert upstream_comparison_table._aggregate_case(missing, comparison)[0] == "incomplete"
+    assert _aggregate_case(missing, comparison)[0] == "incomplete"
     # No artifact at all is incomplete.
-    assert upstream_comparison_table._aggregate_case(None, comparison)[0] == "incomplete"
+    assert _aggregate_case(None, comparison)[0] == "incomplete"
 
 
 def test_aggregate_case_uses_only_named_cases() -> None:
     """Unrelated cases in the artifact must not be substituted in."""
-    import upstream_comparison_table
-
     # The artifact carries an extra failing case the comparison did not name;
     # the rollup is over the named cases only and stays a pass.
     artifact = _comparison_artifact({"a": "pass", "unrelated": "fail"})
-    assert upstream_comparison_table._aggregate_case(artifact, {"recipe": "a"})[0] == "pass"
+    assert _aggregate_case(artifact, {"recipe": "a"})[0] == "pass"
     # A comparison that names no case cannot claim a pass.
     assert (
-        upstream_comparison_table._aggregate_case(artifact, {"recipe": None, "recipes": None})[0]
+        _aggregate_case(artifact, {"recipe": None, "recipes": None})[0]
         == "incomplete"
     )
 
@@ -835,8 +871,6 @@ def test_every_register_comparison_names_real_cases() -> None:
     This pins the explicit artifact-case mapping: no comparison may rely on an
     implicit "all cases" fallback or point at a case that does not exist.
     """
-    import upstream_comparison_table
-
     register = _load(PROJECT_ROOT / "benchmarks" / "architecture-coverage.json")
     for architecture in register["architectures"]:
         comparison = architecture.get("kernel_upstream_comparison")
@@ -844,7 +878,7 @@ def test_every_register_comparison_names_real_cases() -> None:
             continue
         artifact = comparison.get("artifact")
         data = _load(PROJECT_ROOT / artifact) if artifact else None
-        selected, error = upstream_comparison_table._select_cases(data, comparison)
+        selected, error = _select_cases(data, comparison)
         assert error is None, (
             f"{architecture['architecture']}: comparison evidence error {error}; "
             "name explicit recipe/recipes that exist in the artifact"
