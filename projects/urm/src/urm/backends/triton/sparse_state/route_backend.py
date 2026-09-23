@@ -66,9 +66,6 @@ class CertifiedSparseRouteScores:
     def require_intact(self) -> None:
         import torch
 
-        # prepare() and dispatch are one atomic region under fullgraph capture;
-        # Dynamo cannot guard Tensor._version as a static scalar. Eager calls
-        # retain the mutation guard across their user-visible boundary.
         if torch.compiler.is_compiling():
             return
         if self.scores._version != self._version:

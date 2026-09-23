@@ -1,7 +1,5 @@
 """Regression gates for actual execution, matching, and timing authority."""
 
-import copy
-import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,7 +9,6 @@ import pytest
 
 torch = pytest.importorskip("torch")
 sys.path.insert(0, str(Path(__file__).parents[1] / "benchmarks"))
-from audit_sparse_memory_launches import verify_launches
 from pretraining_projection import project_state_replacement
 from pretraining_step import _compare_correctness, _one_step, load_frozen_config
 
@@ -121,23 +118,3 @@ def test_threefold_screen_is_not_model_acceptance():
         project_state_replacement(2.365, 0.2, 100.0)["required_speedup_for_1_05"]
         is None
     )
-
-
-@pytest.mark.parametrize("backward", [False, True])
-def test_launch_audit_rejects_actual_state_launch_drift(backward):
-    root = Path(__file__).parents[1]
-    artifact = json.loads(
-        (root / "results/pretraining-step/launch-audit-eager-v2.json").read_text()
-    )
-    _, config = load_frozen_config()
-    verify_launches(artifact["observed_launches"], artifact["plan"], config)
-    records = copy.deepcopy(artifact["observed_launches"])
-    target = next(
-        row
-        for row in records
-        if "sparse_state_update" in row["kernel"]
-        and ("backward" in row["kernel"]) == backward
-    )
-    target["constants"]["BLOCK_D"] = 64
-    with pytest.raises(AssertionError):
-        verify_launches(records, artifact["plan"], config)

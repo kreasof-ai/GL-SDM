@@ -160,13 +160,6 @@ def probe_sdm_support(*, require_cuda: bool = True) -> SDMSupportStatus:
             identity,
         )
     versions = identity["runtime_versions"]
-    # The frozen baseline pins torch==2.8.0/triton==3.4.0. That pin is a
-    # conservative *runtime* guard, not a correctness check: the pinned SDM
-    # kernel (GatedSparseMemoryWriteRead) is verified to produce correct forward
-    # and backward output against the URM K3 reference on newer runtimes. The
-    # sanctioned escape hatch ``URM_SDM_ALLOW_UNPINNED_RUNTIME=1`` relaxes only
-    # this version pin; the revision, clean-tree, helper, and CUDA-toolchain
-    # checks below still apply. Leave it unset to keep the strict frozen pin.
     allow_unpinned = os.environ.get("URM_SDM_ALLOW_UNPINNED_RUNTIME") == "1"
     if not allow_unpinned and (
         versions.get("torch") != "2.8.0" or versions.get("triton") != "3.4.0"
@@ -744,8 +737,6 @@ class UrmSparseDeltaMemoryAdapter:
                 trace.read_weights,
                 grad_final_memory=grad_final_memory,
             )
-        # Upstream mutates memory during the call.  The sequence count becomes
-        # visible only after that call returns, matching SDMLayerState.update_.
         state.memory = memory
         state.sequence_length += spec.sequence
         if return_info:

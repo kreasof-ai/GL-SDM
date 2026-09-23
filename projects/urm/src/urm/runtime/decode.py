@@ -47,7 +47,6 @@ class MatrixStateDecodeSession:
             raise ValueError("the persistent matrix state is fp32")
         if initial_state.device.type != "cuda":
             raise ValueError("decode session state must be a CUDA tensor")
-        # The session owns a private copy so caller mutations cannot alias it.
         self.state = initial_state.detach().clone()
         self.scale = scale
         self.decay_granularity = decay_granularity
@@ -175,10 +174,6 @@ class SparseStateDecodeSession:
         self._dtype = dtype
         self._batch = batch
         self._slots = slots
-        # The state backend is constructed once and reused across every step.
-        # The route backends are built lazily on the first ``step`` (route-score
-        # path); the explicit-routes path (``step_explicit``) never needs them,
-        # so it also works for non-square slot counts the route kernel declines.
         self._route_backend = None
         self._write_route_backend = None
         self._route_spec = None
@@ -224,7 +219,6 @@ class SparseStateDecodeSession:
         )
 
         batch = self.memory.shape[0]
-        # Build the route backends lazily on the first route-score step.
         if self._route_backend is None:
             self._route_spec = SparseRouteSelectionSpec(
                 parallel=batch, sequence=1, source_extent=self._slots,
@@ -244,10 +238,6 @@ class SparseStateDecodeSession:
         write_out = self._write_route_backend.generate_certified(
             CertifiedSparseRouteScores.certify(self._write_route_spec, write_scores)
         )
-        # Trusted bridge: native route-kernel output is self-certifying, so no
-        # GPU value-scan certification is paid per step. The cheap prepare bridge
-        # (_prepare_generated_routes) likewise skips the per-call isfinite()
-        # host syncs, since the operands come from the same trusted pipeline.
         routes = CertifiedSparseStateRoutes.from_native_generation(
             self._state_spec, read_out, write_output=write_out
         )

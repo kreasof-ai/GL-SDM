@@ -13,7 +13,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-DEFAULT_HBM_GBPS = 100.0  # deliberately conservative when unmeasured
+DEFAULT_HBM_GBPS = 100.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,7 +105,7 @@ def routed_reduction_cost(
     out_bytes = queries * value_dim * dtype_bytes
     logical = index_bytes + weight_bytes + gather_upper + out_bytes
     flops = 2 * queries * route_width * value_dim
-    imbalance = 1.0  # uniform placeholder; traces refine per-route histograms
+    imbalance = 1.0
     return CostEstimate(
         useful_flops=flops,
         logical_bytes=logical,
@@ -125,7 +125,7 @@ def row_scale_transform_cost(
     dtype_bytes: int = 2,
 ) -> CostEstimate:
     """Cost of a materialized standalone row-scale pass."""
-    io = queries * value_dim * dtype_bytes  # read + write
+    io = queries * value_dim * dtype_bytes
     scale_bytes = queries * dtype_bytes
     return CostEstimate(
         useful_flops=queries * value_dim,
@@ -145,7 +145,7 @@ def exchange_cost(
     collective_startup_us: float = 5.0,
 ) -> CostEstimate:
     """Point-to-point / grouped exchange estimate over a simulated mesh."""
-    wire = payloads * payload_bytes * 2  # send + receive accounting
+    wire = payloads * payload_bytes * 2
     flops = 0
     return CostEstimate(
         useful_flops=flops,

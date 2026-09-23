@@ -1,6 +1,6 @@
 """Dense causal attention adapter: URM dispatch around a pinned upstream kernel.
 
-Comparison levels (see archive/docs/validation/baselines.md):
+Comparison levels:
 
 1. semantic oracle - explicit fp32 softmax-reduce, correctness only;
 2. framework baseline - ``torch.nn.functional.scaled_dot_product_attention``
@@ -131,8 +131,6 @@ class UrmDenseCausalAttentionAdapter:
         if backend not in ("flash_attn", "sdpa_flash"):
             raise ValueError(f"unknown adapter backend: {backend}")
         self.backend = backend
-        # Resolve the pinned upstream entry point once; steady-state calls
-        # must not pay import or attribute-lookup cost.
         self._flash_func = None
         self._sdpa_ctx = None
         if backend == "flash_attn":
@@ -206,8 +204,6 @@ class UrmDenseCausalAttentionAdapter:
         resolved_scale = scale if scale is not None else 1.0 / math.sqrt(spec.head_dim)
 
         if self.backend == "flash_attn":
-            # flash_attn_func consumes (B, S, H, D) with last dim contiguous;
-            # transposing BHSD-contiguous tensors yields exactly that view.
             output = self._flash_func(
                 query.transpose(1, 2),
                 key.transpose(1, 2),

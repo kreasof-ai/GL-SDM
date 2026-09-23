@@ -48,8 +48,8 @@ class PlacementItem:
 
 @dataclass(frozen=True, slots=True)
 class PlacementEdge:
-    source_item: str  # expert/page producing or holding data
-    query_item: str  # token/query group consuming it
+    source_item: str
+    query_item: str
     payload_bytes: int = 2
 
 
@@ -58,7 +58,7 @@ class PlacementProblem:
     items: tuple[PlacementItem, ...]
     device_count: int
     device_capacity_bytes: int
-    mesh_rows: int  # 2x2 -> rows=2 cols=2 ; 2x4 -> rows=2 cols=4
+    mesh_rows: int
     mesh_cols: int
     edges: tuple[PlacementEdge, ...] = ()
     colocated_pairs: tuple[tuple[str, str], ...] = ()
@@ -106,22 +106,18 @@ def _header(
     )
 
 
-# -- Model -----------------------------------------------------------------------
-
-
 def build_placement_model(problem: PlacementProblem) -> ConstraintModel:
     model = ConstraintModel(name=f"placement::{problem.mesh_rows}x{problem.mesh_cols}")
     added_names: set[str] = set()
 
     def _add_unique(constraint):
         if constraint.name in added_names:
-            return None  # mirrored encodings can imply identical facts
+            return None
         added_names.add(constraint.name)
         return model.add_constraint(constraint)
 
     devices = problem.devices()
 
-    # One-hot assignment variables.
     assign: dict[tuple[str, int], str] = {}
     for item in problem.items:
         names = []
@@ -155,7 +151,6 @@ def build_placement_model(problem: PlacementProblem) -> ConstraintModel:
                 )
             )
 
-    # Capacity per device.
     for device in devices:
         load_expr = LinearExpr(
             terms=tuple(
@@ -180,7 +175,6 @@ def build_placement_model(problem: PlacementProblem) -> ConstraintModel:
             )
         )
 
-    # Colocation / anti-affinity.
     for first, second in problem.colocated_pairs:
         for device in devices:
             _add_unique(
@@ -219,7 +213,6 @@ def build_placement_model(problem: PlacementProblem) -> ConstraintModel:
                 .done()
             )
 
-    # Communication indicators: exactly one ordered device pair per edge.
     edge_pair_vars: list[dict[tuple[int, int], str]] = []
     for index, edge in enumerate(problem.edges):
         chosen: dict[tuple[int, int], str] = {}
@@ -244,8 +237,6 @@ def build_placement_model(problem: PlacementProblem) -> ConstraintModel:
         source_name = edge.source_item.split("#")[0]
         query_name = edge.query_item.split("#")[0]
         for (src_device, dst_device), variable in sorted(chosen.items()):
-            # One conjunctive implication per ordered pair: the chosen pair
-            # forces BOTH endpoint ownerships simultaneously.
             builder = implies_equal(
                 _header(
                     f"edge{index}_links_{src_device}_{dst_device}",
@@ -261,7 +252,6 @@ def build_placement_model(problem: PlacementProblem) -> ConstraintModel:
             builder.then_equal(LinearExpr.var(assign[(query_name, dst_device)]), 1)
             model.add_constraint(builder.done())
 
-    # Max-load indicator for the first objective.
     total_demand = sum(item.size_bytes for item in problem.items)
     model.add_variable(IntVar("max_load", 0, total_demand))
     for device in devices:
@@ -286,7 +276,6 @@ def build_placement_model(problem: PlacementProblem) -> ConstraintModel:
             )
         )
 
-    # Peer-pair flags.
     peer_flags: list[str] = []
     for first_device in devices:
         for second_device in devices:
@@ -325,7 +314,6 @@ def build_placement_model(problem: PlacementProblem) -> ConstraintModel:
                         .done()
                     )
 
-    # Objectives (lexicographic order).
     model.add_objective(
         ObjectiveTerm(
             name="max_device_load_bytes",
@@ -361,7 +349,6 @@ def build_placement_model(problem: PlacementProblem) -> ConstraintModel:
             ),
         )
     )
-    # Injective positional encoding: the owner vector maps to one integer.
     radix = problem.device_count
     tie_terms: list[tuple[str, int]] = [
         (
@@ -394,9 +381,6 @@ def decode_placement(
     if missing:
         raise ValueError(f"placement assignment misses owners for {missing}")
     return owners
-
-
-# -- Metrics and baselines ----------------------------------------------------------
 
 
 def placement_metrics(

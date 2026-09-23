@@ -25,7 +25,7 @@ from urm.backends.triton.softmax.routed_scale_epilogue import (
     routed_reduce_row_scale,
 )
 
-# Dtype-specific envelopes (archive/docs/validation/benchmarking.md: tolerances live in tests).
+# Dtype-specific envelopes; tolerances live in tests.
 FORWARD_TOL = {
     torch.float32: {"atol": 1e-5, "rtol": 1e-5},
     torch.bfloat16: {"atol": 2e-2, "rtol": 2e-2},

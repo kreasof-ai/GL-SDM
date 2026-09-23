@@ -1,6 +1,5 @@
-"""Compatibility and archival integrity checks for the compiler migration."""
+"""Compatibility checks for the compiler migration."""
 
-import hashlib
 import json
 import re
 from pathlib import Path
@@ -35,16 +34,6 @@ def test_removed_compatibility_shims_are_not_importable():
 
     for removed in ("urm.reference", "urm.backend"):
         assert importlib.util.find_spec(removed) is None, removed
-
-
-def test_archived_evidence_is_preserved_byte_for_byte():
-    root = Path(__file__).resolve().parents[1]
-    manifest = json.loads((root / "archive/manifest.json").read_text())
-    assert manifest["entries"]
-    for entry in manifest["entries"]:
-        path = (root / entry["archived"]).resolve()
-        assert path.is_relative_to(root / "archive")
-        assert hashlib.sha256(path.read_bytes()).hexdigest() == entry["sha256"]
 
 
 def test_numpy_backend_catalog_does_not_load_experimental_kernels():

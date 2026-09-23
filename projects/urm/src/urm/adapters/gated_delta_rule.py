@@ -1,6 +1,6 @@
 """Gated delta-rule adapter: URM dispatch around the pinned FLA operation.
 
-Comparison levels for this family (archive/docs/validation/baselines.md):
+Comparison levels for this family:
 
 1. semantic oracle - explicit fp32 recurrence loop (correctness only);
 2. framework baseline - transparent eager PyTorch recurrence;
@@ -11,7 +11,7 @@ Comparison levels for this family (archive/docs/validation/baselines.md):
    capability selection, and dispatch. The difference from level 3 is URM
    integration only; there is no native URM recurrent kernel yet.
 
-The frozen semantic contract is documented in archive/docs/adapters/fla-gated-delta-rule.md.
+The frozen semantic contract is documented in the gated delta-rule adapter contract.
 The adapter deliberately does not wrap unrelated FLA operations: unrelated
 gate fusions, sigmoid-beta variants, varlen packing, and context parallelism
 raise instead of being silently forced through this typed boundary.
@@ -31,10 +31,6 @@ SUPPORTED_DTYPES = (torch.bfloat16, torch.float16)
 MODE_PREFILL = "prefill"
 MODE_DECODE = "decode"
 
-# Frozen upstream pin for this comparator contract
-# (archive/docs/adapters/fla-gated-delta-rule.md). Recorded SEPARATELY from whatever version is
-# actually installed: an incompatible installation must be rejected, never
-# relabeled as the expected pin.
 EXPECTED_FLA_VERSION = "0.5.2"
 EXPECTED_FLA_SOURCE_REVISION = "864a87f6ce5be8828bef81eb22baafd41937cdf2"
 
@@ -101,7 +97,6 @@ class GatedDeltaRuleSpec:
             raise ValueError(
                 "gated delta rule v1 requires rank-4 [B,T,H,K]/[B,T,HV,V] tensors"
             )
-        # Boundary layout is [B, T, H, K] (FLA convention), NOT [B, H, T, K].
         b, t_q, h, k_dim = query.shape
         b_k, t_k, _h_k, _ = key.shape
         b_v, t_v, hv, v_dim = value.shape

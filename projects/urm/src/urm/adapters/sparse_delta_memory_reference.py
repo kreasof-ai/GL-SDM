@@ -25,7 +25,6 @@ def oracle_product_key(
         raise ValueError("num_keys must be in [1, half_key**2]")
     left, right = np.split(scores, 2, axis=-1)
     k_sub = min(num_keys, half_key)
-    # Stable descending order is sufficient for the no-tie contract.
     left_idx = np.argsort(-left, axis=-1, kind="stable")[..., :k_sub]
     right_idx = np.argsort(-right, axis=-1, kind="stable")[..., :k_sub]
     left_val = np.take_along_axis(left, left_idx, axis=-1)
@@ -111,7 +110,6 @@ def torch_product_key_highest_address(scores, num_keys: int, half_key: int):
         raise ValueError("scores must have width 2*half_key")
     left, right = scores.split(half_key, dim=-1)
     pair_scores = (left.unsqueeze(-1) + right.unsqueeze(-2)).flatten(-2)
-    # Reversing makes stable score sorting prefer the greatest logical address.
     reversed_scores = pair_scores.flip(-1)
     selected_reversed = reversed_scores.argsort(dim=-1, descending=True, stable=True)[
         ..., :num_keys
@@ -212,8 +210,6 @@ def torch_write_read(
             updated = (
                 decayed + write_weights[parallel, token].float().unsqueeze(-1) * delta
             )
-            # Functional replacement preserves the explicit recurrence while
-            # keeping every prior state version available to autograd.
             state = state.index_copy(0, addresses, updated)
             q_addresses = read_indices[parallel, token]
             parallel_outputs.append(
@@ -315,10 +311,6 @@ def differential_backward_report(
             raise ValueError(path)
         reading_term = (readings.float() * reading_cotangent).mean()
         memory_term = (final_memory.float() * memory_cotangent).mean()
-        # Upstream exposes final-state differentiation through the explicit
-        # grad_final_memory argument because returned memory is mutated state,
-        # not a differentiable result edge. The transparent path differentiates
-        # the same logical loss normally.
         backward_loss = (
             reading_term + memory_term if path == "torch_reference" else reading_term
         )
@@ -514,8 +506,6 @@ def end_to_end_differential_backward_report(
 
         reading_term = (readings.float() * reading_cotangent).mean()
         memory_term = (final_memory.float() * memory_cotangent).mean()
-        # The pinned upstream backward reuses its mutable memory buffer as
-        # scratch. Preserve forward evidence before invoking autograd.
         readings_snapshot = readings.detach().clone()
         final_memory_snapshot = final_memory.detach().clone()
         backward_loss = (

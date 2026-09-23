@@ -76,11 +76,6 @@ class VerificationReport:
         }
 
 
-# -- Domain facts ---------------------------------------------------------------
-# Plain data describing the world the assignment executes in. Every group is
-# optional so tests can construct minimal contexts.
-
-
 @dataclass(frozen=True, slots=True)
 class AnchorFacts:
     """Capability contract of one concrete anchor."""
@@ -92,7 +87,7 @@ class AnchorFacts:
     backward_verified_dtypes: frozenset[str] = frozenset()
     deterministic_accumulation: bool = True
     honored_obligations: frozenset[str] = frozenset()
-    supported_dtypes: frozenset[str] | None = None  # None = unrestricted
+    supported_dtypes: frozenset[str] | None = None
 
     def backward_covers(self, dtype_name: str) -> bool:
         return dtype_name in self.backward_verified_dtypes
@@ -138,7 +133,6 @@ class PlacementItemFacts:
 class AssignmentFacts:
     """Everything the domain layer needs to judge one assignment."""
 
-    # Schedule-side facts
     selected_anchor: AnchorFacts | None = None
     intent_training: bool = False
     required_backward_dtypes: frozenset[str] = frozenset()
@@ -149,21 +143,16 @@ class AssignmentFacts:
     locality_floor_rank: int | None = None
     achieved_locality_rank: int | None = None
     barrier_classes_crossed: tuple[str, ...] = ()
-    # Resource ceilings and the plan's declared estimates
     resource_limits: ResourceFacts | None = None
     estimated_shared_mem_bytes: int | None = None
     estimated_registers_per_thread: int | None = None
     estimated_threads_per_block: int | None = None
-    # Communication / placement facts
     routes: tuple[RouteEdgeFacts, ...] = ()
     dispatched_counts: Mapping[tuple[int, int], int] | None = None
     returned_counts: Mapping[int, int] | None = None
     devices: tuple[int, ...] = ()
     device_capacity_bytes: Mapping[int, int] | None = None
     items: tuple[PlacementItemFacts, ...] = ()
-
-
-# -- The verifier -----------------------------------------------------------------
 
 
 class ModelVerifier:
@@ -224,7 +213,6 @@ class ModelVerifier:
             ok=not failures, failures=tuple(failures), checks_run=tuple(checks)
         )
 
-    # -- IR layer -------------------------------------------------------------
 
     def _check_ranges(
         self, model: ConstraintModel, assignment: Assignment
@@ -293,7 +281,6 @@ class ModelVerifier:
             total += coefficient * (int(value) if isinstance(value, bool) else value)
         return total
 
-    # -- domain layer -----------------------------------------------------------
 
     def _check_domain(
         self, assignment: Assignment, facts: AssignmentFacts
@@ -538,7 +525,7 @@ class ModelVerifier:
                 continue
             expected_copies = max(1, item.replication_factor)
             if len(owner_values) != expected_copies and not item.one_hot_devices:
-                pass  # single-value encodings carry one owner by construction
+                pass
             if len(owner_values) != expected_copies and item.one_hot_devices:
                 failures.append(
                     VerificationFailure(
@@ -613,8 +600,6 @@ class ModelVerifier:
                     )
                 )
         if facts.requires_commit_capable_lowering:
-            # A commit-capable lowering must be part of the selected plan;
-            # the schedule side records this via the anchor's commit flag.
             anchor = facts.selected_anchor
             if anchor is not None and not anchor.honored_obligations:
                 failures.append(

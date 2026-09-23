@@ -19,7 +19,6 @@ from urm.compiler.semantic import (
     sparse_delta_memory_program,
 )
 
-#: The schedule the compiler must produce for the native Sparse Memory pipeline.
 REQUIRED_SPARSE_MEMORY_SCHEDULE: dict[str, str] = {
     "schedule_family": "native_route_then_partition_scan",
     "route_materialization": "explicit_logical_outputs",

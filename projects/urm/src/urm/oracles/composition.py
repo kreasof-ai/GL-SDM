@@ -41,12 +41,6 @@ class UnderspecifiedComposition(ValueError):
     """Raised when a spec does not distinguish its equation within the core."""
 
 
-# K1 operations the canonical path covers, each a reparameterization or
-# composition of the normalized routed reduction:
-# - SOFTMAX: the plain reduction.
-# - LOCAL_WINDOW: a sliding-window mask composed with the reduction.
-# - DIFFERENTIAL: two reductions combined by a learned per-head scalar.
-# - PROJECTED: a low-rank query projection (query @ B_pre) feeding the reduction.
 _COVERED_K1_OPERATIONS = frozenset(
     {
         K1Operation.SOFTMAX,
@@ -76,8 +70,6 @@ def _require_canonical_k2(spec: UnifiedMixerSpec) -> None:
     if spec.family is not MixerKernelFamily.RECURRENCE:
         raise UnderspecifiedComposition("not a K2 spec")
     if spec.recurrent_layout is RecurrentLayout.DIAGONAL:
-        # The diagonal (SSM) layout is a separate canonical core; only the HGRN
-        # and step-size (Mamba-1) variants are currently distinguished.
         if not (spec.diagonal_hgrn or spec.step_size_discretization):
             raise UnderspecifiedComposition(
                 "diagonal layout covers HGRN / step-size SSM only"
@@ -89,11 +81,6 @@ def _require_canonical_k2(spec: UnifiedMixerSpec) -> None:
         )
     if spec.update_rule not in (StateUpdateRule.ADDITIVE, StateUpdateRule.DELTA):
         raise UnderspecifiedComposition(f"unsupported update rule {spec.update_rule}")
-    # The recurrence_operator field carries the equation explicitly. The plain
-    # linear matrix-state recurrence (PLAIN) is the canonical path; the distinct
-    # nonlinear/convolution/solve operators route to their own canonical
-    # executors below. A PLAIN additive/no-decay spec with no distinguishing axis
-    # is the genuinely plain linear recurrence (no hidden nonlinearity).
     if spec.recurrence_operator is not RecurrenceOperator.PLAIN:
         raise UnderspecifiedComposition(
             f"non-plain recurrence operator {spec.recurrence_operator.value} routes "
@@ -111,8 +98,6 @@ def _require_canonical_k2(spec: UnifiedMixerSpec) -> None:
     ):
         raise UnderspecifiedComposition(f"polynomial basis {spec.polynomial_basis} not canonical")
     if spec.transition is not StateTransition.POINTWISE:
-        # Factored (low-rank) transitions are canonical for the generalized-delta
-        # recipes (IPLR/DPLR): left = I + beta⊗alpha or diag(decay) + beta⊗alpha.
         if not (spec.transition is StateTransition.FACTORED_MATRIX and (
             spec.generalized_delta_iplr or spec.generalized_delta_dplr
         )):
@@ -133,25 +118,18 @@ def _require_canonical_k2(spec: UnifiedMixerSpec) -> None:
     ]
     if exotic:
         raise UnderspecifiedComposition(f"exotic composition flags: {exotic}")
-    # comba is the dual-key delta rule (separate prediction/write keys).
     if spec.comba_rule and spec.update_rule is not StateUpdateRule.DELTA:
         raise UnderspecifiedComposition("comba requires the delta update rule")
-    # kda is the plain delta rule with key-channel decay and a key_dim**-0.5 read
-    # scale; it requires the delta update rule and key-channel decay.
     if spec.kda_delta and not (
         spec.update_rule is StateUpdateRule.DELTA
         and spec.decay is DecayGranularity.KEY_CHANNEL
     ):
         raise UnderspecifiedComposition("kda requires delta + key-channel decay")
-    # The dual-gate delta (gdn2) is the delta rule with independent erase/write
-    # gates; it requires key-channel decay and the delta update rule.
     if spec.gdn2_ssm and not (
         spec.update_rule is StateUpdateRule.DELTA
         and spec.decay is DecayGranularity.KEY_CHANNEL
     ):
         raise UnderspecifiedComposition("gdn2 requires delta + key-channel decay")
-    # Static head decay is a reparameterization of head decay with a
-    # time-constant schedule; it requires head-granularity decay.
     if spec.static_head_decay and spec.decay is not DecayGranularity.HEAD:
         raise UnderspecifiedComposition("static_head_decay requires head decay")
 
@@ -224,8 +202,6 @@ def _k1_reduction(query, key, value, spec, mask=None, bias=None):
 def _execute_k1(spec: UnifiedMixerSpec, **operands):
     _require_plain_k1(spec)
     if spec.k1_operation is K1Operation.DIFFERENTIAL:
-        # Two normalized reductions combined by a learned per-head scalar:
-        # softmax(q_a k_a) v - lambda * softmax(q_b k_b) v.
         query_a = np.asarray(operands.pop("query_a"), dtype=np.float64)
         query_b = np.asarray(operands.pop("query_b"), dtype=np.float64)
         key_a = np.asarray(operands.pop("key_a"), dtype=np.float64)
@@ -245,8 +221,6 @@ def _execute_k1(spec: UnifiedMixerSpec, **operands):
         return {"output": out_a - combine * out_b}
 
     if spec.k1_operation is K1Operation.POSITIONAL:
-        # Parallax: softmax probabilities P, secondary scores S = r.k, output
-        # (P V)(1 + sum(P*S)) - (P*S) V. A composition on the canonical reduction.
         query = np.asarray(operands.pop("query"), dtype=np.float64)
         secondary = np.asarray(operands.pop("r"), dtype=np.float64)
         key = np.asarray(operands.pop("key"), dtype=np.float64)
@@ -263,7 +237,6 @@ def _execute_k1(spec: UnifiedMixerSpec, **operands):
             probs = softmax_attention.attention_probs(
                 qb, kb, vb, scale=spec.attention_scale, causal=spec.causal
             )
-            # Secondary scores with the same GQA head sharing.
             group = qb.shape[0] // kb.shape[0]
             k_b = np.repeat(kb, group, axis=0) if group != 1 else kb
             v_b = np.repeat(vb, group, axis=0) if group != 1 else vb
@@ -277,8 +250,6 @@ def _execute_k1(spec: UnifiedMixerSpec, **operands):
         return {"output": np.stack(outputs, axis=0)}
 
     if spec.k1_operation is K1Operation.GATED:
-        # Wall decay-weighted attention: scores[t,s] = sum_d q[t,d]*k[s,d] *
-        # exp(prefix[t]-prefix[s]) (a per-position decay), then softmax.
         query = np.asarray(operands.pop("query"), dtype=np.float64)
         key = np.asarray(operands.pop("key"), dtype=np.float64)
         value = np.asarray(operands.pop("value"), dtype=np.float64)
@@ -288,17 +259,15 @@ def _execute_k1(spec: UnifiedMixerSpec, **operands):
         batch, q_len, q_heads, key_dim = query.shape
         kv_heads = key.shape[2]
         group = q_heads // kv_heads
-        prefix = np.cumsum(log_decay, axis=1)  # [B,T,H,K]
+        prefix = np.cumsum(log_decay, axis=1)
         outputs = []
         for b in range(batch):
-            qb = query[b].transpose(1, 0, 2)  # [Hq,Tq,K]
+            qb = query[b].transpose(1, 0, 2)
             kb = np.repeat(key[b].transpose(1, 0, 2), group, axis=0)
             vb = np.repeat(value[b].transpose(1, 0, 2), group, axis=0)
-            pb = prefix[b].transpose(1, 2, 0)  # [H,K,T]
+            pb = prefix[b].transpose(1, 2, 0)
             scale = spec.attention_scale or key_dim ** -0.5
-            # decay[h, t, s] = exp(sum_k prefix[h,k,t] - prefix[h,k,s])
-            decay = np.exp(pb[:, :, :, None] - pb[:, :, None, :])  # [H,K,T,T]
-            # scores[h,t,s] = sum_k q[h,t,k]*k[h,s,k]*decay[h,k,t,s]
+            decay = np.exp(pb[:, :, :, None] - pb[:, :, None, :])
             scores = np.einsum("htk,hsk,hkts->hts", qb, kb, decay) * scale
             if spec.causal:
                 q_pos = np.arange(q_len)[:, None]
@@ -313,8 +282,6 @@ def _execute_k1(spec: UnifiedMixerSpec, **operands):
         return {"output": np.stack(outputs, axis=0)}
 
     if spec.k1_operation is K1Operation.THRESHOLDED:
-        # TDA thresholded differential attention: L2-normalized Q/K, thresholded
-        # squared-relu scores (unnormalized), two branches combined by lambda.
         query_a = np.asarray(operands.pop("query_a"), dtype=np.float64)
         query_b = np.asarray(operands.pop("query_b"), dtype=np.float64)
         key_a = np.asarray(operands.pop("key_a"), dtype=np.float64)
@@ -345,8 +312,6 @@ def _execute_k1(spec: UnifiedMixerSpec, **operands):
         return {"output": attend(query_a, key_a) - coefficient * attend(query_b, key_b)}
 
     if spec.k1_operation is K1Operation.DELTA_TRANSFORM:
-        # Deltaformer: strict-causal softmax probabilities P, a triangular value
-        # solve (I + beta*P) v' = v, then output = softmax(causal scores) @ v'.
         query = np.asarray(operands.pop("query"), dtype=np.float64)
         key = np.asarray(operands.pop("key"), dtype=np.float64)
         value = np.asarray(operands.pop("value"), dtype=np.float64)
@@ -356,11 +321,10 @@ def _execute_k1(spec: UnifiedMixerSpec, **operands):
         batch, sequence, heads, key_dim = query.shape
         outputs = []
         for b in range(batch):
-            qb = query[b].transpose(1, 0, 2)  # [H,T,K]
+            qb = query[b].transpose(1, 0, 2)
             kb = key[b].transpose(1, 0, 2)
-            vb = value[b].transpose(1, 0, 2)  # [H,T,V]
-            # beta is [B,T,H]; transpose to [H,T] per batch.
-            bb = beta[b].transpose(1, 0)  # [H,T]
+            vb = value[b].transpose(1, 0, 2)
+            bb = beta[b].transpose(1, 0)
             scores = np.einsum("htk,hsk->hts", qb, kb) * (key_dim ** -0.5)
             positions = np.arange(sequence)
             strict_causal = positions[None, :] < positions[:, None]
@@ -369,9 +333,8 @@ def _execute_k1(spec: UnifiedMixerSpec, **operands):
             row_max = np.where(np.isfinite(row_max), row_max, 0.0)
             unnormalized = np.where(strict_causal[None], np.exp(scores - row_max), 0.0)
             probs = unnormalized / unnormalized.sum(axis=-1, keepdims=True).clip(min=1e-20)
-            # Triangular value solve per head.
             eye = np.eye(sequence)
-            beta_h = bb  # [H,T]
+            beta_h = bb
             out_h = np.empty((heads, sequence, vb.shape[-1]))
             causal = positions[None, :] <= positions[:, None]
             causal_scores = np.where(causal[None], scores, -np.inf)
@@ -385,9 +348,6 @@ def _execute_k1(spec: UnifiedMixerSpec, **operands):
         return {"output": np.stack(outputs, axis=0)}
 
     if spec.k1_operation is K1Operation.POSITIVE_FEATURE:
-        # KATA: grouped SPD positive-feature scores with L1 normalization (not
-        # softmax). scores = sum_groups (q.k / sqrt(group_dim))^2, causal-masked,
-        # normalized by their row sum.
         query = np.asarray(operands.pop("query"), dtype=np.float64)
         key = np.asarray(operands.pop("key"), dtype=np.float64)
         value = np.asarray(operands.pop("value"), dtype=np.float64)
@@ -413,8 +373,6 @@ def _execute_k1(spec: UnifiedMixerSpec, **operands):
     mask = operands.pop("attention_mask", None)
     bias = operands.pop("score_bias", None)
     if spec.k1_operation is K1Operation.PROJECTED:
-        # Reparameterize: expand the low-rank query by B_pre, then plain softmax.
-        # query [B,T,R], B_pre [H,R,K] -> expanded query [B,T,H,K].
         b_pre = np.asarray(operands.pop("B_pre"), dtype=np.float64)
         query = np.einsum("btr,hrk->bthk", query, b_pre)
         if key.ndim == 3:
@@ -425,7 +383,6 @@ def _execute_k1(spec: UnifiedMixerSpec, **operands):
         window = operands.pop("attention_window", None)
         if not isinstance(window, int) or window <= 0:
             raise ValueError("local-window attention requires a positive attention_window")
-        # Compose the sliding-window mask: |query_index - key_index| <= window.
         t = query.shape[1]
         positions = np.arange(t)
         mask = (np.abs(positions[:, None] - positions[None, :]) <= window)[
@@ -591,8 +548,6 @@ def _execute_k2_operator(spec: UnifiedMixerSpec, **operands):
         key = operands.pop("key")
         value = operands.pop("value")
         if spec.name == "abc_core":
-            # ABC derives slot_weights and log_decay from slot_logits via a
-            # cumulative log-sum-exp over time.
             slot_logits = np.asarray(operands.pop("slot_logits"), dtype=np.float64)
             cumulative = np.apply_along_axis(
                 lambda x: np.logaddexp.accumulate(x), 1, slot_logits
@@ -605,7 +560,6 @@ def _execute_k2_operator(spec: UnifiedMixerSpec, **operands):
         else:
             slot_weights = operands.pop("slot_weights")
             log_decay = operands.pop("log_decay")
-        # group_size is derived from the head counts, not passed as an operand.
         group_size = np.asarray(query).shape[2] // np.asarray(key).shape[2]
         out, state = nl.slot_attention_two_stage(
             query, key, value, slot_weights, log_decay,
@@ -626,8 +580,6 @@ def _execute_k2_operator(spec: UnifiedMixerSpec, **operands):
 
 
 def _execute_k2(spec: UnifiedMixerSpec, **operands):
-    # Route the distinct recurrence operators (the IR-distinguished equations) to
-    # their own canonical executors before the plain matrix-state path.
     if spec.recurrence_operator is not RecurrenceOperator.PLAIN:
         return _execute_k2_operator(spec, **operands)
     _require_canonical_k2(spec)
@@ -663,14 +615,11 @@ def _execute_k2(spec: UnifiedMixerSpec, **operands):
     initial_state = operands.pop("initial_state", None)
     erase_gate = operands.pop("erase_gate", None)
     write_gate = operands.pop("write_gate", None)
-    # comba names its prediction key "p" and its log decay "g".
     prediction_key = operands.pop("prediction_key", operands.pop("p", None))
     if spec.comba_rule and log_decay is None:
         log_decay = operands.pop("g", None)
-    # generalized-delta factored transitions.
     transition_alpha = operands.pop("transition_alpha", None)
     transition_beta = operands.pop("transition_beta", None)
-    # gated-delta-product multi-rank updates.
     update_keys = operands.pop("update_keys", None)
     update_values = operands.pop("update_values", None)
     if operands:
@@ -686,9 +635,6 @@ def _execute_k2(spec: UnifiedMixerSpec, **operands):
 
     batch, sequence, q_heads, key_dim = query.shape
     value_heads, value_dim = value.shape[2], value.shape[3]
-    # Read-scale convention: the plain matrix-state reference defaults to 1.0,
-    # but the dual-gate (gdn2), kda, comba, and generalized-delta references
-    # default to key_dim**-0.5.
     if spec.read_scale is not None:
         scale = spec.read_scale
     elif (
@@ -699,14 +645,11 @@ def _execute_k2(spec: UnifiedMixerSpec, **operands):
         scale = key_dim ** -0.5
     else:
         scale = 1.0
-    # Feature construction: polynomial basis (quadratic expansion) or a feature
-    # map applied to identity features. The polynomial basis changes the feature
-    # dimension, so the state width follows the expanded key dimension.
     if spec.polynomial_basis is not PolynomialBasis.NONE:
         poly_scale = spec.read_scale or key_dim ** -0.5
         qf = _polynomial_features(query, spec.polynomial_basis, poly_scale, is_query=True)
         kf = _polynomial_features(key, spec.polynomial_basis, poly_scale, is_query=False)
-        scale = 1.0  # the scale is folded into the polynomial features
+        scale = 1.0
     else:
         qf = _feature_map(query, spec.feature_map)
         kf = _feature_map(key, spec.feature_map)
@@ -724,8 +667,6 @@ def _execute_k2(spec: UnifiedMixerSpec, **operands):
                 if initial_state is None
                 else np.asarray(initial_state[b, vh], dtype=np.float64)
             )
-            # Decay schedule for this (batch, head): head scalar or key-channel.
-            # Static head decay is a time-constant head schedule ([H] or [1]).
             if spec.decay is DecayGranularity.NONE:
                 g = np.zeros(sequence)
             elif spec.static_head_decay:
@@ -745,22 +686,17 @@ def _execute_k2(spec: UnifiedMixerSpec, **operands):
             )
             erase_col = write_col = None
             if spec.gdn2_ssm:
-                # erase_gate [B,T,Hv,K], write_gate [B,T,Hv,V]
                 erase_col = np.asarray(erase_gate[b, :, vh], dtype=np.float64)
                 write_col = np.asarray(write_gate[b, :, vh], dtype=np.float64)
             retr_col = None
             if spec.comba_rule:
-                # prediction_key [B,T,H,K] is the retrieval key.
                 retr_col = np.asarray(prediction_key[b, :, qh], dtype=np.float64)
             left_col = None
             if spec.generalized_delta_iplr or spec.generalized_delta_dplr:
-                # left_t = I + beta_t⊗alpha_t (IPLR) or diag(exp(log_decay)) +
-                # beta_t⊗alpha_t (DPLR), applied as Z = left_t @ M.
-                ta = np.asarray(transition_alpha[b, :, vh], dtype=np.float64)  # [T,K]
-                tb = np.asarray(transition_beta[b, :, vh], dtype=np.float64)   # [T,K]
+                ta = np.asarray(transition_alpha[b, :, vh], dtype=np.float64)
+                tb = np.asarray(transition_beta[b, :, vh], dtype=np.float64)
                 eye = np.eye(feat_dim)
                 left_col = np.empty((sequence, feat_dim, feat_dim))
-                # DPLR's diagonal decay comes from log_decay [B,T,H,K].
                 dplr_decay = (
                     np.asarray(log_decay[b, :, vh], dtype=np.float64)
                     if spec.generalized_delta_dplr
@@ -774,7 +710,6 @@ def _execute_k2(spec: UnifiedMixerSpec, **operands):
                         left_col[ti] = eye + rank_one
             uk_col = uv_col = rb_col = None
             if spec.gated_delta_product:
-                # update_keys [B,T,R,H,K], update_values [B,T,R,H,V], beta [B,T,R,H].
                 uk_col = np.asarray(update_keys[b, :, :, qh], dtype=np.float64)
                 uv_col = np.asarray(update_values[b, :, :, vh], dtype=np.float64)
                 rb_col = np.asarray(beta[b, :, :, vh], dtype=np.float64)
@@ -824,7 +759,6 @@ def _execute_k3(spec: UnifiedMixerSpec, **operands):
     outputs = np.empty((batch, sequence, value_dim))
     final = np.empty_like(memory)
     for b in range(batch):
-        # Densify the sparse routes into [T, S] weight vectors + selection mask.
         w = np.zeros((sequence, slots))
         q = np.zeros((sequence, slots))
         selected = np.zeros((sequence, slots), dtype=bool)

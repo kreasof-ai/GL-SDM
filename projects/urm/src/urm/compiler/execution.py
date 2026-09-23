@@ -44,7 +44,7 @@ class VisitorKind(StrEnum):
     PAIRWISE_MAP = "pairwise_map"
     VECTOR_LOAD_STORE = "vector_load_store"
     TILE_LOAD_STORE = "tile_load_store"
-    PARTIAL_REDUCTION = "partial_reduction"  # row/column partial reductions
+    PARTIAL_REDUCTION = "partial_reduction"
     STATEFUL_TILE_TRANSFORM = "stateful_tile_transform"
     SIDE_OUTPUT = "auxiliary_side_output"
     FINAL_SCALE_CONVERT = "final_scaling_conversion"
@@ -59,7 +59,7 @@ class VisitorDescriptor:
     """
 
     kind: VisitorKind
-    element_dtype: str  # DType name; a string keeps this module dependency-light
+    element_dtype: str
     accumulation_dtype: str = "float32"
     locality: Locality = Locality.TILE
     arity: int = 1
@@ -75,8 +75,8 @@ class ExecutionAnchor:
 
     kind: AnchorKind
     name: str
-    trusted: bool = True  # only verified kernels carry True
-    experimental: bool = False  # compiler-generated capability under evaluation
+    trusted: bool = True
+    experimental: bool = False
     effect: EffectSignature = PURE
     operand_locality: LocalityConstraint = field(
         default_factory=lambda: LocalityConstraint()
@@ -87,7 +87,6 @@ class ExecutionAnchor:
         )
     )
     supported_visitors: frozenset[VisitorKind] = frozenset()
-    # Capability contract extensions (solver-facing facts):
     forward_only: bool = False
     backward_verified_dtypes: frozenset[str] = frozenset()
     """Dtypes whose backward passes committed differential gates."""
@@ -303,10 +302,6 @@ class AnchorRegistry:
             ),
         )
 
-
-# -- Standard anchor catalog -------------------------------------------------
-# Descriptors of the production families URM lowers onto. These carry no code;
-# concrete kernels remain in urm.backends / urm.adapters / upstream packages.
 
 SDM_EXTERNAL_ANCHOR_NAME = "facebook_sparse_delta_memory_183e7df_external_adapter"
 NATIVE_SPARSE_MEMORY_ANCHOR_NAME = "urm_native_sparse_memory_e2e_v0"
@@ -647,18 +642,12 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
     ExecutionAnchor(
         kind=AnchorKind.RECURRENT_SCAN,
         name=NATIVE_DIAGONAL_RECURRENCE_ANCHOR_NAME,
-        # The kernel accumulates in fp32 throughout (loads upcast, the output store
-        # downcasts), so float32, bfloat16, and float16 forward and backward are
-        # all verified against the fp32 sequential reference.
         backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
         supported_visitors=frozenset(),
     ),
     ExecutionAnchor(
         kind=AnchorKind.RECURRENT_SCAN,
         name=NATIVE_MATRIX_STATE_RECURRENCE_ANCHOR_NAME,
-        # The kernel accumulates the state and gradients in fp32 regardless of
-        # the input dtype, so bf16/fp16 backward is numerically sound (verified
-        # against the eager oracle at the frozen 0.02 contract tolerance).
         backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
         supported_visitors=frozenset(),
     ),
@@ -749,13 +738,11 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
     ExecutionAnchor(
         kind=AnchorKind.GROUPED_GEMM,
         name="grouped_gemm_reserved",
-        trusted=False,  # reserved until the MoE comparator lands
+        trusted=False,
     ),
     ExecutionAnchor(
         kind=AnchorKind.ROUTED_REDUCTION,
         name="routed_reduction_v1",
-        # The frozen v1 kernel has no epilogue capability: a requested row-scale
-        # epilogue must route to the fused row-scale backend instead.
         backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
         supported_visitors=frozenset({VisitorKind.SIDE_OUTPUT}),
         consumes_launch_config=False,
@@ -764,12 +751,6 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
     ExecutionAnchor(
         kind=AnchorKind.ROUTED_REDUCTION,
         name="routed_reduction_row_scale_epilogue_v0",
-        # Qualified fused-epilogue routed-reduction backend. Backward covers
-        # weights, values AND row scale via tile recomputation; certification
-        # evidence lives in the rewrite contract and in
-        # tests/test_compiler_epilogue_gpu.py. The GPU implementation lives in
-        # backends/triton/softmax/routed_scale_epilogue.py; v1 remains the
-        # default without visitors.
         result_locality=LocalityConstraint(min=Locality.TILE, max=Locality.DEVICE),
         backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
         honored_obligations=frozenset({"recompute_backward"}),
@@ -847,7 +828,7 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
     ExecutionAnchor(
         kind=AnchorKind.PAGE_GATHER_UPDATE,
         name="page_gather_update_reserved",
-        trusted=False,  # reserved for the SDM/GL-SDM slice
+        trusted=False,
     ),
     ExecutionAnchor(
         kind=AnchorKind.COLLECTIVE_EXCHANGE,
@@ -1001,9 +982,6 @@ def make_sparse_state_mixer_selector(
         from urm.compiler.semantic import SparseStateMixerAccess, UnifiedMixerAccess
 
         if isinstance(request.semantic_op, UnifiedMixerAccess):
-            # The unified compiler verifies the exact K3 anchor binding and the
-            # native executor repeats shape/device checks against its concrete
-            # launch contract before dispatch.
             return None
 
         if not isinstance(request.semantic_op, SparseStateMixerAccess):

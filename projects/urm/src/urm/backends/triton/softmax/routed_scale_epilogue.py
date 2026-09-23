@@ -52,9 +52,6 @@ if TYPE_CHECKING:
 ROUTED_REDUCTION_ROW_SCALE_EPILOGUE_VERSION = 2
 
 
-# -- Execution configuration ---------------------------------------------------
-
-
 @dataclass(frozen=True, slots=True)
 class RoutedEpilogueLaunchConfig:
     """The one executable configuration of the fused row-scale anchor.
@@ -67,8 +64,8 @@ class RoutedEpilogueLaunchConfig:
     block_d: int
     num_warps: int
     num_stages: int
-    grad_values_decomposition: str = "per_query"  # "per_query" | "per_route"
-    grad_values_schedule: str = "segmented"  # "full_row" | "segmented"
+    grad_values_decomposition: str = "per_query"
+    grad_values_schedule: str = "segmented"
 
     def __post_init__(self) -> None:
         from urm.compiler.schedule_space import (
@@ -139,9 +136,6 @@ class RoutedEpilogueLaunchConfig:
         }
 
 
-# -- Triton kernels ---------------------------------------------------------------
-
-
 @triton.jit
 def _rrs_forward_kernel(
     indices,
@@ -175,7 +169,6 @@ def _rrs_forward_kernel(
                 other=0.0,
             ).to(tl.float32)
         accumulator += route_weight * gathered
-    # Typed epilogue: scale while the tile is resident; base never escapes.
     accumulator *= scale
     if EVEN_D:
         tl.store(output + query * VALUE_DIM + dimension_offsets, accumulator)
@@ -396,9 +389,6 @@ def _rrs_grad_row_scale_kernel(
     tl.store(grad_row_scale + query, accumulator)
 
 
-# -- Launch metadata -----------------------------------------------------------------
-
-
 @dataclass(frozen=True, slots=True)
 class RoutedEpilogueLaunchInfo:
     """Metadata of one actual launch (serializable subset)."""
@@ -408,8 +398,6 @@ class RoutedEpilogueLaunchInfo:
     block_d: int
     num_warps: int
     num_stages: int | None = None
-    # Live Triton CompiledKernel handle (register/shared-memory feedback);
-    # deliberately excluded from serialization.
     handle: object = None
     extra_handles: tuple[tuple[str, object], ...] = ()
 
@@ -421,9 +409,6 @@ class RoutedEpilogueLaunchInfo:
             "num_warps": self.num_warps,
             "num_stages": self.num_stages,
         }
-
-
-# -- Heuristics (default path; unchanged tuning) --------------------------------------
 
 
 def _forward_launch(value_dim: int, queries: int) -> tuple[int, int]:
@@ -450,9 +435,6 @@ def _default_config(value_dim: int, queries: int) -> RoutedEpilogueLaunchConfig:
         grad_values_decomposition="per_query",
         grad_values_schedule="segmented",
     )
-
-
-# -- Launchers ------------------------------------------------------------------------
 
 
 def launch_forward(
@@ -612,9 +594,6 @@ def launch_backward(
     return (grad_weights, grad_values, grad_scale), info
 
 
-# -- Autograd wrapper ------------------------------------------------------------------
-
-
 class _RoutedReduceRowScale(torch.autograd.Function):
     @staticmethod
     def forward(ctx, indices, weights, values, row_scale, config=None):
@@ -724,9 +703,6 @@ def routed_reduce_row_scale_metadata(
     return payload
 
 
-# -- Compile probing ---------------------------------------------------------------------
-
-
 def _extract_resource_usage(kernel_name: str, handle: object):
     from urm.compiler.search import KernelResourceUsage
 
@@ -787,7 +763,6 @@ def make_triton_compile_probe(
         try:
             point = context.schedule_point
             effective_anchor = context.anchor_name
-            # Representative runtime extents (not Triton constexpr specializations)
             eff_queries = min(context.queries, 4) if context.queries > 0 else 4
             eff_sources = max(min(context.sources, 8), context.route_width)
             eff_route_width = context.route_width

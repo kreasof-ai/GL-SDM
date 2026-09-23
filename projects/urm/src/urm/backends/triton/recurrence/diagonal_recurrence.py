@@ -135,11 +135,6 @@ def _kernels():
                 state_mask,
             )
         else:
-            # Chunked forward scan: loop over sequence chunks of CHUNK_T tokens,
-            # running a parallel associative_scan within each chunk and carrying the
-            # state in registers across chunks. This bounds register pressure (the
-            # tile is [CHUNK_T, BLOCK_N] instead of [T, BLOCK_N]) while keeping the
-            # whole sequence in one program.
             state_offset = state_index[None, :]
             for chunk_start in range(0, T, CHUNK_T):
                 token = chunk_start + tl.arange(0, CHUNK_T)
@@ -208,7 +203,6 @@ def _kernels():
                     state_sequence,
                     token_mask[:, None] & state_mask[None, :],
                 )
-                # Carry the post-update state of the last valid token to the next chunk.
                 last_valid = tl.sum(tl.where(token_mask, 1, 0), 0) - 1
                 state = tl.sum(
                     tl.where((tl.arange(0, CHUNK_T) == last_valid)[:, None], state_sequence, 0.0),
@@ -480,10 +474,6 @@ def _kernels():
         BLOCK_T: tl.constexpr,
         BLOCK_N: tl.constexpr,
     ):
-        # Parallel reverse-scan backward for the read-after-update (READ_BEFORE=False)
-        # diagonal recurrence. The state cotangent sc_t satisfies the reverse affine
-        # recurrence sc_t = decay_{t+1} * sc_{t+1} + grad_output_t * read_gate_t, which
-        # tl.associative_scan(reverse=True) evaluates in parallel over the sequence.
         row = tl.program_id(0)
         batch = row // C
         channel = row % C
@@ -492,7 +482,6 @@ def _kernels():
         token_mask = token < T
         state_mask = state_index < N
         mask2 = token_mask[:, None] & state_mask[None, :]
-        # Per-token loads over the whole sequence tile.
         x = tl.load(X + batch * X_SB + token * X_ST + channel * X_SC, token_mask, other=0.0).to(tl.float32)
         grad_output = tl.load(
             GRAD_OUTPUT + batch * T * C + token * C + channel, token_mask, other=0.0
@@ -521,7 +510,6 @@ def _kernels():
             step = tl.full((BLOCK_T,), 1.0, tl.float32)
         decay = tl.exp(ld * step[:, None])
         decay = tl.where(mask2, decay, 1.0)
-        # state_after_t = STATES[t]; state_before_t = STATES[t-1] (or initial at t=0).
         state_after = tl.load(
             STATES + batch * T * C * N + token[:, None] * C * N + channel * N + state_index[None, :],
             mask2, other=0.0,
@@ -533,7 +521,6 @@ def _kernels():
         if HAS_INITIAL:
             init = tl.load(INITIAL + batch * C * N + channel * N + state_index, state_mask, other=0.0).to(tl.float32)
             state_before = tl.where((token[:, None] == 0) & state_mask[None, :], init[None, :], state_before)
-        # decay_{t+1}: shift log_decay and step forward by one token.
         ld_next = tl.load(
             LOG_DECAY + batch * LD_SB + (token[:, None] + 1) * LD_ST + channel * LD_SC + state_index[None, :] * LD_SN,
             (token[:, None] + 1 < T) & state_mask[None, :], other=0.0,
@@ -546,7 +533,6 @@ def _kernels():
         else:
             step_next = tl.full((BLOCK_T,), 1.0, tl.float32)
         decay_next = tl.exp(ld_next * step_next[:, None])
-        # Reverse scan for sc. g_t = grad_output_t * read_gate_t.
         g_t = grad_output[:, None] * rg
         if HAS_GRAD_FINAL:
             gf = tl.load(GRAD_FINAL + batch * C * N + channel * N + state_index, state_mask, other=0.0).to(tl.float32)
@@ -558,7 +544,6 @@ def _kernels():
         a = tl.where(mask2, a, 1.0)
         b = tl.where(mask2, b, 0.0)
         _, sc = tl.associative_scan((a, b), axis=0, combine_fn=compose_affine, reverse=True)
-        # Per-token gradients from the state cotangent sc_t.
         skip_index = 0 if SKIP_SCALAR else channel
         skip = tl.load(SKIP + skip_index).to(tl.float32)
         grad_read = grad_output[:, None] * state_after
@@ -589,13 +574,13 @@ def _kernels():
 
     @triton.jit
     def diagonal_decode_step_kernel(
-        X,  # [B, C] single token
+        X,
         INPUT_GATE,
         READ_GATE,
         LOG_DECAY,
-        STATE,  # persistent [B, C, N], updated in place
-        OUTPUT,  # [B, C]
-        SKIP,  # [C] skip connection
+        STATE,
+        OUTPUT,
+        SKIP,
         C: tl.constexpr,
         N: tl.constexpr,
         READ_BEFORE: tl.constexpr,
@@ -667,9 +652,6 @@ def execute_diagonal_recurrence(
     triton, forward_kernel, backward_kernel, backward_kernel_parallel, _ = _kernels()
     if x.device.type != "cuda":
         raise ValueError("native diagonal SSM requires CUDA tensors")
-    # The kernels accumulate in fp32 throughout (every load is upcast with
-    # ``.to(tl.float32)`` and the output store downcasts to ``x.dtype``), so the
-    # input may be float32, bfloat16, or float16; the state stays fp32.
     _SUPPORTED_DTYPES = (torch.float32, torch.bfloat16, torch.float16)
     if x.dtype not in _SUPPORTED_DTYPES:
         raise ValueError("native diagonal SSM supports float32, bfloat16, float16")
@@ -683,14 +665,9 @@ def execute_diagonal_recurrence(
     ):
         raise ValueError("native diagonal SSM gates must be float32, bfloat16, or float16")
     if initial_state is None:
-        # The kernel never loads the initial state when has_initial is False, so a
-        # minimal cached placeholder avoids a per-call [B,C,N] zeros allocation.
         initial_tensor = _placeholder(x.device, batch, channels, state_width)
         has_initial = False
     else:
-        # The kernels index the state as dense [B,C,N]. This copy remains in
-        # the autograd graph, so gradients still return to transposed or
-        # expanded caller storage through PyTorch's copy backward.
         initial_tensor = initial_state.contiguous()
         has_initial = True
         if initial_tensor.shape != (batch, channels, state_width):
@@ -702,8 +679,6 @@ def execute_diagonal_recurrence(
     log_decay = _expand_gate(log_decay, batch, sequence, channels)
     has_step_size = step_size is not None
     if step_size is None:
-        # HAS_STEP_SIZE is False, so the kernel never loads step; a minimal cached
-        # placeholder avoids a per-call [B,T,C] ones allocation.
         step_tensor = _placeholder(x.device, batch, sequence, channels)
     else:
         if step_size.shape not in ((batch, sequence), (batch, sequence, channels)):
@@ -727,15 +702,9 @@ def execute_diagonal_recurrence(
     skip_tensor = skip_tensor.contiguous()
     block_n = triton.next_power_of_2(state_width)
     block_t = triton.next_power_of_2(sequence)
-    # Chunk the forward scan to bound register pressure: the per-chunk tile is
-    # [chunk_t, block_n] instead of [block_t, block_n]. 128 balances parallelism
-    # against the sequential carry across chunks.
     chunk_t = min(block_t, 128)
     warps = 4 if block_n <= 128 else 8
 
-    # Cache the autograd.Function subclass per launch configuration: defining the
-    # class runs `__build_class__` every call, which is pure dispatch overhead on
-    # the ordinary-invocation path the production budget measures.
     scan_cls = _scan_class(
         sequence, channels, state_width, has_initial, has_step_size, skip_scalar,
         read_before, gates_one, block_t, block_n, chunk_t, warps,
@@ -753,7 +722,7 @@ def _scan_class(
     import torch
 
     triton, forward_kernel, backward_kernel, backward_kernel_parallel, _ = _kernels()
-    batch = None  # batch varies per call; read from x inside forward/backward
+    batch = None
 
     class _DiagonalScan(torch.autograd.Function):
         @staticmethod
@@ -838,9 +807,6 @@ def _scan_class(
                 else grad_final.contiguous()
             )
             if not ctx.read_before:
-                # Parallel reverse-scan backward (read-after-update): evaluates the
-                # state-cotangent recurrence with tl.associative_scan instead of a
-                # sequential reverse loop.
                 backward_kernel_parallel[(batch * channels,)](
                     x,
                     input_gate,
@@ -922,10 +888,6 @@ def _scan_class(
                 grad_skip = grad_skip_full.sum().reshape_as(skip)
             else:
                 grad_skip = grad_skip_full.sum(dim=(0, 1)).reshape_as(skip)
-            # When gates_one, the gates are the constant 1.0 (not differentiable
-            # inputs), so their gradients are None. This also prevents autograd from
-            # accumulating the gate gradients into a tensor the caller aliased as a
-            # gate placeholder.
             return (
                 grad_x,
                 None if ctx.gates_one else grad_input_gate,
@@ -1011,10 +973,9 @@ def execute_diagonal_decode_step(
     state_width = state.shape[-1]
     gates_one = input_gate is None and read_gate is None
     skip_tensor = _skip_tensor(0.0, x.device)
-    # Expand gates/log_decay to [B,C,N].
     def _expand(gate, name):
         if gate is None:
-            return log_decay  # placeholder; never loaded when gates_one
+            return log_decay
         if gate.dim() == 2:
             gate = gate.unsqueeze(-1)
         if gate.shape != (batch, channels, state_width):

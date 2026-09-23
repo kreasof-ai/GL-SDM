@@ -64,7 +64,7 @@ class MergePolicy(StrEnum):
     """Collision policy for multi-writer state updates."""
 
     NOT_APPLICABLE = "not_applicable"
-    ORDERED = "ordered"  # requires an ordered-scan lowering
+    ORDERED = "ordered"
     SUM = "sum"
     MEAN = "mean"
     LAST_WRITE = "last_write"
@@ -81,8 +81,8 @@ class TransformKind(StrEnum):
     """Closed transform vocabulary; linear members declare linearity."""
 
     IDENTITY = "identity"
-    ROW_SCALE = "row_scale"  # one scalar per leading (query) row
-    AFFINE = "affine"  # per-channel affine; linear when the weight is fixed
+    ROW_SCALE = "row_scale"
+    AFFINE = "affine"
     RELU = "relu"
     GELU = "gelu"
     SIGMOID = "sigmoid"
@@ -110,7 +110,7 @@ class DType(StrEnum):
     INT64 = "int64"
 
 
-Dim = int | str  # symbolic or concrete extent
+Dim = int | str
 
 
 @dataclass(frozen=True, slots=True)
@@ -352,8 +352,6 @@ class SparseMemoryMixerSpec:
             )
 
 
-# Compatibility name for the external baseline slice. Native lowering work
-# consumes SparseMemoryMixerSpec and must not depend on the upstream adapter.
 SparseDeltaMemorySpec = SparseMemoryMixerSpec
 
 
@@ -437,8 +435,8 @@ class EpilogueSpec:
     Python callables. A delayed per-row scale is the first supported member.
     """
 
-    kind: TransformKind  # ROW_SCALE only for now
-    scale: str  # name of the logical scalar tensor
+    kind: TransformKind
+    scale: str
 
     def __post_init__(self) -> None:
         if self.kind is not TransformKind.ROW_SCALE:
@@ -481,7 +479,7 @@ class Gather(SemanticOp):
     """Bring payload rows to queries along precomputed logical edges."""
 
     spec: RouteSpec
-    shape_hint: tuple[int, int, int, int] | None = None  # (Q, S, K, D)
+    shape_hint: tuple[int, int, int, int] | None = None
 
     @property
     def effect(self) -> EffectSignature:
@@ -494,8 +492,7 @@ class WeightedReduce(SemanticOp):
 
     spec: RouteSpec
     epilogue: EpilogueSpec | None = None
-    # Concrete dims for analytical costing (architecture params, not schedule):
-    shape_hint: tuple[int, int, int, int] | None = None  # (Q, S, K, D)
+    shape_hint: tuple[int, int, int, int] | None = None
 
     @property
     def effect(self) -> EffectSignature:
@@ -507,7 +504,7 @@ class Matmul(SemanticOp):
     """Trusted GEMM anchor semantics: ``out = lhs @ rhs``."""
 
     transpose_rhs: bool = False
-    shape_hint: tuple[int, int, int] | None = None  # (M, K, N)
+    shape_hint: tuple[int, int, int] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -557,8 +554,6 @@ class StateUpdate(SemanticOp):
     commit_boundary: bool = False
 
     def __post_init__(self) -> None:
-        # NOTE: explicit base-class call; dataclass slots=True breaks zero-arg
-        # super() inside regenerated classes.
         SemanticOp.__post_init__(self)
         if self.policy is MergePolicy.NOT_APPLICABLE:
             raise ValueError("state updates require an explicit merge policy")
@@ -626,8 +621,6 @@ class UnifiedMixerAccess(SemanticOp):
         return ORDERED_STATE
 
 
-# Compatibility name for users of the external-baseline constructor. The
-# semantic node itself is the URM-owned sparse-memory skeleton above.
 SparseDeltaMemoryAccess = SparseMemoryAccess
 
 
@@ -682,7 +675,6 @@ class SemanticProgram:
         program.validate()
         return program
 
-    # -- accessors ---------------------------------------------------------
 
     @property
     def op_names(self) -> tuple[str, ...]:
@@ -714,7 +706,6 @@ class SemanticProgram:
             name=self.name, inputs=self.inputs, ops=ops, outputs=self.outputs
         )
 
-    # -- validation --------------------------------------------------------
 
     def validate(self) -> tuple[object, ...]:
         """Check name binding and structural rules; raise on errors."""
@@ -782,7 +773,6 @@ def routed_reduction_program(
     """
 
     if selection is SelectionKind.TOP_K and top_k is None:
-        # Precomputed routes do not re-run selection; width is symbolic.
         selection = SelectionKind.DENSE
     spec = RouteSpec(
         query_domain=LogicalDomain.SEQUENCE,
@@ -1014,7 +1004,7 @@ def row_scaled_routed_reduction_program(
         output[q, d] = row_scale[q] * base[q, d]
 
     This is the materialized reference form for the CODA-style epilogue
-    reparameterization (archive/docs/coda-retrospective.md).
+    reparameterization.
     """
 
     base_program = routed_reduction_program(

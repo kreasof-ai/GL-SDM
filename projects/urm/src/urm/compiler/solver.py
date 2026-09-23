@@ -51,7 +51,7 @@ from urm.compiler.diagnostics import (
     Severity,
 )
 
-try:  # optional dependency: the solver extra pins this version
+try:
     import z3  # type: ignore[import-not-found]
 
     _Z3_IMPORT_ERROR: str | None = None
@@ -102,7 +102,7 @@ class SolverLimits:
     """Explicit resource bounds for every search."""
 
     timeout_ms: int = DEFAULT_TIMEOUT_MS
-    rlimit: int = DEFAULT_RLIMIT  # Z3 resource (propagation) budget
+    rlimit: int = DEFAULT_RLIMIT
     max_nogoods: int = 64
 
 
@@ -152,7 +152,7 @@ class _Translator:
                         ),
                     )
                 )
-            else:  # EnumVar: index into values
+            else:
                 upper = len(variable.values) - 1
                 out.append(
                     (
@@ -180,7 +180,6 @@ class _Translator:
         for name, coefficient in linear.terms:
             term = self.vars[name]
             if name in self.bool_vars:
-                # Booleans participate in linear expressions as 0/1.
                 term = z3.If(term, 1, 0)  # type: ignore[union-attr]
             total = total + coefficient * term
         return total
@@ -252,7 +251,7 @@ def _decode_assignment(translator: _Translator, z3_model) -> Assignment:
             decoded[variable.name] = bool(value)
         elif isinstance(variable, IntVar):
             decoded[variable.name] = int(str(value))
-        else:  # EnumVar
+        else:
             index = int(str(value))
             if not 0 <= index < len(variable.values):
                 raise ValueError(
@@ -274,7 +273,7 @@ def _core_diagnostics(
     for name in core_names:
         constraint = by_name.get(name)
         if constraint is None:
-            continue  # a variable-domain assertion; listed but unnamed above
+            continue
         involved_categories.add(constraint.category.value)
         messages.append(f"{name}: {constraint.explanation}")
     primary = (
@@ -294,7 +293,7 @@ def _core_diagnostics(
             severity=Severity.ERROR,
             message=message,
         )
-        for message in messages[:8]  # bounded, most relevant first
+        for message in messages[:8]
     )
     if len(core_names) > 8:
         diagnostics.append(
@@ -317,9 +316,6 @@ def _base_statistics(
     }
     stats.update(extra)
     return stats
-
-
-# -- Pass A: feasibility -------------------------------------------------------
 
 
 class FeasibilityPass:
@@ -378,8 +374,6 @@ class FeasibilityPass:
         )
 
 
-# -- Pass B: bounded lexicographic optimization ---------------------------------
-
 DEFAULT_OBJECTIVE_ORDER = (
     "unresolved_obligations",
     "peak_temporary_bytes",
@@ -406,7 +400,7 @@ class OptimizationPass:
         engine = require_z3()
         feasibility = FeasibilityPass().run(model, self.limits)
         if feasibility.status is not FeasibilityStatus.SAT:
-            return feasibility  # UNSAT/UNKNOWN diagnostics flow through
+            return feasibility
 
         started = time.perf_counter()
         translator = _Translator(model)
@@ -442,7 +436,7 @@ class OptimizationPass:
                 objective_values=tuple(objective_values),
                 statistics=statistics,
             )
-        if result == engine.unsat:  # cannot happen after feasible Phase A
+        if result == engine.unsat:
             return PassOutcome(
                 status=FeasibilityStatus.UNKNOWN,
                 diagnostics=(
@@ -472,7 +466,6 @@ class OptimizationPass:
         )
 
 
-# Historical result aliases kept for API readability at call sites.
 FeasibilityResult = PassOutcome
 OptimizationResult = PassOutcome
 

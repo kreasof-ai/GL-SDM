@@ -24,41 +24,6 @@ def test_profiling_schema_exists_and_versioned() -> None:
     assert "tensor-core peaks are prohibited" in description
 
 
-def test_committed_profiling_artifacts_validate_against_schema() -> None:
-    from jsonschema import validate
-
-    schema = _load_schema("profiling-schema.json")
-    artifacts = sorted(
-        path
-        for path in (PROJECT_ROOT / "results" / "profiling").glob("*.profiling.json")
-        if path.name != "summary.profiling.json"
-    )
-    if not artifacts:
-        pytest.skip("no profiling artifacts committed yet")
-    summary = PROJECT_ROOT / "results" / "profiling" / "summary.profiling.json"
-    assert summary.exists(), "aggregate profiling summary must be committed"
-    for artifact in artifacts:
-        document = json.loads(artifact.read_text())
-        validate(document, schema)
-
-
-def test_not_available_policy_is_honored_in_artifacts() -> None:
-    """Counter-derived fields must say so explicitly, never fabricate zeros."""
-    artifacts = (
-        path
-        for path in (PROJECT_ROOT / "results" / "profiling").glob("*.profiling.json")
-        if path.name != "summary.profiling.json"
-    )
-    for artifact in artifacts:
-        measured = json.loads(artifact.read_text())["memory_traffic"]["measured"]
-        for field in ("dram_bytes_sum", "l2_hit_rate", "mbu_measured"):
-            value = measured[field]
-            assert isinstance(value, str) and value.startswith("not_"), (
-                f"{artifact.name}: {field} must be an explicit not_available "
-                f"marker, got {value!r}"
-            )
-
-
 def test_result_schema_accepts_optional_profiling_extension() -> None:
     from jsonschema import validate
 

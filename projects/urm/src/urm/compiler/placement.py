@@ -22,9 +22,9 @@ if TYPE_CHECKING:
 class RouteLeg(StrEnum):
     """How one logical edge is realized after placement."""
 
-    LOCAL_MEMORY = "local_memory"  # source row co-resident with the query
-    KERNEL_DISPATCH = "kernel_dispatch"  # same device; go through an anchor
-    PEER_EXCHANGE = "peer_exchange"  # remote source; explicit communication
+    LOCAL_MEMORY = "local_memory"
+    KERNEL_DISPATCH = "kernel_dispatch"
+    PEER_EXCHANGE = "peer_exchange"
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,7 +127,7 @@ class ExchangeStep:
     dst_device: int
     payload_count: int
     payload_bytes: int
-    grouped_key: str | None = None  # destination bucket when grouped by peer
+    grouped_key: str | None = None
 
     @property
     def bytes_on_wire(self) -> int:
@@ -139,12 +139,10 @@ class PlanStep:
     """One executable step: anchor dispatch, local access, or exchange."""
 
     step_id: int
-    kind: str  # "anchor_dispatch" | "exchange" | "local_reduce" | "commit"
+    kind: str
     anchor: str | None = None
     exchanges: tuple[ExchangeStep, ...] = ()
     note: str | None = None
-    # Verified schedule/launch configuration for anchor-dispatch steps;
-    # plain serializable data only (see urm.compiler.search.ScheduleDecision).
     launch_config: dict[str, str | int] | None = None
 
 

@@ -17,12 +17,12 @@ from enum import StrEnum
 class Locality(StrEnum):
     """Where data lives while an anchor works on it."""
 
-    REGISTER = "register"  # scalar / register-local within one program instance
-    LANE = "lane"  # pair-local across lanes of one warp/wavefront
-    TILE = "tile"  # tile-resident for the lifetime of one mainloop
-    BLOCK = "block"  # block/workgroup shared memory
-    DEVICE = "device"  # device-local (HBM)
-    MESH = "mesh"  # distributed across devices; access implies communication
+    REGISTER = "register"
+    LANE = "lane"
+    TILE = "tile"
+    BLOCK = "block"
+    DEVICE = "device"
+    MESH = "mesh"
 
     @property
     def rank(self) -> int:

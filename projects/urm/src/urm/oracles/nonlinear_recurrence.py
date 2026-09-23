@@ -120,11 +120,10 @@ def hyena_fft_convolution(query, kernel, direct):
     kernel = np.asarray(kernel, dtype=np.float64)
     direct = np.asarray(direct, dtype=np.float64)
     batch, sequence, channels = q.shape
-    x = q.transpose(0, 2, 1)  # [B, C, T]
+    x = q.transpose(0, 2, 1)
     fft_size = 2 * sequence
     kernel_spectrum = np.fft.rfft(kernel, n=fft_size) / fft_size
     input_spectrum = np.fft.rfft(x, n=fft_size)
-    # norm="forward" matches the reference: the inverse transform is unnormalized.
     out = np.fft.irfft(
         input_spectrum * kernel_spectrum, n=fft_size, norm="forward"
     )[..., :sequence]
@@ -158,7 +157,6 @@ def layernorm_inner_state(query, key, value, w, b, eta, initial_state=None,
         if initial_state_bias is None
         else np.asarray(initial_state_bias, dtype=np.float64).copy()
     )
-    # BTHD -> BHTD; q pre-scaled by dim**-0.5.
     q = q0.transpose(0, 2, 1, 3) * (dim ** -0.5)
     k = k0.transpose(0, 2, 1, 3)
     v = v0.transpose(0, 2, 1, 3)
@@ -225,11 +223,10 @@ def momentum_inner_state(query, key, value, w, b, theta, alpha, eta,
     update_base = memory.copy()
     outputs = []
     for token in range(sequence):
-        # Per-token [B,H,D] views.
-        q_t = q[:, token]  # [B,H,D]
-        k_t = k[:, token]  # [B,H,D]
-        v_t = v[:, token]  # [B,H,D]
-        km = np.einsum("bhd,bhde->bhe", k_t, update_base)  # [B,H,D]
+        q_t = q[:, token]
+        k_t = k[:, token]
+        v_t = v[:, token]
+        km = np.einsum("bhd,bhde->bhe", k_t, update_base)
         reconstruction_target = v_t - k_t
         mean = km.mean(axis=-1, keepdims=True)
         rstd = np.sqrt(km.var(axis=-1, keepdims=True) + eps)
@@ -237,14 +234,12 @@ def momentum_inner_state(query, key, value, w, b, theta, alpha, eta,
         grad = (w[None] * km_hat + b[None] - reconstruction_target) * w[None]
         v_new = dim * grad - grad.sum(axis=-1, keepdims=True) / (rstd * dim)
         v_new = v_new - km_hat * (grad * km_hat).sum(axis=-1, keepdims=True) / (rstd * dim)
-        # Gates are [B,T,H,1]; take the token -> [B,H,1], then append a trailing
-        # axis to get [B,H,1,1] so they broadcast over the state's [D,D] axes.
-        theta_t = theta[:, token][..., None]  # [B,H,1,1]
-        alpha_t = alpha[:, token][..., None]  # [B,H,1,1]
-        eta_t = eta[:, token][..., None]      # [B,H,1,1]
+        theta_t = theta[:, token][..., None]
+        alpha_t = alpha[:, token][..., None]
+        eta_t = eta[:, token][..., None]
         momentum = eta_t * momentum - 2.0 * theta_t * (k_t[..., None] * v_new[..., None, :])
         memory = (1.0 - alpha_t[..., :1]) * memory + momentum
-        output = np.einsum("bhd,bhde->bhe", q_t, memory)  # [B,H,D]
+        output = np.einsum("bhd,bhde->bhe", q_t, memory)
         output_mean = output.mean(axis=-1, keepdims=True)
         output_rstd = np.sqrt(output.var(axis=-1, keepdims=True) + eps)
         output = (
@@ -252,10 +247,9 @@ def momentum_inner_state(query, key, value, w, b, theta, alpha, eta,
             + (output - output_mean) / output_rstd * w[None]
             + b[None]
         )
-        outputs.append(output)  # [B,H,D]
+        outputs.append(output)
         if (token + 1) % chunk_size == 0:
             update_base = memory.copy()
-    # outputs are [B,H,D] per token; stack over time to [B,T,H,D].
     return np.stack(outputs, axis=1), memory
 
 
@@ -335,7 +329,7 @@ def trapezoidal_ssm(query, key, value, adt, dt, trap, query_bias, key_bias,
             output = output + np.asarray(d_skip, dtype=np.float64)[None, :, None] * v_t
         if gate is not None:
             g = np.asarray(gate, dtype=np.float64)[:, token]
-            output = output * (g * sigmoid(g))  # silu
+            output = output * (g * sigmoid(g))
         outputs.append(output)
         key_state, value_state = k_t, v_t
     return np.stack(outputs, axis=1), (angle_state, ssm_state, key_state, value_state)
@@ -435,7 +429,6 @@ def slot_attention_two_stage(query, key, value, slot_weights, log_decay,
     key_heads = k.shape[2]
     slots = sw.shape[-1]
     value_dim = v.shape[-1]
-    # Repeat group heads so key/value/slot match the query head count.
     rep_k = np.repeat(k, group_size, axis=2)
     rep_v = np.repeat(v, group_size, axis=2)
     rep_s = np.repeat(sw, group_size, axis=2)
@@ -453,9 +446,7 @@ def slot_attention_two_stage(query, key, value, slot_weights, log_decay,
     scale = key_dim ** -0.5
     slot_scores = []
     for token in range(sequence):
-        decay = np.exp(rep_g[:, token])  # [B,H,S]
-        # key_state [B,H,K,S]: decay broadcasts over K (per-slot), the write is
-        # key [B,H,K] outer slot_weights [B,H,S].
+        decay = np.exp(rep_g[:, token])
         key_state = key_state * decay[:, :, None, :] + rep_k[:, token][..., None] * rep_s[:, token][:, :, None, :]
         slot_scores.append(
             ((q[:, token] * scale)[..., None] * key_state).sum(axis=-2)
@@ -473,7 +464,6 @@ def slot_attention_two_stage(query, key, value, slot_weights, log_decay,
             (slot_probability[:, token][..., None] * value_state).sum(axis=-2)
         )
     output = np.stack(outputs, axis=1)
-    # Fold the group dimension back to the key-head granularity.
     final_key_state = key_state.reshape(batch, key_heads, group_size, key_dim, slots)[:, :, 0]
     final_value_state = value_state.reshape(batch, key_heads, group_size, slots, value_dim)[:, :, 0]
     return output, (final_key_state, final_value_state)
@@ -608,7 +598,7 @@ def regularized_solve(query, key, value, log_decay, beta, lamb,
     state_shape = (batch, heads, key_dim, key_dim)
     h_kk = np.zeros(state_shape) if h_kk_init is None else np.asarray(h_kk_init, dtype=np.float64).copy()
     h_kv = np.zeros(state_shape) if h_kv_init is None else np.asarray(h_kv_init, dtype=np.float64).copy()
-    regularizer = np.apply_along_axis(np.diag, -1, lamb)  # [H, K, K]
+    regularizer = np.apply_along_axis(np.diag, -1, lamb)
     outputs = []
     for t in range(sequence):
         decay = np.exp(g[:, t])[:, :, None, None]

@@ -1,6 +1,6 @@
 """Gated delta-rule comparator and benchmark: oracle / eager / FLA / URM.
 
-Four comparison levels per archive/docs/validation/baselines.md:
+Four comparison levels:
 
 1. ``oracle``     - slow explicit fp32 recurrence loop, correctness only.
                     Restricted to a documented token budget because it is an
@@ -1067,7 +1067,7 @@ def main() -> None:
             "host_dispatch_eligibility_limit": HOST_DISPATCH_FRACTION_LIMIT,
         },
         "semantics": {
-            "contract": "archive/docs/adapters/fla-gated-delta-rule.md",
+            "contract": "docs/fla-gated-delta-rule.md",
             "layout": "q/k [B,T,H,K]; v/g/beta [B,T,HV,*]; state [B,HV,K,V] fp32",
             "gva": "HV % H == 0 supported; this matrix benchmarks H == HV",
             "normalization": "caller-side; use_qk_l2norm_in_kernel frozen False",

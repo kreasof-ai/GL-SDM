@@ -1,7 +1,7 @@
 # URM compiler and runtime boundaries
 
 Status: implementation specification. The [compiler charter](../compiler/compiler-charter.md)
-is normative. The [previous design](../../archive/docs/urm-runtime.md) is historical.
+is normative.
 
 ## Pipeline and ownership
 

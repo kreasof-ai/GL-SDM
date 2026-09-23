@@ -1,7 +1,7 @@
 # Compiler lowering coverage and implementation roadmap
 
-Status: bounded engineering roadmap. [Previous coverage claims](../../archive/docs/dual-form-coverage-roadmap.md)
-are archived hypotheses, not the supported architecture matrix.
+Status: bounded engineering roadmap. Earlier coverage claims were exploratory
+hypotheses, not the supported architecture matrix.
 
 ## Construction specifications
 
@@ -32,13 +32,13 @@ Passing one backend or shape does not certify another backend or configuration.
 | Historical PyTorch/Triton dual-form prototypes | Experimental; known correctness defects | Decay, cross-block state, complete backward and numerical stability |
 | Other named architectures, parameter-axis mixing and inner optimizers | Proposed mappings only | Individual recurrence, state and gradient derivations |
 
-This table records the repository's evidence; it does not assert that archived
-GPU measurements were rerun during this restructuring.
+This table records the repository's evidence; historical GPU measurements were
+not rerun during this restructuring.
 
 ## Engineering milestones
 
 1. Establish frontend, compiler, runtime, backend and oracle ownership. Retain
-   compatibility imports and archive historical discovery material with provenance.
+   compatibility imports.
 2. Integrate one explicit contract per initial family: softmax, linear/delta and
    sparse slot. Reuse `UrmCompiler`, registered rewrites and execution anchors.
 3. Implement the corrected chunked sparse-slot equations. Verify repeated routes,

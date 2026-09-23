@@ -65,10 +65,6 @@ def _online_softmax_forward_tiled(
     running_sum = tl.zeros((BLOCK_M,), tl.float32)
     running_value = tl.zeros((BLOCK_M, BLOCK_V), tl.float32)
 
-    # Causal early termination: key blocks beyond this query block's diagonal are
-    # fully masked, so skip them. The last visible key index for the last query in
-    # this block is (query_start + BLOCK_M - 1) + (TK - TQ); the loop bound is the
-    # first key block past it.
     if CAUSAL:
         last_visible = query_start + BLOCK_M - 1 + (TK - TQ)
         key_limit = tl.minimum(last_visible + 1, TK)
@@ -85,10 +81,6 @@ def _online_softmax_forward_tiled(
             key_valid[:, None] & (key_dims[None, :] < D),
             other=0.0,
         )
-        # exp2 trick: fold log2(e) into the score scale and use exp2, which maps to
-        # a single hardware ex2 instruction (faster than exp's multi-instruction
-        # expansion). The logsumexp is converted back to natural log at the end so
-        # the backward pass is unaffected.
         scores = tl.dot(
             query,
             tl.trans(key),
@@ -168,9 +160,6 @@ def _online_softmax_forward_tiled(
         output,
         query_valid[:, None] & (value_dims[None, :] < DV),
     )
-    # running_max is in the log2 domain (scores were scaled by log2e). Store the
-    # logsumexp in the log2 domain so the backward pass can use exp2 (a single
-    # ex2 instruction) instead of the multi-instruction natural exp.
     logsumexp = tl.where(
         running_sum > 0.0,
         running_max + tl.log2(tl.maximum(running_sum, 1.0e-30)),
@@ -273,7 +262,6 @@ def _online_softmax_backward_tiled(
     safe_logsumexp = tl.where(row_valid, logsumexp, 0.0)
     delta = tl.sum(grad_output.to(tl.float32) * output.to(tl.float32), axis=1)
     grad_query = tl.zeros((BLOCK_M, BLOCK_D), tl.float32)
-    # Causal early termination (same as the forward): skip fully-masked key blocks.
     if CAUSAL:
         last_visible = query_start + BLOCK_M - 1 + (TK - TQ)
         key_blocks = tl.cdiv(tl.minimum(last_visible + 1, TK), BLOCK_N)
@@ -336,7 +324,6 @@ def _online_softmax_backward_tiled(
             visible = keys[None, :] <= query_offsets[:, None] + TK - TQ
             scores = tl.where(visible, scores, float("-inf"))
         scores = tl.where(score_valid, scores, float("-inf"))
-        # logsumexp is stored in the log2 domain; use exp2 (single ex2 op).
         probabilities = tl.where(
             scores == float("-inf"),
             0.0,
@@ -633,9 +620,6 @@ def _online_softmax_backward_kv_tiled(
     )
     grad_key = tl.zeros((BLOCK_N, BLOCK_D), tl.float32)
     grad_value = tl.zeros((BLOCK_N, BLOCK_V), tl.float32)
-    # Causal: query block i attends to key block j only if some query in i is at or
-    # after some key in j. The first query block that can attend is the one whose
-    # diagonal reaches this key block's first key.
     if CAUSAL:
         first_query = key_start - (TK - TQ)
         first_query_block = tl.maximum(first_query // BLOCK_M, 0)
@@ -665,7 +649,7 @@ def _online_softmax_backward_kv_tiled(
             )
             scores = tl.dot(
                 key, tl.trans(query), input_precision="ieee" if INPUT_FP32 else "tf32"
-            ) * SCALE  # [BLOCK_N, BLOCK_M]
+            ) * SCALE
             score_valid = key_valid[:, None] & query_valid[None, :]
             if CAUSAL:
                 visible = key_offsets[:, None] <= qoff[None, :] + TK - TQ
@@ -673,10 +657,10 @@ def _online_softmax_backward_kv_tiled(
             scores = tl.where(score_valid, scores, float("-inf"))
             probabilities = tl.where(
                 scores == float("-inf"), 0.0, tl.exp2(scores * 1.4426950408889634 - logsumexp[None, :])
-            )  # [BLOCK_N, BLOCK_M]
+            )
             grad_probabilities = tl.dot(
                 value, tl.trans(grad_output), input_precision="ieee" if INPUT_FP32 else "tf32"
-            )  # [BLOCK_N, BLOCK_M]
+            )
             grad_scores = probabilities * (grad_probabilities - delta[None, :])
             grad_scores = tl.where(score_valid, grad_scores, 0.0)
             grad_key += tl.dot(
@@ -731,7 +715,6 @@ def _online_softmax_decode_kernel(
     key_dims = tl.arange(0, BLOCK_D)
     value_dims = tl.arange(0, BLOCK_V)
     key_offsets = tl.arange(0, BLOCK_N)
-    # Query: [B, HQ, D] single token, contiguous.
     query = tl.load(
         Q + (batch * HQ + query_head) * D + key_dims,
         key_dims < D,
@@ -744,14 +727,11 @@ def _online_softmax_decode_kernel(
     for key_start in range(0, S, BLOCK_N):
         keys = key_start + key_offsets
         key_valid = keys < S
-        # Key cache: [B, S, HK, D] (BTHD), contiguous.
         key = tl.load(
             K + ((batch * S + keys[:, None]) * HK + key_head) * D + key_dims[None, :],
             key_valid[:, None] & (key_dims[None, :] < D),
             other=0.0,
         ).to(tl.float32)
-        # Single-query scores: [BLOCK_N], fp32 (no tensor-core dot needed for a
-        # vector-matrix product; the exp2 trick folds log2(e) into the scale).
         scores = tl.sum(key * query[None, :], axis=1) * (SCALE * LOG2E)
         scores = tl.where(key_valid, scores, float("-inf"))
         block_max = tl.max(scores, axis=0)
@@ -763,7 +743,6 @@ def _online_softmax_decode_kernel(
         probabilities = tl.where(
             scores == float("-inf"), 0.0, tl.exp2(scores - safe_max)
         )
-        # Value cache: [B, S, HK, DV] (BTHD), contiguous.
         values = tl.load(
             V + ((batch * S + keys[:, None]) * HK + key_head) * DV + value_dims[None, :],
             key_valid[:, None] & (value_dims[None, :] < DV),
@@ -818,7 +797,6 @@ def _k1_softmax_probs_kernel(
     query_valid = query_offsets < TQ
     running_max = tl.full((BLOCK_M,), float("-inf"), tl.float32)
     running_sum = tl.zeros((BLOCK_M,), tl.float32)
-    # Pass 1: online row max and unnormalized exp sum (the softmax denominator).
     for key_start in range(0, tl.cdiv(TK, BLOCK_N)):
         keys = key_start * BLOCK_N + key_offsets
         key_valid = keys < TK
@@ -852,7 +830,6 @@ def _k1_softmax_probs_kernel(
         running_max = next_max
     safe_max = tl.where(running_max == float("-inf"), 0.0, running_max)
     denom = tl.maximum(running_sum, 1.0e-30)
-    # Pass 2: recompute the exp scores and store the normalized probabilities.
     for key_start in range(0, tl.cdiv(TK, BLOCK_N)):
         keys = key_start * BLOCK_N + key_offsets
         key_valid = keys < TK
@@ -918,7 +895,6 @@ def _positive_feature_forward_tiled(
     query_valid = query_offsets < TQ
     running_sum = tl.zeros((BLOCK_M,), tl.float32)
     running_value = tl.zeros((BLOCK_M, BLOCK_V), tl.float32)
-    # Causal early termination (same diagonal rule as the online-softmax kernel).
     last_visible = query_start + BLOCK_M - 1 + (TK - TQ)
     key_blocks = tl.cdiv(tl.minimum(last_visible + 1, TK), BLOCK_N)
     for key_start in range(key_blocks):
@@ -927,7 +903,7 @@ def _positive_feature_forward_tiled(
         scores = tl.zeros((BLOCK_M, BLOCK_N), tl.float32)
         for group in range(NUM_GROUPS):
             dims = group * GROUP_DIM + group_dims
-            dim_valid = group_dims < GROUP_DIM  # stay within this group's slice
+            dim_valid = group_dims < GROUP_DIM
             query = tl.load(
                 Q + (head_batch * TQ + query_offsets[:, None]) * D + dims[None, :],
                 query_valid[:, None] & dim_valid[None, :],
@@ -1129,20 +1105,12 @@ def execute_online_softmax(
     query, key, value = query.contiguous(), key.contiguous(), value.contiguous()
     mask = attention_mask if attention_mask is not None else torch.empty((0,), device=query.device)
     bias = score_bias if score_bias is not None else torch.empty((0,), device=query.device)
-    # Block sizes tuned against the competitive fused-attention comparator (SDPA).
-    # block_m=128 is the key lever: the previous block_m=16 underutilized the
-    # tensor cores (12x slower); 128 brings the kernel within ~1.7x. Larger query
-    # tiles amortize the online-softmax state and improve matmul efficiency.
     block_m = 128 if query_length >= 128 else max(16, triton.next_power_of_2(query_length))
     block_n = 64
     block_d = max(16, triton.next_power_of_2(key_dim))
     block_v = max(16, triton.next_power_of_2(value_dim))
     num_warps = 8 if block_m >= 128 else 4
     num_stages = 3
-    # Backward config: same tiling as the forward (the recompute-and-accumulate
-    # backward benefits from the multi-stage pipeline here, unlike the FA reference
-    # whose structure differs). A larger key tile (block_n=128) was evaluated and
-    # is slower (less pipelining): the forward tiling is already near-optimal.
     bwd_block_n = block_n
     bwd_num_warps = num_warps
     bwd_num_stages = num_stages
@@ -1213,14 +1181,6 @@ def execute_online_softmax(
             q, k, v, mask_tensor, bias_tensor, output, logsumexp = ctx.saved_tensors
             if grad_output is None:
                 return None, None, None, None, None
-            # Backward schedule selection. A key/value-owned two-pass backward (no
-            # atomics) was implemented and validated for correctness, but on the
-            # A10G it is consistently SLOWER than the single-pass atomic backward
-            # (measured +60-83% vs +51% at the mandatory shapes): the two-pass pays
-            # 2x score recomputation while the atomics are not the bottleneck. Per
-            # the schedule policy ("do not assume one backward decomposition wins at
-            # every shape"), the single-pass atomic backward remains the default;
-            # the two-pass path is retained for shapes where atomics dominate.
             use_two_pass = False
             grad_q = torch.empty(q.shape, device=q.device, dtype=torch.float32)
             if use_two_pass:
@@ -1246,7 +1206,6 @@ def execute_online_softmax(
                     (batch, query_heads, query_length), device=q.device, dtype=torch.float32
                 )
                 grad_output_c = grad_output.contiguous()
-                # Pass 0: compute DELTA = sum(dO * O) once.
                 _online_softmax_backward_delta[
                     (batch, query_heads, triton.cdiv(query_length, block_m))
                 ](
@@ -1255,7 +1214,6 @@ def execute_online_softmax(
                     block_m, block_v,
                     num_warps=4, num_stages=2,
                 )
-                # Pass 1: query-owned dQ.
                 _online_softmax_backward_dq[
                     (batch, query_heads, triton.cdiv(query_length, block_m))
                 ](
@@ -1265,7 +1223,6 @@ def execute_online_softmax(
                     block_m, bwd_block_n, block_d, block_v,
                     num_warps=bwd_num_warps, num_stages=bwd_num_stages,
                 )
-                # Pass 2: key/value-owned dK/dV (no atomics).
                 _online_softmax_backward_kv_tiled[
                     (batch, key_heads, triton.cdiv(key_length, bwd_block_n))
                 ](
@@ -1364,7 +1321,7 @@ def execute_softmax_probs(
     matching the canonical ``attention_probs`` reduction. Used by the positional
     and delta-transform K1 compositions, which need P explicitly.
     """
-    value = query  # only q/k shapes matter; reuse the shared validation
+    value = query
     batch, query_length, query_heads, key_dim, key_length, _ = _check_k1_operands(
         query, key, value, op="softmax_probs"
     )
@@ -1379,8 +1336,6 @@ def execute_softmax_probs(
     block_m = min(64, max(16, triton.next_power_of_2(query_length)))
     block_n = min(64, max(16, triton.next_power_of_2(key_length)))
     block_d = max(16, triton.next_power_of_2(key_dim))
-    # Q/K are [B, T, H, D]; the kernel indexes them as [B*H, T, D], so fold the
-    # head axis into the batch via a [B, H, T, D] view made contiguous.
     q_flat = query_c.permute(0, 2, 1, 3).contiguous()
     k_flat = key_c.permute(0, 2, 1, 3).contiguous()
     _k1_softmax_probs_kernel[

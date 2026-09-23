@@ -29,11 +29,6 @@ def _grads(recomputed, inputs, grad_output):
     )
 
 
-# ----------------------------------------------------------------------
-# tanh_rnn: h_t = tanh(h_{t-1} @ W + x_t); output is the state.
-# ----------------------------------------------------------------------
-
-
 class _TanhRnn(torch.autograd.Function):
     @staticmethod
     def forward(ctx, query, weight, initial_state):
@@ -65,11 +60,6 @@ class _TanhRnn(torch.autograd.Function):
 
 def _tanh_rnn_backwardable(query, weight, initial_state):
     return _TanhRnn.apply(query, weight, initial_state)
-
-
-# ----------------------------------------------------------------------
-# gated_rnn (GRU): reset/update-gated nonlinear state update.
-# ----------------------------------------------------------------------
 
 
 class _GatedRnn(torch.autograd.Function):
@@ -127,11 +117,6 @@ def _gated_rnn_backwardable(query, weight, forget_input, forget_weight,
     )
 
 
-# ----------------------------------------------------------------------
-# multiplicative_rnn (m2rnn): second-order matrix memory.
-# ----------------------------------------------------------------------
-
-
 class _MultiplicativeRnn(torch.autograd.Function):
     @staticmethod
     def forward(ctx, query, key, value, weight, forget_input, initial_state):
@@ -178,11 +163,6 @@ def _multiplicative_rnn_backwardable(query, key, value, weight, forget_input,
     return _MultiplicativeRnn.apply(
         query, key, value, weight, forget_input, initial_state
     )
-
-
-# ----------------------------------------------------------------------
-# rwkv4_scalar_state: per-channel scalar (alpha, denom, log_scale).
-# ----------------------------------------------------------------------
 
 
 class _Rwkv4(torch.autograd.Function):
@@ -237,11 +217,6 @@ class _Rwkv4(torch.autograd.Function):
 
 def _rwkv4_backwardable(w, u, key, value, state_input):
     return _Rwkv4.apply(w, u, key, value, state_input)
-
-
-# ----------------------------------------------------------------------
-# rwkv6_bonus_corrected: matrix state with a static bonus read.
-# ----------------------------------------------------------------------
 
 
 class _Rwkv6(torch.autograd.Function):
@@ -306,11 +281,6 @@ def _rwkv6_backwardable(query, key, value, log_decay, bonus, initial_state):
     return _Rwkv6.apply(query, key, value, log_decay, bonus, initial_state)
 
 
-# ----------------------------------------------------------------------
-# mamba2_structured_ssm: structured SSM with continuous-time head decay.
-# ----------------------------------------------------------------------
-
-
 class _Mamba2(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, dt, A, B, C, initial_states):
@@ -373,11 +343,6 @@ def _mamba2_backwardable(x, dt, A, B, C, initial_states):
     return _Mamba2.apply(x, dt, A, B, C, initial_states)
 
 
-# ----------------------------------------------------------------------
-# gated_oja: value-channel recurrence with key residual correction.
-# ----------------------------------------------------------------------
-
-
 class _GatedOja(torch.autograd.Function):
     @staticmethod
     def forward(ctx, query, key, value, gate, beta, initial_state, scale):
@@ -429,16 +394,11 @@ class _GatedOja(torch.autograd.Function):
         grads = _grads(recomputed, inputs, grad_output)
         if not ctx.has_initial:
             grads = (*grads, None)
-        return (*grads, None)  # trailing None for scale
+        return (*grads, None)
 
 
 def _gated_oja_backwardable(query, key, value, gate, beta, initial_state, scale):
     return _GatedOja.apply(query, key, value, gate, beta, initial_state, scale)
-
-
-# ----------------------------------------------------------------------
-# regularized_solve (mesa_net): dual covariance-state recurrence + solve.
-# ----------------------------------------------------------------------
 
 
 class _RegularizedSolve(torch.autograd.Function):
@@ -489,11 +449,6 @@ class _RegularizedSolve(torch.autograd.Function):
 
 def _regularized_solve_backwardable(query, key, value, log_decay, beta, lamb):
     return _RegularizedSolve.apply(query, key, value, log_decay, beta, lamb)
-
-
-# ----------------------------------------------------------------------
-# slot_attention_two_stage (abc_core, gsa_core).
-# ----------------------------------------------------------------------
 
 
 class _SlotAttentionTwoStage(torch.autograd.Function):
@@ -558,7 +513,7 @@ class _SlotAttentionTwoStage(torch.autograd.Function):
                 )
             recomputed = torch.stack(outs, dim=1)
         grads = _grads(recomputed, (q, k, v, sw, ld), grad_output)
-        return (*grads, None)  # trailing None for group_size
+        return (*grads, None)
 
 
 def _slot_attention_backwardable(query, key, value, slot_weights, log_decay,
@@ -566,11 +521,6 @@ def _slot_attention_backwardable(query, key, value, slot_weights, log_decay,
     return _SlotAttentionTwoStage.apply(
         query, key, value, slot_weights, log_decay, group_size
     )
-
-
-# ----------------------------------------------------------------------
-# trapezoidal_ssm (mamba3_siso): rotary angle accumulator + four-state SSM.
-# ----------------------------------------------------------------------
 
 
 class _TrapezoidalSsm(torch.autograd.Function):
@@ -672,11 +622,6 @@ def _trapezoidal_ssm_backwardable(query, key, value, adt, dt, trap, query_bias,
     return _TrapezoidalSsm.apply(
         query, key, value, adt, dt, trap, query_bias, key_bias, angles
     )
-
-
-# ----------------------------------------------------------------------
-# layernorm_inner_state (ttt_linear): chunkwise inner-loss update.
-# ----------------------------------------------------------------------
 
 
 class _LayernormInnerState(torch.autograd.Function):
@@ -796,7 +741,7 @@ class _LayernormInnerState(torch.autograd.Function):
             grads.append(None)
         if init_bias is None:
             grads.append(None)
-        return (*grads, None, None)  # trailing Nones for chunk_size, eps
+        return (*grads, None, None)
 
 
 def _layernorm_inner_state_backwardable(query, key, value, w, b, eta,
@@ -806,11 +751,6 @@ def _layernorm_inner_state_backwardable(query, key, value, w, b, eta,
         query, key, value, w, b, eta, initial_state, initial_state_bias,
         chunk_size, eps,
     )
-
-
-# ----------------------------------------------------------------------
-# momentum_inner_state (titans_linear_memory): tokenwise memory + momentum.
-# ----------------------------------------------------------------------
 
 
 class _MomentumInnerState(torch.autograd.Function):
@@ -908,7 +848,7 @@ class _MomentumInnerState(torch.autograd.Function):
         grads = list(_grads(recomputed, tuple(inputs), grad_output))
         if init is None:
             grads.append(None)
-        return (*grads, None, None)  # trailing Nones for chunk_size, eps
+        return (*grads, None, None)
 
 
 def _momentum_inner_state_backwardable(query, key, value, w, b, theta, alpha,
@@ -917,14 +857,6 @@ def _momentum_inner_state_backwardable(query, key, value, w, b, theta, alpha,
         query, key, value, w, b, theta, alpha, eta, initial_state, chunk_size,
         eps,
     )
-
-
-# ----------------------------------------------------------------------
-# momentum_delta (momentum_delta_core): coupled fast-weight + momentum
-# matrix states. prediction = p^T state; residual = v - prediction;
-# momentum = mu*momentum - (eta*k) outer residual; state = alpha*state -
-# beta*momentum; read (q*scale)^T state.
-# ----------------------------------------------------------------------
 
 
 class _MomentumDelta(torch.autograd.Function):
@@ -998,7 +930,7 @@ class _MomentumDelta(torch.autograd.Function):
             grads.append(None)
         if init_m is None:
             grads.append(None)
-        return (*grads, None)  # trailing None for scale
+        return (*grads, None)
 
 
 def _momentum_delta_backwardable(query, key, value, p, log_alpha, log_mu, beta,

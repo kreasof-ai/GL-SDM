@@ -29,8 +29,6 @@ from urm.compiler.constraints import (
     IntVar,
 )
 
-# -- Generic exhaustive reference over constraint models ------------------------
-
 
 def iter_assignments(model: ConstraintModel) -> Iterator[Assignment]:
     """Deterministic product enumeration of every variable assignment.
@@ -112,22 +110,19 @@ def exhaustive_optimum(model: ConstraintModel) -> ExhaustiveResult:
     )
 
 
-# -- Routed-scale row-scale epilogue schedule space -------------------------------
-
-
 class PlanKind(StrEnum):
-    BASE = "base"  # trusted v1 reduction + materialized row-scale transform
-    FUSED = "fused"  # experimental typed epilogue anchor
+    BASE = "base"
+    FUSED = "fused"
 
 
 class GradValuesDecomposition(StrEnum):
-    PER_QUERY = "per_query"  # one program per query; sequential routes (det)
-    PER_ROUTE = "per_route"  # one program per route edge; atomic accumulation
+    PER_QUERY = "per_query"
+    PER_ROUTE = "per_route"
 
 
 class GradValuesSchedule(StrEnum):
-    FULL_ROW = "full_row"  # single program loops the whole value dimension
-    SEGMENTED = "segmented"  # grid over value-dimension segments
+    FULL_ROW = "full_row"
+    SEGMENTED = "segmented"
 
 
 SUPPORTED_BLOCKS = (32, 64, 128, 256)
@@ -205,51 +200,35 @@ def shared_memory_estimate(point: SchedulePoint, value_dim: int, dtype: str) -> 
 
 def is_legal(point: SchedulePoint, problem: ScheduleProblem) -> bool:
     """Imperative legality filter - the reference implementation."""
-    # Base v1 is unscheduled (uses its internal launch heuristic). Only the
-    # fused epilogue anchor participates in configurable schedule search.
     if point.plan != PlanKind.FUSED.value:
         return False
     if point.block_d not in SUPPORTED_BLOCKS or point.num_warps not in SUPPORTED_WARPS:
         return False
     if point.num_stages not in SUPPORTED_STAGES:
         return False
-    # Grad values decomposition/schedule compatibility:
-    # per_route is segmented across programs by construction and does not
-    # support full_row traversal.
     if (
         point.grad_values_decomposition == GradValuesDecomposition.PER_ROUTE.value
         and point.grad_values_schedule == GradValuesSchedule.FULL_ROW.value
     ):
         return False
-    # Tile/vector compatibility: BLOCK_D covers whole 32-lane warp tiles.
     if point.block_d % min(32, point.num_warps * 32) != 0:
         return False
-    # Route width limits
     if problem.route_width > problem.max_route_width:
         return False
     if problem.route_width > problem.sources:
         return False
-    # Shared memory bound
     if (
         shared_memory_estimate(point, problem.value_dim, point.dtype)
         > problem.shared_mem_bytes_per_block
     ):
         return False
-    # Dtype support
     if point.dtype not in problem.dtypes:
         return False
-    # Backward completeness per plan under training
     if problem.training:
         if not problem.fused_anchor_available:
             return False
         if point.dtype not in problem.fused_backward_dtypes:
             return False
-    # Deterministic mode: forward kernels are sequential per program and
-    # deterministic, but EVERY implemented grad-value lowering (per-query,
-    # per-route, v1 autograd) accumulates through relaxed cross-program
-    # atomics whose float-add order is not bitwise reproducible. A
-    # deterministic *training* compilation therefore has no legal schedule;
-    # deterministic inference remains fully available.
     if problem.deterministic and problem.training:
         return False
     return not (problem.deterministic and not problem.fused_anchor_available)

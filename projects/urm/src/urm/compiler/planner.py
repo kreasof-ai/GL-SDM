@@ -94,9 +94,6 @@ if TYPE_CHECKING:
     ScheduleVerifier = Callable[[ConstraintModel, Assignment], VerificationReport]
 
 
-# -- Parameter namespaces -----------------------------------------------------
-
-
 class CompilationIntent(StrEnum):
     """Why this program is being compiled.
 
@@ -230,9 +227,6 @@ def validate_schedule_params(
     return tuple(collector)
 
 
-# -- Candidates ----------------------------------------------------------------
-
-
 BASE_CANDIDATE_ID = "base"
 
 
@@ -246,13 +240,12 @@ class CompilationCandidate:
     """
 
     candidate_id: str
-    kind: str  # "base" | "rewrite"
+    kind: str
     rule: str | None = None
     subject_op: str | None = None
     legal: bool = True
     reason_code: str | None = None
     detail: str | None = None
-    # Analytical effects of choosing this candidate (base: zero):
     traffic_bytes_delta: int = 0
     launch_count_delta: int = 0
     backward_verified: bool = True
@@ -298,17 +291,14 @@ class SelectionPolicy(StrEnum):
     SOLVER_GUIDED = "solver_guided"
 
 
-# -- Plans --------------------------------------------------------------------
-
-
 @dataclass(frozen=True, slots=True)
 class ExecutablePlan:
     """Deterministic, serializable lowering of one semantic program."""
 
     program_name: str
     steps: tuple[PlanStep, ...]
-    obligations: tuple[tuple[str, str, str], ...]  # kind, subject, detail
-    escape_hatch_count: int = 0  # structural invariant: always zero
+    obligations: tuple[tuple[str, str, str], ...]
+    escape_hatch_count: int = 0
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -357,8 +347,6 @@ class CompilationResult:
     schedule_params: dict[str, object] | None = None
     unresolved_obligations: tuple[tuple[str, str, str], ...] = ()
     solver_statistics: dict[str, float | int] | None = None
-    # Verified schedule decision for programs with routed-reduction work;
-    # ``None`` records honestly that no schedule stage applied.
     schedule_decision: ScheduleDecision | None = None
 
     def to_dict(self) -> dict[str, object]:
@@ -385,9 +373,6 @@ class CompilationResult:
                 else None
             ),
         }
-
-
-# -- Communication planning ---------------------------------------------------
 
 
 def plan_route_distribution(
@@ -484,9 +469,6 @@ def _route_edges_for(
             yield query_index, (query_index * route_width + k) % sources
 
 
-# -- The compiler facade ------------------------------------------------------
-
-
 class UrmCompiler:
     """NAS-facing compilation entry point.
 
@@ -517,11 +499,8 @@ class UrmCompiler:
         self.device_limits = DeviceLimits.load(device_limits_path)
         self.compile_probe = compile_probe
         self.max_nogoods = max_nogoods
-        # ``None`` selects the standard independent verifier; tests may inject
-        # an oracle to prove unverified assignments never reach lowering.
         self.schedule_verifier = schedule_verifier
 
-    # -- validation --------------------------------------------------------
 
     def validate(
         self,
@@ -569,7 +548,6 @@ class UrmCompiler:
                 )
         return tuple(diagnostics)
 
-    # -- candidate enumeration ----------------------------------------------
 
     def enumerate_candidates(
         self,
@@ -618,7 +596,6 @@ class UrmCompiler:
             )
         return tuple(candidates)
 
-    # -- constraint building / solving (NAS-facing flow) ---------------------
 
     def build_constraints(
         self,
@@ -689,7 +666,6 @@ class UrmCompiler:
             ),
         }
 
-    # -- compilation ---------------------------------------------------------
 
     def compile(
         self,
@@ -734,12 +710,10 @@ class UrmCompiler:
             compiled = applied.program
             trace_parts.append(applied.trace)
 
-        # Resolve effective anchor lowering identity before schedule search.
         effective_decisions = self._resolve_effective_anchors(
             compiled, intent, schedule_params, original_program=program
         )
 
-        # Validate that requested tuning knobs have a valid consumer in effective lowerings
         active_tuning_knobs: list[str] = []
         if schedule_params.block_hints:
             active_tuning_knobs.append(f"block_hints={schedule_params.block_hints}")
@@ -775,8 +749,6 @@ class UrmCompiler:
                 )
             )
 
-        # Candidate-bound schedule search runs only when the effective lowering
-        # targets a schedulable anchor that consumes an external launch configuration.
         needs_schedule_search = bool(schedulable_anchors)
         schedule_decision = None
         if needs_schedule_search:
@@ -875,7 +847,6 @@ class UrmCompiler:
             schedule_params=schedule_params,
         )
 
-    # -- internals -------------------------------------------------------------
 
     def _search_schedule(
         self,
@@ -970,9 +941,6 @@ class UrmCompiler:
             )
             return match, SelectionPolicy.EXPLICIT, rejections, None
 
-        # Automatic selection: solver-guided when the pinned solver extra is
-        # installed, otherwise the documented deterministic cost heuristic.
-        # Both policies are deterministic; the choice made is recorded.
         if len(legal) > 1:
             try:
                 from urm.compiler.kernel_plan import (
@@ -1011,9 +979,6 @@ class UrmCompiler:
                         rejections,
                         dict(result.statistics),
                     )
-                # Solver could not decide (UNSAT over legal set should be
-                # impossible; UNKNOWN possible under timeout): record why and
-                # use the deterministic heuristic instead of failing silently.
                 heuristic_note = f"solver status {result.status.value}"
             except Exception as error:  # noqa: BLE001 - recorded, never hidden
                 heuristic_note = f"solver path unavailable: {error}"
@@ -1112,7 +1077,7 @@ class UrmCompiler:
         explicit_keys = {k for k in schedule_params.anchor_overrides if k != "*"}
         for op in compiled.ops:
             if self._is_interior_gather(compiled, op):
-                continue  # fused into the routed-reduction dispatch
+                continue
             request_kind, visitors = self._request_for(op)
             if request_kind is None:
                 continue
@@ -1136,9 +1101,6 @@ class UrmCompiler:
             )
             if override is not None:
                 if isinstance(op, UnifiedMixerAccess):
-                    # Unified mixer plans pin the exact registered backend
-                    # anchor from their typed compilation request. Runtime
-                    # shape/device qualification still belongs to that anchor.
                     decision = self._apply_override(
                         request_kind, visitors, override, op
                     )
@@ -1165,8 +1127,6 @@ class UrmCompiler:
                                 ),
                             ),
                         )
-                    # The exact canonical override deliberately keeps the
-                    # runtime/revision-aware selector's decision.
                 elif request_kind is AnchorKind.SPARSE_ROUTE_SELECTION:
                     from urm.compiler.execution import NATIVE_SPARSE_ROUTE_ANCHOR_NAME
 
@@ -1204,8 +1164,6 @@ class UrmCompiler:
                                 ),
                             ),
                         )
-                    # Exact native and external overrides cannot bypass their
-                    # capability, hardware, or revision-aware selector paths.
                 elif not (
                     decision.anchor is not None and decision.anchor.name == override
                 ):
@@ -1291,7 +1249,7 @@ class UrmCompiler:
         step_id = 0
         for op in compiled.ops:
             if self._is_interior_gather(compiled, op):
-                continue  # fused into the routed-reduction dispatch
+                continue
             decision = effective_decisions.get(op.name)
             if decision is None or decision.anchor is None:
                 continue
@@ -1502,7 +1460,6 @@ class UrmCompiler:
                     for anchor in selected
                 )
                 if intent is not CompilationIntent.TRAINING:
-                    # Backward recomputation is only *required* for training.
                     resolved = True
             elif obligation.kind == "forward_only":
                 resolved = intent is not CompilationIntent.TRAINING
@@ -1576,7 +1533,7 @@ class UrmCompiler:
         if isinstance(op, SparseStateMixerAccess):
             return AnchorKind.SPARSE_STATE_MIXER, ()
         if isinstance(op, Score | Select | Transform):
-            return None, ()  # folded into producers by construction here
+            return None, ()
         if isinstance(op, CollectiveExchange):
             return AnchorKind.COLLECTIVE_EXCHANGE, ()
         return None, ()
@@ -1685,7 +1642,7 @@ class UrmCompiler:
         program: SemanticProgram, placement: PlacementMap
     ) -> tuple[PlanStep, ...]:
         steps: list[PlanStep] = []
-        step_id = 1000  # namespace after dispatch steps
+        step_id = 1000
         for op in program.ops:
             if isinstance(op, StateUpdate) and op.commit_boundary:
                 steps.append(

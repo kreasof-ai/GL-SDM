@@ -40,7 +40,6 @@ def _inputs(memory, keys, queries, values, beta, log_decay):
         raise ValueError("incompatible state, key, query or value shapes")
     if b.shape != (t,):
         raise ValueError("beta must have shape [T]")
-    # log_decay is [T] (head scalar) or [T, K] (key-channel).
     if g.shape not in ((t,), (t, key_dim)):
         raise ValueError("log_decay must have shape [T] or [T, K]")
     if any(not np.isfinite(x).all() for x in (m, k, q, v, b, g)):
@@ -78,26 +77,20 @@ def recurrent(memory, keys, queries, values, beta, log_decay, *, scale=1.0,
     ``(out, m)`` or ``(out, (m, z))`` when ``normalizer`` is set.
     """
     m, k, q, v, b, g = _inputs(memory, keys, queries, values, beta, log_decay)
-    # A separate retrieval key (comba dual-key delta): the retrieval h = p^T Z uses
-    # ``retrieval_keys`` while the write outer product uses ``keys``.
     retr = k if retrieval_keys is None else np.asarray(retrieval_keys, dtype=np.float64)
     if retr.shape != k.shape:
         raise ValueError("retrieval_keys must match keys shape [T, K]")
     dual_gate = erase_gate is not None or write_gate is not None
     if dual_gate:
-        # erase_gate is [T, K] (per key channel), write_gate is [T, V] (per value
-        # channel). The retrieval uses erase⊙k, the write value uses write⊙v, and
-        # the outer product uses the unscaled key k.
         erase = np.asarray(erase_gate, dtype=np.float64)
         write = np.asarray(write_gate, dtype=np.float64)
         if erase.shape != k.shape or write.shape != v.shape:
             raise ValueError("erase_gate must be [T,K] and write_gate [T,V]")
     m = m.copy()
-    norm = np.zeros(m.shape[0]) if normalizer else None  # [K] denominator state
+    norm = np.zeros(m.shape[0]) if normalizer else None
     out = np.empty_like(v)
     for t in range(len(v)):
         if left_transitions is not None:
-            # Factored (low-rank) transition: Z = left_t @ M instead of diagonal decay.
             z = np.asarray(left_transitions[t], dtype=np.float64) @ m
         else:
             decay = _decay_factor(g[t])
@@ -111,10 +104,9 @@ def recurrent(memory, keys, queries, values, beta, log_decay, *, scale=1.0,
             if normalizer:
                 out[t] = out[t] / max(denom, epsilon)
         if update_keys is not None:
-            # Multi-rank delta: R sequential rank-1 delta updates within the token.
-            uk = np.asarray(update_keys[t], dtype=np.float64)   # [R, K]
-            uv = np.asarray(update_values[t], dtype=np.float64)  # [R, V]
-            rb = np.asarray(rank_beta[t], dtype=np.float64)      # [R]
+            uk = np.asarray(update_keys[t], dtype=np.float64)
+            uv = np.asarray(update_values[t], dtype=np.float64)
+            rb = np.asarray(rank_beta[t], dtype=np.float64)
             for r in range(uk.shape[0]):
                 delta_r = rb[r] * (uv[r] - uk[r] @ z)
                 z = z + uk[r][:, None] * delta_r[None, :]
@@ -165,14 +157,10 @@ def chunked(memory, keys, queries, values, beta, log_decay, *, chunk_size,
         stop = min(start + chunk_size, len(v))
         kc, qc, vc, bc = k[start:stop], q[start:stop], v[start:stop], b[start:stop]
         c = stop - start
-        # prefix[t] = sum of log decays up to and including token t (within chunk).
         prefix = np.cumsum(g[start:stop])
-        # Decay from the chunk boundary to each token, applied to the boundary state.
         initial = np.exp(prefix)[:, None, None] * m[None, :, :]
-        # v0[t] = k_t^T (decayed boundary state); y0[t] = scale * q_t^T (same).
         v0 = np.einsum("tk,tkv->tv", kc, initial)
         y0 = np.einsum("tk,tkv->tv", qc, initial)
-        # transport[t, j] = decay from token j's write to token t.
         a = np.zeros((c, c))
         omega = np.zeros((c, c))
         for ti in range(c):
@@ -181,11 +169,8 @@ def chunked(memory, keys, queries, values, beta, log_decay, *, chunk_size,
                 omega[ti, j] = transport * (qc[ti] @ kc[j])
                 if j < ti:
                     a[ti, j] = transport * (kc[ti] @ kc[j])
-        # Unit lower-triangular solve for the write corrections.
         delta = np.linalg.solve(np.eye(c) + bc[:, None] * a, bc[:, None] * (vc - v0))
         out[start:stop] = scale * (y0 + omega @ delta)
-        # Propagate the chunk-boundary state: decay the old boundary to the chunk
-        # end and fold in each write's contribution transported to the chunk end.
         fold = kc * np.exp(prefix[-1] - prefix)[:, None]
         m = np.exp(prefix[-1]) * m + fold.T @ delta
     return out, m
@@ -217,10 +202,8 @@ def recurrent_vjp(memory, keys, queries, values, beta, log_decay,
     dk, dq, dv, db, dg = (np.zeros_like(x) for x in (k, q, v, b, g))
     for t in reversed(range(len(v))):
         decay, z, residual, delta, state = tape[t]
-        # Read: y_t = scale * q_t^T M_t.
         dq[t] = scale * (state @ dy[t])
         total = carry + scale * q[t][:, None] * dy[t][None, :]
-        # Write: M_t = Z_t + k_t delta^T.
         ddelta = k[t] @ total
         dv[t] = b[t] * ddelta
         db[t] = ddelta @ residual

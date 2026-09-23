@@ -156,7 +156,6 @@ def _sparse_route_backward_kernel(
 
 def _blocks(half: int, width: int) -> tuple[int, int, int]:
     block_half = triton.next_power_of_2(half)
-    # Triton 3.4's bitonic top-k implementation does not accept k=1.
     block_route = max(2, triton.next_power_of_2(width))
     return block_half, block_route, block_route * block_route
 

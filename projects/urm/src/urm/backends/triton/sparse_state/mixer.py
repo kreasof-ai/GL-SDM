@@ -498,8 +498,6 @@ def _sparse_state_update_forward(
             dtype=memory.dtype,
         )
     else:
-        # Ignored by the SAVE_SELECTED specialization; passing an existing
-        # tensor avoids an inference-only dummy allocation.
         saved_write_rows = memory
         saved_read_rows = memory
     grid = (parallel, triton.cdiv(value_dim, block_d))
@@ -548,9 +546,6 @@ def _sparse_state_update_backward(
     slots = grad_final_memory.shape[1]
     value_dim = grad_final_memory.shape[2]
     block_d, warps = _launch_parameters(value_dim)
-    # The cotangent has the same stored dtype as the differentiable state.
-    # Each loaded fragment is promoted by FP32 route weights before arithmetic;
-    # persisting BF16 cotangents avoids a second full-capacity FP32 state buffer.
     grad_memory = grad_final_memory.contiguous().clone()
     grad_write_weights_fp32 = torch.zeros_like(write_weights, dtype=torch.float32)
     grad_values_fp32 = torch.empty_like(values, dtype=torch.float32)

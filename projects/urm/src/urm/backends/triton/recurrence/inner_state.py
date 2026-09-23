@@ -113,7 +113,6 @@ def _kernels():
             eta = tl.load(
                 ETA + batch * (T * H) + token * H + head, token_mask, other=0.0
             ).to(tl.float32)
-            # kh[c, e] = sum_d k[c, d] * memory[d, e] + memory_bias[e]
             kh = tl.sum(memory[None, :, :] * k[:, :, None], axis=1) + memory_bias[None, :]
             target = v - k
             mean = tl.sum(kh, axis=1) / D
@@ -138,8 +137,6 @@ def _kernels():
                 eta[:, None],
                 0.0,
             )
-            # output_chunk[c] = q[c] @ memory - sum_j eta[c]*attention[c,j]*grad[j]
-            #                 + memory_bias - sum_j (eta[c] if j <= c) * grad[j]
             output_chunk = (
                 tl.sum(memory[None, :, :] * q[:, :, None], axis=1)
                 - tl.sum(grad[None, :, :] * (attention * eta[:, None])[:, :, None], axis=1)
@@ -222,7 +219,6 @@ def _kernels():
             theta_t = tl.load(THETA + gate_base + token * H).to(tl.float32)
             alpha_t = tl.load(ALPHA + gate_base + token * H).to(tl.float32)
             eta_t = tl.load(ETA + gate_base + token * H).to(tl.float32)
-            # km[e] = sum_d k_t[d] * update_base[d, e]
             km = tl.sum(update_base * k_t[:, None], axis=0)
             reconstruction_target = v_t - k_t
             mean = tl.sum(km, axis=0) / D
@@ -307,7 +303,6 @@ def _kernels():
             a = tl.where(k_index[:, None] == k_index[None, :], h_kk + lamb[:, None], h_kk)
             tl.store(work_a + k_index[:, None] * K_DIM + k_index[None, :], a, kk_mask)
             tl.store(work_b + k_index, q_t, k_mask)
-            # Forward elimination with partial pivoting over the row axis.
             for col in range(K_DIM):
                 column = tl.load(work_a + k_index * K_DIM + col, k_mask, other=0.0).to(
                     tl.float32
@@ -322,12 +317,10 @@ def _kernels():
                     tl.float32
                 )
                 col_rhs = tl.load(work_b + col).to(tl.float32)
-                # Swap rows col and pivot.
                 tl.store(work_a + col * K_DIM + k_index, pivot_row, k_mask)
                 tl.store(work_a + pivot * K_DIM + k_index, col_row, k_mask)
                 tl.store(work_b + col, pivot_rhs)
                 tl.store(work_b + pivot, col_rhs)
-                # Eliminate below the pivot.
                 pivot_val = tl.sum(tl.where(k_index == col, pivot_row, 0.0), axis=0)
                 factor = tl.where(k_index > col, column / pivot_val, 0.0)
                 new_a = tl.load(
@@ -340,7 +333,6 @@ def _kernels():
                 new_b = tl.load(work_b + k_index, k_mask, other=0.0).to(tl.float32)
                 new_b = new_b - factor * pivot_rhs
                 tl.store(work_b + k_index, new_b, k_mask)
-            # Back substitution over the upper-triangular system.
             solution = tl.zeros((BLOCK_K,), dtype=tl.float32)
             for step in range(K_DIM):
                 i = K_DIM - 1 - step
@@ -468,7 +460,6 @@ def _kernels():
             )
             key_state = key_state * decay[None, :] + k_t[:, None] * sw_t[None, :]
             score = tl.sum(key_state * (q_t * scale)[:, None], axis=0)
-            # Softmax over the slot axis (masked slots are excluded).
             score = tl.where(s_mask, score, float("-inf"))
             max_score = tl.max(score, axis=0)
             exp_score = tl.exp(score - max_score)
@@ -729,7 +720,7 @@ def execute_layernorm_inner_state(
         _check_cuda("layernorm_inner_state", memory_init, bias_init)
         _check_float32("layernorm_inner_state", memory_init, bias_init)
     else:
-        memory_init = query  # placeholder; never loaded when HAS_INITIAL is False
+        memory_init = query
         bias_init = query
     query = query.contiguous()
     key = key.contiguous()
@@ -825,7 +816,7 @@ def execute_momentum_inner_state(
         _check_cuda("momentum_inner_state", initial)
         _check_float32("momentum_inner_state", initial)
     else:
-        initial = query  # placeholder; never loaded when HAS_INITIAL is False
+        initial = query
     query = query.contiguous()
     key = key.contiguous()
     value = value.contiguous()
@@ -1011,11 +1002,10 @@ def execute_fft_convolution(*, query: Any, kernel: Any, direct: Any) -> tuple[An
         raise ValueError("fft_convolution kernel must be [C,T]")
     if direct.shape != (channels,):
         raise ValueError("fft_convolution direct must be [C]")
-    x = query.transpose(1, 2)  # [B, C, T]
+    x = query.transpose(1, 2)
     fft_size = 2 * sequence
     kernel_spectrum = torch.fft.rfft(kernel, n=fft_size) / fft_size
     input_spectrum = torch.fft.rfft(x, n=fft_size)
-    # norm="forward" matches the canonical executor: the inverse is unnormalized.
     out = torch.fft.irfft(
         input_spectrum * kernel_spectrum, n=fft_size, norm="forward"
     )[..., :sequence]
@@ -1053,13 +1043,12 @@ def execute_two_stage_fft_convolution(
         raise ValueError("two_stage_fft_convolution kernels must be [H,T]")
     if ssm_k_direct.shape != (heads,) or skip.shape != (heads,):
         raise ValueError("two_stage_fft_convolution ssm_k_direct/skip must be [H]")
-    # Work in [B, H, T] so the batched conv maps (batch, head) rows to kernels [H, L].
-    key_bht = key[..., 0].transpose(1, 2)  # [B, H, T]
+    key_bht = key[..., 0].transpose(1, 2)
     value_bht = value[..., 0].transpose(1, 2)
     query_bht = query[..., 0].transpose(1, 2)
     shifted_key = _causal_fft_convolution(key_bht, ssm_k_kernel, ssm_k_direct[:, None])
     read = _causal_fft_convolution(shifted_key * value_bht, ssm_kernel, skip[:, None])
-    output = (read * query_bht).transpose(1, 2)  # [B, T, H]
+    output = (read * query_bht).transpose(1, 2)
     return output.unsqueeze(-1).contiguous(), None
 
 
@@ -1159,7 +1148,6 @@ def execute_slot_attention_two_stage(
         block_v,
         num_warps=4,
     )
-    # Fold the group dimension back to the key-head granularity.
     final_key_state = final_key_state.reshape(batch, key_heads, group_size, key_dim, slots)[:, :, 0]
     final_value_state = final_value_state.reshape(
         batch, key_heads, group_size, slots, value_dim
@@ -1228,7 +1216,7 @@ def execute_momentum_delta(
         _check_cuda("momentum_delta", state_init, momentum_init)
         _check_float32("momentum_delta", state_init, momentum_init)
     else:
-        state_init = query  # placeholder; never loaded when HAS_INITIAL is False
+        state_init = query
         momentum_init = query
     query = query.contiguous()
     key = key.contiguous()
@@ -1319,7 +1307,7 @@ def execute_gated_oja(
         _check_cuda("gated_oja", initial)
         _check_float32("gated_oja", initial)
     else:
-        initial = query  # placeholder; never loaded when HAS_INITIAL is False
+        initial = query
     query = query.contiguous()
     key = key.contiguous()
     value = value.contiguous()

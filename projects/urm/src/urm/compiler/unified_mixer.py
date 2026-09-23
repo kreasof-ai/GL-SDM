@@ -149,9 +149,6 @@ class CompiledMixerPlan:
         caller must supply valid, distinct active slots; this anchor is
         inference-only.
         """
-        # Dependency-independent operand validation runs before importing any
-        # optional backend so missing-mask diagnostics stay identical whether
-        # or not PyTorch is installed.
         if self.spec.requires_attention_mask and operands.get("attention_mask") is None:
             raise ValueError(
                 "this K1 operation requires a precomputed attention_mask route"
@@ -539,10 +536,6 @@ def compile_mixer(
             "the covered K2 matrix-state recurrences, or the distinguished K2 "
             "recurrence operators"
         )
-    # K3 SPARSE_DELTA admits a LIBRARY backend: the pinned Facebook
-    # sparse-delta-memory comparator (``GatedSparseMemoryWriteRead``), dispatched
-    # by ``_execute_upstream_sparse_delta``. The upstream kernel is gated on its
-    # frozen runtime pin at execution time (see the SDM adapter's support probe).
     library_k2_anchor = None
     if (
         resolved_backend is MixerBackend.LIBRARY
@@ -1235,9 +1228,6 @@ def _is_atma_gated_delta_decode_spec(spec: UnifiedMixerSpec) -> bool:
     return replace(spec, name=expected.name) == expected
 
 
-# K1 operations with a native executor wired into the NATIVE dispatch (each a
-# reparameterization or composition of the normalized routed reduction, mirrored
-# against the canonical K1 core).
 _NATIVE_K1_OPERATIONS = frozenset(
     {
         K1Operation.DIFFERENTIAL,
@@ -1252,9 +1242,6 @@ _NATIVE_K1_OPERATIONS = frozenset(
 )
 
 
-# Distinguished K2 recurrence operators with a native executor wired into the
-# NATIVE dispatch (the nonlinear/inner-state/convolution equations, each mirrored
-# against its canonical executor).
 _NATIVE_K2_OPERATORS = frozenset(
     {
         RecurrenceOperator.TANH_RNN,
@@ -1316,11 +1303,6 @@ def _native_matrix_state_supported(spec: UnifiedMixerSpec) -> bool:
         DecayGranularity.KEY_CHANNEL,
     ):
         return False
-    # The polynomial bases, the query/key normalizer, and the generalized-delta
-    # factored transitions are additive-only forms, so their additive/no-decay
-    # signature is unambiguous (the IR pins the polynomial basis, the normalizer,
-    # and the factored transition explicitly). Every other additive/no-decay
-    # spec is the under-specified collision group; decline it.
     if (
         spec.update_rule is StateUpdateRule.ADDITIVE
         and spec.decay is DecayGranularity.NONE
@@ -1339,7 +1321,6 @@ def _native_matrix_state_supported(spec: UnifiedMixerSpec) -> bool:
     if spec.normalizer not in (StateNormalizer.NONE, StateNormalizer.QUERY_KEY):
         return False
     if spec.transition is StateTransition.FACTORED_MATRIX:
-        # Only the generalized-delta factored transitions are canonical.
         if not (spec.generalized_delta_iplr or spec.generalized_delta_dplr):
             return False
     elif spec.transition is not StateTransition.POINTWISE:
@@ -1348,10 +1329,6 @@ def _native_matrix_state_supported(spec: UnifiedMixerSpec) -> bool:
         return False
     if spec.state_effect is not StateEffect.FUNCTIONAL:
         return False
-    # The supported variant flags; every other exotic composition flag must be
-    # off. static_head_decay_chunk accompanies static_head_decay (the same
-    # static head schedule read per chunk); both reduce to the time-constant
-    # head-decay form the kernel computes.
     if any(
         (
             spec.mamba2_ssm,
@@ -1508,10 +1485,8 @@ def _feature(torch: Any, value: Any, kind: FeatureMap):
 
 def _expand_attention_operand(value: Any, name: str):
     if value.ndim == 2:
-        # [Q,K], broadcast over batch and heads.
         return value
     if value.ndim == 3:
-        # [B,Q,K], shared across heads.
         return value.unsqueeze(1)
     if value.ndim == 4:
         return value
@@ -1670,7 +1645,6 @@ def _execute_sdpa(spec: UnifiedMixerSpec, torch: Any, **operands: Any):
         if combined_mask is None:
             combined_mask = bias
         elif combined_mask.dtype is torch.bool:
-            # Convert allowed/disallowed positions to SDPA's additive mask.
             combined_mask = bias.masked_fill(~combined_mask, float("-inf"))
         else:
             combined_mask = combined_mask + bias
@@ -1679,18 +1653,12 @@ def _execute_sdpa(spec: UnifiedMixerSpec, torch: Any, **operands: Any):
         and combined_mask.is_floating_point()
         and combined_mask.dtype != query.dtype
     ):
-        # PyTorch SDPA requires additive masks to use the query dtype. Keep the
-        # public K1 contract flexible and cast only at this backend boundary.
         combined_mask = combined_mask.to(dtype=query.dtype)
     is_causal = False
     if spec.causal and q_len == k_len and combined_mask is None:
-        # Preserve the fused SDPA causal path when query and key positions
-        # share the same origin.
         is_causal = True
         causal_strategy = "sdpa_is_causal"
     elif spec.causal and q_len == 1 and combined_mask is None:
-        # A one-token cached decode query is aligned to the final key position,
-        # so every cached key is visible without a materialized mask.
         causal_strategy = "single_query_cached_decode"
     elif spec.causal:
         q_positions = torch.arange(q_len, device=query.device) + (k_len - q_len)
@@ -1899,20 +1867,15 @@ def _execute_hla_second_order(plan: CompiledMixerPlan, torch: Any, **operands: A
             },
         )
 
-    # Inclusive prefixes S_t=Σk_i k_iᵀ and C_t=Σq_i v_iᵀ.
     delta_s = key.unsqueeze(-1) * key.unsqueeze(-2)
     delta_c = query.unsqueeze(-1) * value.unsqueeze(-2)
     state_s = delta_s.cumsum(dim=1)
     state_c = delta_c.cumsum(dim=1)
     previous_c = state_c - delta_c
 
-    # The masked correction G_t=Σ_i k_i(k_iᵀ C_{i-1}) removes terms
-    # whose value index is after the inner key index.
     key_previous_c = torch.matmul(key.unsqueeze(-2), previous_c).squeeze(-2)
     delta_g = key.unsqueeze(-1) * key_previous_c.unsqueeze(-2)
     masked_correction = delta_g.cumsum(dim=1)
-    # Evaluate qᵀ(SC) as (qᵀS)C, matching the paper's O(D² + D·Dv)
-    # per-token read rather than materializing the full D×Dv state product.
     query_state = torch.matmul(query.unsqueeze(-2), state_s).squeeze(-2)
     output = torch.matmul(query_state.unsqueeze(-2), state_c).squeeze(-2)
     output = output - torch.matmul(query.unsqueeze(-2), masked_correction).squeeze(-2)
@@ -2651,7 +2614,6 @@ def _execute_native_projected_attention(plan, torch, **operands):
         raise TypeError(
             f"unexpected native projected K1 operands: {', '.join(sorted(operands))}"
         )
-    # query [B,T,R], B_pre [H,R,K] -> expanded query [B,T,H,K]; K/V get a head axis.
     expanded_query = torch.einsum(
         "btr,hrk->bthk", query.float(), b_pre.float()
     ).to(query.dtype)
@@ -2742,7 +2704,7 @@ def _execute_native_gated_attention(plan, torch, **operands):
         )
     query_heads = query.shape[2]
     key, value = _expand_kv_to_query_heads(key, value, query_heads)
-    prefix = log_decay.float().cumsum(dim=1)  # [B,T,H,K]
+    prefix = log_decay.float().cumsum(dim=1)
     transformed_query = (query.float() * torch.exp(prefix)).to(query.dtype)
     transformed_key = (key.float() * torch.exp(-prefix)).to(key.dtype)
     from urm.backends.triton.softmax.online import execute_online_softmax
@@ -2801,7 +2763,6 @@ def _execute_native_positional_attention(plan, torch, **operands):
         for item in (query, secondary, key, value)
     )
     if needs_grad:
-        # Differentiable recomputation of P (BTHD -> BHTS) for autograd.
         q = query.float().transpose(1, 2)
         k = key.float().transpose(1, 2)
         logits = torch.matmul(q, k.transpose(-1, -2)) * scale
@@ -2812,16 +2773,15 @@ def _execute_native_positional_attention(plan, torch, **operands):
             visible = k_pos[None, :] <= q_pos[:, None]
             logits = logits.masked_fill(~visible[None, None], float("-inf"))
         probs = torch.softmax(logits, dim=-1)
-        probs = torch.nan_to_num(probs, nan=0.0)  # fully masked rows -> zero
+        probs = torch.nan_to_num(probs, nan=0.0)
     else:
         probs = execute_softmax_probs(
             query, key, causal=spec.causal, strict=False, scale=scale
         )
-    # Secondary scores with the same (now shared) head count: S = r.k, no scale.
     secondary_scores = torch.einsum(
         "bthk,bshk->bhts", secondary.float(), key.float()
     )
-    value_h = value.float().transpose(1, 2)  # [B,H,T,V]
+    value_h = value.float().transpose(1, 2)
     ordinary = torch.einsum("bhts,bhsv->bhtv", probs, value_h)
     correction = probs * secondary_scores
     correction_mean = correction.sum(dim=-1, keepdim=True)
@@ -2864,8 +2824,6 @@ def _execute_native_positive_feature_attention(plan, torch, **operands):
         for item in (query, key, value)
     )
     if needs_grad:
-        # Differentiable recomputation of the canonical grouped-squared-score
-        # reduction for autograd.
         batch, sequence, heads, dim = query.shape
         group_dim = dim // num_groups
         q_grouped = query.float().view(batch, sequence, heads, num_groups, group_dim)
@@ -2931,7 +2889,6 @@ def _execute_native_thresholded_attention(plan, torch, **operands):
         for item in (query_a, query_b, key_a, key_b, value)
     )
     if needs_grad:
-        # Differentiable recomputation of each thresholded branch for autograd.
         sequence = query_a.shape[1]
         dim = query_a.shape[-1]
         positions = torch.arange(
@@ -3002,12 +2959,10 @@ def _execute_native_delta_transform_attention(plan, torch, **operands):
         for item in (query, key, value, beta)
     )
     if needs_grad:
-        # Differentiable recomputation of the strict-causal P + triangular solve
-        # + causal reduction for autograd.
-        q = query.float().transpose(1, 2)  # [B,H,T,K]
+        q = query.float().transpose(1, 2)
         k = key.float().transpose(1, 2)
-        v = value.float().transpose(1, 2)  # [B,H,T,V]
-        beta_h = beta.float().transpose(1, 2)  # [B,H,T]
+        v = value.float().transpose(1, 2)
+        beta_h = beta.float().transpose(1, 2)
         scores = torch.matmul(q, k.transpose(-1, -2)) * scale
         positions = torch.arange(sequence, device=query.device)
         strict_causal = positions[None, :] < positions[:, None]
@@ -3030,12 +2985,12 @@ def _execute_native_delta_transform_attention(plan, torch, **operands):
         output = output.transpose(1, 2).to(value.dtype)
     else:
         probs = execute_softmax_probs(query, key, causal=True, strict=True, scale=scale)
-        beta_h = beta.float().transpose(1, 2)  # [B,H,T]
+        beta_h = beta.float().transpose(1, 2)
         eye = torch.eye(sequence, device=query.device, dtype=torch.float32)
         system = eye.view(1, 1, sequence, sequence) + beta_h.unsqueeze(-1) * probs
-        value_h = value.float().transpose(1, 2)  # [B,H,T,V]
+        value_h = value.float().transpose(1, 2)
         transformed = torch.linalg.solve_triangular(system, value_h, upper=False)
-        transformed = transformed.transpose(1, 2).to(value.dtype)  # [B,T,H,V]
+        transformed = transformed.transpose(1, 2).to(value.dtype)
         output = execute_online_softmax(
             query,
             key,
@@ -3139,8 +3094,6 @@ def _execute_tda_attention_reference(torch: Any, **operands: Any) -> MixerResult
         raise ValueError("TDA Q/K/V operands must share [B,T,H,D] layout")
     batch, sequence, heads, dim = query_a.shape
     del batch
-    # The pinned TDA implementation normalizes each Q/K branch before its
-    # thresholded, unnormalized causal score reduction.
     query_a, query_b, key_a, key_b = (
         torch.nn.functional.normalize(item, p=2, dim=-1)
         for item in (query_a, query_b, key_a, key_b)
@@ -3834,7 +3787,6 @@ def _execute_matrix_recurrence(spec: UnifiedMixerSpec, torch: Any, **operands: A
         else:
             state_for_token = _matrix_decay(torch, spec, log_decay, token, state)
             if normalizer_state is not None:
-                # The denominator follows the same head/key-channel decay.
                 if spec.decay is DecayGranularity.HEAD:
                     decay_t = log_decay[:, token].float()
                     if decay_t.ndim == 2 and decay_t.shape[-1] == 1:
@@ -5438,7 +5390,6 @@ def _execute_sparse_delta(spec: UnifiedMixerSpec, torch: Any, **operands: Any):
         delta = beta_t * (values[:, token].float() - retrieved)
         updated_write = decayed_write + write_weight * delta[:, None, :]
         state = state.scatter(1, update_index, updated_write)
-        # K3's semantic contract commits state storage precision once per token.
         state = state.to(storage_dtype).float()
         if spec.read_timing is ReadTiming.AFTER_UPDATE:
             selected = state.gather(
@@ -5472,27 +5423,19 @@ def _execute_mamba_selective_scan(plan: CompiledMixerPlan, torch: Any, **operand
         raise ValueError(
             "the pinned Mamba selective-scan operator has no initial-state input"
         )
-    # Map URM's diagonal-SSM operands onto the pinned Mamba selective-scan kernel.
-    # URM layout: x/step_size [B,T,C]; log_decay/input_gate/read_gate [B,T,N].
-    # Mamba layout: u/delta [B,dim,L]; A [dim,dstate] (static); B/C [B,dstate,L].
-    # URM's log_decay is per-token [B,T,N]; Mamba's A is a static [dim,dstate]
-    # structured matrix. The honest static-A reduction is the mean over batch and
-    # time (the parity columns report the resulting difference from URM's per-token
-    # native recurrence).
     batch, sequence, channels = x.shape
     state_width = log_decay.shape[-1]
-    u = x.transpose(1, 2).contiguous()  # [B,C,L]
-    delta = step_size.transpose(1, 2).contiguous()  # [B,C,L]
-    # Static A [C,N]: broadcast the per-token log_decay to [B,T,C,N] then average.
+    u = x.transpose(1, 2).contiguous()
+    delta = step_size.transpose(1, 2).contiguous()
     a_static = (
-        log_decay.transpose(1, 2)  # [B,N,T]
-        .unsqueeze(1)  # [B,1,N,T]
+        log_decay.transpose(1, 2)
+        .unsqueeze(1)
         .expand(batch, channels, state_width, sequence)
-        .mean(dim=(0, 3))  # [C,N]
+        .mean(dim=(0, 3))
         .contiguous()
     )
-    b_mat = input_gate.transpose(1, 2).contiguous()  # [B,N,L]
-    c_mat = read_gate.transpose(1, 2).contiguous()  # [B,N,L]
+    b_mat = input_gate.transpose(1, 2).contiguous()
+    c_mat = read_gate.transpose(1, 2).contiguous()
     if isinstance(skip, torch.Tensor):
         if skip.ndim == 0:
             skip = skip.expand(channels)
@@ -7878,9 +7821,6 @@ def _execute_upstream_sparse_delta(plan: CompiledMixerPlan, torch: Any, **operan
         raise TypeError(f"unexpected upstream K3 operands: {', '.join(sorted(operands))}")
     batch, slots, value_dim = memory.shape
     sequence = values.shape[1]
-    # The pinned adapter enforces its frozen-runtime support contract (revision,
-    # runtime versions, CUDA build tools). It raises if the runtime is not
-    # sanctioned for the comparator.
     from urm.adapters.sparse_delta_memory import probe_sdm_support
 
     support = probe_sdm_support()
@@ -7890,10 +7830,6 @@ def _execute_upstream_sparse_delta(plan: CompiledMixerPlan, torch: Any, **operan
         )
     from lingua.sparse_delta_memory.memory_ops import GatedSparseMemoryWriteRead
 
-    # The pinned kernel mutates its working memory in place and returns an empty
-    # tensor as the second output. Run it on a clone so the mixer's persistent
-    # buffer is not mutated in place; the updated clone is the functional
-    # final_state the mixer folds back between steps.
     flat_memory = memory.reshape(batch * slots, value_dim).contiguous().clone()
     offsets = (
         torch.arange(batch, device=memory.device, dtype=torch.int64).view(batch, 1, 1)
@@ -7960,9 +7896,6 @@ def _execute_native_diagonal_recurrence(plan: CompiledMixerPlan, torch: Any, **o
             raise ValueError("HGRN expects x and log_decay with shape [B,T,C]")
         batch_hgrn, sequence_hgrn, channels_hgrn = x.shape
         log_decay = log_decay.unsqueeze(-1)
-        # HGRN gates are all-ones; the kernel treats them as 1.0 when gates_one is
-        # set, so we pass log_decay as a stride-valid placeholder and never build a
-        # ones tensor on the ordinary-invocation path.
         input_gate = log_decay
         read_gate = log_decay
         gates_one = True
@@ -8092,14 +8025,11 @@ def _execute_native_matrix_state_recurrence(
     log_decay = operands.pop("log_decay", None)
     erase_gate = operands.pop("erase_gate", None)
     write_gate = operands.pop("write_gate", None)
-    # comba names its prediction key "p" and its (head) log decay "g".
     prediction_key = operands.pop("prediction_key", operands.pop("p", None))
     if spec.comba_rule and log_decay is None:
         log_decay = operands.pop("g", None)
-    # generalized-delta factored transitions.
     transition_alpha = operands.pop("transition_alpha", None)
     transition_beta = operands.pop("transition_beta", None)
-    # gated-delta-product multi-rank updates.
     update_keys = operands.pop("update_keys", None)
     update_values = operands.pop("update_values", None)
     if operands:
@@ -8140,9 +8070,6 @@ def _execute_native_matrix_state_recurrence(
     batch, sequence, heads, key_dim = query.shape
     if value.shape[:3] != (batch, sequence, heads):
         raise ValueError("native matrix-state value must use [B,T,H,V] matching query")
-    # Match the canonical oracle's read-scale convention: read_scale wins, then
-    # the dual-gate (gdn2), kda, comba, generalized-delta, and gated-delta-product
-    # forms default to key_dim**-0.5, then attention_scale, else 1.0.
     if spec.read_scale is not None:
         scale = spec.read_scale
     elif (
@@ -8155,9 +8082,6 @@ def _execute_native_matrix_state_recurrence(
         scale = spec.attention_scale
     else:
         scale = 1.0
-    # Feature construction: the polynomial bases pre-expand the feature dimension
-    # (the scale folds into the expansion); otherwise the kernel applies the
-    # feature map on load.
     kernel_feature_map = "identity"
     if spec.polynomial_basis is not PolynomialBasis.NONE:
         poly_scale = spec.read_scale or key_dim ** -0.5
@@ -8167,11 +8091,9 @@ def _execute_native_matrix_state_recurrence(
         key = _polynomial_features_torch(
             torch, key, spec.polynomial_basis, poly_scale, is_query=False
         )
-        scale = 1.0  # the scale is folded into the polynomial features
+        scale = 1.0
     elif spec.feature_map is not FeatureMap.IDENTITY:
         kernel_feature_map = spec.feature_map.value
-    # Static head decay is a time-constant head schedule ([H] or [1]); expand it
-    # to the kernel's [B,T,H] head-decay layout.
     if spec.static_head_decay and log_decay is not None:
         static = log_decay.reshape(-1)
         head_decay = (
@@ -8184,8 +8106,6 @@ def _execute_native_matrix_state_recurrence(
             .expand(batch, sequence, heads)
             .contiguous()
         )
-    # The generalized-delta factored transitions: left_t = I + beta_t⊗alpha_t
-    # (IPLR) or diag(exp(log_decay)) + beta_t⊗alpha_t (DPLR).
     left_transitions = None
     if spec.generalized_delta_iplr or spec.generalized_delta_dplr:
         eye = torch.eye(key_dim, device=query.device, dtype=torch.float32)
@@ -8197,16 +8117,10 @@ def _execute_native_matrix_state_recurrence(
         else:
             left_transitions = eye.view(1, 1, 1, key_dim, key_dim) + rank_one
         left_transitions = left_transitions.contiguous()
-        # The factored transition replaces pointwise decay.
         log_decay = None
-    # The kernel holds the state as [B,H,K,V]; state_v_first recipes expose it as
-    # [B,H,V,K], so transpose at the boundary (matching the reference oracle).
     kernel_initial = initial_state
     if initial_state is not None and spec.state_v_first:
         kernel_initial = initial_state.transpose(-1, -2).contiguous()
-    # The kernel's is_delta flag selects the plain delta correction; the
-    # dual-gate (gdn2) and multi-rank (gated_delta_product) forms are exclusive
-    # of it (the canonical core dispatches them before the plain delta rule).
     kernel_is_delta = (
         spec.update_rule is StateUpdateRule.DELTA
         and not spec.gdn2_ssm
@@ -8252,9 +8166,6 @@ def _execute_native_matrix_state_recurrence(
             "urm_compiler_verified": True,
             "runtime_compiler_binding": "cached_semantic_shape",
             "runtime_binding_cache_size": _compile_native_matrix_state_binding.cache_info().currsize,
-            # The native matrix-state backward covers the full canonical-core
-            # envelope (plain delta/additive plus the dual-gate, retrieval-key,
-            # normalizer, multi-rank, left-transition, and feature-map variants).
             "backward_supported": True,
         },
     )
@@ -8269,7 +8180,7 @@ def _polynomial_features_torch(
     canonical ``_polynomial_features``).
     """
     z = x.float() * scale if is_query else x.float()
-    quad = z.unsqueeze(-1) * z.unsqueeze(-2)  # [..., K, K]
+    quad = z.unsqueeze(-1) * z.unsqueeze(-2)
     if basis is PolynomialBasis.BASED_TAYLOR2:
         return torch.cat(
             [
@@ -8282,16 +8193,6 @@ def _polynomial_features_torch(
     if basis is PolynomialBasis.REBASED_SQUARE:
         return quad.reshape(*z.shape[:-1], -1).contiguous()
     raise ValueError(f"polynomial basis {basis} not supported natively")
-
-
-# ----------------------------------------------------------------------
-# Native executors for the distinguished K2 recurrence operators.
-#
-# Each wrapper pops the recipe's operands (the ``_rng_operands``/canonical
-# ``_execute_k2_operator`` names), calls the validated native kernel, and packs
-# the result into a ``MixerResult`` with the same final-state convention as the
-# canonical executor.
-# ----------------------------------------------------------------------
 
 
 def _native_k2_result(
@@ -8653,8 +8554,6 @@ def _execute_native_slot_attention_two_stage(plan, torch, **operands):
     key = operands.pop("key")
     value = operands.pop("value")
     if spec.name == "abc_core":
-        # ABC derives slot_weights and log_decay from slot_logits via a
-        # cumulative log-sum-exp over time (the composition derivation).
         slot_logits = operands.pop("slot_logits").float()
         cumulative = torch.logcumsumexp(slot_logits, dim=1)
         log_decay = torch.cat((cumulative[:, :1], cumulative[:, :-1]), dim=1) - cumulative

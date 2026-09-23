@@ -39,7 +39,6 @@ from __future__ import annotations
 
 from urm.ir.mixer import K1Operation, MixerKernelFamily, UnifiedMixerSpec
 
-#: The K1 operations this family owns, expressed without architecture identity.
 K1_OPERATIONS: frozenset[K1Operation] = frozenset(K1Operation)
 
 

@@ -112,9 +112,6 @@ class CertifiedSparseStateRoutes:
                 raise ValueError(
                     f"{name} addresses must be strictly increasing and unique"
                 )
-        # BF16 Softmax outputs can differ from one by one representable quantum
-        # after storage (observed worst case 0.00244 for width three); 0.004 is
-        # the pre-tuning certification envelope, not a numerical kernel gate.
         normalization_atol = 2e-5 if spec.dtype is DType.FLOAT32 else 4e-3
         for name, tensor in (
             ("read", read_weights),

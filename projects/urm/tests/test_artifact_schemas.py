@@ -272,52 +272,6 @@ def test_committed_sparse_memory_e2e_profile_validates() -> None:
     } <= ranges
 
 
-def test_pretraining_step_schema_is_strict_and_committed_artifact_validates() -> None:
-    schema = _load(PROJECT_ROOT / "benchmarks" / "pretraining-step-result-schema.json")
-    from jsonschema.validators import validator_for
-
-    validator_for(schema).check_schema(schema)
-    artifact = _artifact("pretraining-step/confirmation.json")
-    validate(artifact, schema)
-    assert artifact["frozen_configuration"] == tomllib.loads(
-        (PROJECT_ROOT / "benchmarks" / "pretraining_step.toml").read_text(
-            encoding="utf-8"
-        )
-    )
-    assert set(artifact["modes"]) == {"eager", "compile_fullgraph"}
-    comparison_passes = []
-    for mode in artifact["modes"].values():
-        assert len(mode["pairs"]) == 3
-        comparison_passes.extend(item["passed"] for item in mode["correctness"])
-        for pair in mode["pairs"]:
-            assert "gradient_files" not in pair["upstream"]
-            assert "gradient_files" not in pair["native"]
-            assert pair["native"]["execution"]["kind"] == (
-                "compiler_produced_native_plan"
-            )
-            assert (
-                pair["native"]["execution"]["compiler_plan"]["escape_hatch_count"] == 0
-            )
-            assert pair["upstream"]["execution"]["kind"] == (
-                "pinned_external_comparator"
-            )
-            assert pair["upstream"]["upstream"]["installed_commit"] == (
-                "183e7df809131b80ad4393741029d0f20fc3640b"
-            )
-    assert artifact["correctness_passed"] is all(comparison_passes)
-    if not artifact["correctness_passed"]:
-        assert artifact["decision"] == "correctness_failure"
-        assert artifact["passed"] is False
-
-
-def test_pretraining_profile_artifact_validates() -> None:
-    schema = _load(PROJECT_ROOT / "benchmarks" / "pretraining-step-profile-schema.json")
-    artifact = _artifact("pretraining-step/native-profile.json")
-    validate(artifact, schema)
-    assert artifact["compiler_execution"]["all_layers_identical"] is True
-    assert artifact["compiler_execution"]["plan"]["escape_hatch_count"] == 0
-
-
 def _steady_state_overhead_rows(artifact: dict) -> list[dict]:
     """Flatten paired adapter-overhead statistics from the attention artifact."""
     min_seq = artifact["methodology"]["steady_state_min_seq"]

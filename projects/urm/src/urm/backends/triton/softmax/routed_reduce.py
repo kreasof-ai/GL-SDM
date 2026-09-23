@@ -1,6 +1,6 @@
 """Triton forward and backward kernels for routed weighted reduction.
 
-Routed-reduction v1 semantic contract (projects/urm/archive/docs/runtime/triton-backend.md):
+Routed-reduction v1 semantic contract:
 
     output[q, d] = sum_k(weights[q, k] * values[indices[q, k], d])
 
@@ -222,9 +222,6 @@ def _fast_launch_capable(jit_fn: object) -> bool:
         _FAST_LAUNCH_CAPABLE = bool(
             hasattr(jit_fn, "warmup")
             and hasattr(CompiledKernel, "__getitem__")
-            # CompiledKernel.run is an instance attribute created by
-            # _init_handles; its presence is implied by __getitem__, whose
-            # runner closure reads it on every launch.
             and hasattr(_runtime_knobs, "launch_enter_hook")
             and hasattr(_runtime_knobs, "launch_exit_hook")
         )
@@ -274,8 +271,6 @@ def _launch(
                 )
                 runner = kernel[launch_grid]
         except (AttributeError, TypeError, KeyError):
-            # Triton API drift: permanently fall back to the standard,
-            # supported launcher. No GPU work has been issued at this point.
             _disable_fast_launch()
             jit_fn[grid](*tensors, **constexprs, num_warps=num_warps)
             return

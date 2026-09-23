@@ -35,7 +35,7 @@ class UnsatCase:
     name: str
     category: str
     build: Callable[[], ConstraintModel]
-    expected_core_substring: str  # a constraint name that must appear in core
+    expected_core_substring: str
     concise_message: str
 
 

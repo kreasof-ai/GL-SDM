@@ -37,8 +37,6 @@ def _load_sliding_chunks():
         )
     loaded = sys.modules.get("longformer")
     if loaded is None:
-        # The upstream package __init__ imports an obsolete Transformers symbol.
-        # Load the original kernel files as a package without importing the model.
         loaded = types.ModuleType("longformer")
         loaded.__path__ = [str(package_path)]
         loaded.__package__ = "longformer"

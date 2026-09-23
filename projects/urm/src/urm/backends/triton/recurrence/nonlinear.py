@@ -29,18 +29,13 @@ def _kernels():
     import triton.language as tl
     from triton.language.extra.cuda import libdevice
 
-    # ------------------------------------------------------------------
-    # tanh_rnn: h_t = tanh(h_{t-1} @ W + x_t); output is the state.
-    # query [B,T,N,H], weight [N,H,H], initial_state [B,N,H].
-    # One program per (batch, n). State is a vector of width H.
-    # ------------------------------------------------------------------
     @triton.jit
     def tanh_rnn_forward_kernel(
-        Q,  # [B,T,N,H]
-        W,  # [N,H,H]
-        INITIAL,  # [B,N,H]
-        OUTPUT,  # [B,T,N,H]
-        FINAL,  # [B,N,H]
+        Q,
+        W,
+        INITIAL,
+        OUTPUT,
+        FINAL,
         T: tl.constexpr,
         N: tl.constexpr,
         H: tl.constexpr,
@@ -54,7 +49,6 @@ def _kernels():
         state = tl.load(
             INITIAL + batch * N * H + n * H + h_index, h_mask, other=0.0
         ).to(tl.float32)
-        # W[n, h, k] -> offset n*H*H + h*H + k ; load the full [H, H] tile once.
         w_tile = tl.load(
             W + n * H * H + h_index[:, None] * H + h_index[None, :],
             h_mask[:, None] & h_mask[None, :],
@@ -66,7 +60,6 @@ def _kernels():
                 h_mask,
                 other=0.0,
             ).to(tl.float32)
-            # acc[k] = sum_h state[h] * W[n,h,k]
             acc = tl.sum(state[:, None] * w_tile, axis=0)
             state = libdevice.tanh(acc + x_t)
             tl.store(
@@ -76,26 +69,17 @@ def _kernels():
             )
         tl.store(FINAL + batch * N * H + n * H + h_index, state, h_mask)
 
-    # ------------------------------------------------------------------
-    # gated_rnn (GRU):
-    #   forget = sigmoid(h @ Wf + fi_t)
-    #   reset  = sigmoid(h @ Wr + ri_t)
-    #   cand   = tanh((h*reset) @ W + x_t)
-    #   h      = forget*h + (1-forget)*cand
-    # query/forget_input/reset_input [B,T,N,H]; weight/forget_weight/
-    # reset_weight [N,H,H]; initial_state [B,N,H]. One program per (batch, n).
-    # ------------------------------------------------------------------
     @triton.jit
     def gated_rnn_forward_kernel(
-        Q,  # [B,T,N,H]
-        W,  # [N,H,H]
-        FI,  # forget_input [B,T,N,H]
-        FW,  # forget_weight [N,H,H]
-        RI,  # reset_input [B,T,N,H]
-        RW,  # reset_weight [N,H,H]
-        INITIAL,  # [B,N,H]
-        OUTPUT,  # [B,T,N,H]
-        FINAL,  # [B,N,H]
+        Q,
+        W,
+        FI,
+        FW,
+        RI,
+        RW,
+        INITIAL,
+        OUTPUT,
+        FINAL,
         T: tl.constexpr,
         N: tl.constexpr,
         H: tl.constexpr,
@@ -139,26 +123,16 @@ def _kernels():
             tl.store(OUTPUT + off, state, h_mask)
         tl.store(FINAL + batch * N * H + n * H + h_index, state, h_mask)
 
-    # ------------------------------------------------------------------
-    # multiplicative_rnn (m2rnn):
-    #   update = k_t ⊗ v_t                    [K,V]
-    #   cand   = tanh(S @ W + update)         W: [V,V] -> S[K,V] @ W[V,V]
-    #   S      = f*S + (1-f)*cand             f scalar per (b,n)
-    #   read   = q_t^T S                      [V]
-    # query/key [B,T,N,K], value [B,T,N,V], weight [N,V,V],
-    # forget_input [B,T,N], initial_state [B,N,K,V].
-    # One program per (batch, n). State is a [K,V] tile.
-    # ------------------------------------------------------------------
     @triton.jit
     def multiplicative_rnn_forward_kernel(
-        Q,  # [B,T,N,K]
-        K,  # [B,T,N,K]
-        V,  # [B,T,N,V]
-        W,  # [N,V,V]
-        FI,  # [B,T,N]
-        INITIAL,  # [B,N,K,V]
-        OUTPUT,  # [B,T,N,V]
-        FINAL,  # [B,N,K,V]
+        Q,
+        K,
+        V,
+        W,
+        FI,
+        INITIAL,
+        OUTPUT,
+        FINAL,
         T: tl.constexpr,
         N: tl.constexpr,
         K_DIM: tl.constexpr,
@@ -181,7 +155,6 @@ def _kernels():
             + v_index[None, :]
         )
         state = tl.load(INITIAL + state_offset, kv_mask, other=0.0).to(tl.float32)
-        # weight [V, V] tile for this n: W[n, v, w] -> n*V*V + v*V + w
         w_tile = tl.load(
             W + n * V_DIM * V_DIM + v_index[:, None] * V_DIM + v_index[None, :],
             v_mask[:, None] & v_mask[None, :],
@@ -202,7 +175,6 @@ def _kernels():
             ).to(tl.float32)
             forget = tl.load(FI + fi_token_base + token * N).to(tl.float32)
             update = k_t[:, None] * v_t[None, :]
-            # sw[k, w] = sum_v state[k, v] * W[v, w]
             sw = tl.sum(state[:, :, None] * w_tile[None, :, :], axis=1)
             candidate = libdevice.tanh(sw + update)
             state = forget * state + (1.0 - forget) * candidate
@@ -212,20 +184,15 @@ def _kernels():
             )
         tl.store(FINAL + state_offset, state, kv_mask)
 
-    # ------------------------------------------------------------------
-    # rwkv4_scalar_state: per-channel scalar (alpha, denom, log_scale).
-    # w/u [C]; key/value [B,T,C]; state_input [B,3,1,C].
-    # One program per batch; channels vectorized across the block.
-    # ------------------------------------------------------------------
     @triton.jit
     def rwkv4_forward_kernel(
-        W,  # [C]
-        U,  # [C]
-        KEY,  # [B,T,C]
-        VALUE,  # [B,T,C]
-        STATE_IN,  # [B,3,1,C]
-        OUTPUT,  # [B,T,C]
-        FINAL,  # [B,3,1,C]
+        W,
+        U,
+        KEY,
+        VALUE,
+        STATE_IN,
+        OUTPUT,
+        FINAL,
         T: tl.constexpr,
         C: tl.constexpr,
         BLOCK_C: tl.constexpr,
@@ -274,26 +241,16 @@ def _kernels():
         tl.store(FINAL + batch * 3 * C + 1 * C + c_index, denom, c_mask)
         tl.store(FINAL + batch * 3 * C + 2 * C + c_index, log_scale, c_mask)
 
-    # ------------------------------------------------------------------
-    # rwkv6_bonus_corrected: matrix state [K,V] per (batch, head).
-    #   decayed = state * exp(log_decay)         (per key-channel)
-    #   bonus_write = (k*bonus) ⊗ v
-    #   read_state = state + bonus_write         (pre-update state + bonus)
-    #   out = (q*scale)^T read_state
-    #   state = decayed + k ⊗ v
-    # query/key [B,T,H,K], value [B,T,H,V], log_decay [B,T,H,K], bonus [H,K].
-    # One program per (batch, head).
-    # ------------------------------------------------------------------
     @triton.jit
     def rwkv6_forward_kernel(
-        Q,  # [B,T,H,K]
-        K,  # [B,T,H,K]
-        V,  # [B,T,H,V]
-        G,  # log_decay [B,T,H,K]
-        BONUS,  # [H,K]
-        INITIAL,  # [B,H,K,V]
-        OUTPUT,  # [B,T,H,V]
-        FINAL,  # [B,H,K,V]
+        Q,
+        K,
+        V,
+        G,
+        BONUS,
+        INITIAL,
+        OUTPUT,
+        FINAL,
         T: tl.constexpr,
         H: tl.constexpr,
         K_DIM: tl.constexpr,
@@ -348,24 +305,16 @@ def _kernels():
             state = decayed_state + k_t[:, None] * v_t[None, :]
         tl.store(FINAL + state_offset, state, kv_mask)
 
-    # ------------------------------------------------------------------
-    # mamba2_structured_ssm: state [P, N] per (batch, head).
-    #   decay = exp(dt * A)              scalar per head
-    #   state = state*decay + (x ⊗ B)*dt
-    #   out = sum_N(state * C)
-    # x [B,T,H,P]; dt [B,T,H]; A [H]; B/C [B,T,G,N] (broadcast over heads).
-    # One program per (batch, head).
-    # ------------------------------------------------------------------
     @triton.jit
     def mamba2_forward_kernel(
-        X,  # [B,T,H,P]
-        DT,  # [B,T,H]
-        A,  # [H]
-        B,  # [B,T,G,N]
-        C,  # [B,T,G,N]
-        INITIAL,  # [B,H,P,N]
-        OUTPUT,  # [B,T,H,P]
-        FINAL,  # [B,H,P,N]
+        X,
+        DT,
+        A,
+        B,
+        C,
+        INITIAL,
+        OUTPUT,
+        FINAL,
         T: tl.constexpr,
         H: tl.constexpr,
         P: tl.constexpr,
@@ -413,59 +362,37 @@ def _kernels():
             )
         tl.store(FINAL + state_offset, state, pn_mask)
 
-    # ------------------------------------------------------------------
-    # trapezoidal_ssm (mamba3 SISO): rotary angle accumulator + four-state
-    # trapezoidal SSM. State per (batch, head):
-    #   angle_state [A], ssm_state [V, K], key_state [K], value_state [V].
-    # query/key [B,T,H,K] (K even); value [B,T,H,V];
-    # adt/dt/trap [B,H,T]; query_bias/key_bias [H,K]; angles [B,T,H,A].
-    # One program per (batch, head). Zero initial states.
-    #
-    # Per token:
-    #   angle += tanh(angles)*pi*dt;  angle -= 2pi*floor(angle/2pi)
-    #   cos/sin from angle (pairs >= A use identity cos=1, sin=0)
-    #   q_rot = rotary(q + q_bias);  k_rot = rotary(k + k_bias)
-    #   trap = sigmoid(trap_t);  alpha = exp(adt_t)
-    #   beta = (1-trap)*dt*alpha;  gamma = trap*dt
-    #   ssm = alpha*ssm + beta*(key_state ⊗ value_state) + gamma*(k_rot ⊗ v)
-    #   out = sum_K(ssm * q_rot)  -> [V]
-    #   key_state, value_state = k_rot, v
-    #
-    # The rotary pairs (2p, 2p+1). We track the angle per pair (padded to the
-    # pair domain) and reconstruct the rotated [K] vectors from the pair
-    # registers via an index-match reduction (K is small).
-    # ------------------------------------------------------------------
     @triton.jit
     def trapezoidal_ssm_forward_kernel(
-        Q,  # [B,T,H,K]
-        K,  # [B,T,H,K]
-        V,  # [B,T,H,V]
-        ADT,  # [B,H,T]
-        DT,  # [B,H,T]
-        TRAP,  # [B,H,T]
-        Q_BIAS,  # [H,K]
-        K_BIAS,  # [H,K]
-        ANGLES,  # [B,T,H,A]
-        OUTPUT,  # [B,T,H,V]
-        FINAL_ANGLE,  # [B,H,A]
-        FINAL_SSM,  # [B,H,V,K]
-        FINAL_KEY,  # [B,H,K]
-        FINAL_VALUE,  # [B,H,V]
+        Q,
+        K,
+        V,
+        ADT,
+        DT,
+        TRAP,
+        Q_BIAS,
+        K_BIAS,
+        ANGLES,
+        OUTPUT,
+        FINAL_ANGLE,
+        FINAL_SSM,
+        FINAL_KEY,
+        FINAL_VALUE,
         T: tl.constexpr,
         H: tl.constexpr,
         K_DIM: tl.constexpr,
         V_DIM: tl.constexpr,
         A_DIM: tl.constexpr,
-        BLOCK_KP: tl.constexpr,  # pow2 >= K//2 (pair count)
-        BLOCK_K: tl.constexpr,  # pow2 >= K
-        BLOCK_V: tl.constexpr,  # pow2 >= V
-        BLOCK_A: tl.constexpr,  # pow2 >= A
+        BLOCK_KP: tl.constexpr,
+        BLOCK_K: tl.constexpr,
+        BLOCK_V: tl.constexpr,
+        BLOCK_A: tl.constexpr,
     ):
         row = tl.program_id(0)
         batch = row // H
         head = row % H
         half_k = K_DIM // 2
-        p_index = tl.arange(0, BLOCK_KP)  # rotary pair index
+        p_index = tl.arange(0, BLOCK_KP)
         p_mask = p_index < half_k
         k_index = tl.arange(0, BLOCK_K)
         k_mask = k_index < K_DIM
@@ -475,7 +402,6 @@ def _kernels():
         a_index = tl.arange(0, BLOCK_A)
         a_mask = a_index < A_DIM
 
-        # angle tracked per pair; pairs >= A_DIM stay 0 (identity rotation).
         angle_pair = tl.zeros((BLOCK_KP,), dtype=tl.float32)
         ssm_state = tl.zeros((BLOCK_V, BLOCK_K), dtype=tl.float32)
         key_state = tl.zeros((BLOCK_K,), dtype=tl.float32)
@@ -489,15 +415,12 @@ def _kernels():
         PI = 3.141592653589793
         TWO_PI = 6.283185307179586
 
-        # Index-match matrices to reassemble rotated [K] vectors from pairs.
-        # k_rot[2p] = first[p]; k_rot[2p+1] = second[p].
         k_match_first = (k_index[:, None] == (p_index * 2)[None, :]) & (
             k_mask[:, None] & p_mask[None, :]
         )
         k_match_second = (k_index[:, None] == (p_index * 2 + 1)[None, :]) & (
             k_mask[:, None] & p_mask[None, :]
         )
-        # a_match gathers angle_pair[p] into the [A] output domain.
         a_match = (a_index[:, None] == p_index[None, :]) & (
             a_mask[:, None] & (p_index < A_DIM)[None, :]
         )
@@ -506,7 +429,6 @@ def _kernels():
             dt_t = tl.load(DT + sched_token_base + token).to(tl.float32)
             adt_t = tl.load(ADT + sched_token_base + token).to(tl.float32)
             trap_raw = tl.load(TRAP + sched_token_base + token).to(tl.float32)
-            # angles per pair (pair p < A_DIM reads angles[p]; else 0).
             angles_p = tl.load(
                 ANGLES + ang_token_base + token * (H * A_DIM) + p_index,
                 p_index < A_DIM,
@@ -518,7 +440,6 @@ def _kernels():
             cosine = tl.where(in_angle, tl.cos(angle_pair), 1.0)
             sine = tl.where(in_angle, tl.sin(angle_pair), 0.0)
 
-            # Load q/k pairs (even/odd), add bias, rotate.
             q_first = tl.load(
                 Q + qk_token_base + token * (H * K_DIM) + p_index * 2,
                 p_mask,
@@ -552,7 +473,6 @@ def _kernels():
             k_rot_first = k_first * cosine - k_second * sine
             k_rot_second = k_first * sine + k_second * cosine
 
-            # Reassemble rotated [K] vectors from the pair registers.
             q_rot = tl.sum(
                 tl.where(k_match_first, q_rot_first[None, :], 0.0), axis=1
             ) + tl.sum(tl.where(k_match_second, q_rot_second[None, :], 0.0), axis=1)
@@ -617,11 +537,6 @@ def _kernels():
         mamba2_forward_kernel,
         trapezoidal_ssm_forward_kernel,
     )
-
-
-# ======================================================================
-# Lean execute_* wrappers (forward-only, under torch.no_grad).
-# ======================================================================
 
 
 def execute_tanh_rnn(*, query: Any, weight: Any, initial_state: Any):

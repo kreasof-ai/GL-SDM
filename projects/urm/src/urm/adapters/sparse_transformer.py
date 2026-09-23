@@ -37,7 +37,6 @@ def load_dense_attention(repository: Path | None = None):
     import numpy as np
     import tensorflow as tensorflow
 
-    # The pinned source targets NumPy versions that still exposed this alias.
     np.__dict__.setdefault("bool", bool)
 
     source = path.read_text(encoding="utf-8")

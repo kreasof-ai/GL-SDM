@@ -23,14 +23,12 @@ frontend specification → semantic IR → verified rewrites → planning
 | `src/urm/oracles/` | NumPy correctness references, including sparse-slot algebra and VJP |
 | `tests/`, `benchmarks/` | Contract regressions and maintained acceptance harnesses |
 | `results/` | Retained acceptance evidence and provenance consumed by regressions |
-| `archive/` | Historical reports, exploratory measurements and superseded demonstrations |
 
 `urm.ir` is the canonical IR module; the former `urm.backend` and `urm.reference`
 wildcard compatibility shims were removed. Import `BackendRegistry` from
 `urm.runtime` and the NumPy oracle (`execute`, `merge_writes`) from `urm.oracles`.
 Existing semantic IR and executable binders retain their public paths. The
 distribution name `urm-kernel-lab` is retained for installation compatibility.
-Unvalidated sparse-delta and route-parallel experiments live under `archive/`.
 Production selection uses the validated sparse-state mixer backend.
 
 ## Implementation scope
@@ -46,11 +44,6 @@ coverage or a promise of three universal kernel source files.
 - [Compiler architecture](docs/compiler/architecture.md)
 - [Kernel generation](docs/compiler/kernel-generation.md)
 - [Compiler acceptance requirements](docs/validation/acceptance.md)
-- [Archive index and migration manifest](archive/README.md)
-
-Archived sparse-delta prototypes have known decay, backward and cross-block
-correctness defects. Historical MFU claims do not establish current end-to-end
-performance.
 
 ## CPU verification
 

@@ -425,8 +425,8 @@ def main() -> None:
                     "results/sparse-memory-e2e/confirmation.json"
                     if preset.name == "sparse_delta_memory"
                     else (
-                        "results/final/*-forward.json (routed-reduction v1 is the "
-                        "only native family lowering on this host)"
+                        "results/unified-mixer/native-k1.json (native K1 "
+                        "routed-reduction lowering on this host)"
                         if selection_for(preset)
                         in {"top_k", "dense", "block_sparse", "threshold"}
                         else None

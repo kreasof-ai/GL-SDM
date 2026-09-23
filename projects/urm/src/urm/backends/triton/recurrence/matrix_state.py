@@ -46,13 +46,11 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Any
 
-# Decay granularity encodings passed to the kernel as constexpr.
 _DECAY_NONE = 0
 _DECAY_HEAD = 1
 _DECAY_KEY_CHANNEL = 2
 _DECAY_VALUE_CHANNEL = 3
 
-# Feature map encodings passed to the kernel as constexpr.
 _FEATURE_IDENTITY = 0
 _FEATURE_L2_NORMALIZE = 1
 _FEATURE_RELU = 2
@@ -75,26 +73,26 @@ def _kernels():
     @triton.jit
     def _apply_feature_map(x, FEATURE_MAP: tl.constexpr):
         """Feature map applied to a [BLOCK_K] vector on load (fp32)."""
-        if FEATURE_MAP == 1:  # l2_normalize: x * rsqrt(sum(x^2) + 1e-6)
+        if FEATURE_MAP == 1:
             return x * tl.rsqrt(tl.sum(x * x, axis=0) + 1e-6)
-        elif FEATURE_MAP == 2:  # relu
+        elif FEATURE_MAP == 2:
             return tl.maximum(x, 0.0)
-        elif FEATURE_MAP == 3:  # elu_plus_one: where(x > 0, x, expm1(x)) + 1
+        elif FEATURE_MAP == 3:
             return tl.where(x > 0, x, libdevice.expm1(x)) + 1.0
-        else:  # identity
+        else:
             return x
 
     @triton.jit
     def _apply_feature_map_backward(x, grad, FEATURE_MAP: tl.constexpr):
         """Jacobian-transpose of the load feature map: dL/dx_raw from dL/dx_mapped."""
-        if FEATURE_MAP == 1:  # l2_normalize: f = s x, s = rsqrt(sum(x^2) + 1e-6)
+        if FEATURE_MAP == 1:
             s = tl.rsqrt(tl.sum(x * x, axis=0) + 1e-6)
             return s * grad - (s * s * s) * x * tl.sum(x * grad, axis=0)
-        elif FEATURE_MAP == 2:  # relu
+        elif FEATURE_MAP == 2:
             return tl.where(x > 0, grad, 0.0)
-        elif FEATURE_MAP == 3:  # elu_plus_one: f' = 1 if x > 0 else exp(x)
+        elif FEATURE_MAP == 3:
             return grad * tl.where(x > 0, 1.0, tl.exp(x))
-        else:  # identity
+        else:
             return grad
 
     @triton.jit
@@ -102,20 +100,20 @@ def _kernels():
         Q,
         K,
         V,
-        G,  # log_decay: [B,T,H] (head), [B,T,H,K] (key_channel), [B,T,H,V] (value_channel)
-        BETA,  # [B,T,H] or None
-        RETR,  # retrieval_keys [B,T,H,K] or None
-        ERASE,  # erase_gate [B,T,H,K] or None
-        WRITE,  # write_gate [B,T,H,V] or None
-        LEFT,  # left_transitions [B,T,H,K,K] or None
-        UK,  # update_keys [B,T,R,H,K] or None
-        UV,  # update_values [B,T,R,H,V] or None
-        RB,  # rank_beta [B,T,R,H] or None
+        G,
+        BETA,
+        RETR,
+        ERASE,
+        WRITE,
+        LEFT,
+        UK,
+        UV,
+        RB,
         INITIAL,
         OUTPUT,
         STATES,
-        NORM_STATES,  # [T, B*H, K] post-update denominator states (normalizer only)
-        RANK_STATES,  # [T, B*H, RANK, K, V] per-rank pre-update states (multi-rank)
+        NORM_STATES,
+        RANK_STATES,
         FINAL,
         FINAL_NORM,
         H: tl.constexpr,
@@ -151,7 +149,6 @@ def _kernels():
             state = tl.load(INITIAL + state_offset, kv_mask, other=0.0).to(tl.float32)
         else:
             state = tl.zeros((BLOCK_K, BLOCK_V), dtype=tl.float32)
-        # Query/key denominator normalizer state [K], tracked alongside M.
         norm = tl.zeros((BLOCK_K,), dtype=tl.float32)
         qk_token_base = batch * (T * H * K_DIM) + head * K_DIM
         v_token_base = batch * (T * H * V_DIM) + head * V_DIM
@@ -172,7 +169,6 @@ def _kernels():
                 Q + qk_token_base + token * (H * K_DIM) + k_index, k_mask, other=0.0
             ).to(tl.float32)
             q_t = _apply_feature_map(q_t, FEATURE_MAP)
-            # Transition: factored left matrix Z = left_t @ M, or diagonal decay.
             if HAS_LEFT:
                 left_t = tl.load(
                     LEFT
@@ -184,27 +180,23 @@ def _kernels():
                     other=0.0,
                 ).to(tl.float32)
                 state = tl.dot(left_t, state, input_precision="ieee")
-                # The canonical core does not combine a left transition with the
-                # denominator normalizer; no normalizer decay here.
-            elif DECAY == 1:  # head: scalar per head
+            elif DECAY == 1:
                 g_t = tl.load(G + gb_token_base + token * H).to(tl.float32)
                 state = tl.exp(g_t) * state
                 if NORMALIZER:
                     norm = tl.exp(g_t) * norm
-            elif DECAY == 2:  # key_channel: per-K, broadcast over V
+            elif DECAY == 2:
                 g_t = tl.load(
                     G + qk_token_base + token * (H * K_DIM) + k_index, k_mask, other=0.0
                 ).to(tl.float32)
                 state = tl.exp(g_t)[:, None] * state
                 if NORMALIZER:
                     norm = tl.exp(g_t) * norm
-            elif DECAY == 3:  # value_channel: per-V, broadcast over K
+            elif DECAY == 3:
                 g_t = tl.load(
                     G + v_token_base + token * (H * V_DIM) + v_index, v_mask, other=0.0
                 ).to(tl.float32)
                 state = tl.exp(g_t)[None, :] * state
-                # value_channel decay does not apply to the [K] denominator.
-            # else DECAY == 0: no decay
             if READ_BEFORE:
                 output = SCALE * tl.sum(state * q_t[:, None], axis=0)
                 if NORMALIZER:
@@ -216,9 +208,7 @@ def _kernels():
                     v_mask,
                 )
             if RANK > 0:
-                # Multi-rank delta: R sequential rank-1 delta updates within the token.
                 for r in tl.static_range(RANK):
-                    # Save the pre-update state for the reverse (adjoint) scan.
                     tl.store(
                         RANK_STATES
                         + ((token * tl.num_programs(0) + row) * RANK + r)
@@ -247,8 +237,6 @@ def _kernels():
                     delta_r = rb_r * (uv_r - retr_r)
                     state = state + uk_r[:, None] * delta_r[None, :]
             elif DUAL_GATE:
-                # Dual-gate delta: retrieval uses erase*k, the write value uses
-                # write*v, and the outer product uses the (feature-mapped) key k.
                 erase_t = tl.load(
                     ERASE + qk_token_base + token * (H * K_DIM) + k_index,
                     k_mask,
@@ -265,7 +253,6 @@ def _kernels():
             elif IS_DELTA:
                 beta_t = tl.load(BETA + gb_token_base + token * H).to(tl.float32)
                 if HAS_RETR:
-                    # Separate retrieval key (comba dual-key); not feature-mapped.
                     retr_t = tl.load(
                         RETR + qk_token_base + token * (H * K_DIM) + k_index,
                         k_mask,
@@ -280,7 +267,6 @@ def _kernels():
                 delta = v_t
                 state = state + k_t[:, None] * delta[None, :]
             if NORMALIZER:
-                # The denominator accumulates the (feature-mapped) write key.
                 norm = norm + k_t
             if not READ_BEFORE:
                 output = SCALE * tl.sum(state * q_t[:, None], axis=0)
@@ -300,7 +286,6 @@ def _kernels():
                 kv_mask,
             )
             if NORMALIZER:
-                # Save the post-update denominator state for the reverse scan.
                 tl.store(
                     NORM_STATES + (token * tl.num_programs(0) + row) * K_DIM + k_index,
                     norm,
@@ -319,17 +304,17 @@ def _kernels():
         V,
         G,
         BETA,
-        RETR,  # retrieval_keys [B,T,H,K] (comba dual-key) or None
-        ERASE,  # erase_gate [B,T,H,K] (dual-gate) or None
-        WRITE,  # write_gate [B,T,H,V] (dual-gate) or None
-        LEFT,  # left_transitions [B,T,H,K,K] (factored) or None
-        UK,  # update_keys [B,T,R,H,K] (multi-rank) or None
-        UV,  # update_values [B,T,R,H,V] (multi-rank) or None
-        RB,  # rank_beta [B,T,R,H] (multi-rank) or None
+        RETR,
+        ERASE,
+        WRITE,
+        LEFT,
+        UK,
+        UV,
+        RB,
         INITIAL,
         STATES,
-        NORM_STATES,  # [T, B*H, K] post-update denominator states (normalizer)
-        RANK_STATES,  # [T, B*H, RANK, K, V] per-rank pre-update states (multi-rank)
+        NORM_STATES,
+        RANK_STATES,
         GRAD_OUTPUT,
         GRAD_FINAL,
         GRAD_FINAL_NORM,
@@ -408,8 +393,6 @@ def _kernels():
             q_raw = tl.load(
                 Q + qk_token_base + token * (H * K_DIM) + k_index, k_mask, other=0.0
             ).to(tl.float32)
-            # The forward applies the feature map on load; reconstruct the mapped
-            # operands and map the resulting gradients back through the Jacobian.
             k_t = _apply_feature_map(k_raw, FEATURE_MAP)
             q_t = _apply_feature_map(q_raw, FEATURE_MAP)
             grad_out = tl.load(
@@ -417,7 +400,6 @@ def _kernels():
                 v_mask,
                 other=0.0,
             ).to(tl.float32)
-            # Post-update state S_t saved by the forward pass.
             state_t = tl.load(
                 STATES + (token * tl.num_programs(0) + row) * (K_DIM * V_DIM)
                 + k_index[:, None] * V_DIM
@@ -425,8 +407,6 @@ def _kernels():
                 kv_mask,
                 other=0.0,
             ).to(tl.float32)
-            # Pre-update state S_prev: the previous post-update state, or the
-            # initial state at token 0.
             if token > 0:
                 state_prev = tl.load(
                     STATES + ((token - 1) * tl.num_programs(0) + row) * (K_DIM * V_DIM)
@@ -443,7 +423,6 @@ def _kernels():
                 ).to(tl.float32)
             else:
                 state_prev = tl.zeros((BLOCK_K, BLOCK_V), dtype=tl.float32)
-            # Decay gate broadcast by granularity, and S_dec = decay * S_prev.
             if DECAY == 1:
                 g_t = tl.load(G + gb_token_base + token * H).to(tl.float32)
                 decay = tl.zeros((BLOCK_K, BLOCK_V), tl.float32) + tl.exp(g_t)
@@ -460,7 +439,6 @@ def _kernels():
             else:
                 decay = tl.zeros((BLOCK_K, BLOCK_V), tl.float32) + 1.0
             state_dec = decay * state_prev
-            # The factored left transition replaces pointwise decay: Z = left @ M.
             if HAS_LEFT:
                 left_t = tl.load(
                     LEFT
@@ -472,8 +450,6 @@ def _kernels():
                     other=0.0,
                 ).to(tl.float32)
                 state_dec = tl.dot(left_t, state_prev, input_precision="ieee")
-            # Denominator normalizer states saved by the forward pass. norm_t is
-            # post-update; the pre-update (decayed) norm is norm_dec.
             if NORMALIZER:
                 norm_t = tl.load(
                     NORM_STATES + token * tl.num_programs(0) * K_DIM
@@ -495,13 +471,8 @@ def _kernels():
                 elif DECAY == 2:
                     norm_dec = tl.exp(g_k) * norm_prev
                 else:
-                    # value_channel decay does not apply to the [K] denominator.
                     norm_dec = norm_prev
-            # Output gradient depends on read timing. dstate carries dL/dS_t from
-            # later tokens; dstate_t adds this token's output contribution. For the
-            # normalizer the read is y = scale*(q^T S)/max(q^T n, eps).
             if READ_BEFORE:
-                # y_t read from S_dec (pre-update), so the output feeds S_dec.
                 if NORMALIZER:
                     denom = tl.sum(norm_dec * q_t, axis=0)
                     denom_c = tl.maximum(denom, EPSILON)
@@ -523,7 +494,6 @@ def _kernels():
                     dsdec_out = SCALE * q_t[:, None] * grad_out[None, :]
                     dnorm_read = tl.zeros((BLOCK_K,), dtype=tl.float32)
             else:
-                # y_t read from S_t (post-update), so the output feeds S_t.
                 if NORMALIZER:
                     denom = tl.sum(norm_t * q_t, axis=0)
                     denom_c = tl.maximum(denom, EPSILON)
@@ -543,15 +513,12 @@ def _kernels():
                     dstate_t = dstate + SCALE * q_t[:, None] * grad_out[None, :]
                     dnorm_read = tl.zeros((BLOCK_K,), dtype=tl.float32)
                 dsdec_out = tl.zeros((BLOCK_K, BLOCK_V), tl.float32)
-            # Reverse the update to get dS_dec and the update-operand gradients.
             grad_k = tl.zeros((BLOCK_K,), dtype=tl.float32)
             grad_v = tl.zeros((BLOCK_V,), dtype=tl.float32)
             grad_beta = 0.0
             if RANK > 0:
-                # Reverse the R sequential rank-1 delta updates (reverse order).
                 dz = dstate_t
                 for r in tl.static_range(RANK - 1, -1, -1):
-                    # Pre-update state for rank r, saved by the forward pass.
                     z_r = tl.load(
                         RANK_STATES
                         + ((token * tl.num_programs(0) + row) * RANK + r)
@@ -603,8 +570,6 @@ def _kernels():
                     )
                 dsdec = dz
             elif DUAL_GATE:
-                # Dual-gate delta: retrieval uses erase*k, the write value uses
-                # write*v, and the outer product uses the (feature-mapped) key k.
                 erase_t = tl.load(
                     ERASE + qk_token_base + token * (H * K_DIM) + k_index,
                     k_mask,
@@ -622,7 +587,7 @@ def _kernels():
                 grad_v = ddelta * write_t
                 grad_write = ddelta * v_t
                 dretrieved = -ddelta
-                dek = tl.sum(state_dec * dretrieved[None, :], axis=1)  # Z @ dretrieved
+                dek = tl.sum(state_dec * dretrieved[None, :], axis=1)
                 grad_k = grad_k + erase_t * dek
                 grad_erase = k_t * dek
                 dsdec = dstate_t + (erase_t * k_t)[:, None] * dretrieved[None, :]
@@ -639,7 +604,6 @@ def _kernels():
             elif IS_DELTA:
                 beta_t = tl.load(BETA + gb_token_base + token * H).to(tl.float32)
                 if HAS_RETR:
-                    # Separate retrieval key (comba dual-key); not feature-mapped.
                     retr_t = tl.load(
                         RETR + qk_token_base + token * (H * K_DIM) + k_index,
                         k_mask,
@@ -654,9 +618,8 @@ def _kernels():
                 grad_v = beta_t * ddelta
                 grad_beta = tl.sum(ddelta * (v_t - retrieved), axis=0)
                 dretrieved = -beta_t * ddelta
-                dretr = tl.sum(state_dec * dretrieved[None, :], axis=1)  # Z @ dretr
+                dretr = tl.sum(state_dec * dretrieved[None, :], axis=1)
                 if HAS_RETR:
-                    # The retrieval gradient goes to the separate key, not k.
                     tl.store(
                         GRAD_RETR + qk_token_base + token * (H * K_DIM) + k_index,
                         dretr,
@@ -669,15 +632,8 @@ def _kernels():
                 grad_v = tl.sum(dstate_t * k_t[:, None], axis=0)
                 grad_k = tl.sum(dstate_t * v_t[None, :], axis=1)
                 dsdec = dstate_t
-            # For READ_BEFORE the output also flows into S_dec directly.
             dsdec = dsdec + dsdec_out
-            # Reverse the denominator update norm_t = norm_dec + k_t and its decay.
             if NORMALIZER:
-                # The update norm_t = norm_dec + k_t contributes dL/dnorm_t to k_t
-                # and to norm_dec. The read contributes dnorm_read: for an
-                # after-update read it consumes norm_t (so it also flows through
-                # k_t); for a before-update read it consumes the pre-update
-                # norm_dec directly (bypassing k_t).
                 if READ_BEFORE:
                     grad_k = grad_k + dnorm
                 else:
@@ -692,10 +648,6 @@ def _kernels():
                 else:
                     grad_g_norm = tl.zeros((BLOCK_K,), dtype=tl.float32)
                     dnorm = dnorm_dec
-            # Reverse the transition. For the factored left transition Z = left @ M
-            # the adjoint is dM = left^T @ dZ and dL/dleft = dZ @ M^T; the left
-            # gradient flows back through the torch-side factorization. For
-            # pointwise decay Z = decay * M the adjoint is dM = decay * dZ.
             if HAS_LEFT:
                 grad_left = tl.dot(dsdec, tl.trans(state_prev), input_precision="ieee")
                 tl.store(
@@ -731,7 +683,6 @@ def _kernels():
                         v_mask,
                     )
                 dstate = decay * dsdec
-            # Map the query/key gradients back through the feature-map Jacobian.
             grad_q = _apply_feature_map_backward(q_raw, grad_q, FEATURE_MAP)
             grad_k = _apply_feature_map_backward(k_raw, grad_k, FEATURE_MAP)
             tl.store(
@@ -757,10 +708,10 @@ def _kernels():
         Q,
         K,
         V,
-        G,  # log_decay [B,H] (head decay)
-        BETA,  # [B,H]
-        STATE,  # persistent [B,H,K,V], updated in place
-        OUTPUT,  # [B,H,V]
+        G,
+        BETA,
+        STATE,
+        OUTPUT,
         H: tl.constexpr,
         K_DIM: tl.constexpr,
         V_DIM: tl.constexpr,
@@ -794,14 +745,13 @@ def _kernels():
         k_t = tl.load(K + qk_base + k_index, k_mask, other=0.0).to(tl.float32)
         v_t = tl.load(V + v_base + v_index, v_mask, other=0.0).to(tl.float32)
         q_t = tl.load(Q + qk_base + k_index, k_mask, other=0.0).to(tl.float32)
-        # Decay broadcast by granularity (head / key_channel / value_channel / none).
-        if DECAY == 1:  # head: scalar per head
+        if DECAY == 1:
             g_t = tl.load(G + gb_base).to(tl.float32)
             state = tl.exp(g_t) * state
-        elif DECAY == 2:  # key_channel: per-K, broadcast over V
+        elif DECAY == 2:
             g_t = tl.load(G + qk_base + k_index, k_mask, other=0.0).to(tl.float32)
             state = tl.exp(g_t)[:, None] * state
-        elif DECAY == 3:  # value_channel: per-V, broadcast over K
+        elif DECAY == 3:
             g_t = tl.load(G + v_base + v_index, v_mask, other=0.0).to(tl.float32)
             state = tl.exp(g_t)[None, :] * state
         if READ_BEFORE:
@@ -950,9 +900,6 @@ def execute_matrix_state_recurrence(
 
     def _optional(tensor, shape, name):
         if tensor is None:
-            # A minimal dummy: the kernel never dereferences an operand whose
-            # constexpr flag is off, so a single element suffices (avoids
-            # allocating a full [B,T,H,K,K] transition / [B,T,R,H,*] update).
             return torch.zeros(1, device=query.device, dtype=torch.float32)
         if tuple(tensor.shape) != tuple(shape):
             raise ValueError(f"{name} must use shape {tuple(shape)}")
@@ -976,16 +923,11 @@ def execute_matrix_state_recurrence(
     block_k = triton.next_power_of_2(key_dim)
     block_v = triton.next_power_of_2(value_dim)
     if has_left:
-        # tl.dot requires the block dims to be at least 16; the transition and
-        # state are zero-padded, so the valid region is computed exactly.
         block_k = max(block_k, 16)
         block_v = max(block_v, 16)
     grid = (batch * heads,)
     warps = 4
 
-    # The reverse (adjoint) scan covers the full canonical-core envelope: the
-    # plain delta/additive path plus the dual-gate, retrieval-key, normalizer,
-    # multi-rank, left-transition, and non-identity-feature-map configurations.
     class _MatrixState(torch.autograd.Function):
         @staticmethod
         def forward(ctx, q, k, v, g, b, retr, erase, write, left, uk, uv, rb, initial):
@@ -1004,7 +946,7 @@ def execute_matrix_state_recurrence(
                     dtype=torch.float32,
                 )
                 if normalizer
-                else states  # unused placeholder when the normalizer is off
+                else states
             )
             rank_states = (
                 torch.empty(
@@ -1013,7 +955,7 @@ def execute_matrix_state_recurrence(
                     dtype=torch.float32,
                 )
                 if multi_rank
-                else states  # unused placeholder when multi-rank is off
+                else states
             )
             final = torch.empty(
                 (batch, heads, key_dim, value_dim), device=q.device, dtype=torch.float32
@@ -1021,7 +963,7 @@ def execute_matrix_state_recurrence(
             final_norm = (
                 torch.empty((batch, heads, key_dim), device=q.device, dtype=torch.float32)
                 if normalizer
-                else final  # unused placeholder when the normalizer is off
+                else final
             )
             forward_kernel[grid](
                 q, k, v, g, b, retr, erase, write, left, uk, uv, rb,
