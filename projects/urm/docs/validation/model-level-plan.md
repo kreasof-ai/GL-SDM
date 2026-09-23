@@ -61,14 +61,29 @@ training MFU, prefill/decode MFU+MBU+throughput (seq 1K-32K, bs 256-512), infere
 KL divergence, and peak memory (training / prefill / decode / long-sequence).
 
 - **Native coverage: 62/62** in the 100M model (all run forward+backward).
-- **Upstream coverage: widened by fixing the adapter dtype/config mismatches** -
-  the "no plan" cluster was a bf16-vs-fp32/intent mismatch (fixed with a dtype
-  fallback), plus per-adapter fp32-gate casts (comba, gated_oja, mesa) and
-  static-head-decay handling (lightning, retention). The irreducible gaps are
-  (a) heavy missing deps (`mamba_ssm`, `kata`, `xma`, `flash_attn`), (b) hard FLA
-  revision pins (ttt, titans, gsa, hgrn), (c) HLA's dim<=32 kernel limit, and
-  (d) K3 (no upstream adapter by design). These are reported as "no upstream",
-  never fabricated.
+- **Upstream coverage: 62/62.** Every recipe has a working upstream comparator.
+  The previously-"missing" adapters were all resolved without instance-crashing
+  source builds:
+  - **dtype/intent mismatches** (the "no plan" cluster): a dtype fallback plus
+    per-adapter fp32-gate casts (comba, gated_oja, mesa) and static-head-decay
+    handling (lightning, retention).
+  - **provisioned source checkouts** on the comparator PYTHONPATH: xma
+    (gru/rnn/m2rnn), kata, longformer, tucker, tda, and the pinned FLA source
+    (864a87f) for momentum_delta / hgrn / ttt / titans / gsa / abc.
+  - **aliases instead of source builds**: flash-attn -> an SDPA-backed shim
+    (deltaformer); mamba2/mamba3 -> FLA's Triton SSD ops.
+  - **mamba1**: built `selective_scan_cuda` with an assembled CUDA toolchain
+    (conda nvcc + `cicc` symlink + tensorflow CUDA includes + `libcudart.so`
+    symlink), and fixed the operand mapping (transpose to `[B,dim,L]`, static-A
+    reduction of the per-token `log_decay`).
+  - **K3 (sparse_delta_memory)**: relaxed the conservative torch-2.8 pin via the
+    sanctioned `URM_SDM_ALLOW_UNPINNED_RUNTIME=1` escape hatch (the kernel is
+    verified correct against the URM K3 reference on this runtime) and wired the
+    CUDA toolchain into the worker env so its JIT extension builds.
+  - fp32-mixer recipes (mamba1, hgrn, titans) run their upstream mixer in fp32
+    (`_UPSTREAM_FP32_MIXER_RECIPES`); the rest of the model stays bf16.
+  - Reproducible setup: `provision_comparators.py --toolchain` (symlinks + shim)
+    and `--build-mamba` (the selective_scan extension).
 - **Correctness columns compare native vs the reference equation** (always
   available); **performance columns compare native vs upstream** only where a real
   adapter exists. A native-vs-upstream number is never shown without an upstream.
