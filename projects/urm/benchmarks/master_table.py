@@ -161,11 +161,26 @@ _UPSTREAM_FP32_OPERANDS = {
     "hla_second_order_core": set(),  # blocked: HLA supports key/value dim <= 32
     "lightning_attention_core": set(),  # needs log_decay [H] static head
     "retention_core": set(),  # needs log_decay [H] static head
+    # The pinned Mamba-3 SISO kernel requires the decay/dt schedules and the
+    # Q/K biases in fp32 for stable state accumulation (see the kernel docstring:
+    # "ADT, DT should be in fp32 for stability; Q_bias, K_bias, D ... in fp32").
+    "mamba3_siso_core": {"adt", "dt", "trap", "query_bias", "key_bias"},
+}
+
+
+# Recipes whose UPSTREAM adapter requires the whole mixer in fp32 (the pinned
+# kernel is fp32-only; the plan compiles at fp32 via the dtype fallback, so the
+# mixer body must run fp32 too or the projections/kernel see a bf16/fp32 mix).
+_UPSTREAM_FP32_MIXER_RECIPES = {
+    "mamba1_ssm_core",  # selective_scan_cuda is fp32-only
+    "hgrn_ssm_core",  # pinned FLA-source HGRN chunk kernel accumulates state in fp32
 }
 
 
 def _mixer_dtype(recipe_name: str, backend: str) -> str:
     if backend == "native" and recipe_name in _FP32_NATIVE_RECIPES:
+        return "float32"
+    if backend == "upstream" and recipe_name in _UPSTREAM_FP32_MIXER_RECIPES:
         return "float32"
     return TRAIN_DTYPE
 
@@ -177,6 +192,14 @@ def _mixer_dtype(recipe_name: str, backend: str) -> str:
 _K3_SLOTS = 64
 _K3_ROUTES = 8
 _TUCKER_RANK = 32  # low-rank query width for tucker_attention_core
+# GSA slot count for the model-level mixer. The pinned FLA chunk_gsa comparator
+# requires a power-of-two slot axis of at least 16 and matching query/key head
+# counts (its Triton kernels crash the compiler / corrupt memory otherwise). The
+# reference recipe uses M=3 slots with grouped query/key, which the FLA kernel
+# cannot serve, so the mixer runs both backends at M=16 with matching heads (the
+# native two-stage kernel derives the slot count and grouping from the operand
+# shapes, so the comparison stays apples-to-apples).
+_GSA_SLOTS = 16
 # Operand names that get neither a generic projection nor a static parameter
 # (integer routes, persistent/initial state, or adapter-derived). Everything else
 # a specialized adapter uses is projected or learned via the explicit width/shape
@@ -267,6 +290,10 @@ def build_recipe_mixer(config, recipe_name: str, backend: str, dtype: str | None
             if getattr(spec, "polynomial_basis", None) is not None and \
                     getattr(spec.polynomial_basis, "name", "NONE") != "NONE":
                 d = 16
+            # HLA's pinned Triton comparator supports key/value dims up to 32;
+            # cap this recipe's per-head dim so both backends run at d<=32.
+            if recipe_name == "hla_second_order_core":
+                d = min(d, 32)
             self.h, self.d = h, d
             # One projection per sequence operand; learned params for static ones.
             self.proj = nn.ModuleDict()
@@ -337,6 +364,19 @@ def build_recipe_mixer(config, recipe_name: str, backend: str, dtype: str | None
                     if a.ndim >= 1:
                         return a.shape[-1]
             return None
+
+        def _abc_slots(self):
+            """ABC slot count, rounded up to a power of two of at least 16.
+
+            The pinned FLA ``chunk_abc`` comparator tiles the slot axis with a
+            power-of-two Triton block and reduces over it with ``tl.dot``
+            (reduction dim >= 16), so the reference's M=3 slots cannot run
+            upstream. Round up to the next power of two with a floor of 16; the
+            native two-stage kernel derives the slot count from the operand
+            shape, so both backends see the same M.
+            """
+            m = int(np.asarray(self._ref_ops["slot_logits"]).shape[-1])
+            return max(16, 1 << (m - 1).bit_length())
 
         def _per_head_rank(self, name, ref, ref_k, ref_v):
             """Per-head last-dim rank of an operand, normalized to the model's dims.
@@ -460,6 +500,26 @@ def build_recipe_mixer(config, recipe_name: str, backend: str, dtype: str | None
                     return _TUCKER_RANK
                 if name in ("key", "value"):
                     return d
+            # tda: the pinned TDA comparator requires Q/K/V with matching shapes,
+            # so value uses the same per-head rank as the paired query/key (the
+            # reference's shared last dim), not the value_dim-scaled rank. The
+            # native thresholded einsum (bhts,bshv->bthv) accepts any value rank.
+            # The TDA Triton kernel reduces over that rank with tl.dot (K >= 8),
+            # so floor the rank at 8.
+            if self.spec.name == "tda_attention_core":
+                ref_rank = int(np.asarray(self._ref_ops["query_a"]).shape[-1])
+                return h * max(8, ref_rank)
+            # abc: query/key/value at h*d (matching heads); slot_logits at h*M.
+            if self.spec.name == "abc_core":
+                if name == "slot_logits":
+                    return h * self._abc_slots()
+                return h * d
+            # gsa: query/key/value at h*d (matching heads); slot_weights/log_decay
+            # at h*M with M=_GSA_SLOTS (power of two, >= 16).
+            if self.spec.name == "gsa_core":
+                if name in ("slot_weights", "log_decay"):
+                    return h * _GSA_SLOTS
+                return h * d
             # K3: routes are integer (no projection); weights/values/beta/log_decay.
             if self.spec.family.name == "SPARSE_DELTA":
                 r = self._k3_routes
@@ -722,7 +782,10 @@ def build_recipe_mixer(config, recipe_name: str, backend: str, dtype: str | None
                     "w": self._static("w"),
                     "b": self._static("b"),
                     "eta": torch.sigmoid(self._seq(x, "eta", 1)) * 0.1,
-                    "chunk_size": 8,
+                    # The pinned FLA TTT backward norm kernel reduces over the
+                    # chunk axis with tl.dot (chunk >= 16); chunk_size 8 crashes
+                    # the compiler. 16 divides the model's sequence lengths.
+                    "chunk_size": 16,
                 }
             if rop is not None and rop.name == "MOMENTUM_INNER_STATE":  # titans_linear_memory_core
                 return {
@@ -770,6 +833,38 @@ def build_recipe_mixer(config, recipe_name: str, backend: str, dtype: str | None
                     "skip": self._static("skip"),
                 }
 
+            # ---- ABC slot attention: the FLA comparator requires matching
+            # query/key head counts and key dims (no grouped query). The generic
+            # path collapses query/key to the reference's differing head counts
+            # (2 vs 1), so build all operands at the model's head count h. ----
+            if name == "abc_core":
+                m_slots = self._abc_slots()
+                return {
+                    "query": self._seq(x, "query"),
+                    "key": self._seq(x, "key"),
+                    "value": self._seq(x, "value"),
+                    "slot_logits": self.proj["slot_logits"](x).view(b, t, h, m_slots),
+                }
+
+            # ---- GSA slot attention: like ABC, the FLA comparator requires
+            # matching query/key heads and a power-of-two slot axis >= 16. Build
+            # all operands at the model's head count h with M=_GSA_SLOTS slots.
+            # slot_weights are softmax-normalized over slots; log_decay is the
+            # per-slot log decay (negative). ----
+            if name == "gsa_core":
+                m_slots = _GSA_SLOTS
+                return {
+                    "query": self._seq(x, "query"),
+                    "key": self._seq(x, "key"),
+                    "value": self._seq(x, "value"),
+                    "slot_weights": torch.softmax(
+                        self.proj["slot_weights"](x).view(b, t, h, m_slots), dim=-1
+                    ),
+                    "log_decay": -F.softplus(
+                        self.proj["log_decay"](x).view(b, t, h, m_slots)
+                    ),
+                }
+
             # ---- K1 differential / thresholded (paired Q/K) ----
             if name in ("differential_attention_core", "tda_attention_core"):
                 out = {
@@ -780,12 +875,19 @@ def build_recipe_mixer(config, recipe_name: str, backend: str, dtype: str | None
                     "value": self._proj_extra(x, "value"),
                 }
                 lw = self._static("lambda_weight")
-                out["lambda_weight"] = (
-                    torch.sigmoid(lw) if np.asarray(self._ref_ops["lambda_weight"]).ndim > 0
-                    else float(torch.sigmoid(lw.detach().reshape(())))
-                )
-                if "beta" in self._roles:
-                    out["beta"] = 0.5
+                if name == "tda_attention_core":
+                    # The pinned TDA adapter validates beta/lambda_weight via
+                    # .device/.numel(), so pass them as scalar CUDA tensors.
+                    out["lambda_weight"] = torch.sigmoid(lw.detach().reshape(())).to(x.device)
+                    if "beta" in self._roles:
+                        out["beta"] = torch.full((), 0.5, device=x.device, dtype=x.dtype)
+                else:
+                    out["lambda_weight"] = (
+                        torch.sigmoid(lw) if np.asarray(self._ref_ops["lambda_weight"]).ndim > 0
+                        else float(torch.sigmoid(lw.detach().reshape(())))
+                    )
+                    if "beta" in self._roles:
+                        out["beta"] = 0.5
                 return out
 
             # ---- K1 projected (tucker): low-rank query, no head dim ----
@@ -1349,15 +1451,89 @@ def measure_inference(recipe_name: str, n_params: int) -> dict[str, Any]:
     return out
 
 
+# Recipes whose upstream comparator needs the pinned FLA *source checkout*
+# (0.6.0 @ 864a87f) rather than the pip-installed fla 0.5.2: either the op only
+# exists in the source (momentum_delta_rule), or the adapter pins the exact
+# source revision (hgrn/titans/ttt), or the pip kernel crashes at this config
+# (gsa/abc). For these, the source checkout is prepended to PYTHONPATH so it
+# shadows the pip package; all other FLA recipes keep the pip 0.5.2 comparator.
+_FLA_SOURCE_RECIPES = {
+    "hgrn_ssm_core",
+    "titans_linear_memory_core",
+    "ttt_linear_core",
+    "momentum_delta_core",
+    "gsa_core",
+    "abc_core",
+}
+
+
+def _comparator_pin_paths(recipe_name: str | None = None) -> list[str]:
+    """PYTHONPATH entries for every provisioned upstream comparator checkout.
+
+    Each pinned source is cloned into ``/tmp/urm-comparator-pins/<name>``; most
+    expose their package at the checkout root, but some nest it (Tucker's ``src``
+    package lives under ``ViT/``). Only existing directories are returned.
+
+    The pinned Mamba source checkout is always included (its Triton ops import
+    without a compiled extension; Mamba-1 additionally needs the built CUDA op).
+    The pinned FLA source checkout is included only for ``_FLA_SOURCE_RECIPES``;
+    the remaining FLA comparators use the pip-installed 0.5.2 release.
+    """
+    pins = Path("/tmp/urm-comparator-pins")
+    roots = [
+        pins / "sdm",
+        pins / "atma",
+        pins / "xma",
+        pins / "kata",
+        pins / "longformer",
+        pins / "tucker" / "ViT",  # Tucker exposes ``src.attn...`` under ViT/
+        pins / "tda",
+        pins / "mamba",
+        pins / "mamba_ext",  # prebuilt selective_scan_cuda.so (mamba1)
+        pins / "flash_attn_shim",  # SDPA-backed flash_attn alias (deltaformer)
+    ]
+    if recipe_name in _FLA_SOURCE_RECIPES:
+        # Prepend so the source checkout shadows the pip-installed fla package.
+        roots.insert(0, pins / "fla")
+    return [str(p) for p in roots if p.is_dir()]
+
+
 def _run_one(name: str, tmpdir: Path) -> dict[str, Any]:
     """Run one recipe's full measurement in an isolated subprocess."""
     out_path = tmpdir / f"{name}.json"
     env = dict(os.environ)
     pp = env.get("PYTHONPATH", "")
-    for p in ("/tmp/urm-comparator-pins/sdm", "/tmp/urm-comparator-pins/atma"):
-        if os.path.isdir(p) and p not in pp:
-            pp = f"{pp}:{p}" if pp else p
+    for p in _comparator_pin_paths(name):
+        if p not in pp:
+            pp = f"{p}:{pp}" if pp else p
     env["PYTHONPATH"] = pp
+    if name == "sparse_delta_memory":
+        # The pinned SDM comparator JIT-builds a CUDA extension; point nvcc at
+        # the CUDA toolchain headers/libs (including the dir with libcudart.so),
+        # and relax the SDM adapter's conservative torch/triton version pin (the
+        # kernel is verified correct against the URM K3 reference on this runtime).
+        # The SDM JIT build needs a complete CUDA toolchain. The conda nvcc
+        # (/opt/conda/bin/nvcc, 12.9) works once its cicc component is symlinked into
+        # the targets/ layout; the complete include tree (cuda_runtime.h,
+        # crt/host_config.h, nv/target) comes from the tensorflow CUDA headers; and
+        # libcudart.so comes from the cuda_lib symlink dir. Relax the SDM adapter's
+        # conservative torch/triton pin (the kernel is verified correct on this
+        # runtime against the URM K3 reference).
+        tf_inc = "/opt/conda/lib/python3.12/site-packages/tensorflow/include/third_party/gpus/cuda/include"
+        cuda_lib = "/tmp/urm-comparator-pins/cuda_lib"
+        env["CUDA_HOME"] = "/opt/conda"
+        for var, entries in (
+            ("CPLUS_INCLUDE_PATH", [tf_inc]),
+            ("C_INCLUDE_PATH", [tf_inc]),
+            ("LIBRARY_PATH", [cuda_lib, "/opt/conda/lib", "/opt/conda/targets/x86_64-linux/lib"]),
+            ("LD_LIBRARY_PATH", [cuda_lib, "/opt/conda/lib"]),
+        ):
+            for entry in entries:
+                if os.path.isdir(entry) or os.path.exists(entry):
+                    existing = env.get(var, "")
+                    if entry not in existing:
+                        env[var] = f"{entry}:{existing}" if existing else entry
+        env["URM_SDM_ALLOW_UNPINNED_RUNTIME"] = "1"
     cmd = [sys.executable, str(Path(__file__).resolve()), "--worker", name, "--out", str(out_path)]
     proc = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=3600)
     if proc.returncode == 0 and out_path.exists():

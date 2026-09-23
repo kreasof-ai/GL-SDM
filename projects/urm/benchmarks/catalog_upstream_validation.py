@@ -46,8 +46,16 @@ from typing import Any
 import numpy as np
 
 # The SDM upstream checkout needs CUDA_HOME and its pin on sys.path to import.
-# Set defaults only - never hardcode-fail when the pin is unavailable.
-os.environ.setdefault("CUDA_HOME", "/opt/conda/lib/python3.12/site-packages/nvidia/cu13")
+# Set defaults only - never hardcode-fail when the pin is unavailable. CUDA_HOME
+# must point at a toolchain with a working nvcc; the pip cu13 package has no nvcc,
+# so prefer the conda CUDA toolkit (/opt/conda, nvcc 12.9) when present.
+if not os.environ.get("CUDA_HOME"):
+    for _cand in ("/opt/conda", "/usr/local/cuda",
+                  "/opt/conda/lib/python3.12/site-packages/nvidia/cu13"):
+        import os.path as _osp
+        if _osp.isfile(_osp.join(_cand, "bin", "nvcc")):
+            os.environ.setdefault("CUDA_HOME", _cand)
+            break
 _SDM_PIN = "/tmp/urm-comparator-pins/sdm"
 if os.path.isdir(_SDM_PIN):
     import sys

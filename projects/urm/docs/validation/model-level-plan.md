@@ -75,6 +75,24 @@ KL divergence, and peak memory (training / prefill / decode / long-sequence).
 - **Levers**: CUDA-graph replay for decode (gla decode 6.8% -> 37% MFU at bs512);
   `torch.compile` is opt-in (it does not help here - the custom native kernel is
   the bottleneck, and upstream SDPA/FLA are already fused).
+
+## First validated row (mha, 124M params, FineWeb)
+
+The full pipeline produces every column, native vs upstream:
+
+| Metric | Native | Upstream |
+|---|---|---|
+| Training MFU | **34.1%** | 35.7% |
+| Training throughput | 30,205 tok/s | 31,621 tok/s |
+| Prefill MFU @1K | 31.0% | 37.7% |
+| **Decode MFU @bs512** | **49.7%** | 40.8% |
+| Gradient parity | 0.013 | - |
+| Inference KL div | 1.65e-5 | - |
+| Peak mem (train) | 2030 MB | 2663 MB |
+
+Native mha **beats upstream on decode MFU** (CUDA-graph replay) and is within ~5%
+on training/prefill. This is the honest model-level comparison the table records
+per recipe.
 2. **Generic recipe mixer block** - a `RecipeMixer(nn.Module)` that projects
    hidden -> recipe operands -> native compiled plan -> back, so any of the 62
    recipes slots into the frozen 100M model in place of `SparseMemoryMixer`.

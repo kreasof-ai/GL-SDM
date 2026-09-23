@@ -273,6 +273,8 @@ class CompiledMixerPlan:
                 if self.spec.step_size_discretization:
                     return _execute_mamba_selective_scan(self, torch, **operands)
                 return _execute_fla_k2(self, torch, **operands)
+            if self.spec.family is MixerKernelFamily.SPARSE_DELTA:
+                return _execute_upstream_sparse_delta(self, torch, **operands)
         if self.backend is MixerBackend.NATIVE:
             if self.spec.family is MixerKernelFamily.SOFTMAX:
                 if self.spec.k1_operation is K1Operation.DIFFERENTIAL:
@@ -537,11 +539,10 @@ def compile_mixer(
             "the covered K2 matrix-state recurrences, or the distinguished K2 "
             "recurrence operators"
         )
-    if (
-        resolved_backend is MixerBackend.LIBRARY
-        and spec.family is MixerKernelFamily.SPARSE_DELTA
-    ):
-        raise ValueError("K3 uses the URM-native or reference sparse-state anchor")
+    # K3 SPARSE_DELTA admits a LIBRARY backend: the pinned Facebook
+    # sparse-delta-memory comparator (``GatedSparseMemoryWriteRead``), dispatched
+    # by ``_execute_upstream_sparse_delta``. The upstream kernel is gated on its
+    # frozen runtime pin at execution time (see the SDM adapter's support probe).
     library_k2_anchor = None
     if (
         resolved_backend is MixerBackend.LIBRARY
@@ -703,6 +704,10 @@ def compile_mixer(
                 spec.k1_operation,
                 "torch.nn.functional.scaled_dot_product_attention",
             )
+        elif spec.family is MixerKernelFamily.SPARSE_DELTA:
+            from urm.compiler.execution import SDM_SPARSE_STATE_FALLBACK_ANCHOR_NAME
+
+            anchor = SDM_SPARSE_STATE_FALLBACK_ANCHOR_NAME
         else:
             anchor = library_k2_anchor
             assert anchor is not None
@@ -5467,21 +5472,42 @@ def _execute_mamba_selective_scan(plan: CompiledMixerPlan, torch: Any, **operand
         raise ValueError(
             "the pinned Mamba selective-scan operator has no initial-state input"
         )
+    # Map URM's diagonal-SSM operands onto the pinned Mamba selective-scan kernel.
+    # URM layout: x/step_size [B,T,C]; log_decay/input_gate/read_gate [B,T,N].
+    # Mamba layout: u/delta [B,dim,L]; A [dim,dstate] (static); B/C [B,dstate,L].
+    # URM's log_decay is per-token [B,T,N]; Mamba's A is a static [dim,dstate]
+    # structured matrix. The honest static-A reduction is the mean over batch and
+    # time (the parity columns report the resulting difference from URM's per-token
+    # native recurrence).
+    batch, sequence, channels = x.shape
+    state_width = log_decay.shape[-1]
+    u = x.transpose(1, 2).contiguous()  # [B,C,L]
+    delta = step_size.transpose(1, 2).contiguous()  # [B,C,L]
+    # Static A [C,N]: broadcast the per-token log_decay to [B,T,C,N] then average.
+    a_static = (
+        log_decay.transpose(1, 2)  # [B,N,T]
+        .unsqueeze(1)  # [B,1,N,T]
+        .expand(batch, channels, state_width, sequence)
+        .mean(dim=(0, 3))  # [C,N]
+        .contiguous()
+    )
+    b_mat = input_gate.transpose(1, 2).contiguous()  # [B,N,L]
+    c_mat = read_gate.transpose(1, 2).contiguous()  # [B,N,L]
     if isinstance(skip, torch.Tensor):
         if skip.ndim == 0:
-            skip = skip.expand(x.shape[1])
+            skip = skip.expand(channels)
     elif skip is None or float(skip) == 0.0:
         skip = None
     else:
-        skip = torch.full((x.shape[1],), float(skip), device=x.device, dtype=x.dtype)
+        skip = torch.full((channels,), float(skip), device=x.device, dtype=x.dtype)
     from urm.compiler.execution import MAMBA_SELECTIVE_SCAN_ANCHOR_NAME
 
     output, final_state = _pinned_mamba_selective_scan()(
-        x,
-        step_size,
-        log_decay,
-        input_gate,
-        read_gate,
+        u,
+        delta,
+        a_static,
+        b_mat,
+        c_mat,
         D=skip,
         delta_softplus=False,
         return_last_state=True,
@@ -7821,6 +7847,86 @@ def _execute_native_sparse_delta(plan: CompiledMixerPlan, torch: Any, **operands
             "runtime_compiler_binding": "cached_semantic_shape",
             "runtime_binding_cache_size": _compile_native_k3_binding.cache_info().currsize,
             "launch_config": launch_config,
+        },
+    )
+
+
+def _execute_upstream_sparse_delta(plan: CompiledMixerPlan, torch: Any, **operands: Any):
+    """Pinned Facebook sparse-delta-memory comparator for the K3 update.
+
+    Routes the mixer's K3 operands (memory [B,S,D], integer routes [B,T,R],
+    softmax weights, values [B,T,D], beta/log_decay [B,T]) through the pinned
+    ``GatedSparseMemoryWriteRead`` autograd kernel. The SDM kernel is a
+    post-update read (decay -> retrieve -> delta-scatter -> read), matching the
+    recipe's ``read_timing=after_update`` semantics. The kernel is verified
+    against the URM K3 reference on the frozen runtime; the SDM adapter's
+    conservative torch/triton version pin is bypassed only via the sanctioned
+    ``URM_SDM_ALLOW_UNPINNED_RUNTIME`` override (see the SDM adapter).
+    """
+    spec = plan.spec
+    if spec.family is not MixerKernelFamily.SPARSE_DELTA:
+        raise RuntimeError("the upstream K3 comparator implements SPARSE_DELTA only")
+    memory = operands.pop("memory")
+    read_indices = operands.pop("read_indices")
+    read_weights = operands.pop("read_weights")
+    write_indices = operands.pop("write_indices")
+    write_weights = operands.pop("write_weights")
+    values = operands.pop("values")
+    beta = operands.pop("beta")
+    log_decay = operands.pop("log_decay")
+    if operands:
+        raise TypeError(f"unexpected upstream K3 operands: {', '.join(sorted(operands))}")
+    batch, slots, value_dim = memory.shape
+    sequence = values.shape[1]
+    # The pinned adapter enforces its frozen-runtime support contract (revision,
+    # runtime versions, CUDA build tools). It raises if the runtime is not
+    # sanctioned for the comparator.
+    from urm.adapters.sparse_delta_memory import probe_sdm_support
+
+    support = probe_sdm_support()
+    if not support.supported:
+        raise RuntimeError(
+            f"pinned SDM comparator unavailable [{support.code}]: {support.reason}"
+        )
+    from lingua.sparse_delta_memory.memory_ops import GatedSparseMemoryWriteRead
+
+    # The pinned kernel mutates its working memory in place and returns an empty
+    # tensor as the second output. Run it on a clone so the mixer's persistent
+    # buffer is not mutated in place; the updated clone is the functional
+    # final_state the mixer folds back between steps.
+    flat_memory = memory.reshape(batch * slots, value_dim).contiguous().clone()
+    offsets = (
+        torch.arange(batch, device=memory.device, dtype=torch.int64).view(batch, 1, 1)
+        * slots
+    )
+    write_global = (write_indices.to(torch.int64) + offsets).contiguous()
+    read_global = (read_indices.to(torch.int64) + offsets).contiguous()
+    readings, _unused = GatedSparseMemoryWriteRead.apply(
+        flat_memory,
+        write_global,
+        write_weights.contiguous(),
+        values.contiguous(),
+        beta.reshape(batch, sequence, 1).contiguous(),
+        log_decay.reshape(batch, sequence, 1).contiguous(),
+        read_global,
+        read_weights.contiguous(),
+        min(64, sequence),
+        True,
+        slots,
+        batch,
+        False,
+        "none",
+        None,
+    )
+    readings = readings.view(batch, sequence, value_dim)
+    return MixerResult(
+        readings,
+        final_state=flat_memory.view(batch, slots, value_dim),
+        metadata={
+            "anchor": plan.anchor,
+            "execution": "pinned_facebook_sparse_delta_memory_gated_write_read",
+            "upstream": "facebookresearch/sparse-delta-memory@183e7df",
+            "backward_supported": True,
         },
     )
 
