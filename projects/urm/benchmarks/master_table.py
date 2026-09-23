@@ -1442,8 +1442,33 @@ def measure_inference(recipe_name: str, n_params: int) -> dict[str, Any]:
                     }
                 except Exception:
                     decode[bs] = None
+            # --- decode at bs=1 across context lengths 2K..32K ---
+            # The model has no KV/state cache, so decoding one token at context L
+            # reprocesses the L-token prefix (the no-cache baseline). This measures
+            # the per-token decode cost as the context grows.
+            decode_longseq = {}
+            for seq in PREFILL_SEQ_LENS[1:]:  # 2048..32768
+                toks = torch.randint(0, config.vocab_size, (1, seq), device="cuda")
+                try:
+                    with torch.no_grad():
+                        ms = _time_it(lambda: model(toks))
+                        torch.cuda.reset_peak_memory_stats()
+                        with torch.no_grad():
+                            model(toks)
+                        peak_mb = torch.cuda.max_memory_allocated() / 1e6
+                    fl = _infer_flops(n_params, 1, seq)
+                    decode_longseq[seq] = {
+                        "mfu": fl / ms / (peaks["bf16_tflops"] * 1e12),
+                        "tok_s": seq / ms,
+                        "ms": ms * 1e3,
+                        "peak_mem_mb": peak_mb,
+                        "mbu": (n_params * 2) / ms / (peaks["hbm_gbps"] * 1e9),
+                    }
+                except Exception:
+                    decode_longseq[seq] = None
             out[f"{backend}_prefill"] = prefill
             out[f"{backend}_decode"] = decode
+            out[f"{backend}_decode_longseq"] = decode_longseq
             del model
             torch.cuda.empty_cache()
         except Exception as exc:
@@ -1636,14 +1661,16 @@ def render_markdown(rows: list[dict[str, Any]]) -> str:
         "",
         "## Training (100M params, FineWeb, 10 steps)",
         "",
-        "| Recipe | train MFU | train tok/s | param parity @10 | peak mem (MB) |",
-        "|---|---|---|---|---|",
+        "| Recipe | train MFU | train tok/s | grad parity | param parity @10 | KL div | peak mem (MB) |",
+        "|---|---|---|---|---|---|---|",
     ]
     for r in rows:
         lines.append(
             f"| `{r['recipe']}` | {_pair(r, 'train_mfu', _pct)} "
             f"| {_pair(r, 'train_tok_s', _num)} "
+            f"| {_num(r.get('grad_parity'))} "
             f"| {_num(r.get('param_parity_10step'))} "
+            f"| {_num(r.get('kl_div'))} "
             f"| {_pair(r, 'train_peak_mem_mb', _num)} |"
         )
     # Inference: prefill/decode at a reference seq/batch for the summary table.
