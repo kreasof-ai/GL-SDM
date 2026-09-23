@@ -1,19 +1,29 @@
-# Compiler lowering coverage and implementation roadmap
+# Lowering coverage and remaining work
 
-Status: bounded engineering roadmap. Earlier coverage claims were exploratory
+Status: current-state record. All three lowering families are implemented and
+measured; this document records what each family computes today and the
+engineering barriers that remain. Earlier coverage claims were exploratory
 hypotheses, not the supported architecture matrix.
 
-## Construction specifications
+## Family status
 
-Implement all three families: [softmax](../kernels/softmax-attention.md),
+The three kernel contracts are [softmax](../kernels/softmax-attention.md),
 [linear/delta](../kernels/linear-delta.md), and
-[sparse delta](../kernels/sparse-delta.md). The [coverage matrix](coverage.md)
-lists each capability, its evidence and completion work. The
-[parity plan](../validation/parity.md) defines baseline selection, numerical and
-training gates, and the initial 1.05 latency-ratio acceptance target.
+[sparse delta](../kernels/sparse-delta.md). Each is implemented, with measured
+evidence in the [master coverage table](../validation/master-table.md) and the
+[upstream comparison table](../validation/upstream-comparison.md).
 
-The three contracts are construction documents; their existence does not mean
-all three native implementations are complete.
+| Family | Native status | Measured evidence | Remaining barrier |
+|---|---|---|---|
+| K1 softmax reduction | Native online-softmax candidate covers MHA/MQA/GQA and masked/sparse variants | Kernel-slice parity + paired overhead vs pinned FlashAttention; native profile on 4 rows | Full-layer, cache and end-to-end training/inference qualification |
+| K2 linear/delta recurrence | Native candidate for **diagonal** recurrence (HGRN / Mamba-1 class) only | Diagonal native qualification is `correct_below_target` (~55% slower than FLA's chunked kernel) | Native **matrix-state** (gated-delta) lowering is a measured generation gap; chunk the diagonal scan to close the performance gap |
+| K3 sparse delta state | Native sparse-state candidate for Sparse Delta Memory | Native K3 output/state/all six gradients match the corrected equation reference; 17–44% faster than pinned SDM on the measured fixture | Product-key routing and full-layer composition remain external |
+
+Representational coverage is broader than native generation: all 62 covered
+recipes lower into a canonical core and match their independent equation, but
+the native generator reaches a subset of them. See
+[representation coverage](../validation/representation-coverage.md) and
+[native coverage](../validation/native-coverage.md) for the honest split.
 
 ## Evidence levels
 
@@ -21,33 +31,6 @@ Every mapping is proposed, derived, implemented, or validated. A derivation prov
 a mathematical correspondence under stated assumptions; a validated implementation
 also establishes its numerical, gradient, state and execution-mode contract.
 Passing one backend or shape does not certify another backend or configuration.
-
-| Scope | Present evidence | Next gate |
-|---|---|---|
-| Existing routed-reduction compiler | Implemented with contract/plan regressions | Preserve during restructuring |
-| Dense attention adapter | Implemented; retained acceptance artifacts | Frontend integration under its exact supported contract |
-| Gated-delta adapter | Implemented; retained acceptance artifacts | Explicit training and inference capability integration |
-| Native sparse route/state composite | Implemented; retained acceptance and negative performance evidence | Preserve semantic and schedule regressions |
-| Sparse-slot chunk algebra | Derived; NumPy differential and VJP tests | Repair and validate concrete GPU lowering |
-| Historical PyTorch/Triton dual-form prototypes | Experimental; known correctness defects | Decay, cross-block state, complete backward and numerical stability |
-| Other named architectures, parameter-axis mixing and inner optimizers | Proposed mappings only | Individual recurrence, state and gradient derivations |
-
-This table records the repository's evidence; historical GPU measurements were
-not rerun during this restructuring.
-
-## Engineering milestones
-
-1. Establish frontend, compiler, runtime, backend and oracle ownership. Retain
-   compatibility imports.
-2. Integrate one explicit contract per initial family: softmax, linear/delta and
-   sparse slot. Reuse `UrmCompiler`, registered rewrites and execution anchors.
-3. Implement the corrected chunked sparse-slot equations. Verify repeated routes,
-   strong decay, zero weights on selected slots, cross-chunk state, partial chunks,
-   output/final-state losses and all differentiable operands.
-4. Validate each exact runtime path, then optimize and measure full workloads.
-   Keep precision semantics separate from schedules and label useful versus
-   executed FLOP accounting.
-5. Add provider integration and broader coverage only behind these contracts.
 
 ## Boundaries requiring derivation
 
@@ -63,23 +46,18 @@ and adding an inner-optimization callback does not prove kernel-level equivalenc
 
 There is no established percentage of literature coverage, count of unexplored
 architectures, universal three-source implementation, or MFU target guaranteed by
-this roadmap. The named comparison campaign and extension axes are explicit construction work;
-qualification is per architecture and mode rather than a blanket percentage.
+this record. Qualification is per architecture and mode rather than a blanket
+percentage.
 
-## Production work packages
+## Remaining work packages
 
 | Package | Concrete deliverable | Exit gate |
 |---|---|---|
-| P0: comparator registry | Resolve the named register into pinned callable/capability records and mandatory fixtures | Every attempted run has exact identity, semantics and mode support; blockers stay visible |
-| P1: core closure | One complete native frontend-to-runtime slice for each of K1/K2/K3 | Independent VJP/state checks and confirmed model parity on Wave 1 fixtures |
-| P2: composite and diagonal state | A1/A5 plus typed state bundles, normalizers and route producers | Wave 2 variants and synthetic cross-architecture reuse checks |
-| P3: generalized transitions and axes | A3/A8/A11, cache composition and source-derived transforms | Wave 3 native or explicit blocked status; no silent scalar-delta substitution |
-| P4: broader updates | A4/A6/A7/A9/A10/A12/A13 where required by named fixtures | Exact semantics, gradient policy, cost bounds and per-provider qualification |
-| P5: release matrix | Automated frozen campaign, support report and reproducible artifacts | Every advertised architecture/mode/device passes its mandatory gates |
+| Native K2 matrix state | A native gated-delta matrix-state lowering | The `k2-gated-delta-recurrence` workload qualifies against FLA |
+| K2 diagonal performance | Chunk the native diagonal scan | `k2-diagonal-recurrence` meets its frozen slowdown budget |
+| Full-layer integration | Projections, frontends, caches per named row | Each advertised architecture/mode passes its mandatory gates |
+| Release matrix | Automated frozen campaign, support report and reproducible artifacts | Every advertised architecture/mode/device passes its mandatory gates |
 
-These packages are a plan, not newly implemented functionality. Use existing
-compiler rewrites, execution anchors and benchmark utilities. The source of truth
-for targets is the [named register](coverage.md), for design changes the
-[axes contract](../compiler/generality-axes.md), and for run admission the
-[parity campaign](../validation/parity.md). Review implementation PRs against those
-three records; keep identity resolution, semantic completion and speedup distinct.
+The source of truth for targets is the [named register](coverage.md), for design
+changes the [axes contract](../compiler/generality-axes.md), and for run admission
+the [parity campaign](../validation/parity.md).

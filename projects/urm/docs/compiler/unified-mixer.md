@@ -1,18 +1,23 @@
-# Unified mixer kernel compiler prototype
+# Unified mixer kernel compiler
 
-Status: executable kernel-level prototype. One typed entry point lowers the
-three physical mixer families K1 softmax reduction, K2 recurrent state, and K3
-sparse delta state through URM's semantic validator, candidate enumerator,
-intent checks, and trusted anchor resolver. The reference executor supports
-CPU/GPU autograd. K1, selected FLA K2 paths, the pinned Mamba-1, Mamba-2 and
-Mamba-3 SISO library adapters, the FwPKM selected-read Triton reducer,
-the pinned Samba no-PE attention branch,
-and H3's two-stage K2 FFT-convolution adapter,
-Momentum DeltaNet, MesaNet, Titans' chunked
-associative memory, Gated Oja, COMBA,
-PGDN, PKDA, ABC/GSA, the native diagonal Triton scan, and K3 have accelerated
-dispatch paths. K2
-simple-GLA and GLA acceleration also covers forward-only one-token decode.
+Status: executable and measured. One typed entry point lowers the three physical
+mixer families K1 softmax reduction, K2 recurrent state, and K3 sparse delta
+state through URM's semantic validator, candidate enumerator, intent checks, and
+trusted anchor resolver. The reference executor supports CPU/GPU autograd. K1,
+selected FLA K2 paths, the pinned Mamba-1, Mamba-2 and Mamba-3 SISO library
+adapters, the FwPKM selected-read Triton reducer, the pinned Samba no-PE
+attention branch, H3's two-stage K2 FFT-convolution adapter, Momentum DeltaNet,
+MesaNet, Titans' chunked associative memory, Gated Oja, COMBA, PGDN, PKDA,
+ABC/GSA, the native diagonal Triton scan, and K3 have accelerated dispatch
+paths. K2 simple-GLA and GLA acceleration also covers forward-only one-token
+decode.
+
+Each named recipe below is a qualified kernel slice with measured
+output/state/gradient parity and paired overhead against a pinned upstream
+source; the surrounding projections, frontends, caches and full-layer
+integration remain open per row. Model-level results across all 62 covered
+recipes are consolidated in the
+[master coverage table](../validation/master-table.md).
 
 ```python
 from urm.compiler.unified_mixer import (

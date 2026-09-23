@@ -1,14 +1,14 @@
 # Generality axes for production construction
 
-These are full-version construction tasks recovered from the archived proposals.
-The unified mixer prototype implements bounded parts of several axes below; it
-does not close those axes or establish named architecture coverage. The goal is
-shared typed semantics and reusable lowerings, not a universal mega-kernel.
-See the [source audit](../planning/unification-audit.md).
+These are the full-version IR extension tasks. The unified mixer compiler
+implements bounded parts of several axes below; it does not close those axes or
+establish named architecture coverage. The goal is shared typed semantics and
+reusable lowerings, not a universal mega-kernel. See the
+[source audit](../planning/unification-audit.md).
 
-## Prototype progress
+## Implemented
 
-`compiler/unified_mixer.py` now provides executable, serialized contracts for:
+`compiler/unified_mixer.py` provides executable, serialized contracts for:
 
 - shared and grouped Q/K/V heads in K1 and K2, plus scalar/head/channel gate
   broadcasting (part of A1);
@@ -21,7 +21,7 @@ See the [source audit](../planning/unification-audit.md).
 Timescale banks and weighted multi-state combination (A5), coordinated
 multi-head/expert routing (A3), general score reductions, complex state, and
 the remaining axes are still open. See the
-[prototype coverage table](unified-mixer.md#named-kernel-recipes) for the exact
+[coverage table](unified-mixer.md#named-kernel-recipes) for the exact
 architecture-kernel boundaries.
 
 ## Shared descriptor boundary

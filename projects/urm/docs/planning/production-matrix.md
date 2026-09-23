@@ -1,9 +1,10 @@
 # Production replacement matrix
 
-Status: frozen release envelope. This is the bounded set of mandatory workloads
-URM-native kernels must qualify against competitive upstream implementations
-before the next release. It is the acceptance envelope, not the expansion
-backlog; the broader [coverage register](coverage.md) tracks the wider catalog.
+Status: frozen release envelope and current qualification state. This is the
+bounded set of mandatory workloads URM-native kernels must qualify against
+competitive upstream implementations before the next release. It is the
+acceptance envelope, not the expansion backlog; the broader
+[coverage register](coverage.md) tracks the wider catalog.
 
 The machine-readable matrix is
 [`benchmarks/production-matrix.json`](../../benchmarks/production-matrix.json)
@@ -83,7 +84,7 @@ Arbitrary nonlinear recurrences are not claimed to admit efficient parallel scan
 
 ## Current qualification state
 
-None of the mandatory workloads is yet qualified for production training,
+No mandatory workload is yet qualified across all of production training,
 prefill, and decode. Native generation coverage today is narrower than the
 envelope:
 
@@ -106,7 +107,9 @@ a compiler-backed test.
 The first native-replacement qualification has been run for the K2 diagonal
 workload ([artifact](../../results/qualification/native-k2-hgrn.json), runner
 `benchmarks/qualify_native_k2_hgrn.py`), comparing the existing native diagonal
-recurrence kernel against the pinned FLA HGRN operators on A10G:
+recurrence kernel against the pinned FLA HGRN operators on A10G. The native
+kernel is numerically correct but not yet performance-competitive, so the
+workload is recorded as `correct_below_target` rather than qualified:
 
 | Check | Result |
 |---|---|

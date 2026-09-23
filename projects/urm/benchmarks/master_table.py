@@ -45,7 +45,6 @@ import numpy as np
 
 from urm.frontend.mixer_recipes import named_mixer_recipe
 
-from product_table import COVERED_RECIPES, _sort_k3_routes
 from representation_coverage import _rng_operands
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -53,6 +52,43 @@ JSON_OUT = PROJECT_ROOT / "results" / "validation" / "master-table.json"
 MD_OUT = PROJECT_ROOT / "docs" / "validation" / "master-table.md"
 DEVICE_LIMITS = PROJECT_ROOT / "results" / "device-limits.json"
 FINEWEB = PROJECT_ROOT / "data" / "finewebedu_train_000001.bin"
+
+# The 62 representation-covered recipes (each lowers into a canonical core and
+# matches its independent equation, per benchmarks/representation_coverage.py).
+COVERED_RECIPES = (
+    "abc_core", "based_attention_core", "cat_attention_core", "comba_core",
+    "conformer_attention_core", "delta_net", "deltaformer_attention_core",
+    "differential_attention_core", "dsa_attention_core", "foveal_attention_core",
+    "gated_delta_net", "gated_delta_product_core", "gated_oja_core", "gdn2_core",
+    "generalized_delta_dplr_core", "generalized_delta_iplr_core", "gla", "gqa",
+    "gru_core", "gsa_core", "h3_ssm_fft_core", "hgrn2_ssm_core", "hgrn_ssm_core",
+    "hla_second_order_core", "hopfield_attention_core", "hyena_fftconv_core",
+    "kata_attention_core", "kda_core", "lightnet_gla_core",
+    "lightning_attention_core", "linear_attention", "longformer_attention_core",
+    "m2rnn_core", "mamba1_ssm_core", "mamba2_ssm_core", "mamba3_siso_core",
+    "mesa_net_core", "mha", "mla_attention_core", "mom_selected_memory_core",
+    "momentum_delta_core", "mqa", "nsa_selected_attention_core",
+    "parallax_attention_core", "pattention_core", "rebased_attention_core",
+    "retention_core", "rnn_core", "rodimus_gla_core", "rwkv4_memory_core",
+    "rwkv6_memory_core", "rwkv7_transition_core", "samba_attention_core",
+    "simple_gla", "sparse_attention_core", "sparse_delta_memory",
+    "tda_attention_core", "titans_linear_memory_core", "tpa_attention_core",
+    "ttt_linear_core", "tucker_attention_core", "wall_attention_core",
+)
+
+
+def _sort_k3_routes(operands: dict[str, Any]) -> dict[str, Any]:
+    """K3-native requires strictly-increasing unique routes; sort + reorder weights."""
+    ops = dict(operands)
+    for idx_key, w_key in (("read_indices", "read_weights"), ("write_indices", "write_weights")):
+        if idx_key not in ops:
+            continue
+        idx = np.asarray(ops[idx_key])
+        w = np.asarray(ops[w_key])
+        order = np.argsort(idx, axis=-1)
+        ops[idx_key] = np.take_along_axis(idx, order, -1)
+        ops[w_key] = np.take_along_axis(w, order, -1)
+    return ops
 
 # Frozen 100M model config (matches pretraining_step.toml).
 MODEL = dict(vocab_size=50304, sequence_length=1024, layers=12, width=768,

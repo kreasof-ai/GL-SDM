@@ -202,7 +202,7 @@ BACKWARD_COVERAGE_GAP_RECIPES = (
 
 # Native fp32 recomputation vs the fp32 REFERENCE-backend gradient. The native
 # and reference paths now share the same differentiable equation, so the
-# agreement is exact; the bound is the product-table gradient tolerance.
+# agreement is exact; the bound is the master-table gradient tolerance.
 GRAD_REL_TOL = 2e-2
 
 
