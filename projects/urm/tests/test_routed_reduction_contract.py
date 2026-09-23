@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from urm.backends.triton_backend import triton_signature_status
+from urm.backends.triton.softmax.routed_reduction import triton_signature_status
 from urm.routed_reduction import (
     DeviceType,
     RoutedReductionRegistry,

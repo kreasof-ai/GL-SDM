@@ -8,7 +8,7 @@ from urm.presets import (
     LINEAR_RECURRENT_MIXER,
     TOP2_MOE,
 )
-from urm.reference import execute, merge_writes
+from urm.oracles import execute, merge_writes
 
 
 def test_dense_softmax_reduce_matches_manual_result() -> None:

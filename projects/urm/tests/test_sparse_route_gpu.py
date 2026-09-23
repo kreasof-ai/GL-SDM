@@ -15,7 +15,7 @@ from urm.adapters.sparse_delta_memory import (
     probe_sdm_support,
 )
 from urm.adapters.sparse_delta_memory_reference import torch_product_key_highest_address
-from urm.backends.sparse_route import (
+from urm.backends.triton.sparse_state.route_backend import (
     CertifiedSparseRouteScores,
     TritonSparseRouteBackend,
 )

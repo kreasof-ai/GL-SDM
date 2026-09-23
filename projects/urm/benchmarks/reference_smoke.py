@@ -9,7 +9,7 @@ from time import perf_counter
 import numpy as np
 
 from urm.presets import DENSE_ATTENTION, GL_SDM_TRANSACTION, TOP2_MOE
-from urm.reference import execute
+from urm.oracles import execute
 
 
 def parse_args() -> argparse.Namespace:

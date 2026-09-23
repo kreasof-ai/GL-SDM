@@ -1,9 +1,28 @@
 # Generality axes for production construction
 
-These are explicit design tasks recovered from the archived proposals. Names
-below denote proposed IR capabilities, not already implemented classes. The goal
-is shared typed semantics and reusable lowerings, not a universal mega-kernel.
-See the [source audit](../planning/unification-audit.md).
+These are the full-version IR extension tasks. The unified mixer compiler
+implements bounded parts of several axes below; it does not close those axes or
+establish named architecture coverage. The goal is shared typed semantics and
+reusable lowerings, not a universal mega-kernel. See the
+[source audit](../planning/unification-audit.md).
+
+## Implemented
+
+`compiler/unified_mixer.py` provides executable, serialized contracts for:
+
+- shared and grouped Q/K/V heads in K1 and K2, plus scalar/head/channel gate
+  broadcasting (part of A1);
+- separate matrix and diagonal state layouts, ordered rank-R updates, and
+  factored left/right state transitions (bounded A8 support);
+- stable softmax attention and a query/key denominator for additive linear
+  state (part of A13);
+- ordered token updates and explicit within-token collision rejection for K3.
+
+Timescale banks and weighted multi-state combination (A5), coordinated
+multi-head/expert routing (A3), general score reductions, complex state, and
+the remaining axes are still open. See the
+[coverage table](unified-mixer.md#named-kernel-recipes) for the exact
+architecture-kernel boundaries.
 
 ## Shared descriptor boundary
 

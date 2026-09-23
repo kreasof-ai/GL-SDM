@@ -1,0 +1,434 @@
+{
+  "schema_version": 1,
+  "generated_utc": "2026-09-20T05:05:57.718509+00:00",
+  "purpose": "compare the unified CONFORMER K1 plan against its pinned source attention callable",
+  "upstream": {
+    "repository": "/tmp/urm-source-audit-conformer",
+    "revision": "2950325ea62c8052f448aaf11affdabe169ec8ab",
+    "loaded_module": "/tmp/urm-source-audit-conformer/espnet2/legacy/nets/pytorch_backend/transformer/attention.py",
+    "kernel_source_sha256": {
+      "attention.py": "e3e36880100f664221ffe4cd2ab297850bb47eecd299ce1e4af1f5ba1cc2fefb"
+    }
+  },
+  "provenance": {
+    "git_revision": "19ca443a118b8607ea8f871d255d683acfb68398",
+    "dirty_tree": true,
+    "benchmark_command": "PYTHONPATH=/path/to/conformer-checkout:src python benchmarks/unified_mixer_factorized_attention.py --case conformer",
+    "config_hash": "f969f31d0b17c42e55032b8ae363391a9161ad05f3a86ce4901d0a59fc9ed2c6",
+    "solver_version": null,
+    "python": "3.12.14",
+    "platform": "Linux-6.12.103-127.188.amzn2023.x86_64-x86_64-with-glibc2.39",
+    "pytorch": "2.14.0+cu130",
+    "triton": "3.8.0",
+    "cuda": "13.0",
+    "driver": "595.91.07",
+    "gpu": "NVIDIA A10G",
+    "gpu_uuid": "GPU-624fe7c6-80af-dacf-0397-57fbc701f3de"
+  },
+  "hardware": {
+    "gpu": "NVIDIA A10G",
+    "compute_capability": [
+      8,
+      6
+    ],
+    "torch": "2.14.0+cu130",
+    "cuda": "13.0"
+  },
+  "methodology": {
+    "timed_work": "complete pinned Conformer MultiHeadedAttention call including Q/K/V and output projections",
+    "sampling": "paired interleaved calls with alternating order and synchronized wall/CUDA-event timing",
+    "warmup": 3,
+    "pairs": 21,
+    "overhead_gate_fraction": 0.1
+  },
+  "cases": {
+    "conformer_attention_core": {
+      "architecture_ids": [
+        "arch-075"
+      ],
+      "semantic_scope": "bidirectional Conformer self-attention K1 core",
+      "shape": {
+        "batch": 2,
+        "sequence": 1024,
+        "heads": 4,
+        "head_dim": 32,
+        "dtype": "float32"
+      },
+      "upstream_callable": "/tmp/urm-source-audit-conformer/espnet2/legacy/nets/pytorch_backend/transformer/attention.py",
+      "compiled_anchor": "torch.nn.functional.scaled_dot_product_attention",
+      "compiler_plan_build_ms": 42.125635998672806,
+      "parity": {
+        "status": "pass",
+        "output_max_abs_error": 0.0,
+        "input_and_parameter_gradient_max_abs_errors": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "tolerances": {
+          "output_atol": 0.0,
+          "gradient_atol": 0.0,
+          "relative_tolerance": 0.0
+        },
+        "independent_reference": "tests/test_unified_mixer.py verifies reference K1 equation parity"
+      },
+      "performance": {
+        "comparison": "full source attention callable vs compiler library plan including required factorization/output stages",
+        "measurements": {
+          "forward": {
+            "upstream_wall": {
+              "sample_count": 21,
+              "median_ms": 0.48915099614532664,
+              "p95_ms": 0.5226420034887269,
+              "raw_samples_ms": [
+                0.5204219996812753,
+                0.4855110018979758,
+                0.4867409952566959,
+                0.5226420034887269,
+                0.5050420004408807,
+                0.49717200454324484,
+                0.4849410033784807,
+                0.48689200048102066,
+                0.48915099614532664,
+                0.48786100524012,
+                0.49570100236451253,
+                0.49004200263880193,
+                0.49135100562125444,
+                0.49004200263880193,
+                0.4834610008401796,
+                0.4879019979853183,
+                0.48898100067162886,
+                0.4860210028709844,
+                0.5685930009349249,
+                0.49605199455982074,
+                0.48327099648304284
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 21,
+              "median_ms": 0.5235819990048185,
+              "p95_ms": 0.5647430007229559,
+              "raw_samples_ms": [
+                0.5282929996610619,
+                0.5246020009508356,
+                0.527292002516333,
+                0.5647430007229559,
+                0.536031999217812,
+                0.5195119956624694,
+                0.5186619964661077,
+                0.5131819998496212,
+                0.5138220003573224,
+                0.5361419971450232,
+                0.5111409991513938,
+                0.5129319979459979,
+                0.5149319986230694,
+                0.5096319946460426,
+                0.5235819990048185,
+                0.516621999850031,
+                0.5080219998490065,
+                0.5240519967628643,
+                0.5392929961089976,
+                0.5248220040812157,
+                0.5740530032198876
+              ]
+            },
+            "upstream_device": {
+              "sample_count": 21,
+              "median_ms": 0.46585598587989807,
+              "p95_ms": 0.4986880123615265,
+              "raw_samples_ms": [
+                0.4925439953804016,
+                0.4618239998817444,
+                0.4628159999847412,
+                0.4986880123615265,
+                0.48025599122047424,
+                0.47206398844718933,
+                0.4607999920845032,
+                0.4638719856739044,
+                0.46585598587989807,
+                0.4628480076789856,
+                0.4700160026550293,
+                0.46592000126838684,
+                0.4679679870605469,
+                0.46592000126838684,
+                0.45977601408958435,
+                0.46489599347114563,
+                0.4638719856739044,
+                0.4618239998817444,
+                0.536512017250061,
+                0.47203201055526733,
+                0.45977601408958435
+              ]
+            },
+            "compiled_device": {
+              "sample_count": 21,
+              "median_ms": 0.4966399967670441,
+              "p95_ms": 0.5375999808311462,
+              "raw_samples_ms": [
+                0.5017600059509277,
+                0.4997119903564453,
+                0.502784013748169,
+                0.5375999808311462,
+                0.5120000243186951,
+                0.49459201097488403,
+                0.49459201097488403,
+                0.4904960095882415,
+                0.4894720017910004,
+                0.5099520087242126,
+                0.4884479939937592,
+                0.4884479939937592,
+                0.4915199875831604,
+                0.4864000082015991,
+                0.4966399967670441,
+                0.4935680031776428,
+                0.4853760004043579,
+                0.4997119903564453,
+                0.5099520087242126,
+                0.4986880123615265,
+                0.5509120225906372
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": 0.05799797165804055,
+              "p95": 0.09896464645937383,
+              "raw_samples": [
+                0.015124264509584628,
+                0.080515166288805,
+                0.08331126339225127,
+                0.08055417848775542,
+                0.06136123084788658,
+                0.04493412926528008,
+                0.069536279367387,
+                0.05399554591701563,
+                0.050436377328087874,
+                0.09896464645937383,
+                0.031147802230037602,
+                0.04671027214797257,
+                0.047992153739462876,
+                0.039976148782658455,
+                0.08298704155022815,
+                0.058864284186794645,
+                0.03894016158342417,
+                0.07824969222981368,
+                -0.05153071665980757,
+                0.05799797165804055,
+                0.18784906894372289
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled"
+            ]
+          },
+          "forward_backward": {
+            "upstream_wall": {
+              "sample_count": 21,
+              "median_ms": 1.6184380001504906,
+              "p95_ms": 1.823441001761239,
+              "raw_samples_ms": [
+                1.6540869983145967,
+                1.6014459979487583,
+                1.6300570059684105,
+                1.610996994713787,
+                1.5951169989421032,
+                1.5878170015639625,
+                1.6709280025679618,
+                1.5888370035099797,
+                1.6331769948010333,
+                1.823441001761239,
+                1.8381620029686019,
+                1.60270700143883,
+                1.600117000634782,
+                1.6811679961392656,
+                1.607296995643992,
+                1.6141770029207692,
+                1.6055070009315386,
+                1.6184380001504906,
+                1.72083899815334,
+                1.651867998589296,
+                1.6581879972363822
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 21,
+              "median_ms": 1.646797994908411,
+              "p95_ms": 1.8794130010064691,
+              "raw_samples_ms": [
+                1.6217869997490197,
+                1.6641580004943535,
+                1.630587998079136,
+                1.6617590008536354,
+                1.6384570044465363,
+                1.646797994908411,
+                1.6419469975517131,
+                1.632186998904217,
+                1.8794130010064691,
+                1.941274997079745,
+                1.6837479997775517,
+                1.6396869978052564,
+                1.6444080029032193,
+                1.617457004613243,
+                1.6719380000722595,
+                1.679089000390377,
+                1.6603879994363524,
+                1.6348069984815083,
+                1.669208002567757,
+                1.6292679938487709,
+                1.6808979999041185
+              ]
+            },
+            "upstream_device": {
+              "sample_count": 21,
+              "median_ms": 1.5943679809570312,
+              "p95_ms": 1.7879040241241455,
+              "raw_samples_ms": [
+                1.628159999847412,
+                1.5769280195236206,
+                1.6035840511322021,
+                1.58515202999115,
+                1.5708160400390625,
+                1.563647985458374,
+                1.644544005393982,
+                1.5646719932556152,
+                1.6066559553146362,
+                1.7879040241241455,
+                1.8032640218734741,
+                1.5779839754104614,
+                1.575935959815979,
+                1.6547520160675049,
+                1.5820800065994263,
+                1.5902719497680664,
+                1.5800319910049438,
+                1.5943679809570312,
+                1.6885759830474854,
+                1.6220159530639648,
+                1.6302080154418945
+              ]
+            },
+            "compiled_device": {
+              "sample_count": 21,
+              "median_ms": 1.623039960861206,
+              "p95_ms": 1.8329600095748901,
+              "raw_samples_ms": [
+                1.5964159965515137,
+                1.640447974205017,
+                1.6066559553146362,
+                1.6353280544281006,
+                1.6138240098953247,
+                1.623039960861206,
+                1.6178879737854004,
+                1.6076480150222778,
+                1.8329600095748901,
+                1.9056639671325684,
+                1.6578559875488281,
+                1.614848017692566,
+                1.619968056678772,
+                1.5923199653625488,
+                1.6476160287857056,
+                1.6547839641571045,
+                1.6332800388336182,
+                1.610751986503601,
+                1.6414719820022583,
+                1.6035840511322021,
+                1.6537599563598633
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": 0.027170424196580296,
+              "p95": 0.06462177564543713,
+              "raw_samples": [
+                -0.019527387978074004,
+                0.039159611142630474,
+                0.00032575063864716307,
+                0.03150968394504477,
+                0.027170424196580296,
+                0.03714596410439844,
+                -0.017344257186251762,
+                0.027284104850573525,
+                0.15077116992787074,
+                0.06462177564543713,
+                -0.08400456703036731,
+                0.023073460297626178,
+                0.027679852317590917,
+                -0.037896861986626125,
+                0.040217212253525,
+                0.0402136800066863,
+                0.03418297053390051,
+                0.01011407191965075,
+                -0.03000338534923325,
+                -0.013681483484046887,
+                0.01369567425743394
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled"
+            ]
+          }
+        },
+        "cold_calls": {
+          "upstream_forward": {
+            "wall": 0.7276869946508668,
+            "device": 0.6635519862174988
+          },
+          "compiled_forward_after_upstream": {
+            "wall": 0.5613230023300275,
+            "device": 0.5335040092468262
+          }
+        }
+      }
+    }
+  }
+}

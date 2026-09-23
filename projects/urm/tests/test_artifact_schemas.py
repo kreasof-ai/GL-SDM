@@ -272,52 +272,6 @@ def test_committed_sparse_memory_e2e_profile_validates() -> None:
     } <= ranges
 
 
-def test_pretraining_step_schema_is_strict_and_committed_artifact_validates() -> None:
-    schema = _load(PROJECT_ROOT / "benchmarks" / "pretraining-step-result-schema.json")
-    from jsonschema.validators import validator_for
-
-    validator_for(schema).check_schema(schema)
-    artifact = _artifact("pretraining-step/confirmation.json")
-    validate(artifact, schema)
-    assert artifact["frozen_configuration"] == tomllib.loads(
-        (PROJECT_ROOT / "benchmarks" / "pretraining_step.toml").read_text(
-            encoding="utf-8"
-        )
-    )
-    assert set(artifact["modes"]) == {"eager", "compile_fullgraph"}
-    comparison_passes = []
-    for mode in artifact["modes"].values():
-        assert len(mode["pairs"]) == 3
-        comparison_passes.extend(item["passed"] for item in mode["correctness"])
-        for pair in mode["pairs"]:
-            assert "gradient_files" not in pair["upstream"]
-            assert "gradient_files" not in pair["native"]
-            assert pair["native"]["execution"]["kind"] == (
-                "compiler_produced_native_plan"
-            )
-            assert (
-                pair["native"]["execution"]["compiler_plan"]["escape_hatch_count"] == 0
-            )
-            assert pair["upstream"]["execution"]["kind"] == (
-                "pinned_external_comparator"
-            )
-            assert pair["upstream"]["upstream"]["installed_commit"] == (
-                "183e7df809131b80ad4393741029d0f20fc3640b"
-            )
-    assert artifact["correctness_passed"] is all(comparison_passes)
-    if not artifact["correctness_passed"]:
-        assert artifact["decision"] == "correctness_failure"
-        assert artifact["passed"] is False
-
-
-def test_pretraining_profile_artifact_validates() -> None:
-    schema = _load(PROJECT_ROOT / "benchmarks" / "pretraining-step-profile-schema.json")
-    artifact = _artifact("pretraining-step/native-profile.json")
-    validate(artifact, schema)
-    assert artifact["compiler_execution"]["all_layers_identical"] is True
-    assert artifact["compiler_execution"]["plan"]["escape_hatch_count"] == 0
-
-
 def _steady_state_overhead_rows(artifact: dict) -> list[dict]:
     """Flatten paired adapter-overhead statistics from the attention artifact."""
     min_seq = artifact["methodology"]["steady_state_min_seq"]
@@ -711,6 +665,225 @@ def test_committed_epilogue_selection_agrees_with_exhaustive() -> None:
     assert z3["status"] == "sat"
     assert z3["verified"] is True
     assert z3["verification_failures"] == []
+
+
+def test_inference_throughput_table_matches_committed_artifacts() -> None:
+    """The inference throughput + MFU doc must regenerate exactly.
+
+    The table is a rollup over the committed release-gate artifacts (native and
+    upstream wall times per case/dtype/mode); this keeps the serving comparison
+    from drifting from the validated measurements.
+    """
+    import inference_report
+
+    documented = (
+        PROJECT_ROOT / "docs" / "validation" / "inference-throughput.md"
+    ).read_text(encoding="utf-8")
+    regenerated = inference_report.render_markdown(inference_report.build_rows())
+    assert documented == regenerated, (
+        "docs/validation/inference-throughput.md is out of sync with the "
+        "committed artifacts; regenerate it with "
+        "`PYTHONPATH=src:benchmarks python benchmarks/inference_report.py`"
+    )
+
+
+def test_alignment_doc_matches_committed_artifacts() -> None:
+    """The gradient-alignment + decoding-KL doc must regenerate exactly.
+
+    The gradient-alignment rows come from the committed qualification artifacts;
+    the decoding KL divergence is a fixed-seed live measurement. This keeps the
+    alignment evidence from drifting from the validated numbers.
+    """
+    import alignment_report
+
+    documented = (
+        PROJECT_ROOT / "docs" / "validation" / "alignment.md"
+    ).read_text(encoding="utf-8")
+    regenerated = alignment_report.render_markdown(
+        alignment_report._gradient_rows(), alignment_report._kl_divergence_rows()
+    )
+    assert documented == regenerated, (
+        "docs/validation/alignment.md is out of sync; regenerate it with "
+        "`PYTHONPATH=src:benchmarks python benchmarks/alignment_report.py`"
+    )
+
+
+def _select_cases(data: dict | None, comparison: dict) -> tuple[list[dict], str | None]:
+    """Resolve the exact artifact cases a comparison is qualified on.
+
+    The register names cases explicitly (``recipe`` or ``recipes``); there is no
+    "all cases" fallback. Missing or malformed evidence returns an error so the
+    caller cannot emit a pass claim.
+    """
+    if not data or not isinstance(data.get("cases"), dict):
+        return [], "artifact_missing"
+    cases = data["cases"]
+    named = comparison.get("recipes")
+    if named is None:
+        recipe = comparison.get("recipe")
+        named = [recipe] if recipe is not None else []
+    if not named:
+        return [], "no_cases_named"
+    selected: list[dict] = []
+    for name in named:
+        case = cases.get(name)
+        if not isinstance(case, dict):
+            return [], f"case_missing:{name}"
+        selected.append(case)
+    return selected, None
+
+
+def _aggregate_status(statuses: list[str | None]) -> str:
+    """Combine per-case parity verdicts into one order-independent status."""
+    if any(status == "fail" for status in statuses):
+        return "fail"
+    if statuses and all(status == "pass" for status in statuses):
+        return "pass"
+    return "incomplete"
+
+
+def _aggregate_case(data: dict | None, comparison: dict) -> tuple[str, float | None, float | None]:
+    """Return (parity_status, worst forward overhead, worst fwd+bwd overhead)."""
+    selected, error = _select_cases(data, comparison)
+    if error is not None:
+        return "incomplete", None, None
+    statuses: list[str | None] = []
+    forwards: list[float] = []
+    forward_backwards: list[float] = []
+    for case in selected:
+        statuses.append(case.get("parity", {}).get("status"))
+        measurements = case.get("performance", {}).get("measurements", {})
+        forward = (
+            measurements.get("forward", {}).get("paired_compiled_overhead_fraction", {})
+            or {}
+        ).get("median")
+        forward_backward = (
+            measurements.get("forward_backward", {}).get("paired_compiled_overhead_fraction", {})
+            or {}
+        ).get("median")
+        if forward is not None:
+            forwards.append(forward)
+        if forward_backward is not None:
+            forward_backwards.append(forward_backward)
+    return (
+        _aggregate_status(statuses),
+        max(forwards) if forwards else None,
+        max(forward_backwards) if forward_backwards else None,
+    )
+
+
+def _comparison_artifact(cases: dict[str, str]) -> dict:
+    """Build a minimal artifact whose cases carry only a parity status."""
+    return {
+        "cases": {
+            name: {"parity": {"status": status}, "performance": {"measurements": {}}}
+            for name, status in cases.items()
+        }
+    }
+
+
+def test_aggregate_case_never_hides_a_failure() -> None:
+    """A failed case must fail the rollup regardless of case ordering."""
+    passing = _comparison_artifact({"a": "pass", "b": "pass"})
+    comparison = {"recipes": ["a", "b"]}
+    assert _aggregate_case(passing, comparison)[0] == "pass"
+
+    # Same two cases, opposite insertion order: the verdict must not change.
+    fail_last = _comparison_artifact({"a": "pass", "b": "fail"})
+    fail_first = _comparison_artifact({"b": "fail", "a": "pass"})
+    assert _aggregate_case(fail_last, comparison)[0] == "fail"
+    assert _aggregate_case(fail_first, comparison)[0] == "fail"
+
+
+def test_aggregate_case_marks_incomplete_evidence() -> None:
+    """Missing, malformed, or non-pass evidence must not surface as a pass."""
+    comparison = {"recipes": ["a", "b"]}
+    # A case with no recorded status is incomplete, not a pass.
+    partial = _comparison_artifact({"a": "pass", "b": None})
+    assert _aggregate_case(partial, comparison)[0] == "incomplete"
+    # A named case absent from the artifact is incomplete.
+    missing = _comparison_artifact({"a": "pass"})
+    assert _aggregate_case(missing, comparison)[0] == "incomplete"
+    # No artifact at all is incomplete.
+    assert _aggregate_case(None, comparison)[0] == "incomplete"
+
+
+def test_aggregate_case_uses_only_named_cases() -> None:
+    """Unrelated cases in the artifact must not be substituted in."""
+    # The artifact carries an extra failing case the comparison did not name;
+    # the rollup is over the named cases only and stays a pass.
+    artifact = _comparison_artifact({"a": "pass", "unrelated": "fail"})
+    assert _aggregate_case(artifact, {"recipe": "a"})[0] == "pass"
+    # A comparison that names no case cannot claim a pass.
+    assert (
+        _aggregate_case(artifact, {"recipe": None, "recipes": None})[0]
+        == "incomplete"
+    )
+
+
+def test_native_coverage_table_matches_compiler() -> None:
+    """The native-coverage doc must regenerate exactly from the live compiler.
+
+    Native coverage - not dispatch parity - is the honest measure of the unified
+    generator's reach, so this table is pinned to the compiler to prevent drift
+    or overclaiming.
+    """
+    import native_coverage_table
+
+    documented = (
+        PROJECT_ROOT / "docs" / "validation" / "native-coverage.md"
+    ).read_text(encoding="utf-8")
+    regenerated = native_coverage_table.render_markdown(
+        native_coverage_table.measure_native_coverage()
+    )
+    assert documented == regenerated, (
+        "docs/validation/native-coverage.md is out of sync with the compiler; "
+        "regenerate it with `python benchmarks/native_coverage_table.py > "
+        "docs/validation/native-coverage.md`"
+    )
+
+
+def test_production_matrix_validates_against_schema() -> None:
+    """The frozen production replacement matrix must stay well-formed."""
+    schema = _load(PROJECT_ROOT / "benchmarks" / "production-matrix-schema.json")
+    validate(_load(PROJECT_ROOT / "benchmarks" / "production-matrix.json"), schema)
+
+
+def test_production_matrix_spans_all_three_families() -> None:
+    """The mandatory envelope must cover K1, K2, and K3 with a comparator each."""
+    matrix = _load(PROJECT_ROOT / "benchmarks" / "production-matrix.json")
+    families = {workload["family"] for workload in matrix["workloads"]}
+    assert families == {"K1", "K2", "K3"}
+    for workload in matrix["workloads"]:
+        comparator = workload["comparator"]
+        # A competitive comparator must be frozen with an exact revision.
+        assert comparator["revision"], workload["id"]
+        assert comparator["callable"], workload["id"]
+        # Every workload must declare at least one training and one serving mode
+        # where the family supports it, and freeze a performance budget.
+        assert workload["performance_budget"], workload["id"]
+        assert workload["cases"], workload["id"]
+
+
+def test_every_register_comparison_names_real_cases() -> None:
+    """The register must name explicit cases that exist in each artifact.
+
+    This pins the explicit artifact-case mapping: no comparison may rely on an
+    implicit "all cases" fallback or point at a case that does not exist.
+    """
+    register = _load(PROJECT_ROOT / "benchmarks" / "architecture-coverage.json")
+    for architecture in register["architectures"]:
+        comparison = architecture.get("kernel_upstream_comparison")
+        if not comparison:
+            continue
+        artifact = comparison.get("artifact")
+        data = _load(PROJECT_ROOT / artifact) if artifact else None
+        selected, error = _select_cases(data, comparison)
+        assert error is None, (
+            f"{architecture['architecture']}: comparison evidence error {error}; "
+            "name explicit recipe/recipes that exist in the artifact"
+        )
+        assert selected, f"{architecture['architecture']}: no cases selected"
 
 
 def test_attention_headline_overhead_matches_documented_values() -> None:

@@ -1,0 +1,240 @@
+{
+  "schema_version": 1,
+  "generated_utc": "2026-09-20T07:22:11.688088+00:00",
+  "purpose": "diagnose native K3 equation parity and pinned SDM backward behavior for overlapping routes",
+  "upstream": {
+    "repository": "https://github.com/facebookresearch/sparse-delta-memory",
+    "revision": "183e7df809131b80ad4393741029d0f20fc3640b",
+    "loaded_module": "/tmp/urm-upstreams-20260919/sdm/lingua/sparse_delta_memory/layer.py",
+    "distribution_version": null
+  },
+  "provenance": {
+    "git_revision": "19ca443a118b8607ea8f871d255d683acfb68398",
+    "dirty_tree": true,
+    "benchmark_command": "CUDA_HOME=/path/to/cuda-toolkit PYTHONPATH=/path/to/sparse-delta-memory:src python benchmarks/unified_mixer_sdm.py --overlap-diagnostic",
+    "config_hash": "146b9c1a423256283d8c1e07ca595fae01bb03212d9eaa4e2e297f30823cd54d",
+    "solver_version": null,
+    "python": "3.12.14",
+    "platform": "Linux-6.12.103-127.188.amzn2023.x86_64-x86_64-with-glibc2.39",
+    "pytorch": "2.14.0+cu130",
+    "triton": "3.8.0",
+    "cuda": "13.0",
+    "driver": "595.91.07",
+    "gpu": "NVIDIA A10G",
+    "gpu_uuid": "GPU-624fe7c6-80af-dacf-0397-57fbc701f3de"
+  },
+  "hardware": {
+    "gpu": "NVIDIA A10G",
+    "compute_capability": [
+      8,
+      6
+    ],
+    "torch": "2.14.0+cu130",
+    "cuda": "13.0",
+    "nvcc": "Build cuda_13.0.r13.0/compiler.36424714_0"
+  },
+  "methodology": {
+    "comparison": "native K3 plan and equation reference versus direct pinned SDM operator",
+    "timing": "not measured; this artifact records a parity diagnostic, not a performance profile",
+    "upstream_callable": "lingua.sparse_delta_memory.layer.SparseDeltaMemory.gated_write_read",
+    "upstream_extension": "pinned source CUDA extension built with the CUDA 13 nvcc/CCCL toolchain"
+  },
+  "cases": {
+    "float32": {
+      "architecture_ids": [
+        "arch-047"
+      ],
+      "semantic_scope": "K3 state update with read and write routes overlapping at every token",
+      "shape": {
+        "batch": 1,
+        "sequence": 16,
+        "slots": 256,
+        "value_dim": 32,
+        "read_width": 4,
+        "write_width": 4,
+        "route_pattern": "read addresses equal write addresses; writes repeat across tokens; addresses are unique within each token",
+        "dtype": "float32"
+      },
+      "parity_tolerances": {
+        "output_atol": 0.02,
+        "output_rtol": 0.003,
+        "state_atol": 0.02,
+        "state_rtol": 0.003,
+        "gradient_atol": 3e-05,
+        "gradient_rtol": 0.0003
+      },
+      "native_vs_equation_reference": {
+        "status": "pass",
+        "output": {
+          "max_abs_error": 1.1175870895385742e-08,
+          "pass": true
+        },
+        "final_state": {
+          "max_abs_error": 1.4901161193847656e-08,
+          "pass": true
+        },
+        "input_gradients": {
+          "memory": {
+            "max_abs_error": 5.820766091346741e-10,
+            "pass": true
+          },
+          "write_weights": {
+            "max_abs_error": 1.1641532182693481e-10,
+            "pass": true
+          },
+          "values": {
+            "max_abs_error": 3.4924596548080444e-10,
+            "pass": true
+          },
+          "beta": {
+            "max_abs_error": 8.731149137020111e-11,
+            "pass": true
+          },
+          "log_decay": {
+            "max_abs_error": 1.8917489796876907e-10,
+            "pass": true
+          },
+          "read_weights": {
+            "max_abs_error": 2.3283064365386963e-10,
+            "pass": true
+          }
+        }
+      },
+      "native_vs_pinned_upstream": {
+        "status": "measured_fail",
+        "output": {
+          "max_abs_error": 3.232620656490326e-05,
+          "pass": true
+        },
+        "final_state": {
+          "max_abs_error": 0.013833174481987953,
+          "pass": true
+        },
+        "input_gradients": {
+          "memory": {
+            "max_abs_error": 6.984919309616089e-10,
+            "pass": true
+          },
+          "write_weights": {
+            "max_abs_error": 0.0001357522705802694,
+            "pass": false
+          },
+          "values": {
+            "max_abs_error": 4.656612873077393e-10,
+            "pass": true
+          },
+          "beta": {
+            "max_abs_error": 1.0186340659856796e-10,
+            "pass": true
+          },
+          "log_decay": {
+            "max_abs_error": 0.00018991211254615337,
+            "pass": false
+          },
+          "read_weights": {
+            "max_abs_error": 0.0001685613242443651,
+            "pass": false
+          }
+        }
+      }
+    },
+    "bfloat16": {
+      "architecture_ids": [
+        "arch-047"
+      ],
+      "semantic_scope": "K3 state update with read and write routes overlapping at every token",
+      "shape": {
+        "batch": 1,
+        "sequence": 16,
+        "slots": 256,
+        "value_dim": 32,
+        "read_width": 4,
+        "write_width": 4,
+        "route_pattern": "read addresses equal write addresses; writes repeat across tokens; addresses are unique within each token",
+        "dtype": "bfloat16"
+      },
+      "parity_tolerances": {
+        "output_atol": 0.02,
+        "output_rtol": 0.02,
+        "state_atol": 0.02,
+        "state_rtol": 0.02,
+        "gradient_atol": 0.03,
+        "gradient_rtol": 0.03
+      },
+      "native_vs_equation_reference": {
+        "status": "pass",
+        "output": {
+          "max_abs_error": 0.0,
+          "pass": true
+        },
+        "final_state": {
+          "max_abs_error": 0.0,
+          "pass": true
+        },
+        "input_gradients": {
+          "memory": {
+            "max_abs_error": 2.288818359375e-05,
+            "pass": true
+          },
+          "write_weights": {
+            "max_abs_error": 7.62939453125e-06,
+            "pass": true
+          },
+          "values": {
+            "max_abs_error": 1.52587890625e-05,
+            "pass": true
+          },
+          "beta": {
+            "max_abs_error": 3.814697265625e-06,
+            "pass": true
+          },
+          "log_decay": {
+            "max_abs_error": 3.814697265625e-06,
+            "pass": true
+          },
+          "read_weights": {
+            "max_abs_error": 0.0,
+            "pass": true
+          }
+        }
+      },
+      "native_vs_pinned_upstream": {
+        "status": "pass",
+        "output": {
+          "max_abs_error": 0.0002899169921875,
+          "pass": true
+        },
+        "final_state": {
+          "max_abs_error": 0.0123291015625,
+          "pass": true
+        },
+        "input_gradients": {
+          "memory": {
+            "max_abs_error": 2.47955322265625e-05,
+            "pass": true
+          },
+          "write_weights": {
+            "max_abs_error": 0.0001383647322654724,
+            "pass": true
+          },
+          "values": {
+            "max_abs_error": 1.52587890625e-05,
+            "pass": true
+          },
+          "beta": {
+            "max_abs_error": 1.9073486328125e-06,
+            "pass": true
+          },
+          "log_decay": {
+            "max_abs_error": 0.000286102294921875,
+            "pass": true
+          },
+          "read_weights": {
+            "max_abs_error": 0.000102996826171875,
+            "pass": true
+          }
+        }
+      }
+    }
+  }
+}

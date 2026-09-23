@@ -1,7 +1,7 @@
 """Reference recurrences for the frozen FLA gated delta-rule contract.
 
 These are the level-1 semantic oracle and the level-2 transparent eager
-PyTorch baseline for archive/docs/adapters/fla-gated-delta-rule.md. Both implement exactly:
+PyTorch baseline for the frozen gated delta-rule contract. Both implement exactly:
 
     u_t  = S^T k_t
     dv_t = beta_t * (v_t - u_t)
@@ -34,8 +34,6 @@ def _reference_loop(
     b, t, h, k_dim = q.shape
     hv = v.shape[2]
     resolved_scale = scale if scale is not None else k_dim**-0.5
-    # GVA: value heads are grouped; q/k heads expand to HV via
-    # repeat_interleave exactly as the upstream kernels do.
     if hv != h:
         groups = hv // h
         q = q.repeat_interleave(groups, dim=2)

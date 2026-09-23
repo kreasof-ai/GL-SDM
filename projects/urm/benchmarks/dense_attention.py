@@ -1,6 +1,6 @@
 """Dense causal attention comparator: oracle / SDPA-math / upstream / URM.
 
-Production-comparison slice for URM (archive/docs/validation/baselines.md level model):
+Production-comparison slice for URM (level model):
 
 1. ``oracle``     - explicit fp32 softmax-reduce (correctness only; skipped
                     with a memory-based ``not_applicable`` reason when the

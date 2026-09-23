@@ -1,27 +1,17 @@
-from .numpy_backend import NumpyBackend
-from .sparse_memory import TritonSparseMemoryBackend
-from .sparse_route import TritonSparseRouteBackend
-from .sparse_state_mixer import TritonSparseStateMixerBackend
-from .torch_backend import TorchRoutedReductionBackend
-from .triton_backend import TritonRoutedReductionBackend
+from .numpy.softmax import NumpyBackend
+from .pytorch.softmax.routed_reduction import TorchRoutedReductionBackend
+from .triton.softmax.online_backend import TritonOnlineSoftmaxBackend
+from .triton.softmax.routed_reduction import TritonRoutedReductionBackend
+from .triton.sparse_state.memory import TritonSparseMemoryBackend
+from .triton.sparse_state.route_backend import TritonSparseRouteBackend
+from .triton.sparse_state.backend import TritonSparseStateMixerBackend
 
 __all__ = [
     "NumpyBackend",
     "TorchRoutedReductionBackend",
+    "TritonOnlineSoftmaxBackend",
     "TritonRoutedReductionBackend",
     "TritonSparseMemoryBackend",
     "TritonSparseRouteBackend",
     "TritonSparseStateMixerBackend",
 ]
-
-
-def __getattr__(name):
-    legacy = {
-        "DualFormSDMFunction": "SparseDeltaFunction",
-        "dual_form_sdm": "sparse_delta",
-    }
-    if name in legacy:
-        from importlib import import_module
-
-        return getattr(import_module("urm.experimental.sparse_delta"), legacy[name])
-    raise AttributeError(name)

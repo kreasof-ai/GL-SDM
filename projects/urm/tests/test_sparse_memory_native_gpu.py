@@ -16,11 +16,11 @@ from urm.adapters.sparse_delta_memory import (
     probe_sdm_support,
 )
 from urm.adapters.sparse_delta_memory_reference import torch_product_key
-from urm.backends.sparse_memory import TritonSparseMemoryBackend
-from urm.backends.sparse_route import CertifiedSparseRouteScores
-from urm.backends.sparse_state_mixer import SparseState
-from urm.backends.sparse_state_reference import torch_sparse_state_mixer
-from urm.compiler.anchors.sparse_memory import compile_sparse_memory_plan
+from urm.backends.triton.sparse_state.memory import TritonSparseMemoryBackend
+from urm.backends.triton.sparse_state.route_backend import CertifiedSparseRouteScores
+from urm.backends.triton.sparse_state.backend import SparseState
+from urm.backends.pytorch.sparse_state import torch_sparse_state_mixer
+from urm.runtime.sparse_memory import compile_sparse_memory_plan
 from urm.compiler.semantic import (
     DType,
     SDMExecutionMode,

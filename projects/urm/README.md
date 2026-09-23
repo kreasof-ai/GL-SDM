@@ -18,21 +18,18 @@ frontend specification → semantic IR → verified rewrites → planning
 |---|---|
 | `src/urm/frontend/` | Declarative model specification (`MixerSpec`) |
 | `src/urm/compiler/` | Semantic IR, effects, rewrites, legality, planning and verification |
-| `src/urm/compiler/anchors/` | Bind compiler-selected plans to executable implementations |
-| `src/urm/runtime/` | Backend protocols and explicit runtime registry |
+| `src/urm/runtime/` | Backend protocols, explicit runtime registry, and executable plan binding |
 | `src/urm/backends/`, `src/urm/adapters/` | Native implementations and external-library boundaries |
 | `src/urm/oracles/` | NumPy correctness references, including sparse-slot algebra and VJP |
-| `src/urm/experimental/`, `src/urm/experiments/` | Uncertified prototypes, outside production selection |
 | `tests/`, `benchmarks/` | Contract regressions and maintained acceptance harnesses |
 | `results/` | Retained acceptance evidence and provenance consumed by regressions |
-| `archive/` | Historical reports, exploratory measurements and superseded demonstrations |
 
-`urm.ir`, `urm.backend`, and `urm.reference` remain compatibility imports.
+`urm.ir` is the canonical IR module; the former `urm.backend` and `urm.reference`
+wildcard compatibility shims were removed. Import `BackendRegistry` from
+`urm.runtime` and the NumPy oracle (`execute`, `merge_writes`) from `urm.oracles`.
 Existing semantic IR and executable binders retain their public paths. The
 distribution name `urm-kernel-lab` is retained for installation compatibility.
-Sparse routed delta-update implementations use the architecture-neutral name
-`sparse_delta`. Legacy `dual_form_sdm` paths are compatibility aliases only and
-are not advertised in the production backend catalog.
+Production selection uses the validated sparse-state mixer backend.
 
 ## Implementation scope
 
@@ -41,17 +38,13 @@ and sparse-slot memory. These are engineering boundaries, not a proof of univers
 coverage or a promise of three universal kernel source files.
 
 - [Runtime and lowering contracts](docs/runtime/execution.md)
-- [Coverage and implementation milestones](docs/planning/lowering-roadmap.md)
+- [Unified mixer kernel compiler](docs/compiler/unified-mixer.md)
+- [Coverage and remaining work](docs/planning/lowering-roadmap.md)
 - [Verified sparse-slot formulation](docs/kernels/sparse-delta.md)
 - [Compiler architecture](docs/compiler/architecture.md)
 - [Kernel generation](docs/compiler/kernel-generation.md)
 - [Compiler acceptance requirements](docs/validation/acceptance.md)
-- [Archive index and migration manifest](archive/README.md)
-
-The experimental dual-form implementations have known decay, backward and
-cross-block correctness defects. The NumPy formulation is independently checked;
-it is not certification of those GPU implementations or of BF16 reassociation.
-Historical MFU claims do not establish current end-to-end performance.
+- [Master coverage table](docs/validation/master-table.md)
 
 ## CPU verification
 

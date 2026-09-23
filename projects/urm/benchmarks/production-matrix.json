@@ -1,0 +1,235 @@
+{
+  "schema_version": 1,
+  "frozen_on": "2026-09-21",
+  "status": "frozen_release_envelope",
+  "purpose": "Bounded production replacement matrix: the mandatory workloads URM-native kernels must qualify against competitive upstream implementations before the next release. This is the acceptance envelope, not the expansion backlog. Cases, dtypes, tolerances, and performance budgets are frozen before tuning candidates; do not relax gates after seeing results.",
+  "comparator_policy": "Each workload names a competitive upstream comparator frozen before independent confirmation. A slow reference implementation is never the sole performance baseline when a competitive compatible kernel exists. Comparisons include routing, layout conversion, allocation, dispatch, forward and backward, and cache/state updates; exclusions are declared per case.",
+  "measurement_policy": "Report kernel/device execution, ordinary dispatch-inclusive invocation, and CUDA graph replay separately; graph replay never substitutes for ordinary-invocation qualification. Warm up compilation and autotuning, use synchronized paired randomized timing across multiple fresh processes, and report the slowdown confidence-interval bound against the frozen budget. Verdicts: qualified, correct_below_target, numeric_failed, inconclusive, unsupported.",
+  "hardware": {
+    "gpu": "NVIDIA A10G",
+    "compute_capability": [8, 6],
+    "notes": "Validated line is torch 2.8.0 / triton 3.4.0 / CUDA 12.9. Re-qualification on a different runtime must re-freeze the environment record before comparing."
+  },
+  "workloads": [
+    {
+      "id": "k1-mha",
+      "family": "K1",
+      "operation": "normalized_routed_reduction",
+      "architecture": "Transformer MHA",
+      "native_anchor": "urm_native_k1_online_softmax_v1",
+      "native_status": "candidate_exists",
+      "comparator": {
+        "source": "flash",
+        "repository": "https://github.com/Dao-AILab/flash-attention",
+        "revision": "1bda8f9290cd48d030f1516f0e680cd464ef3554",
+        "callable": "flash_attn_func",
+        "rationale": "competitive production attention kernel"
+      },
+      "modes": ["training_forward", "training_forward_backward", "prefill", "decode"],
+      "dtypes": ["bfloat16", "float16"],
+      "correctness": {
+        "components": ["output", "input_gradients"],
+        "output_atol": 0.02,
+        "gradient_atol": 0.02,
+        "oracle": "independent reference attention plus upstream callable"
+      },
+      "performance_budget": {
+        "ordinary_invocation_slowdown_max": 0.10,
+        "cuda_graph_replay_slowdown_max": 0.10,
+        "basis": "paired median (compiled - direct) / direct, confidence-interval upper bound"
+      },
+      "cases": [
+        {"id": "latency_small", "batch": 1, "query_length": 128, "key_length": 128, "query_heads": 8, "key_value_heads": 8, "key_dim": 64, "value_dim": 64, "causal": true},
+        {"id": "throughput_medium", "batch": 8, "query_length": 1024, "key_length": 1024, "query_heads": 16, "key_value_heads": 16, "key_dim": 64, "value_dim": 64, "causal": true},
+        {"id": "throughput_long", "batch": 4, "query_length": 4096, "key_length": 4096, "query_heads": 16, "key_value_heads": 16, "key_dim": 64, "value_dim": 64, "causal": true},
+        {"id": "decode_step", "batch": 1, "query_length": 1, "key_length": 2048, "query_heads": 8, "key_value_heads": 8, "key_dim": 64, "value_dim": 64, "causal": true, "stateful": true}
+      ]
+    },
+    {
+      "id": "k1-gqa",
+      "family": "K1",
+      "operation": "normalized_routed_reduction",
+      "architecture": "Transformer GQA",
+      "native_anchor": "urm_native_k1_online_softmax_v1",
+      "native_status": "candidate_exists",
+      "comparator": {
+        "source": "flash",
+        "repository": "https://github.com/Dao-AILab/flash-attention",
+        "revision": "1bda8f9290cd48d030f1516f0e680cd464ef3554",
+        "callable": "flash_attn_func",
+        "rationale": "competitive production attention kernel with grouped-query support"
+      },
+      "modes": ["training_forward", "training_forward_backward", "prefill", "decode"],
+      "dtypes": ["bfloat16", "float16"],
+      "correctness": {
+        "components": ["output", "input_gradients"],
+        "output_atol": 0.02,
+        "gradient_atol": 0.02,
+        "oracle": "independent reference attention plus upstream callable"
+      },
+      "performance_budget": {
+        "ordinary_invocation_slowdown_max": 0.10,
+        "cuda_graph_replay_slowdown_max": 0.10,
+        "basis": "paired median (compiled - direct) / direct, confidence-interval upper bound"
+      },
+      "cases": [
+        {"id": "latency_small", "batch": 1, "query_length": 128, "key_length": 128, "query_heads": 8, "key_value_heads": 2, "key_dim": 64, "value_dim": 64, "causal": true},
+        {"id": "throughput_long", "batch": 4, "query_length": 4096, "key_length": 4096, "query_heads": 32, "key_value_heads": 8, "key_dim": 64, "value_dim": 64, "causal": true},
+        {"id": "decode_step", "batch": 1, "query_length": 1, "key_length": 2048, "query_heads": 8, "key_value_heads": 2, "key_dim": 64, "value_dim": 64, "causal": true, "stateful": true}
+      ]
+    },
+    {
+      "id": "k1-masked-variant",
+      "family": "K1",
+      "operation": "normalized_routed_reduction",
+      "architecture": "Transformer MHA (composed masked variant)",
+      "native_anchor": "urm_native_k1_online_softmax_v1",
+      "native_status": "candidate_exists",
+      "comparator": {
+        "source": "flash",
+        "repository": "https://github.com/Dao-AILab/flash-attention",
+        "revision": "1bda8f9290cd48d030f1516f0e680cd464ef3554",
+        "callable": "flash_attn_varlen_func or equivalent masked path",
+        "rationale": "reusable masked/composed attention variant exercising routing and mask materialization"
+      },
+      "modes": ["training_forward", "training_forward_backward", "prefill"],
+      "dtypes": ["bfloat16"],
+      "correctness": {
+        "components": ["output", "input_gradients"],
+        "output_atol": 0.02,
+        "gradient_atol": 0.02,
+        "oracle": "independent reference attention with explicit mask plus upstream callable",
+        "notes": "covers fully masked rows producing safe zero outputs and gradients"
+      },
+      "performance_budget": {
+        "ordinary_invocation_slowdown_max": 0.15,
+        "basis": "paired median (compiled - direct) / direct, confidence-interval upper bound"
+      },
+      "cases": [
+        {"id": "block_sparse_medium", "batch": 4, "query_length": 1024, "key_length": 1024, "query_heads": 8, "key_value_heads": 8, "key_dim": 64, "value_dim": 64, "mask": "block_sparse", "causal": true},
+        {"id": "fully_masked_rows", "batch": 2, "query_length": 512, "key_length": 512, "query_heads": 8, "key_value_heads": 8, "key_dim": 64, "value_dim": 64, "mask": "fully_masked_rows", "causal": true}
+      ]
+    },
+    {
+      "id": "k2-diagonal-recurrence",
+      "family": "K2",
+      "operation": "structured_recurrence",
+      "architecture": "Diagonal SSM recurrence (HGRN / Mamba-1 class)",
+      "native_anchor": "urm_native_diagonal_recurrence_v1",
+      "native_status": "candidate_exists",
+      "comparator": {
+        "source": "fla",
+        "repository": "https://github.com/fla-org/flash-linear-attention",
+        "revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+        "callable": "fla.ops.hgrn.chunk_hgrn",
+        "rationale": "competitive diagonal gated recurrence; the native diagonal-SSM anchor (hgrn_ssm_core, mamba1_ssm_core) is the generation candidate"
+      },
+      "modes": ["training_forward", "training_forward_backward", "prefill", "decode"],
+      "dtypes": ["bfloat16", "float32"],
+      "correctness": {
+        "components": ["output", "final_state", "input_gradients", "state_gradients"],
+        "output_atol": 0.02,
+        "state_atol": 0.02,
+        "gradient_atol": 0.02,
+        "oracle": "independent sequential recurrence plus upstream chunk operator"
+      },
+      "performance_budget": {
+        "ordinary_invocation_slowdown_max": 0.10,
+        "cuda_graph_replay_slowdown_max": 0.10,
+        "basis": "paired median (compiled - direct) / direct, confidence-interval upper bound"
+      },
+      "cases": [
+        {"id": "latency_short", "batch": 1, "sequence": 64, "heads": 4, "key_dim": 32, "value_dim": 32, "initial_state": "zero"},
+        {"id": "throughput_medium", "batch": 8, "sequence": 1024, "heads": 8, "key_dim": 64, "value_dim": 64, "initial_state": "zero"},
+        {"id": "continuation_nonzero_state", "batch": 2, "sequence": 256, "heads": 8, "key_dim": 64, "value_dim": 64, "initial_state": "nonzero", "stateful": true},
+        {"id": "decode_step", "batch": 1, "sequence": 1, "heads": 8, "key_dim": 64, "value_dim": 64, "initial_state": "nonzero", "stateful": true}
+      ]
+    },
+    {
+      "id": "k2-gated-delta-recurrence",
+      "family": "K2",
+      "operation": "structured_recurrence",
+      "architecture": "Matrix-state gated-delta recurrence (Gated DeltaNet-class)",
+      "native_anchor": "urm_native_matrix_state_recurrence_v1",
+      "native_status": "candidate_exists",
+      "comparator": {
+        "source": "fla",
+        "repository": "https://github.com/fla-org/flash-linear-attention",
+        "revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+        "callable": "fla.ops.gated_delta_rule.chunk.chunk_gated_delta_rule",
+        "rationale": "competitive matrix-state gated-delta recurrence"
+      },
+      "modes": ["training_forward", "training_forward_backward", "prefill", "decode"],
+      "dtypes": ["bfloat16", "float32"],
+      "correctness": {
+        "components": ["output", "final_state", "input_gradients", "state_gradients"],
+        "output_atol": 0.02,
+        "state_atol": 0.02,
+        "gradient_atol": 0.02,
+        "oracle": "independent sequential gated-delta recurrence plus upstream chunk operator"
+      },
+      "performance_budget": {
+        "ordinary_invocation_slowdown_max": 0.10,
+        "cuda_graph_replay_slowdown_max": 0.10,
+        "basis": "paired median (compiled - direct) / direct, confidence-interval upper bound"
+      },
+      "cases": [
+        {"id": "latency_short", "batch": 1, "sequence": 64, "heads": 4, "key_dim": 32, "value_dim": 32, "initial_state": "zero"},
+        {"id": "throughput_medium", "batch": 8, "sequence": 1024, "heads": 8, "key_dim": 64, "value_dim": 64, "initial_state": "zero"},
+        {"id": "continuation_nonzero_state", "batch": 2, "sequence": 256, "heads": 8, "key_dim": 64, "value_dim": 64, "initial_state": "nonzero", "stateful": true},
+        {"id": "decode_step", "batch": 1, "sequence": 1, "heads": 8, "key_dim": 64, "value_dim": 64, "initial_state": "nonzero", "stateful": true}
+      ]
+    },
+    {
+      "id": "k3-sparse-state",
+      "family": "K3",
+      "operation": "sparse_state",
+      "architecture": "Sparse Delta Memory",
+      "native_anchor": "urm_native_sparse_state_mixer_v0",
+      "native_status": "candidate_exists",
+      "comparator": {
+        "source": "sdm",
+        "repository": "https://github.com/facebookresearch/sparse-delta-memory",
+        "revision": "183e7df809131b80ad4393741029d0f20fc3640b",
+        "callable": "gated_write_read",
+        "rationale": "pinned upstream sparse delta memory implementation"
+      },
+      "modes": ["training_forward", "training_forward_backward", "decode"],
+      "dtypes": ["float32", "bfloat16"],
+      "correctness": {
+        "components": ["output", "final_state", "input_gradients", "state_gradients"],
+        "output_atol": 0.02,
+        "state_atol": 0.02,
+        "gradient_atol": 0.02,
+        "oracle": "independent sparse-state reference plus upstream gated_write_read",
+        "notes": "covers ordered write collisions, disjoint and overlapping read routes, and persistent state"
+      },
+      "performance_budget": {
+        "ordinary_invocation_slowdown_max": 0.10,
+        "basis": "paired median (compiled - direct) / direct, confidence-interval upper bound"
+      },
+      "cases": [
+        {"id": "ordered_collisions", "batch": 1, "sequence": 16, "slots": 256, "value_dim": 32, "read_width": 4, "write_width": 4, "route_pattern": "repeated write collisions across tokens; read routes disjoint"},
+        {"id": "imbalanced_routes", "batch": 2, "sequence": 64, "slots": 512, "value_dim": 64, "read_width": 8, "write_width": 8, "route_pattern": "skewed route histogram with hot slots"},
+        {"id": "overlapping_reads", "batch": 1, "sequence": 32, "slots": 256, "value_dim": 32, "read_width": 4, "write_width": 4, "route_pattern": "overlapping read routes with persistent state"}
+      ]
+    }
+  ],
+  "held_out_generation_probes": [
+    {
+      "id": "differential-attention",
+      "family": "K1",
+      "operation": "normalized_routed_reduction",
+      "rationale": "straightforward composition: two softmax reductions combined by a learned per-head scalar, composed from reusable K1 normalization and routing capabilities with no new architecture branch",
+      "acceptance": "native execution and input gradients from the frozen compiler with no architecture-specific branch or handwritten kernel body"
+    },
+    {
+      "id": "gated-delta-with-forgetting",
+      "family": "K2",
+      "operation": "structured_recurrence",
+      "rationale": "demanding stateful composition within the declared supported language: gated-delta matrix-state recurrence composed with a per-head forgetting gate, from reusable recurrence and gating capabilities",
+      "acceptance": "native execution, output/final-state/input/state gradients, and streaming continuation from the frozen compiler with no architecture-specific branch or handwritten kernel body"
+    }
+  ],
+  "notes": "The broader 80-architecture catalog remains the expansion backlog. This matrix is the next release envelope; expanding it requires newly qualified replacements, not aspirational entries. Arbitrary nonlinear recurrences are not claimed to admit efficient parallel scans."
+}

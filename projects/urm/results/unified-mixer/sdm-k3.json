@@ -1,0 +1,1581 @@
+{
+  "schema_version": 1,
+  "generated_utc": "2026-09-22T10:43:52.366836+00:00",
+  "purpose": "compare unified native K3 compiler plan with direct pinned SDM state operator",
+  "matrix_workload": "k3-sparse-state",
+  "verdict": "correct_below_target",
+  "upstream": {
+    "repository": "https://github.com/facebookresearch/sparse-delta-memory",
+    "revision": "183e7df809131b80ad4393741029d0f20fc3640b",
+    "loaded_module": "/tmp/urm-comparator-pins/sdm/lingua/sparse_delta_memory/layer.py",
+    "distribution_version": null
+  },
+  "provenance": {
+    "git_revision": "777c80b51fe15b43b479906e64cff5722f0d4765",
+    "dirty_tree": false,
+    "benchmark_command": "CUDA_HOME=/path/to/cuda-toolkit PYTHONPATH=/path/to/sparse-delta-memory:src python benchmarks/unified_mixer_sdm.py",
+    "config_hash": "583092dc4068a8f311c5fb791aaa29dc855c4a8d9870f15013592dce8b14284e",
+    "solver_version": null,
+    "python": "3.12.14",
+    "platform": "Linux-6.12.103-127.188.amzn2023.x86_64-x86_64-with-glibc2.39",
+    "pytorch": "2.14.0+cu130",
+    "triton": "3.8.0",
+    "cuda": "13.0",
+    "driver": "595.91.07",
+    "gpu": "NVIDIA A10G",
+    "gpu_uuid": "GPU-2f8a1bca-8d9b-5f2e-f29b-03c3236380f3"
+  },
+  "hardware": {
+    "gpu": "NVIDIA A10G",
+    "compute_capability": [
+      8,
+      6
+    ],
+    "torch": "2.14.0+cu130",
+    "cuda": "13.0",
+    "nvcc": "Build cuda_13.0.r13.0/compiler.36424714_0"
+  },
+  "methodology": {
+    "timed_work": "direct SDM gated_write_read or compiled K3 plan, with one forward or forward plus backward; the decode mode runs the single-token decode-step path on both sides (native persistent-state SparseStateDecodeSession vs upstream eval-mode gated_write_read on a one-token step), not the training plan on T=1",
+    "sampling": "paired interleaved direct/compiled calls, order alternates, synchronized wall and CUDA event timing; fresh state buffers cloned before each timer",
+    "warmup": 1,
+    "pairs": 3,
+    "overhead": "median of per-pair (compiled-direct)/direct fractions",
+    "overhead_gate_fraction": 0.1,
+    "interpretation": "compares direct source operation with the full unified native K3 plan; route score production and model projections are excluded",
+    "decode_route_sources": "the decode mode compares two single-token state updates whose route sources differ: the native decode session derives routes from factorized route SCORES via the trusted native route-selection kernel, while the upstream eval-mode gated_write_read consumes explicit route INDICES. The route sources cannot be trivially matched, so the decode comparison measures the native decode-step cost against the upstream decode-step cost (both single-token state updates), not a route-matched parity check; correctness parity is verified separately by the forward/forward_backward modes. The native route kernel requires a square slot count (pairwise factor composition), so for the non-square imbalanced_routes case (slots=512) the native decode falls back to the compiled plan on the single-token decode operands; the square cases (ordered_collisions, overlapping_reads) measure the fused decode-step session.",
+    "upstream_extension": "pinned source CUDA extension built with the CUDA 13 nvcc/CCCL toolchain before paired timing"
+  },
+  "cases": {
+    "ordered_collisions/float32": {
+      "architecture_ids": [
+        "arch-047"
+      ],
+      "semantic_scope": "K3 routed sparse delta state update; product-key score generation and model projections excluded",
+      "shape": {
+        "batch": 1,
+        "sequence": 16,
+        "slots": 256,
+        "value_dim": 32,
+        "read_width": 4,
+        "write_width": 4,
+        "route_pattern": "write routes repeat across tokens; read routes are disjoint; each route is unique within its token",
+        "dtype": "float32"
+      },
+      "upstream_callable": "lingua.sparse_delta_memory.layer.SparseDeltaMemory.gated_write_read",
+      "compiled_anchor": "urm_native_sparse_state_mixer_v0",
+      "parity": {
+        "status": "pass",
+        "output_max_abs_error": 0.0,
+        "final_state_max_abs_error": 0.00828421488404274,
+        "output_max_abs_error_vs_equation": 7.450580596923828e-09,
+        "final_state_max_abs_error_vs_equation": 1.1175870895385742e-08,
+        "input_gradient_max_abs_errors": {
+          "memory": 9.313225746154785e-10,
+          "write_weights": 5.498601240105927e-06,
+          "values": 1.4551915228366852e-11,
+          "beta": 3.637978807091713e-12,
+          "log_decay": 6.784994184272364e-06,
+          "read_weights": 0.0
+        },
+        "input_gradient_max_abs_errors_vs_equation": {
+          "memory": 6.984919309616089e-10,
+          "write_weights": 3.637978807091713e-12,
+          "values": 1.0913936421275139e-11,
+          "beta": 2.7284841053187847e-12,
+          "log_decay": 9.094947017729282e-12,
+          "read_weights": 1.1641532182693481e-10
+        },
+        "state_gradient_max_abs_errors": {
+          "memory": 6.984919309616089e-10
+        },
+        "native_matches_equation": true,
+        "native_matches_upstream": true,
+        "comparator_note": null,
+        "tolerances": {
+          "output_atol": 0.02,
+          "output_rtol": 0.02,
+          "state_atol": 0.02,
+          "state_rtol": 0.02,
+          "gradient_atol": 0.02,
+          "gradient_rtol": 0.02
+        }
+      },
+      "performance": {
+        "first_direct_forward_call_ms": {
+          "wall": 2.096727999742143,
+          "device": 2.0357120037078857
+        },
+        "first_compiled_forward_call_after_direct_autotune_ms": {
+          "wall": 2.9361740016611293,
+          "device": 2.9061119556427
+        },
+        "warmup_calls_per_backend_per_mode": 1,
+        "paired_samples_per_mode": 3,
+        "measurements": {
+          "forward": {
+            "direct_wall": {
+              "sample_count": 3,
+              "median_ms": 1.7523730057291687,
+              "p95_ms": 1.771291000477504,
+              "raw_samples_ms": [
+                1.7523730057291687,
+                1.7733929998939857,
+                1.5033570089144632
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 3,
+              "median_ms": 1.3204650022089481,
+              "p95_ms": 1.4091438089963049,
+              "raw_samples_ms": [
+                1.3204650022089481,
+                1.4189970097504556,
+                1.2955340062035248
+              ]
+            },
+            "direct_device": {
+              "sample_count": 3,
+              "median_ms": 1.716223955154419,
+              "p95_ms": 1.7374208092689516,
+              "raw_samples_ms": [
+                1.716223955154419,
+                1.7397760152816772,
+                1.4735360145568848
+              ]
+            },
+            "compiled_device": {
+              "sample_count": 3,
+              "median_ms": 1.2902400493621826,
+              "p95_ms": 1.3778495788574219,
+              "raw_samples_ms": [
+                1.2902400493621826,
+                1.3875839710235596,
+                1.2666879892349243
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": -0.19984063891349296,
+              "p95": -0.1443994232043724,
+              "ci95_lower": -0.24647035882665977,
+              "ci95_upper": -0.13823928812558123,
+              "raw_samples": [
+                -0.24647035882665977,
+                -0.19984063891349296,
+                -0.13823928812558123
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect",
+              "directcompiled"
+            ]
+          },
+          "forward_backward": {
+            "direct_wall": {
+              "sample_count": 3,
+              "median_ms": 3.4449340018909425,
+              "p95_ms": 3.5094648992526345,
+              "raw_samples_ms": [
+                3.516634998959489,
+                3.4449340018909425,
+                3.3811430039349943
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 3,
+              "median_ms": 1.973777005332522,
+              "p95_ms": 2.180087598389946,
+              "raw_samples_ms": [
+                1.9494659936754033,
+                2.2030109976185486,
+                1.973777005332522
+              ]
+            },
+            "direct_device": {
+              "sample_count": 3,
+              "median_ms": 3.414016008377075,
+              "p95_ms": 3.478528070449829,
+              "raw_samples_ms": [
+                3.4856960773468018,
+                3.414016008377075,
+                3.348479986190796
+              ]
+            },
+            "compiled_device": {
+              "sample_count": 3,
+              "median_ms": 1.9394559860229492,
+              "p95_ms": 2.145894455909729,
+              "raw_samples_ms": [
+                1.921023964881897,
+                2.1688320636749268,
+                1.9394559860229492
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": -0.4162397144884352,
+              "p95": -0.3660803190106912,
+              "ci95_lower": -0.44564448848054566,
+              "ci95_upper": -0.3605070528464974,
+              "raw_samples": [
+                -0.44564448848054566,
+                -0.3605070528464974,
+                -0.4162397144884352
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect",
+              "directcompiled"
+            ]
+          },
+          "decode": {
+            "direct_wall": {
+              "sample_count": 3,
+              "median_ms": 0.22962401271797717,
+              "p95_ms": 0.2370309957768768,
+              "raw_samples_ms": [
+                0.23785399389453232,
+                0.22962401271797717,
+                0.1848130050348118
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 3,
+              "median_ms": 0.2910859911935404,
+              "p95_ms": 0.3151160039124079,
+              "raw_samples_ms": [
+                0.3177860053256154,
+                0.2910859911935404,
+                0.23088499438017607
+              ]
+            },
+            "direct_device": {
+              "sample_count": 3,
+              "median_ms": 0.1955839991569519,
+              "p95_ms": 0.20203519463539124,
+              "raw_samples_ms": [
+                0.2027519941329956,
+                0.1955839991569519,
+                0.158720001578331
+              ]
+            },
+            "compiled_device": {
+              "sample_count": 3,
+              "median_ms": 0.25600001215934753,
+              "p95_ms": 0.2808832138776779,
+              "raw_samples_ms": [
+                0.2836480140686035,
+                0.25600001215934753,
+                0.19968000054359436
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": 0.2676635502884033,
+              "p95": 0.32921580777956194,
+              "ci95_lower": 0.24928975824339877,
+              "ci95_upper": 0.3360549475008018,
+              "raw_samples": [
+                0.3360549475008018,
+                0.2676635502884033,
+                0.24928975824339877
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect",
+              "directcompiled"
+            ]
+          }
+        }
+      }
+    },
+    "ordered_collisions/bfloat16": {
+      "architecture_ids": [
+        "arch-047"
+      ],
+      "semantic_scope": "K3 routed sparse delta state update; product-key score generation and model projections excluded",
+      "shape": {
+        "batch": 1,
+        "sequence": 16,
+        "slots": 256,
+        "value_dim": 32,
+        "read_width": 4,
+        "write_width": 4,
+        "route_pattern": "write routes repeat across tokens; read routes are disjoint; each route is unique within its token",
+        "dtype": "bfloat16"
+      },
+      "upstream_callable": "lingua.sparse_delta_memory.layer.SparseDeltaMemory.gated_write_read",
+      "compiled_anchor": "urm_native_sparse_state_mixer_v0",
+      "parity": {
+        "status": "pass",
+        "output_max_abs_error": 0.0,
+        "final_state_max_abs_error": 0.019287109375,
+        "output_max_abs_error_vs_equation": 0.0,
+        "final_state_max_abs_error_vs_equation": 0.0,
+        "input_gradient_max_abs_errors": {
+          "memory": 9.1552734375e-05,
+          "write_weights": 1.3709068298339844e-05,
+          "values": 9.5367431640625e-07,
+          "beta": 3.5762786865234375e-07,
+          "log_decay": 1.0013580322265625e-05,
+          "read_weights": 0.0
+        },
+        "input_gradient_max_abs_errors_vs_equation": {
+          "memory": 0.0,
+          "write_weights": 0.0,
+          "values": 0.0,
+          "beta": 0.0,
+          "log_decay": 0.0,
+          "read_weights": 0.0
+        },
+        "state_gradient_max_abs_errors": {
+          "memory": 0.0
+        },
+        "native_matches_equation": true,
+        "native_matches_upstream": true,
+        "comparator_note": null,
+        "tolerances": {
+          "output_atol": 0.02,
+          "output_rtol": 0.02,
+          "state_atol": 0.02,
+          "state_rtol": 0.02,
+          "gradient_atol": 0.02,
+          "gradient_rtol": 0.02
+        }
+      },
+      "performance": {
+        "first_direct_forward_call_ms": {
+          "wall": 1.978076994419098,
+          "device": 1.9271680116653442
+        },
+        "first_compiled_forward_call_after_direct_autotune_ms": {
+          "wall": 3.088247001869604,
+          "device": 3.058687925338745
+        },
+        "warmup_calls_per_backend_per_mode": 1,
+        "paired_samples_per_mode": 3,
+        "measurements": {
+          "forward": {
+            "direct_wall": {
+              "sample_count": 3,
+              "median_ms": 1.9598069920903072,
+              "p95_ms": 2.0247149965143763,
+              "raw_samples_ms": [
+                2.0319269970059395,
+                1.9598069920903072,
+                1.611979998415336
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 3,
+              "median_ms": 1.4005760021973401,
+              "p95_ms": 1.436063002620358,
+              "raw_samples_ms": [
+                1.44000600266736,
+                1.4005760021973401,
+                1.3058739859843627
+              ]
+            },
+            "direct_device": {
+              "sample_count": 3,
+              "median_ms": 1.9302400350570679,
+              "p95_ms": 1.9947519898414614,
+              "raw_samples_ms": [
+                2.001919984817505,
+                1.9302400350570679,
+                1.5820800065994263
+              ]
+            },
+            "compiled_device": {
+              "sample_count": 3,
+              "median_ms": 1.3731839656829834,
+              "p95_ms": 1.4072832107543944,
+              "raw_samples_ms": [
+                1.411072015762329,
+                1.3731839656829834,
+                1.2769279479980469
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": -0.28535003301345396,
+              "p95": -0.19943998441693184,
+              "ci95_lower": -0.2913101677426304,
+              "ci95_upper": -0.1898944234617627,
+              "raw_samples": [
+                -0.2913101677426304,
+                -0.28535003301345396,
+                -0.1898944234617627
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect",
+              "directcompiled"
+            ]
+          },
+          "forward_backward": {
+            "direct_wall": {
+              "sample_count": 3,
+              "median_ms": 3.6269769916543737,
+              "p95_ms": 3.7621146970195696,
+              "raw_samples_ms": [
+                3.7771299976157025,
+                3.6269769916543737,
+                3.5426549875410274
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 3,
+              "median_ms": 2.188611004385166,
+              "p95_ms": 2.407530599157326,
+              "raw_samples_ms": [
+                2.188611004385166,
+                2.0350169943412766,
+                2.431854998576455
+              ]
+            },
+            "direct_device": {
+              "sample_count": 3,
+              "median_ms": 3.5973119735717773,
+              "p95_ms": 3.728179097175598,
+              "raw_samples_ms": [
+                3.742719888687134,
+                3.5973119735717773,
+                3.5102720260620117
+              ]
+            },
+            "compiled_device": {
+              "sample_count": 3,
+              "median_ms": 2.1585919857025146,
+              "p95_ms": 2.3779327392578127,
+              "raw_samples_ms": [
+                2.1585919857025146,
+                2.0060160160064697,
+                2.40230393409729
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": -0.42056243609123395,
+              "p95": -0.3242513751090794,
+              "ci95_lower": -0.4389220006016515,
+              "ci95_upper": -0.31355014611106224,
+              "raw_samples": [
+                -0.42056243609123395,
+                -0.4389220006016515,
+                -0.31355014611106224
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect",
+              "directcompiled"
+            ]
+          },
+          "decode": {
+            "direct_wall": {
+              "sample_count": 3,
+              "median_ms": 0.22199399245437235,
+              "p95_ms": 0.24933690001489595,
+              "raw_samples_ms": [
+                0.2523750008549541,
+                0.22199399245437235,
+                0.22013401030562818
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 3,
+              "median_ms": 0.23198399867396802,
+              "p95_ms": 0.23932799958856776,
+              "raw_samples_ms": [
+                0.24014399969018996,
+                0.2165440091630444,
+                0.23198399867396802
+              ]
+            },
+            "direct_device": {
+              "sample_count": 3,
+              "median_ms": 0.19660800695419312,
+              "p95_ms": 0.21964799463748932,
+              "raw_samples_ms": [
+                0.22220799326896667,
+                0.19660800695419312,
+                0.19251200556755066
+              ]
+            },
+            "compiled_device": {
+              "sample_count": 3,
+              "median_ms": 0.19968000054359436,
+              "p95_ms": 0.211660797894001,
+              "raw_samples_ms": [
+                0.21299199759960175,
+                0.18943999707698822,
+                0.19968000054359436
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": -0.024550138636963873,
+              "p95": 0.04599269994798981,
+              "ci95_lower": -0.048463600290559725,
+              "ci95_upper": 0.05383079312409577,
+              "raw_samples": [
+                -0.048463600290559725,
+                -0.024550138636963873,
+                0.05383079312409577
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect",
+              "directcompiled"
+            ]
+          }
+        }
+      }
+    },
+    "imbalanced_routes/float32": {
+      "architecture_ids": [
+        "arch-047"
+      ],
+      "semantic_scope": "K3 routed sparse delta state update; product-key score generation and model projections excluded",
+      "shape": {
+        "batch": 2,
+        "sequence": 64,
+        "slots": 512,
+        "value_dim": 64,
+        "read_width": 8,
+        "write_width": 8,
+        "route_pattern": "skewed route histogram concentrating reads and writes on a few hot slots; each route is unique within its token",
+        "dtype": "float32"
+      },
+      "upstream_callable": "lingua.sparse_delta_memory.layer.SparseDeltaMemory.gated_write_read",
+      "compiled_anchor": "urm_native_sparse_state_mixer_v0",
+      "parity": {
+        "status": "pass",
+        "output_max_abs_error": 0.12098005414009094,
+        "final_state_max_abs_error": 0.07737140357494354,
+        "output_max_abs_error_vs_equation": 1.4901161193847656e-08,
+        "final_state_max_abs_error_vs_equation": 4.470348358154297e-08,
+        "input_gradient_max_abs_errors": {
+          "memory": 0.00030003252322785556,
+          "write_weights": 3.2885815016925335e-05,
+          "values": 3.504006963339634e-05,
+          "beta": 1.4322685274237301e-05,
+          "log_decay": 8.955655357567593e-05,
+          "read_weights": 0.0001959932706085965
+        },
+        "input_gradient_max_abs_errors_vs_equation": {
+          "memory": 2.9103830456733704e-11,
+          "write_weights": 4.547473508864641e-12,
+          "values": 5.4569682106375694e-12,
+          "beta": 2.5011104298755527e-12,
+          "log_decay": 2.1827872842550278e-11,
+          "read_weights": 2.9103830456733704e-11
+        },
+        "state_gradient_max_abs_errors": {
+          "memory": 2.9103830456733704e-11
+        },
+        "native_matches_equation": true,
+        "native_matches_upstream": false,
+        "comparator_note": "native matches the independent equation within the frozen tolerance; the divergence is the pinned upstream's batched-kernel reduction-order inconsistency (a comparator limitation, not a native-kernel error)",
+        "tolerances": {
+          "output_atol": 0.02,
+          "output_rtol": 0.02,
+          "state_atol": 0.02,
+          "state_rtol": 0.02,
+          "gradient_atol": 0.02,
+          "gradient_rtol": 0.02
+        }
+      },
+      "performance": {
+        "first_direct_forward_call_ms": {
+          "wall": 2.368333996855654,
+          "device": 2.3162879943847656
+        },
+        "first_compiled_forward_call_after_direct_autotune_ms": {
+          "wall": 3.003375997650437,
+          "device": 2.9808640480041504
+        },
+        "warmup_calls_per_backend_per_mode": 1,
+        "paired_samples_per_mode": 3,
+        "measurements": {
+          "forward": {
+            "direct_wall": {
+              "sample_count": 3,
+              "median_ms": 2.0490879978751764,
+              "p95_ms": 2.074260987865273,
+              "raw_samples_ms": [
+                2.0770579867530614,
+                2.0490879978751764,
+                1.9110959983663633
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 3,
+              "median_ms": 1.3751560036325827,
+              "p95_ms": 1.6688493909896351,
+              "raw_samples_ms": [
+                1.7014819895848632,
+                1.3725649914704263,
+                1.3751560036325827
+              ]
+            },
+            "direct_device": {
+              "sample_count": 3,
+              "median_ms": 2.0203518867492676,
+              "p95_ms": 2.044313669204712,
+              "raw_samples_ms": [
+                2.046976089477539,
+                2.0203518867492676,
+                1.8800640106201172
+              ]
+            },
+            "compiled_device": {
+              "sample_count": 3,
+              "median_ms": 1.3527040481567383,
+              "p95_ms": 1.6457728266716003,
+              "raw_samples_ms": [
+                1.6783360242843628,
+                1.3496320247650146,
+                1.3527040481567383
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": -0.28043593581479476,
+              "p95": -0.19078262138290453,
+              "ci95_lower": -0.33015810307135557,
+              "ci95_upper": -0.1808211420015834,
+              "raw_samples": [
+                -0.1808211420015834,
+                -0.33015810307135557,
+                -0.28043593581479476
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect",
+              "directcompiled"
+            ]
+          },
+          "forward_backward": {
+            "direct_wall": {
+              "sample_count": 3,
+              "median_ms": 4.189986997516826,
+              "p95_ms": 4.381537596054841,
+              "raw_samples_ms": [
+                4.189986997516826,
+                3.980373003287241,
+                4.402820995892398
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 3,
+              "median_ms": 2.1599600004265085,
+              "p95_ms": 2.1998209922458045,
+              "raw_samples_ms": [
+                2.1599600004265085,
+                2.0372569997562096,
+                2.2042499913368374
+              ]
+            },
+            "direct_device": {
+              "sample_count": 3,
+              "median_ms": 4.155392169952393,
+              "p95_ms": 4.3443201065063475,
+              "raw_samples_ms": [
+                4.155392169952393,
+                3.950592041015625,
+                4.365312099456787
+              ]
+            },
+            "compiled_device": {
+              "sample_count": 3,
+              "median_ms": 2.1360321044921875,
+              "p95_ms": 2.176611137390137,
+              "raw_samples_ms": [
+                2.1360321044921875,
+                2.0142080783843994,
+                2.181119918823242
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": -0.48817434997330267,
+              "p95": -0.48486277319624643,
+              "ci95_lower": -0.4993550740778952,
+              "ci95_upper": -0.484494820221018,
+              "raw_samples": [
+                -0.484494820221018,
+                -0.48817434997330267,
+                -0.4993550740778952
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect",
+              "directcompiled"
+            ]
+          },
+          "decode": {
+            "direct_wall": {
+              "sample_count": 3,
+              "median_ms": 0.19014300778508186,
+              "p95_ms": 0.227709898899775,
+              "raw_samples_ms": [
+                0.23188399791251868,
+                0.19014300778508186,
+                0.18938300490844995
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 3,
+              "median_ms": 0.24686400138307363,
+              "p95_ms": 0.268032903841231,
+              "raw_samples_ms": [
+                0.24686400138307363,
+                0.21192300482653081,
+                0.2703850041143596
+              ]
+            },
+            "direct_device": {
+              "sample_count": 3,
+              "median_ms": 0.16486400365829468,
+              "p95_ms": 0.1943552002310753,
+              "raw_samples_ms": [
+                0.19763199985027313,
+                0.16486400365829468,
+                0.1637759953737259
+              ]
+            },
+            "compiled_device": {
+              "sample_count": 3,
+              "median_ms": 0.21913599967956543,
+              "p95_ms": 0.24125439375638963,
+              "raw_samples_ms": [
+                0.21913599967956543,
+                0.18636800348758698,
+                0.24371199309825897
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": 0.11454534823634863,
+              "p95": 0.39639825942321194,
+              "ci95_lower": 0.06460128169864637,
+              "ci95_upper": 0.4277152495550856,
+              "raw_samples": [
+                0.06460128169864637,
+                0.11454534823634863,
+                0.4277152495550856
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect",
+              "directcompiled"
+            ]
+          }
+        }
+      }
+    },
+    "imbalanced_routes/bfloat16": {
+      "architecture_ids": [
+        "arch-047"
+      ],
+      "semantic_scope": "K3 routed sparse delta state update; product-key score generation and model projections excluded",
+      "shape": {
+        "batch": 2,
+        "sequence": 64,
+        "slots": 512,
+        "value_dim": 64,
+        "read_width": 8,
+        "write_width": 8,
+        "route_pattern": "skewed route histogram concentrating reads and writes on a few hot slots; each route is unique within its token",
+        "dtype": "bfloat16"
+      },
+      "upstream_callable": "lingua.sparse_delta_memory.layer.SparseDeltaMemory.gated_write_read",
+      "compiled_anchor": "urm_native_sparse_state_mixer_v0",
+      "parity": {
+        "status": "pass",
+        "output_max_abs_error": 0.131591796875,
+        "final_state_max_abs_error": 0.122314453125,
+        "output_max_abs_error_vs_equation": 0.0,
+        "final_state_max_abs_error_vs_equation": 2.9802322387695312e-08,
+        "input_gradient_max_abs_errors": {
+          "memory": 0.00028705596923828125,
+          "write_weights": 2.884119749069214e-05,
+          "values": 5.182623863220215e-05,
+          "beta": 1.2665987014770508e-05,
+          "log_decay": 5.7756900787353516e-05,
+          "read_weights": 0.00020313262939453125
+        },
+        "input_gradient_max_abs_errors_vs_equation": {
+          "memory": 4.76837158203125e-07,
+          "write_weights": 2.9802322387695312e-08,
+          "values": 1.1920928955078125e-07,
+          "beta": 2.9802322387695312e-08,
+          "log_decay": 2.9802322387695312e-08,
+          "read_weights": 0.0
+        },
+        "state_gradient_max_abs_errors": {
+          "memory": 4.76837158203125e-07
+        },
+        "native_matches_equation": true,
+        "native_matches_upstream": false,
+        "comparator_note": "native matches the independent equation within the frozen tolerance; the divergence is the pinned upstream's batched-kernel reduction-order inconsistency (a comparator limitation, not a native-kernel error)",
+        "tolerances": {
+          "output_atol": 0.02,
+          "output_rtol": 0.02,
+          "state_atol": 0.02,
+          "state_rtol": 0.02,
+          "gradient_atol": 0.02,
+          "gradient_rtol": 0.02
+        }
+      },
+      "performance": {
+        "first_direct_forward_call_ms": {
+          "wall": 2.626198998768814,
+          "device": 2.5773439407348633
+        },
+        "first_compiled_forward_call_after_direct_autotune_ms": {
+          "wall": 3.293191999546252,
+          "device": 3.26963210105896
+        },
+        "warmup_calls_per_backend_per_mode": 1,
+        "paired_samples_per_mode": 3,
+        "measurements": {
+          "forward": {
+            "direct_wall": {
+              "sample_count": 3,
+              "median_ms": 2.2507320099975914,
+              "p95_ms": 2.278101909905672,
+              "raw_samples_ms": [
+                2.281143009895459,
+                2.006958005949855,
+                2.2507320099975914
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 3,
+              "median_ms": 1.4436470082728192,
+              "p95_ms": 1.4720698978635482,
+              "raw_samples_ms": [
+                1.4752279967069626,
+                1.3846660003764555,
+                1.4436470082728192
+              ]
+            },
+            "direct_device": {
+              "sample_count": 3,
+              "median_ms": 2.2179839611053467,
+              "p95_ms": 2.246553564071655,
+              "raw_samples_ms": [
+                2.249727964401245,
+                1.977344036102295,
+                2.2179839611053467
+              ]
+            },
+            "compiled_device": {
+              "sample_count": 3,
+              "median_ms": 1.4202879667282104,
+              "p95_ms": 1.449779176712036,
+              "raw_samples_ms": [
+                1.45305597782135,
+                1.3629440069198608,
+                1.4202879667282104
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": -0.35329438342641656,
+              "p95": -0.3143899883669519,
+              "ci95_lower": -0.3585877830589151,
+              "ci95_upper": -0.31006727780478915,
+              "raw_samples": [
+                -0.35329438342641656,
+                -0.31006727780478915,
+                -0.3585877830589151
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect",
+              "directcompiled"
+            ]
+          },
+          "forward_backward": {
+            "direct_wall": {
+              "sample_count": 3,
+              "median_ms": 4.330110008595511,
+              "p95_ms": 4.569028510013595,
+              "raw_samples_ms": [
+                4.330110008595511,
+                4.59557501017116,
+                4.126417014049366
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 3,
+              "median_ms": 2.211371000157669,
+              "p95_ms": 2.3057278915075585,
+              "raw_samples_ms": [
+                2.211371000157669,
+                2.316211990546435,
+                2.206780991400592
+              ]
+            },
+            "direct_device": {
+              "sample_count": 3,
+              "median_ms": 4.297728061676025,
+              "p95_ms": 4.5373441696166985,
+              "raw_samples_ms": [
+                4.297728061676025,
+                4.563968181610107,
+                4.0960001945495605
+              ]
+            },
+            "compiled_device": {
+              "sample_count": 3,
+              "median_ms": 2.1872639656066895,
+              "p95_ms": 2.2821888446807863,
+              "raw_samples_ms": [
+                2.1872639656066895,
+                2.292736053466797,
+                2.1831679344177246
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": -0.4893037369101539,
+              "p95": -0.46761622500018407,
+              "ci95_lower": -0.49599082042615406,
+              "ci95_upper": -0.4652065014546319,
+              "raw_samples": [
+                -0.4893037369101539,
+                -0.49599082042615406,
+                -0.4652065014546319
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect",
+              "directcompiled"
+            ]
+          },
+          "decode": {
+            "direct_wall": {
+              "sample_count": 3,
+              "median_ms": 0.2400049997959286,
+              "p95_ms": 0.2908009962993674,
+              "raw_samples_ms": [
+                0.238894994254224,
+                0.2964449959108606,
+                0.2400049997959286
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 3,
+              "median_ms": 0.21588400704786181,
+              "p95_ms": 0.22657600202364847,
+              "raw_samples_ms": [
+                0.22776400146540254,
+                0.20674300321843475,
+                0.21588400704786181
+              ]
+            },
+            "direct_device": {
+              "sample_count": 3,
+              "median_ms": 0.21196800470352173,
+              "p95_ms": 0.25896958708763124,
+              "raw_samples_ms": [
+                0.21094399690628052,
+                0.26419198513031006,
+                0.21196800470352173
+              ]
+            },
+            "compiled_device": {
+              "sample_count": 3,
+              "median_ms": 0.18943999707698822,
+              "p95_ms": 0.20142079442739486,
+              "raw_samples_ms": [
+                0.2027519941329956,
+                0.1812479943037033,
+                0.18943999707698822
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": -0.10050204274317776,
+              "p95": -0.05198450072625017,
+              "ci95_lower": -0.3025923659692969,
+              "ci95_upper": -0.046593662724369315,
+              "raw_samples": [
+                -0.046593662724369315,
+                -0.3025923659692969,
+                -0.10050204274317776
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect",
+              "directcompiled"
+            ]
+          }
+        }
+      }
+    },
+    "overlapping_reads/float32": {
+      "architecture_ids": [
+        "arch-047"
+      ],
+      "semantic_scope": "K3 routed sparse delta state update; product-key score generation and model projections excluded",
+      "shape": {
+        "batch": 1,
+        "sequence": 32,
+        "slots": 256,
+        "value_dim": 32,
+        "read_width": 4,
+        "write_width": 4,
+        "route_pattern": "read addresses equal write addresses at every token with persistent state; addresses are unique within each token",
+        "dtype": "float32"
+      },
+      "upstream_callable": "lingua.sparse_delta_memory.layer.SparseDeltaMemory.gated_write_read",
+      "compiled_anchor": "urm_native_sparse_state_mixer_v0",
+      "parity": {
+        "status": "pass",
+        "output_max_abs_error": 3.158673644065857e-05,
+        "final_state_max_abs_error": 0.01529761403799057,
+        "output_max_abs_error_vs_equation": 1.1175870895385742e-08,
+        "final_state_max_abs_error_vs_equation": 1.862645149230957e-08,
+        "input_gradient_max_abs_errors": {
+          "memory": 4.656612873077393e-10,
+          "write_weights": 7.989132427610457e-05,
+          "values": 4.0745362639427185e-10,
+          "beta": 1.5279510989785194e-10,
+          "log_decay": 6.998812023084611e-05,
+          "read_weights": 4.855247971136123e-05
+        },
+        "input_gradient_max_abs_errors_vs_equation": {
+          "memory": 2.3283064365386963e-10,
+          "write_weights": 5.820766091346741e-11,
+          "values": 1.7462298274040222e-10,
+          "beta": 4.3655745685100555e-11,
+          "log_decay": 8.731149137020111e-11,
+          "read_weights": 5.820766091346741e-11
+        },
+        "state_gradient_max_abs_errors": {
+          "memory": 2.3283064365386963e-10
+        },
+        "native_matches_equation": true,
+        "native_matches_upstream": true,
+        "comparator_note": null,
+        "tolerances": {
+          "output_atol": 0.02,
+          "output_rtol": 0.02,
+          "state_atol": 0.02,
+          "state_rtol": 0.02,
+          "gradient_atol": 0.02,
+          "gradient_rtol": 0.02
+        }
+      },
+      "performance": {
+        "first_direct_forward_call_ms": {
+          "wall": 1.9300060084788129,
+          "device": 1.8759679794311523
+        },
+        "first_compiled_forward_call_after_direct_autotune_ms": {
+          "wall": 2.8499630134319887,
+          "device": 2.822144031524658
+        },
+        "warmup_calls_per_backend_per_mode": 1,
+        "paired_samples_per_mode": 3,
+        "measurements": {
+          "forward": {
+            "direct_wall": {
+              "sample_count": 3,
+              "median_ms": 1.5401290002046153,
+              "p95_ms": 1.6361329093342647,
+              "raw_samples_ms": [
+                1.6468000103486702,
+                1.5401290002046153,
+                1.5199379995465279
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 3,
+              "median_ms": 1.2639329943340272,
+              "p95_ms": 1.3458437941153534,
+              "raw_samples_ms": [
+                1.3549449940910563,
+                1.2639329943340272,
+                1.251352994586341
+              ]
+            },
+            "direct_device": {
+              "sample_count": 3,
+              "median_ms": 1.511423945426941,
+              "p95_ms": 1.6063488245010376,
+              "raw_samples_ms": [
+                1.6168960332870483,
+                1.511423945426941,
+                1.4909440279006958
+              ]
+            },
+            "compiled_device": {
+              "sample_count": 3,
+              "median_ms": 1.2369920015335083,
+              "p95_ms": 1.3180927753448488,
+              "raw_samples_ms": [
+                1.3271039724349976,
+                1.2369920015335083,
+                1.223680019378662
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": -0.17722553705584482,
+              "p95": -0.17675963583412327,
+              "ci95_lower": -0.17933303368347317,
+              "ci95_upper": -0.17670786903170976,
+              "raw_samples": [
+                -0.17722553705584482,
+                -0.17933303368347317,
+                -0.17670786903170976
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect",
+              "directcompiled"
+            ]
+          },
+          "forward_backward": {
+            "direct_wall": {
+              "sample_count": 3,
+              "median_ms": 3.475083998637274,
+              "p95_ms": 3.568280795298051,
+              "raw_samples_ms": [
+                3.475083998637274,
+                3.5786359949270263,
+                3.44440400658641
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 3,
+              "median_ms": 1.937515989993699,
+              "p95_ms": 2.034240808279719,
+              "raw_samples_ms": [
+                2.0449880103114992,
+                1.9148860010318458,
+                1.937515989993699
+              ]
+            },
+            "direct_device": {
+              "sample_count": 3,
+              "median_ms": 3.437567949295044,
+              "p95_ms": 3.538022470474243,
+              "raw_samples_ms": [
+                3.437567949295044,
+                3.5491840839385986,
+                3.4119679927825928
+              ]
+            },
+            "compiled_device": {
+              "sample_count": 3,
+              "median_ms": 1.9077119827270508,
+              "p95_ms": 2.0017152547836305,
+              "raw_samples_ms": [
+                2.012160062789917,
+                1.8832000494003296,
+                1.9077119827270508
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": -0.43748875384862834,
+              "p95": -0.4141244950815141,
+              "ci95_lower": -0.4649117698066151,
+              "ci95_upper": -0.41152846632961254,
+              "raw_samples": [
+                -0.41152846632961254,
+                -0.4649117698066151,
+                -0.43748875384862834
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect",
+              "directcompiled"
+            ]
+          },
+          "decode": {
+            "direct_wall": {
+              "sample_count": 3,
+              "median_ms": 0.19722399883903563,
+              "p95_ms": 0.2826709009241313,
+              "raw_samples_ms": [
+                0.29216500115580857,
+                0.19534399325493723,
+                0.19722399883903563
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 3,
+              "median_ms": 0.2205640048487112,
+              "p95_ms": 0.25639389059506357,
+              "raw_samples_ms": [
+                0.26037498901132494,
+                0.2205640048487112,
+                0.21298399951774627
+              ]
+            },
+            "direct_device": {
+              "sample_count": 3,
+              "median_ms": 0.17100800573825836,
+              "p95_ms": 0.24104960262775418,
+              "raw_samples_ms": [
+                0.2488320022821426,
+                0.16896000504493713,
+                0.17100800573825836
+              ]
+            },
+            "compiled_device": {
+              "sample_count": 3,
+              "median_ms": 0.19353599846363068,
+              "p95_ms": 0.2285567969083786,
+              "raw_samples_ms": [
+                0.23244799673557281,
+                0.19353599846363068,
+                0.187391996383667
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": 0.07990914275890514,
+              "p95": 0.12418599177066718,
+              "ci95_lower": -0.10880841996379416,
+              "ci95_upper": 0.12910564166086297,
+              "raw_samples": [
+                -0.10880841996379416,
+                0.12910564166086297,
+                0.07990914275890514
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": false
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect",
+              "directcompiled"
+            ]
+          }
+        }
+      }
+    },
+    "overlapping_reads/bfloat16": {
+      "architecture_ids": [
+        "arch-047"
+      ],
+      "semantic_scope": "K3 routed sparse delta state update; product-key score generation and model projections excluded",
+      "shape": {
+        "batch": 1,
+        "sequence": 32,
+        "slots": 256,
+        "value_dim": 32,
+        "read_width": 4,
+        "write_width": 4,
+        "route_pattern": "read addresses equal write addresses at every token with persistent state; addresses are unique within each token",
+        "dtype": "bfloat16"
+      },
+      "upstream_callable": "lingua.sparse_delta_memory.layer.SparseDeltaMemory.gated_write_read",
+      "compiled_anchor": "urm_native_sparse_state_mixer_v0",
+      "parity": {
+        "status": "pass",
+        "output_max_abs_error": 0.000244140625,
+        "final_state_max_abs_error": 0.01702880859375,
+        "output_max_abs_error_vs_equation": 0.0,
+        "final_state_max_abs_error_vs_equation": 0.0,
+        "input_gradient_max_abs_errors": {
+          "memory": 2.47955322265625e-05,
+          "write_weights": 7.2479248046875e-05,
+          "values": 7.62939453125e-06,
+          "beta": 1.9073486328125e-06,
+          "log_decay": 7.510185241699219e-05,
+          "read_weights": 6.198883056640625e-05
+        },
+        "input_gradient_max_abs_errors_vs_equation": {
+          "memory": 1.52587890625e-05,
+          "write_weights": 2.384185791015625e-06,
+          "values": 7.62939453125e-06,
+          "beta": 1.9073486328125e-06,
+          "log_decay": 1.9073486328125e-06,
+          "read_weights": 0.0
+        },
+        "state_gradient_max_abs_errors": {
+          "memory": 1.52587890625e-05
+        },
+        "native_matches_equation": true,
+        "native_matches_upstream": true,
+        "comparator_note": null,
+        "tolerances": {
+          "output_atol": 0.02,
+          "output_rtol": 0.02,
+          "state_atol": 0.02,
+          "state_rtol": 0.02,
+          "gradient_atol": 0.02,
+          "gradient_rtol": 0.02
+        }
+      },
+      "performance": {
+        "first_direct_forward_call_ms": {
+          "wall": 2.0169469935353845,
+          "device": 1.9599360227584837
+        },
+        "first_compiled_forward_call_after_direct_autotune_ms": {
+          "wall": 2.9591339989565313,
+          "device": 2.930720090866089
+        },
+        "warmup_calls_per_backend_per_mode": 1,
+        "paired_samples_per_mode": 3,
+        "measurements": {
+          "forward": {
+            "direct_wall": {
+              "sample_count": 3,
+              "median_ms": 1.6568310093134642,
+              "p95_ms": 1.6611239974736236,
+              "raw_samples_ms": [
+                1.6616009961580858,
+                1.6330700018443167,
+                1.6568310093134642
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 3,
+              "median_ms": 1.3302949955686927,
+              "p95_ms": 1.3453609950374812,
+              "raw_samples_ms": [
+                1.3302949955686927,
+                1.2670630094362423,
+                1.3470349949784577
+              ]
+            },
+            "direct_device": {
+              "sample_count": 3,
+              "median_ms": 1.6291840076446533,
+              "p95_ms": 1.6319775819778441,
+              "raw_samples_ms": [
+                1.6322879791259766,
+                1.6046080589294434,
+                1.6291840076446533
+              ]
+            },
+            "compiled_device": {
+              "sample_count": 3,
+              "median_ms": 1.3035520315170288,
+              "p95_ms": 1.3164544224739072,
+              "raw_samples_ms": [
+                1.3035520315170288,
+                1.240064024925232,
+                1.3178880214691162
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": -0.19938962564143312,
+              "p95": -0.18822191437649388,
+              "ci95_lower": -0.22412204742890532,
+              "ci95_upper": -0.1869810575692784,
+              "raw_samples": [
+                -0.19938962564143312,
+                -0.22412204742890532,
+                -0.1869810575692784
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect",
+              "directcompiled"
+            ]
+          },
+          "forward_backward": {
+            "direct_wall": {
+              "sample_count": 3,
+              "median_ms": 3.8959929952397943,
+              "p95_ms": 4.261893400689587,
+              "raw_samples_ms": [
+                4.3025490012951195,
+                3.8959929952397943,
+                3.7790700007462874
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 3,
+              "median_ms": 2.1869300107937306,
+              "p95_ms": 2.2305458071059547,
+              "raw_samples_ms": [
+                2.235392006696202,
+                2.1367389999795705,
+                2.1869300107937306
+              ]
+            },
+            "direct_device": {
+              "sample_count": 3,
+              "median_ms": 3.862528085708618,
+              "p95_ms": 4.22748167514801,
+              "raw_samples_ms": [
+                4.268032073974609,
+                3.862528085708618,
+                3.748863935470581
+              ]
+            },
+            "compiled_device": {
+              "sample_count": 3,
+              "median_ms": 2.1565439701080322,
+              "p95_ms": 2.199859285354614,
+              "raw_samples_ms": [
+                2.20467209815979,
+                2.1063039302825928,
+                2.1565439701080322
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": -0.4515547120874491,
+              "p95": -0.424329710022614,
+              "ci95_lower": -0.4804493787233285,
+              "ci95_upper": -0.42130470979318785,
+              "raw_samples": [
+                -0.4804493787233285,
+                -0.4515547120874491,
+                -0.42130470979318785
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect",
+              "directcompiled"
+            ]
+          },
+          "decode": {
+            "direct_wall": {
+              "sample_count": 3,
+              "median_ms": 0.21400400146376342,
+              "p95_ms": 0.23879900691099465,
+              "raw_samples_ms": [
+                0.24155400751624256,
+                0.21400400146376342,
+                0.2076439996017143
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 3,
+              "median_ms": 0.21768499573227018,
+              "p95_ms": 0.2243000068119727,
+              "raw_samples_ms": [
+                0.22503500804305077,
+                0.20444398978725076,
+                0.21768499573227018
+              ]
+            },
+            "direct_device": {
+              "sample_count": 3,
+              "median_ms": 0.1884160041809082,
+              "p95_ms": 0.2105343982577324,
+              "raw_samples_ms": [
+                0.21299199759960175,
+                0.1884160041809082,
+                0.18227200210094452
+              ]
+            },
+            "compiled_device": {
+              "sample_count": 3,
+              "median_ms": 0.19244800508022308,
+              "p95_ms": 0.19892799407243728,
+              "raw_samples_ms": [
+                0.19964799284934998,
+                0.17919999361038208,
+                0.19244800508022308
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": -0.04467211646101591,
+              "p95": 0.039053894356644046,
+              "ci95_lower": -0.06838636064475571,
+              "ci95_upper": 0.04835678444749515,
+              "raw_samples": [
+                -0.06838636064475571,
+                -0.04467211646101591,
+                0.04835678444749515
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "directcompiled",
+              "compileddirect",
+              "directcompiled"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

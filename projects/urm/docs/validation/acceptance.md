@@ -1,7 +1,8 @@
 # Compiler acceptance requirements
 
-Status: construction gates for supported operations and lowerings. Historical
-benchmark protocols remain archived regression evidence, not universal support.
+Status: active gates for supported operations and lowerings. These are the
+criteria a lowering must meet before it is advertised as supported; measured
+evidence against them lives in the [master coverage table](master-table.md).
 
 ## Semantics and numerical correctness
 

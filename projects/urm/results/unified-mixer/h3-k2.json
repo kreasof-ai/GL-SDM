@@ -1,0 +1,449 @@
+{
+  "schema_version": 1,
+  "generated_utc": "2026-09-20T06:06:38.571759+00:00",
+  "purpose": "compare the unified H3 K2 two-stage FFT convolution core against pinned H3.forward",
+  "upstream": {
+    "repository": "/tmp/urm-comparator-pins/h3",
+    "revision": "5c4d06b5795405170387c80998b58d76179a8a1a",
+    "loaded_module": "/tmp/urm-comparator-pins/h3/src/models/ssm/h3.py",
+    "kernel_source_sha256": {
+      "src/models/ssm/h3.py": "b5695be66786f865612835a589e27f87f7dbc048ae71db4233cb57bb6122ef68",
+      "src/models/ssm/ss_kernel.py": "8a81dee8d1356121fb06d432cb1686a552951970daadf03ea8cf50f81996c243",
+      "src/models/ssm/ss_kernel_diag.py": "a32bf02ab6811addf9f1c9c7865cedbe67838088b8b56edfd74b9c1a42ec60b3",
+      "src/models/ssm/ss_kernel_shift.py": "ab919eb2b1dd407c29d39ef5f633b4955d51346824d14b81941da9cf04dc84e8"
+    }
+  },
+  "provenance": {
+    "git_revision": "19ca443a118b8607ea8f871d255d683acfb68398",
+    "dirty_tree": true,
+    "benchmark_command": "PYTHONPATH=/path/to/h3-checkout:src python benchmarks/unified_mixer_h3.py",
+    "config_hash": "823be778e365f90e610c995a4883415f7f79e6d270fc8f2c2dc7929347b11462",
+    "solver_version": null,
+    "python": "3.12.14",
+    "platform": "Linux-6.12.103-127.188.amzn2023.x86_64-x86_64-with-glibc2.39",
+    "pytorch": "2.14.0+cu130",
+    "triton": "3.8.0",
+    "cuda": "13.0",
+    "driver": "595.91.07",
+    "gpu": "NVIDIA A10G",
+    "gpu_uuid": "GPU-624fe7c6-80af-dacf-0397-57fbc701f3de"
+  },
+  "hardware": {
+    "gpu": "NVIDIA A10G",
+    "compute_capability": [
+      8,
+      6
+    ],
+    "torch": "2.14.0+cu130",
+    "cuda": "13.0"
+  },
+  "methodology": {
+    "timed_work": "pinned H3.forward including SSM filter generation, Q/K/V and output projections, multiplicative gating, and two PyTorch FFT convolutions; compiler call uses an independent K2 FFT-convolution equation",
+    "sampling": "paired interleaved calls with alternating order and synchronized wall/CUDA-event timing",
+    "warmup": 3,
+    "pairs": 21,
+    "overhead_gate_fraction": 0.1
+  },
+  "cases": {
+    "h3_ssm_fft_core": {
+      "architecture_ids": [
+        "arch-076"
+      ],
+      "semantic_scope": "H3 head_dim=1 multiplicative SSM mixer with two causal FFT convolutions and skip paths",
+      "shape": {
+        "batch": 1,
+        "sequence": 128,
+        "d_model": 64,
+        "state_dim": 16,
+        "head_dim": 1,
+        "dtype": "float32",
+        "use_fast_fftconv": false,
+        "kernel_mode": "diag"
+      },
+      "upstream_callable": "H3.forward(use_fast_fftconv=False, head_dim=1)",
+      "compiled_anchor": "h3_ssm_fft_convolution_adapter",
+      "compiler_plan_build_ms": 42.60193500522291,
+      "parity": {
+        "status": "pass",
+        "output_max_abs_error": 7.450580596923828e-09,
+        "input_and_parameter_gradient_max_abs_errors": [
+          2.8421709430404007e-13,
+          2.842170943040401e-14,
+          2.842170943040401e-14,
+          2.2737367544323206e-13,
+          3.637978807091713e-12,
+          2.2737367544323206e-13,
+          3.637978807091713e-12,
+          1.1368683772161603e-13,
+          7.275957614183426e-12,
+          1.7053025658242404e-13,
+          9.094947017729282e-13,
+          1.7053025658242404e-13,
+          6.821210263296962e-13,
+          2.2737367544323206e-13,
+          1.1368683772161603e-13,
+          2.2737367544323206e-13,
+          9.094947017729282e-13,
+          0.0
+        ],
+        "tolerances": {
+          "output_atol": 2e-06,
+          "gradient_atol": 3e-06,
+          "relative_tolerance": 3e-05
+        },
+        "independent_reference": "tests/test_unified_mixer.py compares the K2 FFT equation with pinned H3.forward"
+      },
+      "performance": {
+        "comparison": "complete pinned H3.forward vs source projections/filter generation around the independent K2 FFT core",
+        "measurements": {
+          "forward": {
+            "upstream_wall": {
+              "sample_count": 21,
+              "median_ms": 1.8049619975499809,
+              "p95_ms": 1.8999029998667538,
+              "raw_samples_ms": [
+                1.8687729971134104,
+                1.8673520025913604,
+                1.8251820001751184,
+                1.8179209946538322,
+                1.8371620026300661,
+                1.9396450006752275,
+                1.8049619975499809,
+                1.7945920044439845,
+                1.8387029995210469,
+                1.7789010016713291,
+                1.8268519997945987,
+                1.7783009971026331,
+                1.7580190033186227,
+                1.7340099948341958,
+                1.8999029998667538,
+                1.7943610000656918,
+                1.7884409971884452,
+                1.7725110010360368,
+                1.761410996550694,
+                1.81308199535124,
+                1.7557899991516024
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 21,
+              "median_ms": 1.7222389942617156,
+              "p95_ms": 1.7735910005285405,
+              "raw_samples_ms": [
+                1.7494800049462356,
+                1.7735910005285405,
+                1.7639409998082556,
+                1.728199997160118,
+                1.7616910045035183,
+                1.8331419996684417,
+                1.7179089991259389,
+                1.7474600026616827,
+                1.6904489966691472,
+                1.71343900001375,
+                1.7249390002689324,
+                1.739560000714846,
+                1.6909990008571185,
+                1.7169589991681278,
+                1.7222389942617156,
+                1.683637994574383,
+                1.7484100026194938,
+                1.6759379941504449,
+                1.7202089948114008,
+                1.6467369932797737,
+                1.687937998212874
+              ]
+            },
+            "upstream_device": {
+              "sample_count": 21,
+              "median_ms": 1.7745920419692993,
+              "p95_ms": 1.8688000440597534,
+              "raw_samples_ms": [
+                1.837056040763855,
+                1.837056040763855,
+                1.793023943901062,
+                1.785856008529663,
+                1.8053120374679565,
+                1.908735990524292,
+                1.7745920419692993,
+                1.763327956199646,
+                1.8063360452651978,
+                1.7489919662475586,
+                1.7971199750900269,
+                1.7479679584503174,
+                1.7274880409240723,
+                1.7049599885940552,
+                1.8688000440597534,
+                1.7643519639968872,
+                1.7541120052337646,
+                1.7428480386734009,
+                1.7305599451065063,
+                1.7818559408187866,
+                1.7182719707489014
+              ]
+            },
+            "compiled_device": {
+              "sample_count": 21,
+              "median_ms": 1.6895999908447266,
+              "p95_ms": 1.7428480386734009,
+              "raw_samples_ms": [
+                1.7172479629516602,
+                1.7428480386734009,
+                1.73363196849823,
+                1.696768045425415,
+                1.7244160175323486,
+                1.7991679906845093,
+                1.686527967453003,
+                1.716223955154419,
+                1.6608959436416626,
+                1.6834559440612793,
+                1.6947200298309326,
+                1.70905601978302,
+                1.6609280109405518,
+                1.686527967453003,
+                1.6895999908447266,
+                1.652735948562622,
+                1.7080320119857788,
+                1.6465920209884644,
+                1.6895999908447266,
+                1.6168960332870483,
+                1.6578559875488281
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": -0.048229823421327436,
+              "p95": -0.021785398788454518,
+              "raw_samples": [
+                -0.06383492931000184,
+                -0.050210673688038436,
+                -0.0335533663826331,
+                -0.049353628544676516,
+                -0.041080208505566804,
+                -0.05490850179785994,
+                -0.048229823421327436,
+                -0.026263352152237324,
+                -0.08062966280607446,
+                -0.03679912575015453,
+                -0.05578612801536456,
+                -0.021785398788454518,
+                -0.038122456204961463,
+                -0.00983327415462703,
+                -0.09351214541873895,
+                -0.06170609230096691,
+                -0.022383178775191893,
+                -0.05448372779020539,
+                -0.02339147525476887,
+                -0.09174709279446627,
+                -0.03864471318979749
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled"
+            ]
+          },
+          "forward_backward": {
+            "upstream_wall": {
+              "sample_count": 21,
+              "median_ms": 5.053995999332983,
+              "p95_ms": 5.592948000412434,
+              "raw_samples_ms": [
+                5.053995999332983,
+                4.966763997799717,
+                5.052205000538379,
+                5.7750020059756935,
+                5.196359001274686,
+                5.061495998234022,
+                5.046684993430972,
+                5.04241500311764,
+                5.004364997148514,
+                4.9795040031312965,
+                5.128987999341916,
+                5.023113997594919,
+                4.996834002668038,
+                5.5089360030251555,
+                5.082666000816971,
+                5.19796900334768,
+                5.592948000412434,
+                4.878121995716356,
+                5.0475660027586855,
+                5.187429000216071,
+                5.145498005731497
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 21,
+              "median_ms": 4.922492000332568,
+              "p95_ms": 5.293071000778582,
+              "raw_samples_ms": [
+                5.051214997365605,
+                4.912522002996411,
+                5.004273996746633,
+                5.34664199949475,
+                5.078445996332448,
+                4.885592003120109,
+                5.293071000778582,
+                5.069076003564987,
+                5.043534998549148,
+                4.924772001686506,
+                4.957463999744505,
+                4.8792920060805045,
+                4.9011219962267205,
+                4.8908520038821734,
+                4.922492000332568,
+                4.882681998424232,
+                5.1265670044813305,
+                4.896471997199114,
+                4.911142998025753,
+                4.864231996180024,
+                4.82773100520717
+              ]
+            },
+            "upstream_device": {
+              "sample_count": 21,
+              "median_ms": 5.015552043914795,
+              "p95_ms": 5.560319900512695,
+              "raw_samples_ms": [
+                5.015552043914795,
+                4.934624195098877,
+                5.017600059509277,
+                5.736447811126709,
+                5.163008213043213,
+                5.01043176651001,
+                5.009407997131348,
+                5.01145601272583,
+                4.972544193267822,
+                4.946944236755371,
+                5.096447944641113,
+                4.992000102996826,
+                4.965375900268555,
+                5.4773759841918945,
+                5.030911922454834,
+                5.164031982421875,
+                5.560319900512695,
+                4.846591949462891,
+                5.015552043914795,
+                5.155839920043945,
+                5.112832069396973
+              ]
+            },
+            "compiled_device": {
+              "sample_count": 21,
+              "median_ms": 4.891647815704346,
+              "p95_ms": 5.256192207336426,
+              "raw_samples_ms": [
+                5.015552043914795,
+                4.8803839683532715,
+                4.97049617767334,
+                5.310463905334473,
+                5.045248031616211,
+                4.851712226867676,
+                5.256192207336426,
+                5.038080215454102,
+                5.01145601272583,
+                4.891647815704346,
+                4.925439834594727,
+                4.847616195678711,
+                4.870143890380859,
+                4.858880043029785,
+                4.891647815704346,
+                4.8506879806518555,
+                5.092319965362549,
+                4.8660478591918945,
+                4.879295825958252,
+                4.832255840301514,
+                4.79641580581665
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": -0.02702748307964127,
+              "p95": 0.00782716716765338,
+              "raw_samples": [
+                -0.0005502580468494617,
+                -0.010920992990070596,
+                -0.009487145471460099,
+                -0.07417486713211478,
+                -0.022691466258069126,
+                -0.03475336050355204,
+                0.04882135652776401,
+                0.0052873475171844675,
+                0.00782716716765338,
+                -0.010991456460397061,
+                -0.03344207465866937,
+                -0.028632038130784392,
+                -0.019154529926391887,
+                -0.11219661996501136,
+                -0.031513776521742205,
+                -0.060655807050867705,
+                -0.08338732916821541,
+                0.003761693844244246,
+                -0.02702748307964127,
+                -0.0623038896575904,
+                -0.061756315942668914
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled"
+            ]
+          }
+        },
+        "cold_calls": {
+          "upstream_forward": {
+            "wall": 2.5918199971783906,
+            "device": 2.517087936401367
+          },
+          "compiled_forward_after_upstream": {
+            "wall": 1.83157099672826,
+            "device": 1.793023943901062
+          }
+        }
+      }
+    }
+  }
+}

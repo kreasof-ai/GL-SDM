@@ -65,8 +65,6 @@ def compiled_upstream_sdm_update(
         None,
     )
     _FORWARD_CONTEXTS[handle].append(context)
-    # Upstream backward restores its mutable working memory; preserve the
-    # forward-final state as an independent persistent-state output.
     return readings.view_as(values), working.clone()
 
 

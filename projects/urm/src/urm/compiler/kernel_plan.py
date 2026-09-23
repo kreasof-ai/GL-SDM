@@ -65,9 +65,6 @@ CATEGORY_ANCHOR = ConstraintCategory.ANCHOR_CAPABILITY
 CATEGORY_SEARCH = ConstraintCategory.SEARCH
 
 
-# -- Candidate selection model ---------------------------------------------------
-
-
 def build_candidate_selection_model(
     candidates: Sequence[object],
 ) -> tuple[ConstraintModel, dict[str, str]]:
@@ -134,11 +131,6 @@ def decode_selected_candidate(
     return chosen[0]
 
 
-# -- Candidate-to-plan binding ---------------------------------------------------
-# The two decision stages must never contradict each other: once a rewrite
-# candidate is selected, its schedule model may only choose plans that this
-# candidate's lowering actually implements.
-
 _RULE_TO_ANCHOR_PLAN: dict[str, tuple[str, PlanKind]] = {
     "fold_row_scale_into_routed_reduction_epilogue": (
         "routed_reduction_row_scale_epilogue_v0",
@@ -171,8 +163,6 @@ def plan_binding_is_total(candidate) -> bool:
     except ValueError:
         return False
 
-
-# -- Routed-epilogue schedule model -------------------------------------------------
 
 CONFIG_CHOICES = tuple(
     (block, stage, warps)
@@ -429,7 +419,6 @@ def build_schedule_model(
         for warps in supported_warps
     )
 
-    # Derive shape facts from the program when hints exist.
     reduce_op = next((op for op in program.ops if isinstance(op, WeightedReduce)), None)
     hint = getattr(reduce_op, "shape_hint", None) if reduce_op else None
     if problem is None:
@@ -487,11 +476,6 @@ def build_schedule_model(
     origin = Origin(kind="schedule_param", id=candidate.candidate_id)
     anchor_origin = Origin(kind="anchor", id=anchor_name)
 
-    # -- variables ----------------------------------------------------------
-    # Joint (BLOCK_D, num_stages, num_warps) configuration channel: one
-    # indicator per implemented config. A joint encoding keeps every derived
-    # quantity (staging bytes, route-metadata re-loads, latency-hiding
-    # factor) linear in the indicators.
     cfg_vars: dict[tuple[int, int, int], str] = {}
     for index, (block, stage, warps) in enumerate(config_choices):
         name = f"cfg_{index}_b{block}_s{stage}_w{warps}"
@@ -569,7 +553,6 @@ def build_schedule_model(
         exactly_one_org,
     )
 
-    # Pin off decompositions not supported by the anchor
     for value in decomp_values:
         if value in supported_decompositions:
             continue
@@ -584,7 +567,6 @@ def build_schedule_model(
             )
         )
 
-    # Pin off schedules not supported by the anchor
     for value in sched_values:
         if value in supported_schedules:
             continue
@@ -599,9 +581,6 @@ def build_schedule_model(
             )
         )
 
-    # Candidate-plan binding: plans outside the candidate's own lowering are
-    # pinned off, so the schedule stage can never contradict candidate
-    # selection (base candidate -> base plan; epilogue fusion -> fused plan).
     for value in plan_values:
         if PlanKind(value) in allowed_plans:
             continue
@@ -627,7 +606,6 @@ def build_schedule_model(
         exactly_one_org,
     )
 
-    # Numeric payload definitions via the configuration channel.
     block_sum = LinearExpr()
     stages_sum = LinearExpr()
     warps_sum = LinearExpr()
@@ -666,7 +644,6 @@ def build_schedule_model(
         )
     )
 
-    # -- hard legality constraints -----------------------------------------
     model.add_constraint(
         AllowedSet(
             name="supported_block_sizes",
@@ -887,9 +864,6 @@ def build_schedule_model(
 
     if problem.deterministic:
         if problem.training:
-            # Honest global fact: every implemented grad-value lowering
-            # (per-query, per-route, v1 autograd) accumulates through relaxed
-            # cross-program atomics. Deterministic training has no schedule.
             model.add_constraint(
                 Equality(
                     name="deterministic_training_requires_ordered_grads",
@@ -929,7 +903,6 @@ def build_schedule_model(
                 )
             )
 
-    # -- objectives (lexicographic; order is the contract) --------------------
     p_is_base = LinearExpr.var(f"plan_{PlanKind.BASE.value}")
     q, v = problem.queries, problem.value_dim
 
@@ -974,23 +947,13 @@ def build_schedule_model(
     model.add_objective(
         ObjectiveTerm("minimum_launch_count", launches, ObjectiveSense.MINIMIZE)
     )
-    # Analytical runtime (worst-case fp32 element sizes, documented):
-    # - every program re-reads its route metadata (indices+weights), so the
-    #   per-program metadata cost scales with the number of D-segments,
-    #   i.e. ceil(value_dim / BLOCK_D) - larger tiles amortize it better;
-    # - values are read once per program segment (upper bound, no L2 reuse);
-    # - latency hiding is proxied by a concurrency factor
-    #   min(num_stages * num_warps, MAX_CONCURRENCY) / MAX_CONCURRENCY that
-    #   scales effective bandwidth; it is an explicit analytical heuristic,
-    #   never a measurement;
-    # - the base plan additionally writes+reads the [Q, D] intermediate.
-    bytes_per_us = max(DEFAULT_HBM_GBPS, 1.0) * 1e3  # GB/s -> B/us
+    bytes_per_us = max(DEFAULT_HBM_GBPS, 1.0) * 1e3
     max_concurrency = 8.0
 
     def segments(block: int) -> int:
         return -(-problem.value_dim // block)
 
-    route_meta_bytes = 12 * q * problem.route_width  # (8B idx + 4B wgt) * K
+    route_meta_bytes = 12 * q * problem.route_width
     value_bytes = 4 * problem.sources * v + 4 * q * v
     extra_bytes = int(8 * q * v / bytes_per_us)
     common_floor = int((route_meta_bytes + value_bytes) / bytes_per_us)
@@ -1045,7 +1008,6 @@ def build_schedule_model(
         )
     )
 
-    # Optional user schedule hints tighten the space further.
     hinted_blocks = schedule_params.block_hints.get("BLOCK_D")
     if hinted_blocks is not None:
         model.add_constraint(
@@ -1099,7 +1061,7 @@ def decode_schedule_point(
             raise ValueError(f"expected exactly one {prefix}* indicator, got {matches}")
         return matches[0]
 
-    cfg_token = single_true("cfg_")  # e.g. "7_b256_s2_w4"
+    cfg_token = single_true("cfg_")
     header, block_part, stage_part, warp_part = cfg_token.split("_")
     del header
     plan = single_true("plan_")

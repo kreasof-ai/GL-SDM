@@ -27,9 +27,15 @@ from urm.adapters.gated_delta_rule import (
     fla_version,
 )
 
+if fla_version().get("version_compatible") is not True:
+    pytest.skip(
+        "this adapter suite is pinned to the FLA 0.5.2 wheel and module",
+        allow_module_level=True,
+    )
+
 PROJECT_ROOT = Path(__file__).parents[1]
 
-# Dtype-specific tolerances (archive/docs/validation/benchmarking.md: tolerances live in tests).
+# Dtype-specific tolerances; tolerances live in tests.
 OUTPUT_TOL = {
     torch.bfloat16: {"atol": 2e-2, "rtol": 2e-2},
     torch.float16: {"atol": 1.5e-2, "rtol": 2e-2},
@@ -109,10 +115,17 @@ def test_flavor_identity_is_recorded_or_not_applicable() -> None:
         assert identity["expected_version"] == "0.5.2"
         assert identity["installed_version"]
         assert isinstance(identity["version_compatible"], bool)
-        if identity["installed_version"] == identity["expected_version"]:
-            assert identity["version_compatible"] is True
-        else:
-            assert identity["version_compatible"] is False
+        assert identity["module_version"]
+        assert identity["version_compatible"] is (
+            identity["installed_version"] == identity["expected_version"]
+            and identity["module_version"] == identity["expected_version"]
+        )
+        assert identity["revision_compatible"] is (
+            identity["source_revision"] == "864a87f6ce5be8828bef81eb22baafd41937cdf2"
+        )
+        assert identity["comparison_compatible"] is (
+            identity["version_compatible"] or identity["revision_compatible"]
+        )
         assert identity["license"] == "MIT"
         assert "externally" in identity["usage"] or "external" in identity["usage"]
     else:
@@ -215,7 +228,7 @@ def test_gradients_match_eager_baseline_including_initial_state() -> None:
     ):
         assert got is not None and torch.isfinite(got).all(), name
         # bf16 kernel gradients versus an fp32 eager recurrence: tolerances
-        # are dtype-scaled per archive/docs/adapters/fla-gated-delta-rule.md.
+        # are dtype-scaled per the frozen gated delta-rule contract.
         torch.testing.assert_close(got.float(), want.float(), atol=5e-2, rtol=2e-2)
 
 

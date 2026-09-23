@@ -40,17 +40,17 @@ class RouteProtocol(StrEnum):
 class RouteEdge:
     """One logical route edge with its full protocol contract."""
 
-    query_id: int  # logical token/query index
-    peer_id: int  # logical source/expert/page index
+    query_id: int
+    peer_id: int
     weight: float = 1.0
-    ordinal: int = 0  # stable position within the query's route
-    payload_type: str = "hidden"  # e.g. hidden | expert_partial | page_value
+    ordinal: int = 0
+    payload_type: str = "hidden"
     payload_bytes: int = 2
-    response_bytes: int = 0  # >0 when the protocol requires a return
+    response_bytes: int = 0
     requires_return: bool = False
-    dropped: bool = False  # declared capacity-policy drop
-    merge_policy: str = "sum"  # sum | mean | last_write | ordered | reject
-    capacity_policy: str = "dropless"  # dropless | fixed_capacity | expert_quota
+    dropped: bool = False
+    merge_policy: str = "sum"
+    capacity_policy: str = "dropless"
 
 
 def classify_edge(
@@ -61,11 +61,8 @@ def classify_edge(
     query_tensor: str,
 ) -> RouteLeg:
     if edge.dropped:
-        return RouteLeg.LOCAL_MEMORY  # dropped edges generate no traffic
+        return RouteLeg.LOCAL_MEMORY
     return placement.classify(source_tensor, edge.peer_id, query_tensor, edge.query_id)
-
-
-# -- Pull gather -----------------------------------------------------------------
 
 
 def plan_pull_gather(
@@ -124,9 +121,6 @@ def plan_pull_gather(
         )
     )
     return tuple(steps)
-
-
-# -- Push dispatch + return --------------------------------------------------------
 
 
 def plan_push_dispatch_return(
@@ -268,12 +262,11 @@ def verify_plan_conservation(
         if src_dev == dst_dev:
             continue
         if protocol is RouteProtocol.PUSH_DISPATCH_RETURN:
-            # Dispatch leaves the token owner; returns come back.
             dispatch_pair = (dst_dev, src_dev)
             return_pair = (src_dev, dst_dev)
         else:
             dispatch_pair = (src_dev, dst_dev)
-            return_pair = None  # pull gather has no required return leg
+            return_pair = None
         expected_remote[dispatch_pair] = expected_remote.get(dispatch_pair, 0) + 1
         if protocol is RouteProtocol.PUSH_DISPATCH_RETURN:
             assert return_pair is not None

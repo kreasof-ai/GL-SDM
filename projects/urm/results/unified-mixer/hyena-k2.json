@@ -1,0 +1,445 @@
+{
+  "schema_version": 1,
+  "generated_utc": "2026-09-20T06:13:46.977101+00:00",
+  "purpose": "compare unified Hyena K2 FFT convolution against pinned Safari HyenaOperator.forward",
+  "upstream": {
+    "repository": "/tmp/urm-comparator-pins/safari",
+    "revision": "02220c69d247e5473616cd053a443ad99fd2559b",
+    "loaded_module": "/tmp/urm-comparator-pins/safari/standalone_hyena.py",
+    "kernel_source_sha256": {
+      "standalone_hyena.py": "9ec3561a229cf2493a393e8a7fd06a189e8c6e4d61d57f4586558a45cb443965"
+    }
+  },
+  "provenance": {
+    "git_revision": "19ca443a118b8607ea8f871d255d683acfb68398",
+    "dirty_tree": true,
+    "benchmark_command": "PYTHONPATH=/path/to/safari-checkout:src python benchmarks/unified_mixer_hyena.py",
+    "config_hash": "9d864bb37ad01eef9b2b8ca3575c46428d1245a39d799df0519d476b333f54e3",
+    "solver_version": null,
+    "python": "3.12.14",
+    "platform": "Linux-6.12.103-127.188.amzn2023.x86_64-x86_64-with-glibc2.39",
+    "pytorch": "2.14.0+cu130",
+    "triton": "3.8.0",
+    "cuda": "13.0",
+    "driver": "595.91.07",
+    "gpu": "NVIDIA A10G",
+    "gpu_uuid": "GPU-624fe7c6-80af-dacf-0397-57fbc701f3de"
+  },
+  "hardware": {
+    "gpu": "NVIDIA A10G",
+    "compute_capability": [
+      8,
+      6
+    ],
+    "torch": "2.14.0+cu130",
+    "cuda": "13.0"
+  },
+  "methodology": {
+    "timed_work": "pinned HyenaOperator.forward including learned implicit-filter generation, short depthwise convolution, projections, multiplicative gating and source FFT; compiled path keeps the same source frontend around the unified K2 FFT convolution",
+    "sampling": "paired interleaved calls with alternating order and synchronized wall/CUDA-event timing",
+    "warmup": 3,
+    "pairs": 21,
+    "overhead_gate_fraction": 0.1
+  },
+  "cases": {
+    "hyena_fftconv_core": {
+      "architecture_ids": [
+        "arch-077"
+      ],
+      "semantic_scope": "Hyena implicit-filter causal FFT convolution with a learned direct term",
+      "shape": {
+        "batch": 1,
+        "sequence": 128,
+        "d_model": 32,
+        "order": 2,
+        "filter_order": 16,
+        "dtype": "float32",
+        "dropout": 0.0,
+        "filter_dropout": 0.0
+      },
+      "upstream_callable": "HyenaOperator.forward(order=2)",
+      "compiled_anchor": "hyena_fft_convolution_adapter",
+      "compiler_plan_build_ms": 42.03444100130582,
+      "parity": {
+        "status": "pass",
+        "output_max_abs_error": 0.0,
+        "input_and_parameter_gradient_max_abs_errors": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "tolerances": {
+          "output_atol": 2e-06,
+          "gradient_atol": 3e-06,
+          "relative_tolerance": 3e-05
+        },
+        "independent_reference": "tests/test_unified_mixer.py compares the K2 adapter with pinned HyenaOperator.forward"
+      },
+      "performance": {
+        "comparison": "complete pinned HyenaOperator.forward vs source implicit filter, short convolution, gating and projections around the independent K2 FFT core",
+        "measurements": {
+          "forward": {
+            "upstream_wall": {
+              "sample_count": 21,
+              "median_ms": 0.9562319974065758,
+              "p95_ms": 1.016773996525444,
+              "raw_samples_ms": [
+                0.9464619943173602,
+                1.016773996525444,
+                0.9662730008130893,
+                0.9400220005773008,
+                0.9633230001782067,
+                0.993433000985533,
+                1.0403039996162988,
+                0.997513001493644,
+                0.9531320029054768,
+                0.9374419969390146,
+                0.9856629985733889,
+                0.9341520053567365,
+                0.9549420065013692,
+                0.9684719989309087,
+                0.9442709997529164,
+                0.9337820010841824,
+                0.9793229983188212,
+                0.9562319974065758,
+                0.9677830021246336,
+                0.9314420021837577,
+                0.9307119980803691
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 21,
+              "median_ms": 0.8950199990067631,
+              "p95_ms": 0.9707229983177967,
+              "raw_samples_ms": [
+                0.9090110033866949,
+                0.8893499980331399,
+                0.9871029978967272,
+                0.9707229983177967,
+                0.9404119991813786,
+                0.8904710048227571,
+                0.8950199990067631,
+                0.9253509997506626,
+                0.9258209975087084,
+                0.8882509937393479,
+                0.8883810005499981,
+                0.9254309989046305,
+                0.9246510016964749,
+                0.8930410040193237,
+                0.8879200031515211,
+                0.890481001988519,
+                0.8858799992594868,
+                0.9001910002552904,
+                0.9373719949508086,
+                0.8889809978427365,
+                0.8925209986045957
+              ]
+            },
+            "upstream_device": {
+              "sample_count": 21,
+              "median_ms": 0.92467200756073,
+              "p95_ms": 0.9850879907608032,
+              "raw_samples_ms": [
+                0.9144319891929626,
+                0.9850879907608032,
+                0.9349120259284973,
+                0.9093120098114014,
+                0.9308159947395325,
+                0.9615359902381897,
+                1.0076160430908203,
+                0.9656320214271545,
+                0.9215999841690063,
+                0.9062399864196777,
+                0.954367995262146,
+                0.9031680226325989,
+                0.9226239919662476,
+                0.936959981918335,
+                0.9123839735984802,
+                0.9041280150413513,
+                0.9492480158805847,
+                0.92467200756073,
+                0.9308159947395325,
+                0.9000959992408752,
+                0.899071991443634
+              ]
+            },
+            "compiled_device": {
+              "sample_count": 21,
+              "median_ms": 0.8632320165634155,
+              "p95_ms": 0.9318400025367737,
+              "raw_samples_ms": [
+                0.8775680065155029,
+                0.857088029384613,
+                0.9502720236778259,
+                0.9318400025367737,
+                0.9000959992408752,
+                0.8591359853744507,
+                0.8632320165634155,
+                0.8908799886703491,
+                0.8950080275535583,
+                0.8560640215873718,
+                0.857088029384613,
+                0.894976019859314,
+                0.8878080248832703,
+                0.8601599931716919,
+                0.857088029384613,
+                0.8591359853744507,
+                0.8550400137901306,
+                0.8683519959449768,
+                0.8919039964675903,
+                0.8560640215873718,
+                0.8611840009689331
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": -0.046371636040733404,
+              "p95": 0.02155705175049914,
+              "raw_samples": [
+                -0.039569460956197164,
+                -0.1253218502122812,
+                0.02155705175049914,
+                0.032659871494115436,
+                -0.02378330112806373,
+                -0.10364261712730771,
+                -0.13965533215590986,
+                -0.0723419159799705,
+                -0.028653959067070495,
+                -0.0524736499541175,
+                -0.09869701730124092,
+                -0.009335746647330204,
+                -0.03172025588849295,
+                -0.07788660384074386,
+                -0.059676720577186475,
+                -0.046371636040733404,
+                -0.09541591407507595,
+                -0.058606067673196253,
+                -0.03142337394546287,
+                -0.04558631051796217,
+                -0.04103417550707834
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled"
+            ]
+          },
+          "forward_backward": {
+            "upstream_wall": {
+              "sample_count": 21,
+              "median_ms": 2.8371559965307824,
+              "p95_ms": 2.919307997217402,
+              "raw_samples_ms": [
+                2.87521599966567,
+                2.8416049972292967,
+                2.840444998582825,
+                2.793275001749862,
+                2.8848169968114235,
+                2.8591459995368496,
+                2.743862998613622,
+                2.7848739991895854,
+                2.7379739985917695,
+                2.7911050055990927,
+                2.8468259988585487,
+                2.8351349974400364,
+                2.8790269934688695,
+                2.8360059950500727,
+                2.8371559965307824,
+                2.919307997217402,
+                2.982329002406914,
+                2.846876006515231,
+                2.7868050019606017,
+                2.8169849974801764,
+                2.7867449971381575
+              ]
+            },
+            "compiled_wall": {
+              "sample_count": 21,
+              "median_ms": 2.7317130006849766,
+              "p95_ms": 2.861315995687619,
+              "raw_samples_ms": [
+                2.676830998098012,
+                2.655162003065925,
+                2.710343003855087,
+                2.744012999755796,
+                2.855837003153283,
+                2.7340529995854013,
+                2.861315995687619,
+                2.7122030005557463,
+                2.830394994816743,
+                2.6902220051852055,
+                2.905456996813882,
+                2.760903000307735,
+                2.7317130006849766,
+                2.7068929994129576,
+                2.7049229975091293,
+                2.6996130036422983,
+                2.716593000513967,
+                2.7551640014280565,
+                2.6937419970636256,
+                2.735654001298826,
+                2.760733994364273
+              ]
+            },
+            "upstream_device": {
+              "sample_count": 21,
+              "median_ms": 2.8017280101776123,
+              "p95_ms": 2.885632038116455,
+              "raw_samples_ms": [
+                2.8385279178619385,
+                2.8098559379577637,
+                2.80678391456604,
+                2.7586560249328613,
+                2.8528640270233154,
+                2.826240062713623,
+                2.7105278968811035,
+                2.751552104949951,
+                2.7054080963134766,
+                2.759648084640503,
+                2.8149759769439697,
+                2.800640106201172,
+                2.845695972442627,
+                2.8017280101776123,
+                2.801664113998413,
+                2.885632038116455,
+                2.9480960369110107,
+                2.811903953552246,
+                2.7535359859466553,
+                2.781183958053589,
+                2.7515199184417725
+              ]
+            },
+            "compiled_device": {
+              "sample_count": 21,
+              "median_ms": 2.698240041732788,
+              "p95_ms": 2.8282880783081055,
+              "raw_samples_ms": [
+                2.6419200897216797,
+                2.6224639415740967,
+                2.6767361164093018,
+                2.7105278968811035,
+                2.821120023727417,
+                2.7002880573272705,
+                2.8282880783081055,
+                2.678783893585205,
+                2.796544075012207,
+                2.6572799682617188,
+                2.870271921157837,
+                2.7258880138397217,
+                2.698240041732788,
+                2.6716160774230957,
+                2.6716160774230957,
+                2.6654720306396484,
+                2.68287992477417,
+                2.7197439670562744,
+                2.6613759994506836,
+                2.698240041732788,
+                2.726912021636963
+              ]
+            },
+            "paired_compiled_overhead_fraction": {
+              "median": -0.03339415740660125,
+              "p95": 0.03375524978415008,
+              "raw_samples": [
+                -0.06899829494226738,
+                -0.06561186172784839,
+                -0.045803384607922215,
+                -0.017635929854097968,
+                -0.010045695685435773,
+                -0.04375187555015098,
+                0.04280570754929882,
+                -0.026094896449529448,
+                0.03375524978415008,
+                -0.03614446615641869,
+                0.02059521656007142,
+                -0.026182879192464748,
+                -0.051167979014464834,
+                -0.045526347921149395,
+                -0.046607588438332244,
+                -0.07525584617467919,
+                -0.08910351664034456,
+                -0.03221496295493255,
+                -0.03339415740660125,
+                -0.02887164690408421,
+                -0.009333829539694746
+              ],
+              "gate": {
+                "limit_fraction": 0.1,
+                "pass": true
+              }
+            },
+            "pair_order": [
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled",
+              "compiledupstream",
+              "upstreamcompiled"
+            ]
+          }
+        },
+        "cold_calls": {
+          "upstream_forward": {
+            "wall": 1.8528729997342452,
+            "device": 1.759328007698059
+          },
+          "compiled_forward_after_upstream": {
+            "wall": 1.0393640041002072,
+            "device": 0.9963520169258117
+          }
+        }
+      }
+    }
+  }
+}

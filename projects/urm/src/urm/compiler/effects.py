@@ -63,8 +63,6 @@ _CLASS_FLAGS: dict[EffectClass, EffectKind] = {
     EffectClass.TRANSACTIONAL_COMMIT: (EffectKind.WRITES_STATE | EffectKind.COMMITS),
 }
 
-# Effects that act as movement barriers for rules that do not explicitly
-# preserve them.
 BARRIERS: frozenset[EffectClass] = frozenset(
     {
         EffectClass.ORDERED_STATE_TRANSITION,

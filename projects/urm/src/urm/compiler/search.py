@@ -27,8 +27,6 @@ from urm.compiler.constraints import Assignment, ConstraintModel
 from urm.compiler.diagnostics import CompilerError, Diagnostic, DiagnosticCode
 from urm.compiler.schedule_space import SchedulePoint
 
-# -- Compile probing ----------------------------------------------------------
-
 
 class CompileStatus(StrEnum):
     """Honest probe outcome for one compiled decision."""
@@ -121,21 +119,17 @@ class CompileProbe(Protocol):
     def __call__(self, context: CompileContext) -> CompileProbeResult: ...
 
 
-# -- Attempts and decisions ------------------------------------------------------
-
-
 @dataclass(frozen=True, slots=True)
 class ScheduleAttempt:
     """One bounded-search attempt: what was tried and what happened."""
 
     index: int
-    selection_policy: str  # "solver_guided" | "cost_heuristic"
+    selection_policy: str
     schedule: dict[str, str | int]
     verified: bool
     rejection_reasons: tuple[str, ...] = ()
     nogood_added: bool = False
     nogood_budget_exhausted: bool = False
-    # Exact variable assignment this attempt's nogood excludes (plain data).
     nogood_forbidden: dict[str, bool | int | str] | None = None
     compile_status: CompileStatus = CompileStatus.NOT_PROBED
     compile_detail: str | None = None
@@ -235,9 +229,6 @@ def nogood_count(model: ConstraintModel) -> int:
     return sum(1 for constraint in model.constraints if isinstance(constraint, Nogood))
 
 
-# -- Search ------------------------------------------------------------------------
-
-
 class CompilationSearch:
     """Bounded solve/verify/probe/retry loop over one candidate-bound model.
 
@@ -257,13 +248,12 @@ class CompilationSearch:
         probe: CompileProbe | None = None,
         verifier: Verifier | None = None,
     ) -> None:
-        del problem_hint  # reserved for backend-specific probes
+        del problem_hint
         self.model = model
         self.max_nogoods = max_nogoods
         self.probe = probe
         self._verifier = verifier
 
-    # -- solving -------------------------------------------------------------
 
     def _next_assignment(
         self,
@@ -289,13 +279,7 @@ class CompilationSearch:
                     dict(result.statistics),
                     "solver_guided",
                 )
-            # UNKNOWN/TIMEOUT: the deterministic exhaustive fallback below is
-            # still sound (complete enumeration + independent verification);
-            # optimality claims are simply dropped, and the reason recorded.
 
-        # Deterministic fallback: rank every legal decoded schedule point by
-        # the model's documented objective order. Learned nogoods are plain
-        # constraints, so they prune this sweep identically.
         from urm.compiler.kernel_plan import exhaustive_schedule_sweep
 
         _legal, ranked, _total = exhaustive_schedule_sweep(self.model)
@@ -341,7 +325,6 @@ class CompilationSearch:
 
         return verify_schedule_assignment(self.model, assignment)
 
-    # -- main loop -------------------------------------------------------------
 
     def run(self) -> ScheduleDecision:
         from urm.compiler.kernel_plan import decode_schedule_point
@@ -508,7 +491,6 @@ class CompilationSearch:
                 kernel_resources=kres,
             )
 
-        # Reached only when the retry budget was exhausted.
         last = attempts[-1]
         raise CompilerError(
             (

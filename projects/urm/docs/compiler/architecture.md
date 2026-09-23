@@ -33,9 +33,10 @@ semantics or prove numerical equivalence.
 
 ## Execution boundary
 
-`compiler/execution.py` owns anchor capability matching. `compiler/anchors/` binds
-selected plans to implementations. Serialized schedules drive actual launches.
-`runtime/registry.py` holds the backend protocol, not a competing compiler.
+`compiler/execution.py` owns anchor capability matching. `runtime/` binds selected
+plans to executable backends; the compiler holds no GPU execution bodies. Serialized
+schedules drive actual launches. `runtime/registry.py` holds the backend protocol,
+not a competing compiler.
 
 External libraries are execution options, not semantic definitions. Physical
 layout conversion, version probing and library flags stay in adapters. Training,

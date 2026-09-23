@@ -17,7 +17,7 @@ from urm.adapters.sparse_delta_memory import (
     MODE_TRAINING,
     UrmSparseDeltaMemoryAdapter,
 )
-from urm.backends.sparse_state_mixer import (
+from urm.backends.triton.sparse_state.backend import (
     CertifiedSparseStateRoutes,
     SparseState,
 )

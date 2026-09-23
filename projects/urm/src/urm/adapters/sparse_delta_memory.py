@@ -160,7 +160,10 @@ def probe_sdm_support(*, require_cuda: bool = True) -> SDMSupportStatus:
             identity,
         )
     versions = identity["runtime_versions"]
-    if versions.get("torch") != "2.8.0" or versions.get("triton") != "3.4.0":
+    allow_unpinned = os.environ.get("URM_SDM_ALLOW_UNPINNED_RUNTIME") == "1"
+    if not allow_unpinned and (
+        versions.get("torch") != "2.8.0" or versions.get("triton") != "3.4.0"
+    ):
         return SDMSupportStatus(
             False,
             "incompatible_runtime",
@@ -734,8 +737,6 @@ class UrmSparseDeltaMemoryAdapter:
                 trace.read_weights,
                 grad_final_memory=grad_final_memory,
             )
-        # Upstream mutates memory during the call.  The sequence count becomes
-        # visible only after that call returns, matching SDMLayerState.update_.
         state.memory = memory
         state.sequence_length += spec.sequence
         if return_info:

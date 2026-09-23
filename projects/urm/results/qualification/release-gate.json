@@ -1,0 +1,859 @@
+{
+  "schema_version": 2,
+  "purpose": "executable production release gate (acceptance-contract section 10)",
+  "accounting": "Verdicts are derived from frozen-matrix coverage (every mandatory case, dtype, mode, and correctness component, with passing parity and performance gates), not from an artifact's self-declared verdict.",
+  "production_progress": {
+    "qualified": 1,
+    "partial_coverage": 0,
+    "total_mandatory": 6,
+    "fraction": 0.16666666666666666,
+    "headline": "Production qualification incomplete: 1/6 mandatory workloads fully qualified against the frozen matrix"
+  },
+  "workloads": {
+    "k1-mha": {
+      "workload": "k1-mha",
+      "verdict": "gate_failed",
+      "artifact_self_declared_verdict": "correct_below_target",
+      "coverage_complete": true,
+      "cases": {
+        "latency_small/bfloat16": {
+          "forward": {
+            "median_overhead": 2.8481349341470175,
+            "ci95_upper": 2.99249035525179,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 0.6237049319008331,
+            "ci95_upper": 0.9731898164132519,
+            "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 3.114106215741881,
+            "ci95_upper": 5.016547085291725,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": 0.31787369198558685,
+            "ci95_upper": 0.6505252717234062,
+            "gate_pass": false
+          }
+        },
+        "latency_small/float16": {
+          "forward": {
+            "median_overhead": 3.6233682663658757,
+            "ci95_upper": 4.061737490225634,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 0.8045855555987277,
+            "ci95_upper": 0.8685588557545634,
+            "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 3.228645638792485,
+            "ci95_upper": 4.15896835741651,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": 0.33952211596880144,
+            "ci95_upper": 1.1072604638840193,
+            "gate_pass": false
+          }
+        },
+        "throughput_medium/bfloat16": {
+          "forward": {
+            "median_overhead": 0.37643348648147096,
+            "ci95_upper": 0.39633769984204126,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 0.5419804434215006,
+            "ci95_upper": 0.5439059938145427,
+            "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 0.4056708085130701,
+            "ci95_upper": 0.4058942302793932,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": -0.13279929771252302,
+            "ci95_upper": -0.11217522770640449,
+            "gate_pass": true
+          }
+        },
+        "throughput_medium/float16": {
+          "forward": {
+            "median_overhead": 0.38666155039522626,
+            "ci95_upper": 0.39342562400636394,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 0.5354581722748408,
+            "ci95_upper": 0.5372849539180967,
+            "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 0.37361391408396843,
+            "ci95_upper": 0.37414867215710945,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": -0.21195627687839494,
+            "ci95_upper": -0.19179001767679477,
+            "gate_pass": true
+          }
+        },
+        "throughput_long/bfloat16": {
+          "forward": {
+            "median_overhead": 0.14484898388470158,
+            "ci95_upper": 0.14493206219723376,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 0.682846504370984,
+            "ci95_upper": 0.6900384940059023,
+            "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 0.1569833144852627,
+            "ci95_upper": 0.15789255244626607,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": 0.009014197655971406,
+            "ci95_upper": 0.02641586473413204,
+            "gate_pass": true
+          }
+        },
+        "throughput_long/float16": {
+          "forward": {
+            "median_overhead": 0.1381180382325509,
+            "ci95_upper": 0.14452049995888602,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 0.6754333321784498,
+            "ci95_upper": 0.6796585275290804,
+            "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 0.14143720311181857,
+            "ci95_upper": 0.14600382005557994,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": 0.05828512744861823,
+            "ci95_upper": 0.17308142781088906,
+            "gate_pass": false
+          }
+        },
+        "decode_step/bfloat16": {
+          "forward": {
+            "median_overhead": 2.4274590261038593,
+            "ci95_upper": 2.9819461056469905,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 0.6384104748277565,
+            "ci95_upper": 0.655928100363617,
+            "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 3.2469219926679305,
+            "ci95_upper": 3.2813117934330522,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": 0.3339093027231137,
+            "ci95_upper": 0.6461778828752744,
+            "gate_pass": false
+          }
+        },
+        "decode_step/float16": {
+          "forward": {
+            "median_overhead": 2.3979917831215984,
+            "ci95_upper": 3.139709945134546,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 0.6711823715571851,
+            "ci95_upper": 0.6872557117659525,
+            "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 2.5692705090322367,
+            "ci95_upper": 3.1545654984725435,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": 0.35339720928742313,
+            "ci95_upper": 0.6457799875964492,
+            "gate_pass": false
+          }
+        }
+      }
+    },
+    "k1-gqa": {
+      "workload": "k1-gqa",
+      "verdict": "gate_failed",
+      "artifact_self_declared_verdict": "correct_below_target",
+      "coverage_complete": true,
+      "cases": {
+        "latency_small/bfloat16": {
+          "forward": {
+            "median_overhead": 3.0916200766967266,
+            "ci95_upper": 3.8765521844723954,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 0.43327968119687116,
+            "ci95_upper": 0.5604617855226024,
+            "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 3.040342776893474,
+            "ci95_upper": 5.38177439813533,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": 0.23030611330322207,
+            "ci95_upper": 0.5054873561631297,
+            "gate_pass": false
+          }
+        },
+        "latency_small/float16": {
+          "forward": {
+            "median_overhead": 3.5527341398827943,
+            "ci95_upper": 3.6998275061163697,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 0.6227757254760161,
+            "ci95_upper": 0.6777371651028984,
+            "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 2.911546048575364,
+            "ci95_upper": 3.7556719389633817,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": 0.23055920702419638,
+            "ci95_upper": 0.4774561629874927,
+            "gate_pass": false
+          }
+        },
+        "throughput_long/bfloat16": {
+          "forward": {
+            "median_overhead": 0.10636724626466167,
+            "ci95_upper": 0.10755131642219334,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 0.2607381156465651,
+            "ci95_upper": 0.2650301708833682,
+            "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 0.10316453498837154,
+            "ci95_upper": 0.10998615410449007,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": 0.4341661227398614,
+            "ci95_upper": 0.4503691587900476,
+            "gate_pass": false
+          }
+        },
+        "throughput_long/float16": {
+          "forward": {
+            "median_overhead": 0.11822481729371372,
+            "ci95_upper": 0.13141159675307887,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 0.2638111068621415,
+            "ci95_upper": 0.2671967768980108,
+            "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 0.10912575720177344,
+            "ci95_upper": 0.11061764734908562,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": 0.4590861399486047,
+            "ci95_upper": 0.5388023317167114,
+            "gate_pass": false
+          }
+        },
+        "decode_step/bfloat16": {
+          "forward": {
+            "median_overhead": 2.4813928604125164,
+            "ci95_upper": 2.618414888195039,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 0.640209629834634,
+            "ci95_upper": 0.7509931489130071,
+            "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 1.967982175752172,
+            "ci95_upper": 3.1412433735026686,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": 0.27726181462696153,
+            "ci95_upper": 0.4873017472485735,
+            "gate_pass": false
+          }
+        },
+        "decode_step/float16": {
+          "forward": {
+            "median_overhead": 2.2922924712831665,
+            "ci95_upper": 2.954517825002702,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 0.5458885315543961,
+            "ci95_upper": 0.5642836074334352,
+            "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 2.244907204099621,
+            "ci95_upper": 2.566190830986994,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": 0.11939227841762735,
+            "ci95_upper": 0.2096115303421373,
+            "gate_pass": false
+          }
+        }
+      }
+    },
+    "k1-masked-variant": {
+      "workload": "k1-masked-variant",
+      "verdict": "gate_failed",
+      "artifact_self_declared_verdict": "correct_below_target",
+      "coverage_complete": true,
+      "cases": {
+        "block_sparse_medium/bfloat16": {
+          "forward": {
+            "median_overhead": 0.03864057347667007,
+            "ci95_upper": 0.07403588448890717,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.2757585007748389,
+            "ci95_upper": -0.2590836978140469,
+            "gate_pass": true
+          },
+          "prefill": {
+            "median_overhead": 0.0021113147528967154,
+            "ci95_upper": 0.040075765626896555,
+            "gate_pass": true
+          }
+        },
+        "fully_masked_rows/bfloat16": {
+          "forward": {
+            "median_overhead": 1.0654179517145939,
+            "ci95_upper": 1.1153808808406582,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 0.5464560020093966,
+            "ci95_upper": 1.0638195422815133,
+            "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 1.098193419945027,
+            "ci95_upper": 1.3616740842188482,
+            "gate_pass": false
+          }
+        }
+      }
+    },
+    "k2-diagonal-recurrence": {
+      "workload": "k2-diagonal-recurrence",
+      "verdict": "gate_failed",
+      "artifact_self_declared_verdict": "correct_below_target",
+      "coverage_complete": true,
+      "cases": {
+        "latency_short/float32": {
+          "forward": {
+            "median_overhead": 0.07578253441085779,
+            "ci95_upper": 0.0855309765684848,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.01503421024324094,
+            "ci95_upper": 0.001960366881231616,
+            "gate_pass": true
+          },
+          "prefill": {
+            "median_overhead": -0.02610127163880487,
+            "ci95_upper": -0.020056730968773025,
+            "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": -0.20448788395586417,
+            "ci95_upper": -0.1702444432997773,
+            "gate_pass": true
+          }
+        },
+        "latency_short/bfloat16": {
+          "forward": {
+            "median_overhead": -0.05344872960066026,
+            "ci95_upper": -0.04344098611328313,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.08680489515137708,
+            "ci95_upper": -0.06786608372927407,
+            "gate_pass": true
+          },
+          "prefill": {
+            "median_overhead": -0.11322184368223046,
+            "ci95_upper": -0.0943262854303527,
+            "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": -0.17965079425931743,
+            "ci95_upper": -0.14985656750875656,
+            "gate_pass": true
+          }
+        },
+        "throughput_medium/float32": {
+          "forward": {
+            "median_overhead": 0.4879611109504957,
+            "ci95_upper": 0.4892847342735223,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 1.0893399307507974,
+            "ci95_upper": 1.0912179428655062,
+            "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 0.4606857308058524,
+            "ci95_upper": 0.49686006293548785,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": -0.16698184902393692,
+            "ci95_upper": -0.16417925235913006,
+            "gate_pass": true
+          }
+        },
+        "throughput_medium/bfloat16": {
+          "forward": {
+            "median_overhead": 0.3097816101370315,
+            "ci95_upper": 0.3203782585197583,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 0.43053155849688657,
+            "ci95_upper": 0.43437462356285506,
+            "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 0.293339178365434,
+            "ci95_upper": 0.31262045711116526,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": -0.146878351589168,
+            "ci95_upper": -0.14382870371618642,
+            "gate_pass": true
+          }
+        },
+        "continuation_nonzero_state/float32": {
+          "forward": {
+            "median_overhead": 0.022164824998935108,
+            "ci95_upper": 0.04623553319198449,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.016236725743394166,
+            "ci95_upper": -0.008185783266588732,
+            "gate_pass": true
+          },
+          "prefill": {
+            "median_overhead": 0.09163191148362615,
+            "ci95_upper": 0.09262952140810828,
+            "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": -0.20562963564846,
+            "ci95_upper": 0.08136109402823938,
+            "gate_pass": true
+          }
+        },
+        "continuation_nonzero_state/bfloat16": {
+          "forward": {
+            "median_overhead": -0.10835786844248656,
+            "ci95_upper": 0.012279134616251644,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.06316382852534962,
+            "ci95_upper": -0.06256091492649075,
+            "gate_pass": true
+          },
+          "prefill": {
+            "median_overhead": -0.09310644464900719,
+            "ci95_upper": -0.09200337547296715,
+            "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": -0.1626068284451727,
+            "ci95_upper": -0.15991451851151645,
+            "gate_pass": true
+          }
+        },
+        "decode_step/float32": {
+          "forward": {
+            "median_overhead": 0.04826287195124011,
+            "ci95_upper": 0.0857473516575567,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.05271813317348805,
+            "ci95_upper": -0.04161458081953549,
+            "gate_pass": true
+          },
+          "prefill": {
+            "median_overhead": -0.03120755094871699,
+            "ci95_upper": 0.015273713186001348,
+            "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": -0.14567809604855467,
+            "ci95_upper": -0.1002668968142374,
+            "gate_pass": true
+          }
+        },
+        "decode_step/bfloat16": {
+          "forward": {
+            "median_overhead": -0.05878126539035968,
+            "ci95_upper": -0.05178237764658547,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.05680468367917468,
+            "ci95_upper": -0.04386856717934484,
+            "gate_pass": true
+          },
+          "prefill": {
+            "median_overhead": -0.09643834557835376,
+            "ci95_upper": -0.0950393689680477,
+            "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": -0.17635437386311983,
+            "ci95_upper": -0.15223129412864828,
+            "gate_pass": true
+          }
+        }
+      }
+    },
+    "k2-gated-delta-recurrence": {
+      "workload": "k2-gated-delta-recurrence",
+      "verdict": "gate_failed",
+      "artifact_self_declared_verdict": "correct_below_target",
+      "coverage_complete": true,
+      "cases": {
+        "latency_short/float32": {
+          "forward": {
+            "median_overhead": -0.7417856275750841,
+            "ci95_upper": -0.7176146327515185,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.6374850606900228,
+            "ci95_upper": -0.6358290381219837,
+            "gate_pass": true
+          },
+          "prefill": {
+            "median_overhead": -0.7428836715698104,
+            "ci95_upper": -0.7405870814064103,
+            "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": -0.5589974285282518,
+            "ci95_upper": -0.5296064463732159,
+            "gate_pass": true
+          }
+        },
+        "latency_short/bfloat16": {
+          "forward": {
+            "median_overhead": -0.7640873309610371,
+            "ci95_upper": -0.751394005055841,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.6152818820610102,
+            "ci95_upper": -0.6070656010774598,
+            "gate_pass": true
+          },
+          "prefill": {
+            "median_overhead": -0.7433154416295469,
+            "ci95_upper": -0.7334955008884302,
+            "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": -0.5614438521892661,
+            "ci95_upper": -0.5385373205206023,
+            "gate_pass": true
+          }
+        },
+        "throughput_medium/float32": {
+          "forward": {
+            "median_overhead": 2.1151316001994673,
+            "ci95_upper": 2.116331201153983,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 0.9763522253941024,
+            "ci95_upper": 0.9787018941671326,
+            "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 2.0921832153183515,
+            "ci95_upper": 2.127917350423098,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": -0.5384941967004797,
+            "ci95_upper": -0.4983468262515122,
+            "gate_pass": true
+          }
+        },
+        "throughput_medium/bfloat16": {
+          "forward": {
+            "median_overhead": 3.2723571756501397,
+            "ci95_upper": 3.5910567900651267,
+            "gate_pass": false
+          },
+          "forward_backward": {
+            "median_overhead": 2.2506551758576907,
+            "ci95_upper": 2.2860265062056295,
+            "gate_pass": false
+          },
+          "prefill": {
+            "median_overhead": 3.497474184549777,
+            "ci95_upper": 3.6911018636489152,
+            "gate_pass": false
+          },
+          "decode": {
+            "median_overhead": -0.5544931995853113,
+            "ci95_upper": -0.5329815694357507,
+            "gate_pass": true
+          }
+        },
+        "continuation_nonzero_state/float32": {
+          "forward": {
+            "median_overhead": -0.26820323522686085,
+            "ci95_upper": -0.26650189319569695,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.40741060704292836,
+            "ci95_upper": -0.3931721750346018,
+            "gate_pass": true
+          },
+          "prefill": {
+            "median_overhead": -0.28153792809486844,
+            "ci95_upper": -0.2543185079981646,
+            "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": -0.5886073763231489,
+            "ci95_upper": -0.5368532680277629,
+            "gate_pass": true
+          }
+        },
+        "continuation_nonzero_state/bfloat16": {
+          "forward": {
+            "median_overhead": -0.27385245486632526,
+            "ci95_upper": -0.2532846611267495,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.43115695876372523,
+            "ci95_upper": -0.4295449073652127,
+            "gate_pass": true
+          },
+          "prefill": {
+            "median_overhead": -0.2549720353673339,
+            "ci95_upper": -0.23987689845611415,
+            "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": -0.563778447253136,
+            "ci95_upper": -0.5373878678224813,
+            "gate_pass": true
+          }
+        },
+        "decode_step/float32": {
+          "forward": {
+            "median_overhead": -0.7401045053342339,
+            "ci95_upper": -0.7069690524138762,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.6297831507945268,
+            "ci95_upper": -0.6133238305972059,
+            "gate_pass": true
+          },
+          "prefill": {
+            "median_overhead": -0.7333552704683104,
+            "ci95_upper": -0.729179368278931,
+            "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": -0.5618385186502708,
+            "ci95_upper": -0.5426990482341348,
+            "gate_pass": true
+          }
+        },
+        "decode_step/bfloat16": {
+          "forward": {
+            "median_overhead": -0.7378726426672703,
+            "ci95_upper": -0.7226461591705926,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.6249832801145435,
+            "ci95_upper": -0.5765986693387442,
+            "gate_pass": true
+          },
+          "prefill": {
+            "median_overhead": -0.7419535393911155,
+            "ci95_upper": -0.741852682465457,
+            "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": -0.545913195538028,
+            "ci95_upper": -0.5318449405808794,
+            "gate_pass": true
+          }
+        }
+      }
+    },
+    "k3-sparse-state": {
+      "workload": "k3-sparse-state",
+      "verdict": "qualified",
+      "artifact_self_declared_verdict": "correct_below_target",
+      "coverage_complete": true,
+      "cases": {
+        "ordered_collisions/float32": {
+          "forward": {
+            "median_overhead": -0.19984063891349296,
+            "ci95_upper": -0.13823928812558123,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.4162397144884352,
+            "ci95_upper": -0.3605070528464974,
+            "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": 0.2676635502884033,
+            "ci95_upper": 0.3360549475008018,
+            "gate_pass": false
+          }
+        },
+        "ordered_collisions/bfloat16": {
+          "forward": {
+            "median_overhead": -0.28535003301345396,
+            "ci95_upper": -0.1898944234617627,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.42056243609123395,
+            "ci95_upper": -0.31355014611106224,
+            "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": -0.024550138636963873,
+            "ci95_upper": 0.05383079312409577,
+            "gate_pass": true
+          }
+        },
+        "imbalanced_routes/float32": {
+          "forward": {
+            "median_overhead": -0.28043593581479476,
+            "ci95_upper": -0.1808211420015834,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.48817434997330267,
+            "ci95_upper": -0.484494820221018,
+            "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": 0.11454534823634863,
+            "ci95_upper": 0.4277152495550856,
+            "gate_pass": false
+          }
+        },
+        "imbalanced_routes/bfloat16": {
+          "forward": {
+            "median_overhead": -0.35329438342641656,
+            "ci95_upper": -0.31006727780478915,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.4893037369101539,
+            "ci95_upper": -0.4652065014546319,
+            "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": -0.10050204274317776,
+            "ci95_upper": -0.046593662724369315,
+            "gate_pass": true
+          }
+        },
+        "overlapping_reads/float32": {
+          "forward": {
+            "median_overhead": -0.17722553705584482,
+            "ci95_upper": -0.17670786903170976,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.43748875384862834,
+            "ci95_upper": -0.41152846632961254,
+            "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": 0.07990914275890514,
+            "ci95_upper": 0.12910564166086297,
+            "gate_pass": false
+          }
+        },
+        "overlapping_reads/bfloat16": {
+          "forward": {
+            "median_overhead": -0.19938962564143312,
+            "ci95_upper": -0.1869810575692784,
+            "gate_pass": true
+          },
+          "forward_backward": {
+            "median_overhead": -0.4515547120874491,
+            "ci95_upper": -0.42130470979318785,
+            "gate_pass": true
+          },
+          "decode": {
+            "median_overhead": -0.04467211646101591,
+            "ci95_upper": 0.04835678444749515,
+            "gate_pass": true
+          }
+        }
+      }
+    }
+  },
+  "release_ready": false
+}

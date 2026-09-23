@@ -40,6 +40,10 @@ def test_identity_records_expected_and_installed_separately() -> None:
     assert identity["installed_version"]
     assert identity["version_compatible"] is (
         identity["installed_version"] == EXPECTED_FLA_VERSION
+        and identity["module_version"] == EXPECTED_FLA_VERSION
+    )
+    assert identity["comparison_compatible"] is (
+        identity["version_compatible"] or identity["revision_compatible"]
     )
 
 

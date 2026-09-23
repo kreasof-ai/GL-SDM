@@ -72,10 +72,6 @@ class Diagnostic:
         return payload
 
 
-# NOTE: exceptions must be neither slotted nor frozen - the interpreter
-# assigns ``__traceback__`` on every raise, which requires a writable
-# instance dict and breaks under both ``slots=True`` (layout mismatch) and
-# ``frozen=True`` (blocked assignment).
 @dataclass
 class CompilerError(Exception):
     """Raised when validation fails; carries every accumulated diagnostic."""

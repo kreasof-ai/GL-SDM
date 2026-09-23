@@ -1,7 +1,7 @@
 # URM compiler and runtime boundaries
 
 Status: implementation specification. The [compiler charter](../compiler/compiler-charter.md)
-is normative. The [previous design](../../archive/docs/urm-runtime.md) is historical.
+is normative.
 
 ## Pipeline and ownership
 
@@ -12,15 +12,18 @@ is normative. The [previous design](../../archive/docs/urm-runtime.md) is histor
 3. `compiler/planner.py` owns legality, candidate selection and executable plans.
    Existing constraint, solver and schedule modules remain compiler facilities;
    bounded schedule selection is distinct from architecture-discovery experiments.
-4. `compiler/execution.py` and `compiler/anchors/` select and bind legal anchors.
-   The serialized plan must drive execution. Do not add a competing dispatcher.
+4. `compiler/execution.py` selects legal anchors; `runtime/` binds the serialized
+   plan to an executable backend. The serialized plan must drive execution. Do not
+   add a competing dispatcher. The compiler holds no GPU execution bodies.
 5. `runtime/registry.py` retains the existing low-level backend protocol. Backend
    implementations and external adapters own physical layouts and library APIs.
 6. Provider compilation, binary loading and hardware caching belong behind the
    execution boundary. A future Tensor adapter must not redefine mixer semantics.
 
-Legacy `urm.ir`, `urm.backend` and `urm.reference` imports remain supported through
-compatibility modules. The existing compiler classes and binder APIs remain in place.
+`urm.ir` is the canonical IR module. The former `urm.backend` and `urm.reference`
+wildcard compatibility shims were removed; import `BackendRegistry` from
+`urm.runtime` and the NumPy oracle (`execute`, `merge_writes`) from `urm.oracles`.
+The existing compiler classes and binder APIs remain in place.
 
 ## Initial lowering families
 

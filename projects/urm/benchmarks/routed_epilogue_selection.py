@@ -73,7 +73,7 @@ def main() -> None:
     )
     from provenance import provenance, utc_now, write_artifact
 
-    from urm.compiler.anchors.routed_reduction_epilogue import (
+    from urm.backends.triton.softmax.routed_scale_epilogue import (
         RoutedEpilogueLaunchConfig,
         _extract_resource_usage,
         make_triton_compile_probe,

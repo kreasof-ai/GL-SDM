@@ -11,7 +11,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from urm.compiler.anchors.sparse_memory import compile_sparse_memory_plan
+from urm.runtime.sparse_memory import compile_sparse_memory_plan
 from urm.compiler.semantic import DType, SDMExecutionMode, SparseMemoryMixerSpec
 
 MixerBackend = Literal["upstream_sdm", "urm_native", "sdpa"]
@@ -95,13 +95,11 @@ def semantic_training_flops(
     l, h, d = config.layers, config.heads, config.value_dim
     f = config.factor_extent
     tokens = b * t * config.gradient_accumulation
-    # A trained linear costs 2mnk forward and ~4mnk backward.
     linear_training = 6
     sparse_scores = l * linear_training * tokens * c * (h * 2 * f)
     sparse_values_gates = l * linear_training * tokens * c * (h * (d + 2))
     sparse_output = l * linear_training * tokens * c * c
     mlp = l * linear_training * tokens * (c * (4 * c) + (4 * c) * c)
-    # Two LayerNorms/block plus final LayerNorm, forward+backward approximation.
     normalization = (2 * l + 1) * tokens * c * 24
     logits = linear_training * tokens * c * config.vocab_size
     loss = 10 * tokens * config.vocab_size
@@ -114,7 +112,6 @@ def semantic_training_flops(
         * (config.reads + config.writes)
         * 5
     )
-    # Useful selected-address recurrence only; top-k comparisons are uncredited.
     state_forward = (
         l
         * b
@@ -122,17 +119,16 @@ def semantic_training_flops(
         * t
         * config.gradient_accumulation
         * (
-            config.writes * d  # decay
-            + 2 * config.writes * d  # retrieved reduction
-            + 2 * d  # delta
-            + 2 * config.writes * d  # scatter update
-            + 2 * config.reads * d  # read reduction
+            config.writes * d
+            + 2 * config.writes * d
+            + 2 * d
+            + 2 * config.writes * d
+            + 2 * config.reads * d
         )
     )
     state_training = 3 * state_forward
     if backend == "sdpa":
         attention_projection = l * linear_training * tokens * 4 * c * c
-        # QK^T and AV: 4*B*H*T*T*D forward; training is approximated as 3x.
         attention_state = 12 * l * b * h * t * t * d * config.gradient_accumulation
         sparse_projection = 0
         sparse_route = 0
@@ -415,7 +411,7 @@ class SparseMemoryMixer(nn.Module):
         )
 
     def forward(self, x):
-        from urm.backends.sparse_state_mixer import SparseState
+        from urm.backends.triton.sparse_state.backend import SparseState
 
         b, t, _ = x.shape
         with self._profile("pretraining::sparse_memory::learned_projections"):
@@ -482,7 +478,6 @@ class SparseMemoryMixer(nn.Module):
                         read_addresses,
                         read_weights,
                     )
-                    # Upstream backward restores its mutable working memory.
                     final = final.clone()
             final = final.reshape_as(memory)
         self._pending_state = final
@@ -565,7 +560,7 @@ class URMDecoderLM(nn.Module):
             mixer.profile_ranges = enabled
             if mixer.backend_name == "urm_native":
                 mixer._executor.backend.profile_ranges = enabled
-                from urm.triton_kernels import sparse_state_mixer as state_kernels
+                from urm.backends.triton.sparse_state import mixer as state_kernels
 
                 state_kernels.PROFILE_RANGES = enabled
 

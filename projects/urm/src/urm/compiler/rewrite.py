@@ -64,9 +64,9 @@ class ForwardOnlyRestriction(StrEnum):
 class BackwardStrategy(StrEnum):
     """How the verified backward is obtained."""
 
-    LINEARITY = "linearity"  # adjoint follows from declared linearity
-    TILE_RECOMPUTE = "tile_recompute"  # un-scaled tiles are recomputed
-    MATERIALIZED_AUTOGRAD = "materialized_autograd"  # framework autograd
+    LINEARITY = "linearity"
+    TILE_RECOMPUTE = "tile_recompute"
+    MATERIALIZED_AUTOGRAD = "materialized_autograd"
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,8 +80,8 @@ class BackwardContract:
 
     strategy: BackwardStrategy
     verified_dtypes: tuple[DType, ...]
-    tolerance_envelope: dict[str, float]  # per-dtype atol/rtol keys
-    evidence: str  # pointer to the differential tests / benchmark artifact
+    tolerance_envelope: dict[str, float]
+    evidence: str
 
     def covers(self, dtype: DType) -> bool:
         return dtype in self.verified_dtypes
@@ -193,7 +193,6 @@ class RewriteRule:
     equivalence: EquivalenceClass
     tolerance_envelope: dict[str, float] | None
     forward_mapping: Callable[[SemanticProgram, RewriteMatch], tuple[SemanticNode, ...]]
-    # ``None`` means forward-only; a certified contract enables training use.
     backward_contract: BackwardContract | None
     backward_mapping: (
         Callable[[SemanticProgram, RewriteMatch], tuple[SemanticNode, ...]] | None
@@ -216,9 +215,6 @@ class RewriteRule:
         return self.backward_contract is not None and self.backward_contract.covers(
             dtype
         )
-
-
-# -- Rule 1: fold a row-scale into the routed-reduction epilogue --------------
 
 
 def _match_row_scale_after_reduce(
@@ -262,19 +258,12 @@ FOLD_ROW_SCALE_EPILOGUE = RewriteRule(
     matcher=_match_row_scale_after_reduce,
     preconditions=(BARRIER_FREE, SINGLE_CONSUMER),
     equivalence=EquivalenceClass.FLOATING_POINT,
-    # Forward envelopes match the GPU differential gates in
-    # tests/test_compiler_epilogue_gpu.py (FORWARD_TOL).
     tolerance_envelope={
         "float32_atol": 1e-5,
         "float16_atol": 1.5e-2,
         "bfloat16_atol": 2e-2,
     },
     forward_mapping=_fold_row_scale_forward,
-    # Certified backward: the experimental anchor computes gradients for
-    # weights, values AND the row scale by recomputing un-scaled reduction
-    # tiles; differential gates pass on every supported dtype
-    # (tests/test_compiler_epilogue_gpu.py::BACKWARD_TOL). No forward-only
-    # restriction remains, so no contradictory obligation pair can be emitted.
     backward_contract=BackwardContract(
         strategy=BackwardStrategy.TILE_RECOMPUTE,
         verified_dtypes=(DType.FLOAT32, DType.FLOAT16, DType.BFLOAT16),
@@ -286,12 +275,9 @@ FOLD_ROW_SCALE_EPILOGUE = RewriteRule(
     ),
     saved_state_policy=SavedStatePolicy.RECOMPUTE,
     communication_volume_delta_bytes=0,
-    traffic_bytes_delta=-2,  # avoids one full read+write of [Q, D]
+    traffic_bytes_delta=-2,
     launch_count_delta=-1,
 )
-
-
-# -- Rule 2: delayed row scaling through a linear map (CODA-style identity) ---
 
 
 def _match_row_scale_before_matmul(
@@ -345,11 +331,6 @@ DELAY_ROW_SCALE_THROUGH_GEMM = RewriteRule(
         BARRIER_FREE,
         SCALE_IS_ROWWISE_LINEAR,
     ),
-    # Algebraically exact over real arithmetic only: the rewrite changes the
-    # floating-point operation order (scale-after-GEMM vs scale-before-GEMM),
-    # so it is classified FLOATING_POINT and carries dtype-specific envelopes
-    # validated by tests/test_compiler_delayed_scaling.py. `exact` is reserved
-    # for execution models promising bitwise-equivalent results.
     equivalence=EquivalenceClass.FLOATING_POINT,
     tolerance_envelope={
         "float32_atol": 1e-5,
@@ -357,8 +338,6 @@ DELAY_ROW_SCALE_THROUGH_GEMM = RewriteRule(
         "bfloat16_atol": 9e-2,
     },
     forward_mapping=_delay_row_scale_through_gemm,
-    # Self-inverse direction: swapping back is the same construction with the
-    # ops transposed; gradients follow from linearity of the intervening map.
     backward_contract=BackwardContract(
         strategy=BackwardStrategy.LINEARITY,
         verified_dtypes=(DType.FLOAT32, DType.FLOAT16, DType.BFLOAT16),
@@ -383,14 +362,11 @@ DEFAULT_RULES: tuple[RewriteRule, ...] = (
 )
 
 
-# -- Engine and trace ---------------------------------------------------------
-
-
 @dataclass(frozen=True, slots=True)
 class RuleAttempt:
     rule: str
     subject_op: str
-    outcome: str  # "considered" | "accepted" | "rejected"
+    outcome: str
     reason_code: str | None = None
     detail: str | None = None
 
@@ -399,7 +375,7 @@ class RuleAttempt:
 class Obligation:
     """A semantic duty the executing plan must still honor."""
 
-    kind: str  # "recompute_backward" | "forward_only" | ...
+    kind: str
     subject_op: str
     detail: str
 
@@ -408,7 +384,7 @@ class Obligation:
 class RewriteTrace:
     attempts: tuple[RuleAttempt, ...] = ()
     obligations: tuple[Obligation, ...] = ()
-    anchors: tuple[str, ...] = ()  # filled by the planner
+    anchors: tuple[str, ...] = ()
     estimated_costs: dict[str, int | float] | None = None
 
     def to_dict(self) -> dict[str, object]:
@@ -558,7 +534,7 @@ class RewriteEngine:
                     rule=rule.name, subject_op=op.name, outcome="accepted"
                 )
                 obligations.extend(self._obligations_for(rule, match))
-                break  # one accepted rule per site per deterministic pass
+                break
 
         rewritten = program.replaced(tuple(ops)) if changed else program
         if changed:
@@ -566,7 +542,6 @@ class RewriteEngine:
         trace = RewriteTrace(attempts=tuple(attempts), obligations=tuple(obligations))
         return RewriteResult(program=rewritten, trace=trace, changed=changed)
 
-    # -- internals ---------------------------------------------------------
 
     @staticmethod
     def _evaluate(
@@ -587,8 +562,6 @@ class RewriteEngine:
     def _build_match(
         program: SemanticProgram, op: SemanticNode, rule: RewriteRule
     ) -> RewriteMatch | None:
-        # Identify the latest producing neighbor feeding the subject that has
-        # the rule's expected producer kind.
         producer: SemanticNode | None = None
         consumed = ""
         best = -1

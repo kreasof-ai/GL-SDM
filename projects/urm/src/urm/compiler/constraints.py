@@ -31,8 +31,6 @@ from typing import Union
 
 from urm.compiler.diagnostics import Severity
 
-# -- Variables -----------------------------------------------------------------
-
 
 @dataclass(frozen=True, slots=True)
 class BoolVar:
@@ -89,14 +87,11 @@ def variable_domain(variable: Variable) -> str:
     return "{" + ", ".join(variable.values) + "}"
 
 
-# -- Linear expressions ----------------------------------------------------------
-
-
 @dataclass(frozen=True, slots=True)
 class LinearExpr:
     """A linear expression over variable names with an integer constant."""
 
-    terms: tuple[tuple[str, int], ...] = ()  # (variable, coefficient), sorted by name
+    terms: tuple[tuple[str, int], ...] = ()
     constant: int = 0
 
     @staticmethod
@@ -179,7 +174,7 @@ class LinearExpr:
         return body
 
 
-ValueOrExpr = "int | bool | LinearExpr"  # runtime union alias for annotations
+ValueOrExpr = "int | bool | LinearExpr"
 
 
 def _as_expr(value: ValueOrExpr) -> LinearExpr:
@@ -188,14 +183,11 @@ def _as_expr(value: ValueOrExpr) -> LinearExpr:
     return LinearExpr.const(int(value))
 
 
-# -- Provenance ------------------------------------------------------------------
-
-
 @dataclass(frozen=True, slots=True)
 class Origin:
     """Where a constraint came from."""
 
-    kind: str  # e.g. "semantic_op" | "rewrite_rule" | "anchor" | "schedule_param"
+    kind: str
     id: str
 
     def to_dict(self) -> dict[str, str]:
@@ -214,9 +206,6 @@ SEMANTIC_ORIGIN_KINDS = (
     "nogood",
     "solver_internal",
 )
-
-
-# -- Constraints -----------------------------------------------------------------
 
 
 class ConstraintCategory(StrEnum):
@@ -489,9 +478,6 @@ Constraint = (
 )
 
 
-# -- Objectives -------------------------------------------------------------------
-
-
 class ObjectiveSense(StrEnum):
     MINIMIZE = "minimize"
     MAXIMIZE = "maximize"
@@ -513,9 +499,6 @@ class ObjectiveTerm:
         }
 
 
-# -- The model ---------------------------------------------------------------------
-
-
 class ModelValidationError(ValueError):
     """Raised when a constraint model references unknown variables."""
 
@@ -535,7 +518,6 @@ class ConstraintModel:
     objectives: list[ObjectiveTerm] = field(default_factory=list)
     metadata: dict[str, str] = field(default_factory=dict)
 
-    # -- construction -----------------------------------------------------
 
     def add_variable(self, variable: Variable) -> Variable:
         existing = self.variable_named(variable.name)
@@ -567,7 +549,6 @@ class ConstraintModel:
         self.objectives.append(term)
         return term
 
-    # -- accessors ----------------------------------------------------------
 
     def variable_named(self, name: str) -> Variable | None:
         for variable in self.variables:
@@ -580,7 +561,6 @@ class ConstraintModel:
     ) -> tuple[Constraint, ...]:
         return tuple(c for c in self.constraints if c.category is category)
 
-    # -- validation & serialization -----------------------------------------
 
     def validate(self) -> None:
         seen: set[str] = set()
@@ -629,9 +609,6 @@ class ConstraintModel:
     def summary_hash(self) -> str:
         canonical = json.dumps(self.to_summary(), sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-
-
-# -- Convenience builders ----------------------------------------------------
 
 
 def equality(header: ConstraintHeader, lhs: ValueOrExpr, rhs: ValueOrExpr) -> Equality:
