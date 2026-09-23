@@ -174,6 +174,7 @@ _UPSTREAM_FP32_OPERANDS = {
 _UPSTREAM_FP32_MIXER_RECIPES = {
     "mamba1_ssm_core",  # selective_scan_cuda is fp32-only
     "hgrn_ssm_core",  # pinned FLA-source HGRN chunk kernel accumulates state in fp32
+    "titans_linear_memory_core",  # pinned FLA Titans adapter requires fp32 inputs
 }
 
 
