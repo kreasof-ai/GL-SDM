@@ -175,6 +175,8 @@ _UPSTREAM_FP32_MIXER_RECIPES = {
     "mamba1_ssm_core",  # selective_scan_cuda is fp32-only
     "hgrn_ssm_core",  # pinned FLA-source HGRN chunk kernel accumulates state in fp32
     "titans_linear_memory_core",  # pinned FLA Titans adapter requires fp32 inputs
+    "based_attention_core",  # upstream fp32 (dtype fallback resolves the plan to fp32)
+    "gdn2_core",  # upstream fp32 (dtype fallback resolves the plan to fp32)
 }
 
 
@@ -1100,9 +1102,11 @@ def _build_model(config, recipe_name: str, backend: str, seed: int = 0):
 
     model = LM().cuda().to(getattr(torch, TRAIN_DTYPE))
     # Restore each mixer's required dtype (the blanket bf16 cast overrides it).
+    # Use the mixer's ACTUAL resolved dtype (mixer._dtype), which already reflects
+    # the plan's dtype fallback - NOT _mixer_dtype, which only knows the static
+    # fp32 lists and would wrongly reset an fp32-fallback upstream mixer to bf16.
     for block in model.blocks:
-        md = _mixer_dtype(recipe_name, backend)
-        block.mixer.to(getattr(torch, md))
+        block.mixer.to(block.mixer._dtype)
     return model
 
 
