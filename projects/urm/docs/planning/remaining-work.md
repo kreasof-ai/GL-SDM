@@ -31,6 +31,27 @@ pinned revisions under `/tmp/urm-comparator-pins`).
   IR and output), float64 NumPy reference parity, incompatible-anchor decline, and
   plan-binding failure on tampering.
 
+## Architecture-specific content moved out of the compiler core
+
+Review feedback confirmed: architecture-specific knowledge must leave the core.
+
+- **`compiler/select/anchors.py`**: now holds only the 16 URM-owned/generic anchors
+  (9 `urm_native_*`/`urm.unified.*` + torch_linear/SDPA/routed-reduction/collective),
+  6 URM constants, the generic selector machinery, the equation-contract legality
+  gate, and a provider API (`register_anchor_provider`/`register_anchor_selector`).
+- **`benchmarks/comparators/anchors.py`** (new): the 48 upstream/arch-named anchor
+  constants + 57 declarations (FLA/ATMA/Mamba/XMA/Tucker/KATA/Longformer/BDH/H3/
+  Hyena/TDA/FwPKM/FlashAttention/SDM), the SDM revision probe selector, and the
+  sparse-state fallback selector; registered via `executors.register_all()`.
+- `default_registry()` = URM-owned sparse selectors + core anchors + registered
+  consumer providers. Suite: 941 passed, 0 failed.
+
+Remaining arch-specific residue in core: ~80 string literals in `pipeline.py`'s
+legacy `compile_mixer` recipe-name→anchor dispatch (deleted in step 3), the Python
+catalog in `frontend/recipes.py` (deleted once the graph path covers the catalog),
+and the `MixerBackend`/`RecurrentAlgorithm`/`EXTERNAL_OPAQUE` semantics in
+`ir/graph.py` + `frontend/spec.py`.
+
 ## Step 2 done: legacy registry deleted
 
 - `runtime/registry.py` (the legacy `MixerSpec`-dispatched `BackendRegistry`),
