@@ -10,7 +10,6 @@ from __future__ import annotations
 __all__ = [
     "k1_attention",
     "k2",
-    "k2_operators",
     "k3",
 ]
 

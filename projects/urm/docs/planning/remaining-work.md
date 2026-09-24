@@ -73,6 +73,34 @@ graph-native as the K2 bulk migration lands (the acceptance artifact remains
 the 62-recipe reproduction). Suite: 421 passed, 0 failed; core imports without
 torch.
 
+## Backend hygiene: source-named kernels and the fragile fast-launch removed
+
+- **Source-named K2 kernels deleted from core**: `triton/k2/nonlinear.py`
+  (RWKV4/6, Mamba2 structured SSM, trapezoidal SSM, Hyena/H3 FFT convolution),
+  `triton/k2/inner_state.py` (TTT/Titans-style inner-state, momentum, Oja,
+  slot-attention), `triton/k2/backward.py` (their torch-autograd recomputation
+  wrappers), `triton/k2/second_order.py` (HLA second-order cumsum), and the
+  `numpy/k2_operators.py` canonical oracle that served them. These were
+  forward-only single-architecture kernels with zero remaining consumers after
+  the legacy path was deleted, and they fail the backend branch admission rule
+  (no typed axis, no second independent client). The retained K2 native bodies
+  are `matrix.py` (canonical delta-law) and `diagonal.py` (structured SSM) —
+  the reusable axes consumed by `runtime/state.py` decode sessions and the
+  formulation tests. The deleted equations return only as typed generality
+  axes with two independent clients (see
+  `docs/planning/backend-unification.md#admission-rule-for-a-backend-branch`).
+- **`triton/k1/selected.py` deleted** (the K1 selected-logit softmax/value
+  kernel that served the deleted NSA/DSA-style recipes; zero consumers).
+- **The exception-driven fast-launch removed from `triton/k1/routed_reduce.py`**:
+  the Triton private-API probe (`triton.knobs.runtime`, `jit_fn.warmup`,
+  `CompiledKernel.__getitem__`), the module-global `_FAST_LAUNCH_CAPABLE` flipped
+  by a runtime `except (AttributeError, TypeError, KeyError)`, and the
+  `_DIRECT_LAUNCH_CACHE` runner cache are gone. Kernels now dispatch only through
+  the standard `jit_fn[grid](...)` entry point (identical semantics, no
+  version-fragile private API). This was the one true "exception fallback" in
+  the backends; the remaining `support_status`/`SupportStatus.no` call sites
+  are explicit capability declines, not fallbacks.
+
 ## Step 3 done: K3 graph path + SDM composite retired
 
 The `sparse_delta_memory` recipe is a v2 graph document (`sparse_route_generation`

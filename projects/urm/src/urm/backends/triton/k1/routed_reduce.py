@@ -16,7 +16,6 @@ from __future__ import annotations
 import torch
 import triton
 import triton.language as tl
-from triton.knobs import runtime as _runtime_knobs
 
 
 @triton.jit
@@ -199,40 +198,6 @@ def _grad_values_launch_parameters(value_dim: int) -> tuple[int, int]:
     return _backward_launch_parameters(value_dim)
 
 
-_DIRECT_LAUNCH_CACHE: dict[tuple[object, ...], object] = {}
-_FAST_LAUNCH_CAPABLE: bool | None = None
-
-
-def _fast_launch_capable(jit_fn: object) -> bool:
-    """Probe for the Triton 3.4 private APIs the direct launcher relies on.
-
-    The validated line is ``triton>=3.4,<3.5``. On any other version the
-    standard ``JITFunction.__getitem__`` dispatch is used, which is slower per
-    launch but identical in semantics. The static probe is cached after the
-    first call; ``_disable_fast_launch`` flips it off permanently if the first
-    real warmup/runner construction hits an API difference.
-    """
-    global _FAST_LAUNCH_CAPABLE
-    if _FAST_LAUNCH_CAPABLE is None:
-        try:
-            from triton.compiler.compiler import CompiledKernel
-        except ImportError:
-            _FAST_LAUNCH_CAPABLE = False
-            return _FAST_LAUNCH_CAPABLE
-        _FAST_LAUNCH_CAPABLE = bool(
-            hasattr(jit_fn, "warmup")
-            and hasattr(CompiledKernel, "__getitem__")
-            and hasattr(_runtime_knobs, "launch_enter_hook")
-            and hasattr(_runtime_knobs, "launch_exit_hook")
-        )
-    return _FAST_LAUNCH_CAPABLE
-
-
-def _disable_fast_launch() -> None:
-    global _FAST_LAUNCH_CAPABLE
-    _FAST_LAUNCH_CAPABLE = False
-
-
 def _launch(
     jit_fn: object,
     grid: tuple[int, ...],
@@ -240,42 +205,8 @@ def _launch(
     constexprs: dict[str, int],
     num_warps: int,
 ) -> None:
-    hooks_active = (
-        getattr(_runtime_knobs, "launch_enter_hook", None) is not None
-        or getattr(_runtime_knobs, "launch_exit_hook", None) is not None
-    )
-    if hooks_active or not _fast_launch_capable(jit_fn):
-        jit_fn[grid](*tensors, **constexprs, num_warps=num_warps)
-        return
-    launch_grid = grid + (1,) * (3 - len(grid))
-    device = (
-        tensors[-1].device.index
-        if tensors[-1].device.index is not None
-        else torch.cuda.current_device()
-    )
-    key = (
-        jit_fn,
-        device,
-        launch_grid,
-        num_warps,
-        tuple(constexprs.items()),
-        tuple(tensor.dtype for tensor in tensors),
-        tuple(tensor.data_ptr() % 16 == 0 for tensor in tensors),
-    )
-    runner = _DIRECT_LAUNCH_CACHE.get(key)
-    if runner is None:
-        try:
-            with torch.cuda.device(device):
-                kernel = jit_fn.warmup(
-                    *tensors, grid=launch_grid, **constexprs, num_warps=num_warps
-                )
-                runner = kernel[launch_grid]
-        except (AttributeError, TypeError, KeyError):
-            _disable_fast_launch()
-            jit_fn[grid](*tensors, **constexprs, num_warps=num_warps)
-            return
-        _DIRECT_LAUNCH_CACHE[key] = runner
-    runner(*tensors, *constexprs.values())
+    """Dispatch one Triton kernel through the standard JIT entry point."""
+    jit_fn[grid](*tensors, **constexprs, num_warps=num_warps)
 
 
 def _forward(
