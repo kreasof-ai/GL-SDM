@@ -8,7 +8,6 @@ schedule decisions - those belong to the compiler stages.
 from __future__ import annotations
 
 __all__ = [
-    "NumpyBackend",
     "TorchRoutedReductionBackend",
     "TritonOnlineSoftmaxBackend",
     "TritonRoutedReductionBackend",
@@ -19,10 +18,6 @@ __all__ = [
 
 
 def __getattr__(name: str):
-    if name == "NumpyBackend":
-        from .reference.numpy.k1 import NumpyBackend
-
-        return NumpyBackend
     if name == "TorchRoutedReductionBackend":
         from .reference.torch.k1 import TorchRoutedReductionBackend
 

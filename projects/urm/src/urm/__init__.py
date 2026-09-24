@@ -43,12 +43,8 @@ from .ir.types import (
     TensorLayout,
     TensorMetadata,
 )
-from .runtime import Backend, BackendRegistry, BackendResult
 
 __all__ = [
-    "Backend",
-    "BackendRegistry",
-    "BackendResult",
     "BalanceStrategy",
     "CapacityPolicy",
     "CollisionPolicy",

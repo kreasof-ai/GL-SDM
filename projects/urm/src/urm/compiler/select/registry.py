@@ -1,11 +1,9 @@
 """Execution-capability backend selection with visible declines and fallbacks.
 
-This registry is distinct from :class:`urm.runtime.BackendRegistry`,
-which selects a backend by *semantic-family* support over a frontend
-``MixerSpec``. This one selects a backend by *execution capability* - whether
-an implementation honors a concrete operation, semantic contract, device,
-dtype, layout, and execution mode. The two selection APIs answer different
-questions and are deliberately not interchangeable.
+This registry selects a backend by *execution capability* — whether an
+implementation honors a concrete operation, semantic contract, device, dtype,
+layout, and execution mode. The legacy ``MixerSpec``-dispatched runtime registry
+was deleted in the cutover; this is the only selection API.
 """
 
 from __future__ import annotations

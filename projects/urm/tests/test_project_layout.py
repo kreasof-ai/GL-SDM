@@ -21,11 +21,11 @@ def test_public_canonical_types_keep_identity():
     from urm.frontend import MixerSpec
     from urm.ir import MixerSpec as IrSpec
     from urm.backends.reference.numpy import execute
-    from urm.runtime import BackendRegistry
+    from urm.runtime import BoundGraphPlan
 
     assert urm.MixerSpec is IrSpec is MixerSpec
-    assert urm.BackendRegistry is BackendRegistry
     assert urm.execute is execute
+    assert BoundGraphPlan is not None
 
 
 def test_removed_compatibility_shims_are_not_importable():
@@ -66,7 +66,7 @@ def test_numpy_backend_catalog_does_not_load_experimental_kernels():
     )
 
 
-def test_importing_urm_and_numpy_backend_stays_dependency_light():
+def test_importing_urm_and_reference_equations_stays_dependency_light():
     import os
     import subprocess
     import sys
@@ -79,8 +79,8 @@ def test_importing_urm_and_numpy_backend_stays_dependency_light():
             "-B",
             "-c",
             (
-                "import sys; import urm; from urm.backends.reference.numpy.k1 import NumpyBackend; "
-                "assert NumpyBackend; "
+                "import sys; import urm; from urm.backends.reference.numpy.k1 import execute; "
+                "assert execute; "
                 "assert 'torch' not in sys.modules; "
                 "assert 'triton' not in sys.modules; "
                 "assert 'tilelang' not in sys.modules"

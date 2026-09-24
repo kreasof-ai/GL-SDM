@@ -1,33 +1,13 @@
-"""Adapter exposing the NumPy oracle through the backend protocol."""
+"""Independent NumPy K1 reference equations (routed reduction and ordered writes).
+
+This module re-exports the independent K1 equations. The legacy
+``MixerSpec``-dispatched ``NumpyBackend`` adapter was removed in the cutover:
+the reference backends are consumed as typed equations through the compiler and
+plan binder, not through a spec-dispatch registry.
+"""
 
 from __future__ import annotations
 
-import numpy.typing as npt
+from .k1_routed import ReferenceResult, execute, merge_writes
 
-from ....ir import MixerSpec, MutationKind, RoutingKind
-from .k1_routed import ReferenceResult, execute
-
-
-class NumpyBackend:
-    name = "numpy_reference"
-
-    def supports(self, spec: MixerSpec) -> bool:
-        return (
-            spec.routing is not RoutingKind.KERNELIZED_RECURRENCE
-            and spec.routing is not RoutingKind.THRESHOLD
-            and spec.mutation is not MutationKind.IN_PLACE_RECURRENT
-            and spec.expert is None
-            and spec.sparse_attention is None
-        )
-
-    def execute(
-        self,
-        scores: npt.ArrayLike,
-        values: npt.ArrayLike,
-        spec: MixerSpec,
-        *,
-        route_mask: npt.ArrayLike | None = None,
-    ) -> ReferenceResult:
-        if not self.supports(spec):
-            raise ValueError(f"{self.name} does not support {spec.name}")
-        return execute(scores, values, spec, route_mask=route_mask)
+__all__ = ["ReferenceResult", "execute", "merge_writes"]
