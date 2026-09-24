@@ -10,9 +10,8 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
   # Compatible range: >=1.26,<3. The validated GPU line (and every committed
-  # artifact) uses numpy 1.26.4; the CPU oracle also runs on numpy 2.x (see
-  # docs/benchmarking.md "Dependency policy"). Both endpoints of the range are
-  # exercised by clean-environment test runs before each release commit.
+  # artifact) uses numpy 1.26.4; the CPU oracle also runs on numpy 2.x.
+  # Evidence and release gates are described in docs/validation/evidence.md.
   "numpy>=1.26,<3",
 ]
 
@@ -35,18 +34,18 @@ gpu = [
   "torch>=2.8",
   # Validated line: the routed-reduction backend capability-gates private
   # Triton APIs and falls back to the standard launcher when they are absent,
-  # but steady-state numbers in docs/results were produced with this version.
+  # but preserved results/ artifacts were produced with this version.
   "triton>=3.4,<3.5",
 ]
 fla = [
   # Pinned upstream for the gated delta-rule comparator
-  # (docs/fla-gated-delta-rule.md). Bump deliberately: the frozen contract is
+  # (docs/kernels/linear-delta.md). Bump deliberately: the frozen contract is
   # verified against this exact release.
   "flash-linear-attention==0.5.2",
 ]
 solver = [
   # Optional compiler dependency for constraint feasibility/optimization
-  # (docs/kernel-generation.md). Core URM functionality never requires it.
+  # (docs/compiler/compiler-charter.md). Core URM functionality never requires it.
   # Pinned exactly: the validated line used by every committed solver
   # artifact; artifacts record the installed version alongside this pin.
   "z3-solver==4.15.3.0",

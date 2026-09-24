@@ -1,114 +1,20 @@
-# Sparse routed delta update: kernel formulation
+# K3: indexed mutable state
 
-Canonical operation: `sparse_delta`. This contract is independent of architecture
-and routing frontend. SDM is one comparison workload, not its semantic definition.
-Other mixers can use this lowering when their typed operations satisfy the same
-equations; different update rules require a separate derivation.
-
-Status: real-arithmetic derivation with float64 NumPy differential and adjoint
-checks. This is not GPU certification, a registered compiler rewrite, or a claim
-of bitwise equivalence under BF16 state rounding.
-
-## Semantic contract
-
-Work independently per partition/head. Let memory `M` have shape `[S,D]`.
-For token `t`, dense vectors `w_t,q_t` of shape `[S]` encode sparse write/read
-weights; `v_t` has shape `[D]`. Write indices are unique within a token; duplicate
-write routes need a separately specified collision rule. `selected[t,s]` is the
-explicit write-selection mask. A selected slot decays even when its weight is zero.
-
-For scalar `g_t <= 0`, define diagonal `G_t[s,s] = exp(g_t * selected[t,s])`.
-The decay applies once to each selected slot, before retrieval and update:
+**Written sparse-delta equation.** For logical slots `s`, mutable state `M_t[s,:]`, sparse write weights `w_t[s]`, read weights `q_t[s]`, value `v_t`, scalar `β_t`, decay `g_t≤0`, and selected-slot mask `a_t[s]`:
 
 ```text
-Z_t = G_t M_(t-1)
-h_t = w_t^T Z_t
-delta_t = beta_t (v_t - h_t)
-M_t = Z_t + w_t delta_t^T
-y_t = q_t^T M_t                       # after-update read
+G_t[s] = exp(g_t * a_t[s])
+Z_t[s,:] = G_t[s] * M_(t-1)[s,:]
+h_t = Σ_s w_t[s] Z_t[s,:]
+δ_t = β_t (v_t - h_t)
+M_t[s,:] = Z_t[s,:] + w_t[s] δ_t
+y_t = Σ_s q_t[s] M_t[s,:]        # after-update read
 ```
 
-Coefficients and route choices must be available independently of the evolving
-memory. This contract does not cover state-dependent routing or a nonlinear state
-update. Before-update reads require a separately derived read operator; they must
-not silently select the after-update implementation.
+Selected slots decay even if their write weight is zero. Within-token duplicate write indices are rejected in this contract; cross-token collisions occur in token order. Route selection, tie/capacity policy, index dtype, provenance, read timing, commit/version effects, initial/final state, precision and gradients are declared separately. A before-update read or another collision/update rule cannot borrow this result. Routes are logical until placement maps them to physical pages or communication.
 
-## Chunk-local triangular system
+For a chunk, interval decay `E(t,j)` yields `V0_t=w_tᵀE(t,0)M_0`, `Y0_t=q_tᵀE(t,0)M_0`, `A[t,j]=w_tᵀE(t,j)w_j` for `j<t`, and `Ω[t,j]=q_tᵀE(t,j)w_j` for `j≤t`. With `B=diag(β)`, solve `HΔ=B(V-V0)` for `H=I+BA`, then `Y=Y0+ΩΔ` and `M_C=E(C,0)M_0+Σ_j E(C,j)w_jΔ_jᵀ`. `H` is unit lower triangular; the boundary state remains ordered.
 
-Index a chunk from `1` to `C`, with incoming state `M_0`. Define
-`L_t[s] = sum_(i=1..t) g_i selected[i,s]`, `L_0=0`, and
-`E(t,j)=diag(exp(L_t-L_j))` for `0 <= j <= t`. Then
+The independent token VJP uses `F=dM_t+q_t dy_tᵀ`, `dq_t=M_t dy_t`, `dδ_t=w_tᵀF`, `dv_t=β_t dδ_t`, `dβ_t=dot(dδ_t,v_t-h_t)`, `dw_t=Fδ_t-Z_t dv_t`, `dZ_t=F-w_t dv_tᵀ`, `dg_t=Σ_{selected s,d}dZ_t[s,d]Z_t[s,d]`, and `dM_(t-1)=G_t dZ_t`. The chunk solve VJP uses `λ=solve(Hᵀ,dΔ)` and `dH=-λΔᵀ` on legal entries. Fixed discrete route indices have no ordinary derivative; score/weight gradients are separate. Floating-point state-commit frequency and interval factor stability are part of the numerical envelope; a real-arithmetic identity is not BF16 bitwise equality.
 
-```text
-V0_t = w_t^T E(t,0) M_0
-Y0_t = q_t^T E(t,0) M_0
-A[t,j] = w_t^T E(t,j) w_j       for j < t; otherwise zero
-Omega[t,j] = q_t^T E(t,j) w_j   for j <= t; otherwise zero
-B = diag(beta)
-H = I + B A
-H Delta = B (V - V0)
-Y = Y0 + Omega Delta
-M_C = E(C,0) M_0 + sum_j E(C,j) w_j delta_j^T
-```
-
-`A`, `Omega` and `H` have shape `[C,C]`, not `[S,S]`. `H` is unit lower triangular,
-so it is nonsingular in exact arithmetic. Its conditioning still depends on the
-coefficients. Solve for `Delta`; do not require explicit matrix inversion.
-
-Coefficient construction can be batched across chunks because it does not depend
-on incoming memory. Initial-state projections and boundary propagation do depend
-on incoming memory. A correct first implementation carries `M_C` to the next chunk
-in order. Independent chunks with the original `M_0` are incorrect. Parallel chunk
-composition needs an additional proved representation and cost analysis.
-
-For no decay, `A=tril(W W^T,-1)` and `Omega=tril(Q W^T)`. This is the particularly
-simple GEMM case. Selected-slot decay requires interval factors; it cannot be
-removed to recover those GEMMs. Algebraically separable factors involving
-`exp(L_t)` and `exp(-L_j)` can overflow or underflow. Clipping only the inverse
-factor changes even diagonal interactions. The oracle computes interval
-differences directly. A production GEMM implementation needs a proved stable
-scaling/tiling scheme; no efficient universal scheme is certified here.
-
-## Backward contract
-
-For the solve, with upstream derivative `dDelta`, compute
-`Lambda = solve(H^T, dDelta)`, `dRHS = Lambda`, and
-`dH = -Lambda Delta^T`, respecting the fixed triangular structure. Backpropagate
-through `B`, `A`, initial projections, read coefficients and the final-state fold.
-Final-state cotangents must flow backward across chunk boundaries.
-
-An independent token-level VJP provides an oracle. Let `F` be the cotangent of
-`M_t` from subsequent state use, plus `q_t dy_t^T` from its reading:
-
-```text
-dq_t = M_t dy_t
-ddelta_t = w_t^T F
-dv_t = beta_t ddelta_t
-dbeta_t = dot(ddelta_t, v_t - h_t)
-dw_t = F delta_t - Z_t dv_t
-dZ_t = F - w_t dv_t^T
-dg_t = sum_(selected slots s,d) dZ_t[s,d] Z_t[s,d]
-dM_(t-1) = G_t dZ_t
-```
-
-The write-weight derivative is restricted to fixed selected routes. Selection
-indices are discrete and have no ordinary derivative. These formulas cover both
-reading losses and final-state losses; returning a constant zero decay gradient
-violates this contract.
-
-## Precision and acceptance
-
-The real-arithmetic rewrite changes operation ordering. The old per-token BF16
-state commit and a chunk-boundary commit are different numerical contracts.
-Declare storage, accumulation and commit policy separately; changing chunk size
-must not silently change an advertised semantic guarantee.
-
-`urm.backends.reference.numpy.k3` contains independent recurrence, chunked solve and
-analytical reverse recurrence implementations. Tests compare multiple chunk sizes,
-partial chunks, repeated slots, strong decay, selected zero-weight slots, and
-finite differences for memory, write/read weights, values, beta and decay.
-
-These checks establish the float64 formulation on tested cases. Before registering
-a GPU implementation, repeat output/state and VJP comparisons on that exact path,
-including production-shaped collision stress and dtype-specific envelopes. Keep
-the historical dual-form prototypes experimental until those gates pass.
+The existing route-to-state graph fragment is narrow. Its route provenance bridge, overlap behavior, reference read timing and source-model frontend must be qualified separately. Product-key route generation is a pure typed operation; it does not make K3 specific to SDM. A different indexed fast-weight update needs a distinct law and independent clients before entering core. See the [composition ledger](../planning/architecture-composition.md) and [evidence rules](../validation/evidence.md).

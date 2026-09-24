@@ -1,14 +1,14 @@
-# Named architecture coverage register
+# Source architecture index
 
-Index of every named architecture URM tracks, rendered from the [machine-readable register](../../benchmarks/architecture-coverage.json) (`tests/test_architecture_coverage.py` keeps the two in sync). This is the production construction backlog, not a claim of full architecture support: inclusion commits us to resolve the mapping and attempt a fair comparison.
+Generated from the [machine register](../../benchmarks/architecture-coverage.json). This is the source identity and construction backlog. The [76-row composition ledger](architecture-composition.md) gives external call graphs and unresolved internal axes; [evidence rules](../validation/evidence.md) define what each status can claim. Inclusion is not model support.
 
-Of 80 catalog rows, 76 are mixer-relevant and 4 are classified outside K1/K2/K3 mixer scope. All 76 mixer-relevant rows have measured kernel-upstream parity and paired profiling evidence against a pinned source; 4 rows (MHA/MQA/GQA/BitAttention) additionally have a measured URM-native K1 profile. 17 rows keep a live `kernel_prototype_only` slice through the public graph path (the schema-v2 recipes); 59 rows are `pending_graph_migration`: their equation cores were qualified against the pinned sources, and their prototypes are being re-authored as typed graph documents. Projections, frontends, caches and full-layer integration remain open per row.
+Of 80 catalog rows, 76 are mixer-relevant and 4 are outside mixer scope. 76 rows retain pinned **historical kernel-slice** comparisons; 4 retain native K1 fragment profiles. 17 rows map to live public-graph fragments and 59 retain the old `pending_graph_migration` label. These figures do not qualify a complete source model. No K2 graph recipe is live.
 
-K1 = [softmax](../kernels/softmax-attention.md), K2 = [linear/delta](../kernels/linear-delta.md), K3 = [sparse delta](../kernels/sparse-delta.md). **Kernel** = output/state/gradient parity plus paired overhead vs the pinned upstream kernel slice. **Native** = a URM-generated kernel (not an upstream dispatch) measured against upstream. Per-recipe model-level numbers are in the [master coverage table](../validation/master-table.md) (rebuilt on the public graph path as the graph migration completes).
+**Old slice** means parity and paired overhead for the preserved pinned kernel comparison, usually outside the present graph binder. **Native fragment** means a measured URM-generated K1 fragment, not a complete source model. Proposed lowerings in the register are hypotheses until closed descriptors, references and public plans qualify them.
 
 ## Wave 1: Core native closure
 
-| ID | Architecture | Lowering | Comparator | Kernel | Native |
+| ID | Architecture | Proposed fragment | Comparator | Old slice | Native fragment |
 |---|---|---|---|---|---|
 | arch-001 | Transformer MHA | K1 | flash-attention `1bda8f9290` | pass | pass |
 | arch-002 | Transformer MQA | K1 | flash-attention `1bda8f9290` | pass | pass |
@@ -20,7 +20,7 @@ K1 = [softmax](../kernels/softmax-attention.md), K2 = [linear/delta](../kernels/
 
 ## Wave 2: Structured variants and composite memories
 
-| ID | Architecture | Lowering | Comparator | Kernel | Native |
+| ID | Architecture | Proposed fragment | Comparator | Old slice | Native fragment |
 |---|---|---|---|---|---|
 | arch-004 | MLA | K1+composition | flash-linear-attention `864a87f6ce` | pass | — |
 | arch-005 | NSA | K1+route/compression | flash-linear-attention `864a87f6ce` | pass | — |
@@ -48,7 +48,7 @@ K1 = [softmax](../kernels/softmax-attention.md), K2 = [linear/delta](../kernels/
 
 ## Wave 3: Generalized state, routing and axis coverage
 
-| ID | Architecture | Lowering | Comparator | Kernel | Native |
+| ID | Architecture | Proposed fragment | Comparator | Old slice | Native fragment |
 |---|---|---|---|---|---|
 | arch-009 | Log-linear attention | extension audit | flash-linear-attention `864a87f6ce` | pass | — |
 | arch-010 | PaTH attention | K1+transform recurrence | flash-linear-attention `864a87f6ce` | pass | — |
@@ -88,7 +88,7 @@ K1 = [softmax](../kernels/softmax-attention.md), K2 = [linear/delta](../kernels/
 
 ## Wave 4: Nonlinear updates and newly resolved targets
 
-| ID | Architecture | Lowering | Comparator | Kernel | Native |
+| ID | Architecture | Proposed fragment | Comparator | Old slice | Native fragment |
 |---|---|---|---|---|---|
 | arch-055 | TTT | typed inner-update extension | flash-linear-attention `864a87f6ce` | pass | — |
 | arch-056 | FwPKM | K1 fused softmax/value reduction over exact product-key selected logits | fast-weight-product-key-memory `b1c8e234b5` | pass | — |
@@ -139,4 +139,4 @@ Each comparator is pinned to an exact revision; a resolved identity does not imp
 
 ## What counts as coverage
 
-Frontend expression, external-adapter execution, native execution and performance parity are reported separately. A kernel does not implicitly cover a router, convolution, positional transform, normalization, cache or inner optimizer. Training, prefill and decode qualify separately; unsupported upstream modes are recorded as `upstream_unavailable`, never counted as passes. Catalog items that are MLP, MoE or meta-learning algorithms are `not_applicable` for mixer-kernel parity and point to the separate compiler domain. See the [parity plan](../validation/parity.md) and [generality axes](../compiler/generality-axes.md) for the per-row qualification gates.
+Represented, reference-executable, native-qualified, performance-qualified and source-model-qualified are separate verdicts. A fragment never covers its router, frontend, cache or full layer by implication. Training, prefill and decode qualify separately. See the [evidence protocol](../validation/evidence.md) and [generality axes](../compiler/generality-axes.md).

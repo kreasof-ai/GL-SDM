@@ -1,75 +1,17 @@
-# Softmax attention family
+# K1: streamed attention reduction
 
-K1 construction contract and current backend boundary.
-This is family 1 of the [coverage matrix](../planning/coverage.md).
-
-## Operation
-
-Inputs: queries `[B,Hq,Tq,Dk]`, keys `[B,Hkv,Tk,Dk]`, values
-`[B,Hkv,Tk,Dv]`, explicit query-to-KV head mapping, scale and visibility mask.
-For each query row, over visible keys:
+**Written equation contract, not a universal score/reducer implementation.** For query `q_i`, key `k_j`, value `v_j`, explicit query-to-KV head map `h(i)`, visibility `V(i,j)`, scale and optional bias:
 
 ```text
-scores = scale * Q K^T + bias
-P = softmax(scores)
-Y = P V
+s_ij = scale * dot(q_i, k_j) + bias_ij
+p_ij = exp(s_ij - m_i) / sum_{j:V(i,j)} exp(s_ij - m_i)
+y_i  = sum_{j:V(i,j)} p_ij v_j
 ```
 
-Specify causal position offsets independently of tensor lengths, including cached
-decode and cross-attention. Define fully masked rows to return zero with zero
-input gradients. A provider with different behavior must adapt or decline.
-The initial native contract excludes dropout; supporting it later requires an
-explicit probability, RNG/replay contract and validated backward.
+`m_i` is a stable row maximum. A fully masked row returns zero and has zero input gradients. Causal position offsets are operands independent of tensor lengths, including cached decode and cross-attention. MHA, MQA and GQA differ by `h(i)`, not by architecture-name branches. Dropout requires an additional explicit RNG/replay and backward contract; it is not silently enabled.
 
-## Coverage and specialization
+Dense tiled online softmax is a physical schedule of this equation. Indexed sparse execution must traverse only selected keys and preserve route order, ties, masking and gradients; a dense masked implementation proves values but **does not** prove sparse-work performance. Alternative scores or reductions (FoX, Wall, POLAR, TDA, KATA, etc.) require a new closed descriptor, independent reference and backend admission. They do not automatically inherit this softmax equation.
 
-MHA is equal query/KV head counts; MQA shares one KV head; GQA uses an explicit
-many-to-one mapping. Causal, noncausal, sliding-window and block-sparse visibility
-are specializations of the mask contract. Sparse mask expressibility alone does
-not establish efficient sparse execution. Cross-attention permits distinct query
-and key lengths. Position transforms and compressed projection schemes are frontend
-compositions only when their resulting operands match this contract exactly.
+For a tiled native reduction maintain `(m,l,a)`, where `m` is the row maximum, `l` the exponent sum and `a` the weighted-value sum. For a new score tile with maximum `m_b`, set `m'=max(m,m_b)`, `l'=exp(m-m')l+Σ_b exp(s_b-m')`, and `a'=exp(m-m')a+Σ_b exp(s_b-m')v_b`; return `a'/l'`. Empty/all-masked tiles need explicit neutral handling to avoid `-∞-(-∞)`. Backward may recompute probabilities from saved row statistics: `dV=PᵀdY`, `dP=dYVᵀ`, `dS=P⊙(dP-row_sum(P⊙dP))`, then `dQ,dK,dscale,dbias` follow the score law. Shared KV heads reduce their gradients across mapped query heads. Save/recompute and accumulation dtype are part of the provider envelope.
 
-## Lowering
-
-Start with the existing dense-attention adapter for its declared envelope. Build
-an independent dense reference. The native prefill implementation tiles queries
-and keys, maintaining row maximum `m`, exponential sum `l`, and weighted sum `a`:
-
-```text
-m_new = max(m, max(scores_tile))
-l_new = exp(m-m_new)*l + sum(exp(scores_tile-m_new))
-a_new = exp(m-m_new)*a + exp(scores_tile-m_new) @ V_tile
-Y = a/l
-```
-
-Treat empty/all-masked tiles explicitly to avoid `-inf - -inf`. Accumulate softmax
-statistics in declared accumulation precision. Do not materialize the full score
-matrix in the optimized path. Backward can recompute probabilities from saved row
-statistics and uses `dV=P^T dY`, `dP=dY V^T`,
-`dScores=P*(dP-row_sum(P*dP))`, then the Q/K contractions, scale and mask rules.
-Shared KV heads require correctly reduced gradients.
-
-Decode needs a separate KV-cache ABI: ownership, valid lengths, position offsets,
-append semantics and layout. Stateless attention support does not imply cache
-management support. Sparse masks and short decode may need separate schedules.
-
-## Parity route
-
-Compare native kernels with a pinned compatible SDPA/attention implementation,
-and compare URM-wrapped library dispatch with that same direct library call.
-Validate Q/K/V gradients, supported bias gradients, all-masked rows, head sharing,
-unequal lengths and precision extremes. Benchmark training, prefill and cached
-decode separately. First match the existing adapter envelope; expand only after
-the new capability passes [parity gates](../validation/parity.md).
-
-Current native status: Triton tiled online softmax with recomputed backward is
-implemented for FP32/FP16/BF16. GPU differential checks cover MHA-style and
-shared-KV attention, unequal query/key lengths, boolean and additive masks,
-empty rows, and score-bias gradients. On A10G BF16 B1/T64/Hq=4/D=V=32, its
-CUDA-graph kernel path passes pinned FlashAttention output/gradient parity and
-the 10% performance gate for MHA/MQA/GQA. Per-call Python dispatch is slower
-than the upstream callable on these short cases. Cache ownership, decode
-positions, dropout, sparse traversal efficiency, larger dimensions and
-end-to-end layer training/inference are unqualified; see the
-[measured profile](../planning/coverage.md).
+The present Triton K1 path has a bounded measured MHA/MQA/GQA fragment envelope, including recomputed backward. It has no claim here for full model layers, general sparse traversal, all cache layouts, dropout or arbitrary reducer combinations. The [charter](../compiler/compiler-charter.md) governs promotion and the [evidence protocol](../validation/evidence.md) governs claims.

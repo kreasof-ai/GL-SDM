@@ -1,4 +1,4 @@
-"""Render the named-architecture coverage register as a concise Markdown table.
+"""Render the source-architecture backlog and historical fragment evidence.
 
 The register of record is ``benchmarks/architecture-coverage.json`` (validated by
 ``tests/test_architecture_coverage.py``). This script renders it into
@@ -7,8 +7,8 @@ the machine-readable register. Regenerate with::
 
     python benchmarks/coverage_register.py > docs/planning/coverage.md
 
-The detailed per-architecture measurement prose lives in the committed kernel-slice
-artifacts under ``results/unified-mixer/``; this table is the index, not the evidence.
+The detailed measurements live under ``results/unified-mixer/``. This page is an
+index, not a current public-graph or complete-source-model coverage claim.
 """
 
 from __future__ import annotations
@@ -69,39 +69,32 @@ def render_markdown(register: dict) -> str:
     )
 
     out: list[str] = []
-    out.append("# Named architecture coverage register")
+    out.append("# Source architecture index")
     out.append("")
     out.append(
-        "Index of every named architecture URM tracks, rendered from the "
-        "[machine-readable register](../../benchmarks/architecture-coverage.json) "
-        "(`tests/test_architecture_coverage.py` keeps the two in sync). This is the "
-        "production construction backlog, not a claim of full architecture support: "
-        "inclusion commits us to resolve the mapping and attempt a fair comparison."
+        "Generated from the [machine register](../../benchmarks/architecture-coverage.json). "
+        "This is the source identity and construction backlog. The "
+        "[76-row composition ledger](architecture-composition.md) gives external "
+        "call graphs and unresolved internal axes; [evidence rules](../validation/evidence.md) "
+        "define what each status can claim. Inclusion is not model support."
     )
     out.append("")
     out.append(
         f"Of {total} catalog rows, {len(mixer)} are mixer-relevant and "
-        f"{total - len(mixer)} are classified outside K1/K2/K3 mixer scope. All "
-        f"{measured} mixer-relevant rows have measured kernel-upstream parity and "
-        f"paired profiling evidence against a pinned source; {native} rows "
-        "(MHA/MQA/GQA/BitAttention) additionally have a measured URM-native K1 "
-        f"profile. {live_prototypes} rows keep a live `kernel_prototype_only` "
-        "slice through the public graph path (the schema-v2 recipes); "
-        f"{pending} rows are `pending_graph_migration`: their equation cores were "
-        "qualified against the pinned sources, and their prototypes are being "
-        "re-authored as typed graph documents. Projections, frontends, caches and "
-        "full-layer integration remain open per row."
+        f"{total - len(mixer)} are outside mixer scope. {measured} rows retain "
+        "pinned **historical kernel-slice** comparisons; "
+        f"{native} retain native K1 fragment profiles. {live_prototypes} rows "
+        "map to live public-graph fragments and "
+        f"{pending} retain the old `pending_graph_migration` label. These "
+        "figures do not qualify a complete source model. No K2 graph recipe is live."
     )
     out.append("")
     out.append(
-        "K1 = [softmax](../kernels/softmax-attention.md), K2 = "
-        "[linear/delta](../kernels/linear-delta.md), K3 = "
-        "[sparse delta](../kernels/sparse-delta.md). "
-        "**Kernel** = output/state/gradient parity plus paired overhead vs the pinned "
-        "upstream kernel slice. **Native** = a URM-generated kernel (not an upstream "
-        "dispatch) measured against upstream. Per-recipe model-level numbers are in "
-        "the [master coverage table](../validation/master-table.md) (rebuilt on the "
-        "public graph path as the graph migration completes)."
+        "**Old slice** means parity and paired overhead for the preserved pinned "
+        "kernel comparison, usually outside the present graph binder. **Native "
+        "fragment** means a measured URM-generated K1 fragment, not a complete "
+        "source model. Proposed lowerings in the register are hypotheses until "
+        "closed descriptors, references and public plans qualify them."
     )
     out.append("")
 
@@ -109,7 +102,7 @@ def render_markdown(register: dict) -> str:
         rows = by_wave[wave]
         out.append(f"## Wave {wave}: {WAVE_NAMES[wave]}")
         out.append("")
-        out.append("| ID | Architecture | Lowering | Comparator | Kernel | Native |")
+        out.append("| ID | Architecture | Proposed fragment | Comparator | Old slice | Native fragment |")
         out.append("|---|---|---|---|---|---|")
         for row in rows:
             source = sources[row["source"]]
@@ -144,16 +137,11 @@ def render_markdown(register: dict) -> str:
     out.append("## What counts as coverage")
     out.append("")
     out.append(
-        "Frontend expression, external-adapter execution, native execution and "
-        "performance parity are reported separately. A kernel does not implicitly "
-        "cover a router, convolution, positional transform, normalization, cache or "
-        "inner optimizer. Training, prefill and decode qualify separately; "
-        "unsupported upstream modes are recorded as `upstream_unavailable`, never "
-        "counted as passes. Catalog items that are MLP, MoE or meta-learning "
-        "algorithms are `not_applicable` for mixer-kernel parity and point to the "
-        "separate compiler domain. See the [parity plan](../validation/parity.md) "
-        "and [generality axes](../compiler/generality-axes.md) for the per-row "
-        "qualification gates."
+        "Represented, reference-executable, native-qualified, performance-qualified "
+        "and source-model-qualified are separate verdicts. A fragment never covers "
+        "its router, frontend, cache or full layer by implication. Training, prefill "
+        "and decode qualify separately. See the [evidence protocol](../validation/evidence.md) "
+        "and [generality axes](../compiler/generality-axes.md)."
     )
     out.append("")
     return "\n".join(out)

@@ -1,133 +1,40 @@
-# URM compiler charter
+# Compiler charter
 
-**Status:** normative for `src/urm/compiler/`.
-**Definition.** URM is a **semantic-to-execution compiler for routed sequence
-models** - not a collection of optimized kernels and not a general tensor
-compiler. Researchers describe routing, state, and communication semantics;
-URM verifies algebraic reparameterizations, plans placement and communication,
-and lowers onto trusted execution anchors (FA / FLA / grouped GEMM / scan /
-SDM-style page ops / collectives / generated kernels).
+**Normative for `src/urm`.** URM compiles typed routing, reduction, state and communication semantics into complete executable plans. The public model interface supplies tensors and a semantic request; architecture-specific modules, comparators, training, inference and benchmarks live outside core.
 
-```text
-architecture/NAS specification
-  -> semantic routing and state IR          (ir/program.py, ir/k1|k2|k3.py)
-  -> verified algebraic reparameterization  (compiler/rewrite/)
-  -> immutable candidate enumeration        (compiler/pipeline.py, compiler/select/)
-  -> backend-independent constraint IR      (compiler/solve/constraints.py)
-  -> optional Z3 feasibility/optimization   (compiler/solve/z3.py)
-  -> independent imperative verification    (compiler/verify/)
-  -> placement, sharding, communication     (compiler/placement/)
-  -> trusted execution anchors + visitors   (compiler/select/anchors.py)
-  -> FA / FLA / grouped GEMM / scan / SDM /
-     collectives / generated kernels        (benchmarks/comparators, urm/backends)
-```
+## Ownership
 
-The normative kernel-generation pipeline lives 
-[docs/compiler/kernel-generation.md](kernel-generation.md).
+| Layer | Owns | Must not own |
+|---|---|---|
+| `frontend/` | Loading name-agnostic, versioned typed kernel or graph fragments | Architecture registry or source-model dispatch |
+| `ir/` | Logical domains, role-indexed operands, closed equations, state/effect/route semantics and numerical policy | Device layout, tiles, upstream APIs, optimizer or benchmark policy |
+| `compiler/` | Verified rewrite candidates, independent constraints, placement, region partition, provider/schedule selection, complete serialized plan and cost trace | Tensor-value checks, runtime state mutation, architecture names, GPU bodies |
+| `runtime/` | Bind and validate the selected plan, own state sessions and invoke its provider | New semantic selection, model scheduling or hidden fallback |
+| `backends/` | Reference and native implementations of admitted typed axes and physical schedules | Model-named branches, compiler policy, profiler hooks or untyped callbacks |
+| `architectures/`, `train/`, `inference/`, `benchmarks/` | Model arrangements, ordinary operators, source adapters, application loops and measurement | Correctness rules for core providers |
 
-Performance is an acceptance requirement of individual lowerings; it is not
-the definition of URM. A lowering that cannot beat its baseline is recorded as
-such and retained; a semantic that cannot be expressed at all is a URM failure.
+## Semantic invariants
 
-## Invariants
+1. A graph is independent of tensor *names* and backend layout. Each operation binds typed roles. Every accepted JSON field changes the normalized descriptor or is rejected. An unknown transition string never selects a provider.
+2. K1 is a streamed score/select/normalize/reduce over a logical source domain. K2 evolves a compact **fixed-address** state bundle in token order. K3 evolves **indexed mutable** state with explicit route, collision, read/write and commit rules. A graph may compose these families with ordinary typed operators such as GEMM, convolution, FFT and collectives. Those operators retain their own cost and effects.
+3. Routes name logical domains. Route creation, tie/capacity policy, ownership and provenance are semantic; physical addresses and communication arise only after placement. State reads, mutation, ordering, collisions and version/commit boundaries are explicit effects.
+4. Reparameterization requires a registered rule with algebraic preconditions, exact versus floating-point equivalence class, numerical envelope, full operand and state VJP status, saved-state/recomputation plan and traffic delta. The unfused base candidate always remains available. A schedule never changes semantics.
+5. No arbitrary tensor callback, model name, source-specific flag or opaque library callable enters the serialized semantic IR. Upstream implementations are external comparators or explicitly labeled library provider tiers; they do not define the equation.
+6. Compilation intent and provider support are exact: training requires a certified backward and state cotangent path; inference requires state continuation. Unsupported dtype, shape, mode, equation or schedule returns a structured decline before binding.
+7. The solver ranks bounded legal candidates; it does not prove the equation or synthesize unchecked code. Every solver model is rechecked by an independent imperative verifier. Unknown cost or missing schedule is an incomplete plan, not success.
+8. Every declared node is executed, covered by a proved fusion, or rejected. A selected provider, typed bindings, effects, placement, schedule, mode, numerical policy, state ABI and reasoned fallback tier are serialized. Runtime executes exactly that plan. Tests must reject altered, missing or reordered steps.
 
-1. **Architecture semantics are independent of backend implementation.**
-   `SemanticProgram` says nothing about devices, tiles, threads, or schedules.
-   The same program must compile to different anchors without rewriting.
-2. **Routing operates over logical domains**, never physical tensor indices.
-   `RouteSpec` names logical query/source domains (`sequence`, `expert`,
-   `memory_page`, ...). Physical placement is decided later and may turn any
-   logical edge into memory access *or* communication.
-3. **Placement decides realization.** Whether a logical route becomes local
-   memory access, a kernel dispatch, or an explicit exchange is a placement
-   decision (`placement.py`), never a property of the semantic expression.
-4. **State mutation, collision policy, ordering, and version/commit behavior
-   are explicit effects.** `ir/effects.py` classifies them; ordered scans and
-   transactional commits are movement barriers; nothing mutates implicitly.
-5. **Reparameterization only through registered, verified rewrite rules.**
-   Each rule declares preconditions, equivalence class, numerical envelope,
-   backward status, saved-state/recomputation requirements, and traffic
-   effects (`rewrite.py`). `exact` equivalence is reserved for execution
-   models promising bitwise-equivalent results; rewrites that change
-   floating-point operation order are `floating_point` with dtype envelopes.
-6. **Performance hints and schedules must not alter semantic meaning.**
-   `ScheduleParams` may pick among legal lowerings; it may never change
-   routing results, merge policies, or commit boundaries. Hints are validated;
-   invalid hints produce structured diagnostics, never silent reinterpretation.
-7. **Upstream anchors do not define semantic IR.** Upstream production kernels
-   define comparison points and may serve as temporary external anchors. Native
-   URM lowerings are generated from URM-owned, typed mixer skeletons and must
-   not depend semantically on FA/FLA/SDM/Mamba library APIs. Upstream Python
-   callables, physical layouts, and implementation flags stay in adapters and
-   execution capabilities, never in `SemanticProgram`.
-8. **No arbitrary tensor callback or untyped escape hatch enters the core IR.**
-   Visitors and epilogues are typed descriptors interpreted by registered
-   anchors - never Python callables over tensors. Serialized artifacts report
-   `escape_hatch_count`; it must stay zero.
-9. **Backends decline explicitly.** An anchor that cannot honor a request
-   returns a structured decline with a reason code (`execution.Decline`);
-   silently changing semantics or dropping work is a contract violation.
-10. **NAS-facing architecture parameters remain separate from backend schedule
-    parameters** in every API surface and serialized artifact
-    (`planner.ArchitectureParams` vs `planner.ScheduleParams`).
-11. **Compilation intent is explicit.** `CompilationIntent` (inference /
-    training / forward-only analysis) gates legality: training rejects
-    forward-only anchors, rewrites without certified backward, missing
-    gradient coverage for operand dtypes, and unresolved recomputation or
-    forward-only obligations.
-    For the sparse-memory skeleton, training semantic mode requires training
-    intent, while inference semantic mode permits inference or explicit
-    forward-only-analysis intent; every contradictory combination is an
-    `intent_conflict` before anchor selection.
-    The certified-route `SparseStateMixerAccess` follows the same intent rule.
-    Its native plan serializes the URM-owned partition/value-tile schedule. A
-    pinned SDM execution fallback may be selected only after native decline and
-    only when a separate revision/runtime/semantic probe proves the exact
-    overlap; its physical address translation remains outside semantic IR.
-    `SparseRouteGeneration` is an independent pure operation. Its typed score
-    composition, selection, canonicalization, and normalization choices rema
-    architecture parameters; block sizes and warps remain schedule parameters.
-    The native composite Sparse Memory anchor serializes both exact schedules
-    and an explicit route materialization boundary rather than hiding an
-    upstream API or an untyped fused callback.
-    `runtime.bind.compile_sparse_memory_plan()` is the sole executable
-    binder for that composite: it verifies the compiler-selected anchor and
-    serialized launch configuration against the runtime launchers before dispatch. The
-    model-level benchmark consumes this plan rather than constructing a backend
-    directly. Opaque `torch.library` operators needed to make the pinned
-    comparator visible to `torch.compile` stay external-adapter glue; they are
-    not serialized, selectable, or expressible in semantic IR.
-12. **Candidate selection never mutates the program implicitly.** The base
-    plan is always a candidate; every rewrite occurrence has a stable ID;
-    callers may select explicitly; automatic selection runs through the
-    solver or the documented cost heuristic; traces record the selected
-    candidate and rejected alternatives.
-13. **Solver models are untrusted.** Every Z3 model passes an independent,
-    solver-free verifier before any plan or kernel is generated from it.
-14. **Solver expressions never leak.** Z3 lives behind `compiler/solve/z3.py`
-    behind the backend-independent constraint vocabulary 
-    `compiler/solve/constraints.py`; semantic IR, execution IR, serialized
-    architecture specifications, and public adapter APIs contain no solver
-    objects.
-15. **Push and pull communication protocols are never conflated.**
-    Token-to-expert dispatch with required return (`PUSH_DISPATCH_RETURN`)
-    and query-owner gather (`PULL_GATHER`) are distinct typed protocols with
-    their own directions, conservation laws, and return obligations.
+## Backend branch admission
 
-## What the compiler owes each compiled program
+A new semantic axis may enter IR and independent NumPy/Torch references before native execution exists. A new **physical** branch under `backends/` is admitted only when all of the following are recorded:
 
-A successful compilation produces:
+1. Its selection key is a closed typed property (equation, state shape, score/reducer, addressing, read timing, precision, layout or mode), never an architecture name or tensor spelling.
+2. Two structurally independent client graphs exercise it: two unrelated source models, or one source model plus a nontrivial synthetic graph combining another legal axis. A renamed recipe or another batch size does not count.
+3. Both clients pass independent reference, forward/VJP/state-continuation and legal cross-axis tests. Unsupported combinations decline.
+4. A distinct dependency, memory access, numerical stability or measured performance regime justifies the physical schedule. Otherwise reuse an existing launcher.
 
-- an executable plan (deterministic, serializable);
-- a deterministic trace: rules considered/accepted/rejected with reasons,
-  chosen anchors, estimated costs, and remaining semantic obligations;
-- analytical cost features (clearly separated from measured counters);
-- structured diagnostics instead of silent fallbacks when anything declines.
+A source-only implementation remains in its external comparator package until this admission record exists. Fusing adjacent calls additionally requires a registered equivalence rule and a measured benefit including launch, materialization, route and state traffic.
 
-## Non-goals
+## Required compiler output
 
-- Copying or adapting upstream kernel source into native URM lowerings.
-- Arbitrary kernel synthesis from tensor programs (no autotuned search over
-  unchecked code).
-- Hiding distributed execution inside ordinary tensor ops: remote exchange is
-  always a first-class effect and plan step.
+Compilation returns a deterministic serialized executable plan, a trace of accepted/rejected candidates and declines, analytical cost features separate from measurement, and mode-specific unresolved obligations. No selected anchor may fail later merely because the binder lacks that family. See the [runtime contract](../runtime/execution.md), [generality axes](generality-axes.md) and [roadmap](../planning/roadmap.md).

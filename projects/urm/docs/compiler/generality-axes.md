@@ -1,88 +1,26 @@
-# Generality axes for production construction
+# Generality axes
 
-These are the full-version IR extension tasks. The unified mixer compiler
-implements bounded parts of several axes below; it does not close those axes or
-establish named architecture coverage. The goal is shared typed semantics and
-reusable lowerings, not a universal mega-kernel. See the
-[source audit](../planning/unification-audit.md).
+This is a **typed semantic backlog**, not a list of implemented kernels. A descriptor and independent references may be added before a native path. A new physical backend branch must pass the [charter's admission rule](compiler-charter.md#backend-branch-admission). The [architecture ledger](../planning/architecture-composition.md) maps all 76 mixer-relevant source rows to external calls and unresolved axes.
 
-## Current executable boundary
+| Axis | Closed semantic fields required | Independent clients / decisive gate |
+|---|---|---|
+| **A1: slot/channel** | Logical slot, key-channel and value domains; gate broadcast; per-domain state layout | GLA/KDA/Rodimus; preserve gate gradients and state shape |
+| **A2: locality** | Exact or approximate metric, route ties, capacity, geometric metadata | Foveal plus synthetic indexed K1; include route work and approximation quality separately |
+| **A3: coordinated routing** | Assignment, ownership, collision/merge, deterministic tie and return protocol | MoM and multi-head synthetic graph; conserve tokens/state and cost packing |
+| **A4: hierarchical chunks** | Architectural pooling versus schedule subdivisions, level identity and boundary state | Log-linear and CAT; no schedule-only substitution for model compression |
+| **A5: timescale banks** | Independent state instances, decay schedules and explicit weighted combination | RetNet and multi-state synthetic graph; both state VJPs |
+| **A6: slot interaction graph** | Edge domain, ordered propagation and state effects | Graph-memory candidates; derive graph update before admission |
+| **A7: adaptive cardinality** | Allocation, birth/death, identity, reset and ragged cache ABI | CAT/dynamic memory; capacity and gradient policy |
+| **A8: read/write coupling** | Independent factors, low-rank rank, augmented states, input-precomputable versus state-dependent coefficients | Generalized delta/RWKV-7/momentum; bound rank growth and prove VJP |
+| **A9: complex/block-real state** | Rotation representation, conjugate rules, phase state and VJP | Phase-bearing SSMs; exact block-real parity |
+| **A10: stochastic routes** | RNG state, replay, estimator and distribution | Sampled routing; replay and estimator tests |
+| **A11: parameter/expert/depth** | Static parameter domain, depth dependencies, grouped GEMM/dispatch and gradient accumulation | PAttention/AttnRes; complete replaced-layer parity |
+| **A12: inner optimization** | Closed loss/update/optimizer state, loop bounds, checkpoint and outer-gradient policy | Titans/TTT; no callback or affine-scan assertion |
+| **A13: score/reduction algebra** | Score map, normalization, neutral element, all-masked behavior, sum/LSE/max/positive or iterative reduction and VJP | POLAR/Foveal, TDA/KATA as distinct equations; physical reuse must be measured |
+| **A14: cross-call composition** | Typed producer/consumer edges, output pairing, coefficients, state ownership and legal fusion | Differential/TDA/HLA; independent call reference and cost proof |
 
-The v2 graph catalog currently has 14 K1 attention fragments and one K3
-route-to-state fragment. `compile_graph` executes the K1 softmax fragment and the
-native K3 route/state fragment through `BoundGraphPlan`. It can select a K2
-`OrderedRecurrence` anchor, but that operation has no graph executor yet. The
-separate NumPy K2 oracles and native K2 functions do not establish graph-path K2
-coverage. See the [backend unification audit](../planning/backend-unification.md)
-for the current binding and semantic gaps.
+## Current execution boundary
 
-The available lower-level implementations explore grouped heads and gate
-broadcasting (part of A1), matrix and diagonal state and ranked updates (part of
-A8), and normalized reductions (part of A13). These are candidates for typed
-graph regions, not completed axes or named architecture qualification. K3's
-current graph fragment implements ordered token updates and within-token
-collision rejection on its narrow native envelope.
+At HEAD `4cb35c5`, 14 K1 dense-softmax graph fragments and one K3 route-to-state fragment are live. K2 has no graph executor. Several lower-level implementations and historical comparators explore portions of these axes, but their existence does not mean the descriptor, public binder, independent references, gradients, cache and native schedule are qualified. See [evidence](../validation/evidence.md) for claim levels.
 
-Timescale banks and weighted multi-state combination (A5), coordinated
-multi-head/expert routing (A3), general score reductions, complex state, and
-the remaining axes are still open. See the
-[coverage table](unified-mixer.md#named-kernel-recipes) for the exact
-architecture-kernel boundaries.
-
-## Shared descriptor boundary
-
-Extend existing IR with typed descriptors for logical axis/domain, state bundle,
-transition algebra, score/normalizer/reduction, routing policy and update region.
-Provider and tile choices remain schedule properties. A serialized descriptor
-must reconstruct semantics; an arbitrary callback cannot substitute for it.
-
-| Axis | Required contract / implementation | Coverage fixtures | Acceptance obligation | Wave |
-|---|---|---|---|---|
-| A1: slot/channel | Explicit slot, channel and value domains; gate broadcasting and shared/independent transitions | GLA/KDA candidates, channel-routed memory | Prove legal flattening or use separate solves; all gate gradients | 2-3 |
-| A2: locality | Metric, exact/approximate selection, ties, capacity and geometric metadata | Foveal, nearest-neighbor memory | Exact oracle; approximation is a separate semantic with quality tests; include index construction | 3 |
-| A3: coordinated routing | Multi-head assignment, ownership, collision merge and deterministic ties | MoM/MoE, exclusive slots | Assignment oracle, conservation, route gradients and coordination cost | 3 |
-| A4: hierarchical chunks | Distinguish schedule subdivision from architectural pooling; explicit boundary maps | Long-context recurrence, compressed attention | Nested schedule preserves recurrence; model hierarchy needs a new reference; bound rank/memory growth | 3-4 |
-| A5: timescale banks | Parallel states, decay schedules and explicit weighted combination | RetNet, multi-memory fixtures | Independent-bank oracle, combination gradients and state continuation | 2 |
-| A6: slot interaction graph | Edge propagation, ordering and state effects | BDH/graph-memory candidates | Derive graph update and VJP; collision and edge-traffic budgets | 4 |
-| A7: adaptive cardinality | Ragged-state ABI, allocation, birth/death, identity and reset policy | CAT/compression, dynamic memory | Cache migration, bounded capacity and discrete-event differentiation policy | 4 |
-| A8: read/write coupling | Independent low-rank factors, augmented state, precomputable versus state-dependent coefficients | RWKV-7, generalized delta, momentum, preconditioning | Derive transition closure or rank growth; no scalar-beta substitution without proof | 3 |
-| A9: complex/block-real state | Rotations, representations and conjugate/adjoint rules | Phase-bearing SSM candidates | Complex/block-real reference parity, phase state and gradients | 3 audit, 4 broader support |
-| A10: stochastic routes | RNG state, distribution, replay and gradient estimator | Sampled-routing fixtures | Replay and estimator tests; distinguish estimator from exact discrete-selection derivative | 4 |
-| A11: parameter/expert/depth | Static operands, pointwise gates, grouped matmul, dispatch/combine and depth dependencies | Pattention, SwiGLU, MoE, AttnRes | Full subgraph and parameter-gradient parity including every projection | 3 |
-| A12: inner optimization | Typed loss/update region, loop bounds, optimizer state, checkpointing and outer-gradient policy | TTT, FwPKM, MesaNet audit, MAML/Reptile | Update-trace and outer-gradient tests; explicit loop or external anchor, no callback escape hatch | 3 audit, 4 implementation |
-| A13: score/reduction algebra | Separate score map, normalization and sum/LSE/max or iterative aggregation | POLAR, normalized linear, Hopfield candidates | Neutral elements, stable masking and gradients; dedicated kernels when needed | 2 common, 4 broader support |
-
-## Avoid false equivalences
-
-A channel axis is not merely a shape change when it changes transition factors.
-SwiGLU requires two input projections, a SiLU/product gate and an output projection;
-one bare attention contraction is insufficient. Static parameter memory and mutable
-sequence state have different effects. Depth reduction is not sequence recurrence.
-
-Hierarchical schedules can optimize a fixed operation; hierarchical memories can
-change the model. Approximate locality selection must not replace exact routing
-under an unchanged contract. Inner optimizer state and differentiability cannot
-be inferred from a function pointer. Shared semantics can require different
-physical kernels to preserve performance.
-
-## Deliverables per axis
-
-1. Descriptor, shape/effect validation, serialization and structured declines.
-2. Independent reference and differential/adjoint tests across state boundaries.
-3. Two structurally independent client graphs: two unrelated named recipes, or
-   one named recipe plus a nontrivial synthetic composition with another axis.
-   Reusing the same equation under a renamed recipe or a different batch size
-   does not justify a new core backend branch. No architecture-name condition
-   may select the branch.
-4. Capability matching and an executable compiler plan.
-5. Native, adapter and end-to-end parity evidence on applicable workloads.
-
-An axis can enter the typed IR and references before it has a native branch.
-Keep a single-architecture native implementation in its recipe/comparator
-package until it passes the backend [branch admission rule](../planning/backend-unification.md#admission-rule-for-a-backend-branch).
-
-Start with A1/A5 and ordinary composition, then A3/A8/A11. Graph and stochastic
-extensions do not block the initial three vertical slices, but remain explicit
-full-version work. Publish which axes and [named targets](../planning/coverage.md)
-are qualified and which remain blocked. Do not replace qualification with a claim
-that an interface could theoretically express the operation.
+For every axis, record: descriptor and serialization; rejected combinations; NumPy/Torch references; two independent client graphs; source equations and proof obligations; provider capability; native forward/backward/decode envelope; end-to-end cost. A family label or axis label alone grants none of those stages.

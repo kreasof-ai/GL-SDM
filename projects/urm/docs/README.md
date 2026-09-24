@@ -1,44 +1,19 @@
-# URM compiler documentation
+# URM documentation
 
-Active docs contain the specifications, current-state records and acceptance
-gates for URM. Construction contracts say what a lowering must satisfy; the
-validation records say what has been measured.
+This tree separates **what URM must mean**, **what the current code runs**, and **what historical experiments measured**. The three execution families are K1 streamed reduction, K2 compact fixed-address state, and K3 indexed mutable state. They are not three universal GPU binaries. Architecture names and model layer arrangements stay outside `src/urm`.
 
-Read in this order:
+## Read in this order
 
-1. [Compiler charter](compiler/compiler-charter.md): architectural invariants.
-2. [Architecture](compiler/architecture.md): frontend, IR and component ownership.
-3. [Kernel generation](compiler/kernel-generation.md): verified lowering pipeline.
-4. [Unified mixer compiler](compiler/unified-mixer.md): executable K1/K2/K3 semantic and anchor boundary.
-5. [Runtime execution](runtime/execution.md): capabilities, binding and providers.
-6. Kernel contracts: [softmax attention](kernels/softmax-attention.md),
-   [linear/delta recurrence](kernels/linear-delta.md), and
-   [sparse routed delta](kernels/sparse-delta.md).
-7. [Named coverage register](planning/coverage.md): architecture-by-architecture comparisons.
-   [Production replacement matrix](planning/production-matrix.md) freezes the
-   mandatory workloads URM-native kernels must qualify against upstream.
-   [Unification audit](planning/unification-audit.md) records source findings;
-   [generality axes](compiler/generality-axes.md) specifies the required IR extensions.
-8. [Lowering coverage and remaining work](planning/lowering-roadmap.md): current family status and open barriers.
-9. [Acceptance requirements](validation/acceptance.md) and
-   [parity plan](validation/parity.md): numerical, integration and performance gates.
-   [Representation coverage](validation/representation-coverage.md) records the
-   evidence separating K1/K2/K3 expressibility from native generation.
-   [Master table](validation/master-table.md) is the per-recipe record of the
-   unified generator's reach - what URM computes with its own kernels versus
-   what it can only dispatch to upstream.
-   [Master coverage table](validation/master-table.md) is the consolidated
-   product-evidence record: all 62 covered recipes dropped into the frozen ~100M
-   decoder LM, native vs upstream, across training and inference MFU/MBU,
-   throughput, parity, KL divergence and peak memory.
-   Supporting evidence records, each regenerated from committed artifacts:
-   [gradient alignment and decode KL](validation/alignment.md) and
-   [inference throughput and MFU](validation/inference-throughput.md).
+1. [Compiler charter](compiler/compiler-charter.md): ownership, semantic IR, verified rewrites, provider admission and fail-closed execution.
+2. [K1](kernels/softmax-attention.md), [K2](kernels/linear-delta.md), and [K3](kernels/sparse-delta.md): the currently written equation contracts and their limits.
+3. [Generality axes](compiler/generality-axes.md): typed extensions to prove before broadening a family.
+4. [76-architecture composition ledger](planning/architecture-composition.md): external call graphs, unresolved internal axes and per-ID closeout record. It is a target, not a coverage claim.
+5. [Roadmap](planning/roadmap.md): ordered work, file ownership and completion gates.
+6. [Runtime contract](runtime/execution.md): serialized plans, provider ABI and state sessions.
+7. [Evidence rules and current status](validation/evidence.md): what can be claimed now, how to measure, and how historical results are labeled.
 
-Kernel contracts are architecture-independent. Names such as `sparse_delta`
-describe mathematical operations; named models belong in presets, adapters and
-comparison evidence. Shared routing or tensor layouts do not imply equivalent
-update rules.
+## Machine records and generated pages
 
-Add active docs only for construction contracts, necessary kernel derivations or
-acceptance gates.
+The [80-row source register](../benchmarks/architecture-coverage.json) is the catalog of source identity and preserved fragment comparisons; four rows are outside mixer scope. The [rendered coverage index](planning/coverage.md) is generated from it by `benchmarks/coverage_register.py`. The [alignment](validation/alignment.md) and [inference-throughput](validation/inference-throughput.md) tables are generated views of preserved artifacts. They are historical evidence, not a statement that the present public graph path runs complete source models.
+
+No planning note or generated table overrides the compiler charter or an exact kernel equation. A proposed lowering must decline until its descriptor, independent references, plan binding and mode-specific evidence exist.
