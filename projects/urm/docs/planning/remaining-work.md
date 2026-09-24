@@ -31,7 +31,28 @@ pinned revisions under `/tmp/urm-comparator-pins`).
   IR and output), float64 NumPy reference parity, incompatible-anchor decline, and
   plan-binding failure on tampering.
 
-## Step 3 vertical slice done: K3 graph path (route → update → read)
+## Step 3 done: K3 graph path + SDM composite retired
+
+The `sparse_delta_memory` recipe is a v2 graph document (`sparse_route_generation`
+→ `sparse_state_mixer`) compiled by the ordinary stages and executed by
+`BoundGraphPlan`. **The SDM-shaped composite is deleted from the core:**
+`SDMExecutionMode`, `SparseMemoryMixerSpec` (with its frozen-facebook-adapter
+`__post_init__` limits), `SparseDeltaMemorySpec`/`SparseMemoryAccess`/
+`SparseDeltaMemoryAccess`, `sparse_delta_memory_program`, `partition/k3.py`,
+`runtime/bind.py`'s `compile_sparse_memory_plan`, `backends/triton/k3/memory.py`'s
+monolith, the `SPARSE_DELTA_MEMORY` anchor kind, and the SDM e2e selectors. Consumers
+migrated: `train/loop.py`'s `SparseMemoryMixer` binds a config-built K3 graph through
+`compile_graph` (fullgraph training stays traceable via the trusted route bridge);
+the K3 GPU differential suite runs on the narrow route+state launchers. Suite: 919
+passed, 0 failed.
+
+Remaining SDM-named residue in core is benign: the recipe *name*
+`sparse_delta_memory`, the reference anchor `urm.unified.k3.sparse_delta_reference.v1`,
+the generic K3 fallback's capability probe (comparator-injected, no SDM import in
+core), legacy-dispatch string literals pending catalog deletion, and docstring
+provenance notes.
+
+## Step 2 done: legacy registry deleted
 
 The `sparse_delta_memory` recipe is now a v2 graph document composing
 `sparse_route_generation` → `sparse_state_mixer`, compiled by the ordinary
