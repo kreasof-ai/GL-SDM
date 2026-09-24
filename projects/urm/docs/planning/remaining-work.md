@@ -31,12 +31,58 @@ pinned revisions under `/tmp/urm-comparator-pins`).
   IR and output), float64 NumPy reference parity, incompatible-anchor decline, and
   plan-binding failure on tampering.
 
+## Step 2 done: legacy registry deleted
+
+- `runtime/registry.py` (the legacy `MixerSpec`-dispatched `BackendRegistry`),
+  its root/runtime re-exports, and the `NumpyBackend` adapter are deleted.
+- The compiler `CapabilityRegistry` is the only selection API; the layout tests
+  assert the public plan-binder surface (`BoundGraphPlan`). Suite: 941 passed.
+
+## Environment / provisioning state
+
+- GPU: NVIDIA A10G (23 GB), torch 2.14, triton 3.8, FLA 0.5.2 (pip).
+- All 24 comparator sources provisioned at pinned revisions under
+  `/tmp/urm-comparator-pins`; CUDA toolchain + flash_attn SDPA shim set up.
+- The mamba1 `selective_scan_cuda` extension failed to build against torch 2.14
+  (upstream `mamba @ e9594ce1` source); affects only the `mamba1_ssm_core`
+  upstream column. Retry or pin-fix is open.
+- `benchmarks/master_table.py` does not yet call
+  `benchmarks.comparators.register_all()`; post-cutover it must, since external
+  executors are consumer-registered. Probe also shows a `float != BFloat16`
+  dtype bug on several K2 probe paths.
+
 ## Remaining (in the plan's order)
 
-See the sections below. Step 1 is done for MHA only; the 73 spec-dump recipes still
-use the v1 catalog until their families are graphed (steps 3–4), and the Python
-catalog, `compile_mixer` recipe-name dispatch, and `runtime/registry.py` remain
-until the graph path covers them.
+Step 1 (MHA vertical slice) and step 2 (legacy registry) are done. The remaining
+core work, all required before the master table can be reproduced *through the
+graph path*:
+
+- **Recipe migration (bulk):** 73 spec-dump recipes remain on the v1 catalog.
+  By family: 28 K1, 44 K2, 1 K3 (sparse_delta_memory). Only `mha` is a graph
+  document. Each K2/K3 recipe needs its equation decomposed into typed nodes
+  (transitions, scans, FFT convs, ordered state update/read) — this is steps
+  3–4 and the largest single block of work.
+- **Step 3 — multi-node graphs:** retire the special `SparseMemoryPlan` /
+  `runtime/bind.py` SDM binder / `backends/triton/k3/memory.py` monolith in
+  favor of a route→update→read typed graph through the common path.
+- **Step 4 — per-family partition/schedule/cost/probes:** `partition/graph.py`,
+  `partition/{k1,k2,k3}.py`, `schedule/{model,k1,k2,k3}.py`, `cost/{k1,k2,k3}.py`,
+  `schedule/probes/triton_{k2,k3}.py`; per-region schedules; critical path by
+  graph edges.
+- **Semantic corrections:** remove `UnifiedMixerAccess`, `EXTERNAL_OPAQUE`,
+  `MixerBackend`, `RecurrentAlgorithm` from core; `compile_mixer` recipe-name
+  dispatch deleted once the graph path covers the catalog; `frontend/api.py`.
+- **Step 5 — evidence closure:** demote one-node Samba/PAttention architecture
+  JSONs to fragments; remove `urm::` registrations from
+  `benchmarks/comparators/sdm/compiled.py`; relabel master-table "model-level"
+  → "generic decoder integration".
+- **Applications (ATMA-derived):** `train/{data,optimizer,loop,config}.py` +
+  `architectures/urm_decoder/`; frozen SDM model → `benchmarks/models/`;
+  `inference/{api,engine,scheduler,cache,model_runner,sampling}.py` around
+  bound plans (borrow from `/tmp/urm-comparator-pins/atma` structure).
+- **Verification:** migrate `benchmarks/master_table.py` to the public JSON →
+  compile → bind path; run the 62-recipe sweep; regenerate
+  `results/validation/master-table.json` + `docs/validation/master-table.md`.
 
 ## Corrections to earlier completion claims
 
