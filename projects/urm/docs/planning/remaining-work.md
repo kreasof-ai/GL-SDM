@@ -31,6 +31,33 @@ pinned revisions under `/tmp/urm-comparator-pins`).
   IR and output), float64 NumPy reference parity, incompatible-anchor decline, and
   plan-binding failure on tampering.
 
+## Core hygiene: legacy path quarantined, catalog de-Pythonized, K2/K3 probes
+
+- `compiler/pipeline.py` (7855 → ~1800 lines) is the pure planner + graph path
+  (`compile_graph`/`_GRAPH_TARGETS`). The transitional family-dispatch path —
+  `compile_mixer`, `CompiledMixerPlan`, `mixer_semantic_program`,
+  `compile_frontend_mixer`, the external-executor registry, and the ~30
+  family-specific reference/native executors (including the ATMA tile-width
+  code) — moved to `compiler/mixer.py` with an honest slated-for-deletion
+  docstring. Dependency direction is strictly mixer → pipeline; pipeline no
+  longer imports the recipes module at all.
+- `frontend/recipes.py` is pure JSON loading/validation machinery; the
+  hardcoded 74-architecture Python catalog (`MIXER_RECIPE_NAMES`,
+  `named_mixer_recipe`) is deleted — the JSON documents are the only
+  authority. Consumers resolve names through the new consumer-side
+  `benchmarks/recipe_catalog.py` (outside core); the 22 call sites that used
+  v2-migrated names through the legacy catalog now compile through the public
+  graph path. The five family spec builders live with the legacy path in
+  `compiler/mixer.py`.
+- `compiler/schedule/probes/` now has `triton_k2.py` and `triton_k3.py`
+  alongside `triton_k1.py` (exact-specialization compile probes driving the
+  production launchers and reading register/shared-mem facts from the compiled
+  kernel caches). Schedule-search *consumption* for K2/K3 remains step 4 —
+  today the search covers K1 (WeightedReduce) only, and K2/K3 launch configs
+  are derived analytically in the lowering.
+
+Suite: 894 passed, 0 failed; core imports without torch.
+
 ## Step 3 done: K3 graph path + SDM composite retired
 
 The `sparse_delta_memory` recipe is a v2 graph document (`sparse_route_generation`
