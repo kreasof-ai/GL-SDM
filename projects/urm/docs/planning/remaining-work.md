@@ -31,6 +31,22 @@ pinned revisions under `/tmp/urm-comparator-pins`).
   IR and output), float64 NumPy reference parity, incompatible-anchor decline, and
   plan-binding failure on tampering.
 
+## Step 3 vertical slice done: K3 graph path (route → update → read)
+
+The `sparse_delta_memory` recipe is now a v2 graph document composing
+`sparse_route_generation` → `sparse_state_mixer`, compiled by the ordinary
+partition/select/lower stages and executed by `BoundGraphPlan` — no special
+`SparseMemoryPlan`, no monolithic score-to-state backend. Gates: the graph compiles
+to the two native route anchors + the native state anchor and executes on GPU; the
+native state mixer matches the independent reference exactly (0.00 max err).
+Suite: 943 passed.
+
+This unblocks retiring the SDM composite (next): `compiler/partition/k3.py`,
+`runtime/bind.py`'s `compile_sparse_memory_plan`, `backends/triton/k3/memory.py`'s
+monolith, and the `SparseMemoryMixerSpec`/`SDMExecutionMode`/`sparse_delta_memory_program`
+composite in `ir/program.py`, whose provider constraints (perfect-square, div-by-8,
+frozen-subset widths, training length) must move to backend capability facts.
+
 ## Architecture-specific content moved out of the compiler core
 
 Review feedback confirmed: architecture-specific knowledge must leave the core.
