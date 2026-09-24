@@ -26,6 +26,9 @@ from urm.ir.program import (
     SemanticNode,
     SemanticProgram,
     SparseMemoryMixerSpec,
+    SparseRouteGeneration,
+    SparseStateMixerAccess,
+    SparseStateOperation,
     WeightedReduce,
 )
 from urm.compiler.partition.k3 import plan_sparse_memory
@@ -113,6 +116,99 @@ def _execute_k1_attention_node(
     raise PlanBindingError(f"no graph executor for K1 attention anchor {anchor!r}")
 
 
+def _execute_sparse_route_node(node: SparseRouteGeneration, anchor: str, tensors: dict[str, Any]) -> tuple[Any, Any]:
+    """Execute one sparse route-generation node: scores -> (addresses, weights)."""
+    if anchor != "urm_native_sparse_route_selection_v0":
+        raise PlanBindingError(
+            f"no graph executor for sparse route anchor {anchor!r}"
+        )
+    from urm.backends.triton.k3.route import sparse_route_selection
+
+    (scores_name,) = node.inputs
+    scores = tensors[scores_name]
+    spec = node.spec
+    addresses, weights = sparse_route_selection(
+        scores,
+        spec.source_extent,
+        spec.route_width,
+    )
+    return addresses, weights
+
+
+def _execute_sparse_state_node(node: SparseStateMixerAccess, anchor: str, tensors: dict[str, Any]) -> tuple[Any, Any]:
+    """Execute one sparse state-mixer node: ordered update + weighted read.
+
+    The recipe declares the equation (slots, value_dim, widths, read timing);
+    parallel/sequence are runtime batch dims re-materialized from the operand
+    shapes. The narrow state launcher certifies and executes the routes.
+    """
+    if anchor not in {
+        "urm_native_sparse_state_mixer_v0",
+        "urm.unified.k3.sparse_delta_reference.v1",
+    }:
+        raise PlanBindingError(
+            f"no graph executor for sparse state anchor {anchor!r}"
+        )
+    from dataclasses import replace as _replace
+
+    bound = {name: tensors.get(name) for name in node.inputs}
+    memory = bound["memory"]
+    values = bound.get("values")
+    parallel, sequence = None, None
+    if values is not None:
+        parallel, sequence = int(values.shape[0]), int(values.shape[1])
+    elif bound.get("read_addresses") is not None:
+        parallel = int(bound["read_addresses"].shape[0])
+        sequence = int(bound["read_addresses"].shape[1])
+    spec = _replace(
+        node.spec,
+        parallel=parallel or node.spec.parallel,
+        sequence=sequence or node.spec.sequence,
+    )
+
+    if anchor == "urm.unified.k3.sparse_delta_reference.v1":
+        # Independent differentiable reference (transparent loop).
+        from urm.backends.reference.torch.k3 import torch_sparse_state_mixer
+
+        outputs, state = torch_sparse_state_mixer(
+            memory,
+            bound["read_addresses"],
+            bound["read_weights"],
+            write_indices=bound.get("write_addresses"),
+            write_weights=bound.get("write_weights"),
+            values=values,
+            beta=bound.get("beta"),
+            log_decay=bound.get("log_decay"),
+        )
+        return outputs, state
+
+    # Native K3 narrow launcher. Certify the routes produced by the upstream
+    # route-generation nodes against the re-materialized state spec, then bind.
+    from urm.backends.triton.k3.state_launcher import (
+        CertifiedSparseStateRoutes,
+        SparseState,
+        TritonSparseStateMixerBackend,
+    )
+
+    routes = CertifiedSparseStateRoutes.certify(
+        spec,
+        bound["read_addresses"],
+        bound["read_weights"],
+        write_indices=bound.get("write_addresses"),
+        write_weights=bound.get("write_weights"),
+    )
+    backend = TritonSparseStateMixerBackend(spec)
+    prepared = backend.prepare(
+        routes,
+        values=values,
+        beta=bound.get("beta"),
+        log_decay=bound.get("log_decay"),
+    )
+    state = SparseState(memory=memory, sequence_length=0)
+    readings, new_state = backend.execute(state, prepared)
+    return readings, new_state.memory
+
+
 @dataclass(frozen=True, slots=True)
 class BoundGraphPlan:
     """A compiled graph bound for execution; the plan is the only authority.
@@ -175,6 +271,10 @@ class BoundGraphPlan:
                 op.spec.normalization is ScoreNormalization.SOFTMAX
             ):
                 result = _execute_k1_attention_node(op, step.anchor, tensors)
+            elif isinstance(op, SparseRouteGeneration):
+                result = _execute_sparse_route_node(op, step.anchor, tensors)
+            elif isinstance(op, SparseStateMixerAccess):
+                result = _execute_sparse_state_node(op, step.anchor, tensors)
             else:
                 raise PlanBindingError(
                     f"op {op.name!r} ({type(op).__name__}) has no graph executor "

@@ -34,6 +34,13 @@ from urm.ir.program import (
     ScoreNormalization,
     SemanticNode,
     SemanticProgram,
+    SparseRouteGeneration,
+    SparseRouteSelectionSpec,
+    SparseStateExecutionMode,
+    SparseStateMixerAccess,
+    SparseStateMixerSpec,
+    SparseStateOperation,
+    SparseReadTiming,
     StateRead,
     StateUpdate,
     TensorHandle,
@@ -137,6 +144,52 @@ def _build_node(node: dict[str, Any], *, index: int) -> SemanticNode:
             state=str(params["state"]),
             policy=_enum(MergePolicy, params["policy"], field="state_update.policy"),
             commit_boundary=bool(params.get("commit_boundary", False)),
+        )
+    if op == "sparse_route_generation":
+        # parallel/sequence are runtime batch dims; the recipe declares the
+        # equation (source_extent, route_width). They are carried as 1 here and
+        # re-materialized by the binder from the actual operand shapes.
+        return SparseRouteGeneration(
+            name=node_id,
+            inputs=inputs,
+            outputs=outputs,
+            spec=SparseRouteSelectionSpec(
+                parallel=int(params.get("parallel", 1)),
+                sequence=int(params.get("sequence", 1)),
+                source_extent=int(params["source_extent"]),
+                route_width=int(params["route_width"]),
+                dtype=DType.BFLOAT16,
+            ),
+        )
+    if op == "sparse_state_mixer":
+        return SparseStateMixerAccess(
+            name=node_id,
+            inputs=inputs,
+            outputs=outputs,
+            spec=SparseStateMixerSpec(
+                parallel=int(params.get("parallel", 1)),
+                sequence=int(params.get("sequence", 1)),
+                slots_per_partition=int(params["slots_per_partition"]),
+                value_dim=int(params["value_dim"]),
+                writes=int(params["writes"]),
+                reads=int(params["reads"]),
+                dtype=DType.BFLOAT16,
+                operation=_enum(
+                    SparseStateOperation,
+                    params.get("operation", "update"),
+                    field="sparse_state_mixer.operation",
+                ),
+                read_timing=_enum(
+                    SparseReadTiming,
+                    params.get("read_timing", "after_update"),
+                    field="sparse_state_mixer.read_timing",
+                ),
+                mode=_enum(
+                    SparseStateExecutionMode,
+                    params.get("mode", "inference"),
+                    field="sparse_state_mixer.mode",
+                ),
+            ),
         )
     raise NormalizeError(f"node {node_id!r}: unknown operation {op!r}")
 

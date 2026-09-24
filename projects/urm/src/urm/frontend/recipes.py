@@ -1293,6 +1293,8 @@ GRAPH_OPERATIONS: frozenset[str] = frozenset(
         "ordered_recurrence",
         "state_read",
         "state_update",
+        "sparse_route_generation",
+        "sparse_state_mixer",
     }
 )
 

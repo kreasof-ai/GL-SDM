@@ -146,6 +146,102 @@ def test_plan_with_missing_dispatch_step_fails_to_bind():
         )
 
 
+def test_k3_route_update_read_graph_compiles_and_executes():
+    """The K3 recipe compiles as a route→update→read graph through the common path."""
+    torch = pytest.importorskip("torch")
+    if not torch.cuda.is_available():
+        pytest.skip("native K3 requires CUDA")
+    recipe = load_graph_recipe_file("recipes/kernels/sparse_delta_memory.json")
+    program = normalize_graph_document(recipe.document)
+    # Two route-generation nodes plus one state-mixer node, no special SDM plan.
+    assert [type(op).__name__ for op in program.ops] == [
+        "SparseRouteGeneration",
+        "SparseRouteGeneration",
+        "SparseStateMixerAccess",
+    ]
+    plan = compile_graph(program, target="native")
+    anchors = [step.anchor for step in plan.compilation.plan.steps]
+    assert anchors == [
+        "urm_native_sparse_route_selection_v0",
+        "urm_native_sparse_route_selection_v0",
+        "urm_native_sparse_state_mixer_v0",
+    ]
+
+    # Match the recipe's declared equation: slots_per_partition=4096 (factor 64),
+    # value_dim=128, route width 4.
+    P, T, S, D, F, W = 1, 4, 4096, 128, 64, 4
+    dev = "cuda"
+    ops = {
+        "read_scores": torch.randn(P, T, 2 * F, dtype=torch.bfloat16, device=dev),
+        "write_scores": torch.randn(P, T, 2 * F, dtype=torch.bfloat16, device=dev),
+        "values": torch.randn(P, T, D, dtype=torch.bfloat16, device=dev),
+        "beta": torch.rand(P, T, 1, dtype=torch.bfloat16, device=dev),
+        "log_decay": -torch.rand(P, T, 1, dtype=torch.bfloat16, device=dev),
+        "memory": torch.zeros(P, S, D, dtype=torch.bfloat16, device=dev),
+    }
+    out = plan.execute(**ops)["output"]
+    assert tuple(out.shape) == (P, T, D)
+
+
+def test_k3_state_mixer_matches_independent_reference():
+    """The native K3 state mixer matches the independent differentiable reference."""
+    torch = pytest.importorskip("torch")
+    if not torch.cuda.is_available():
+        pytest.skip("native K3 requires CUDA")
+    import dataclasses
+
+    from urm.backends.reference.torch.k3 import torch_sparse_state_mixer
+    from urm.backends.triton.k3.state_launcher import (
+        CertifiedSparseStateRoutes,
+        SparseState,
+        TritonSparseStateMixerBackend,
+    )
+    from urm.ir.program import SparseReadTiming
+
+    recipe = load_graph_recipe_file("recipes/kernels/sparse_delta_memory.json")
+    program = normalize_graph_document(recipe.document)
+    P, T, S, D, W = 1, 4, 4096, 16, 4
+    dev = "cuda"
+    gen = torch.Generator(device=dev).manual_seed(0)
+    read_idx = torch.stack(
+        [torch.randperm(S, generator=gen, device=dev)[:W].sort().values for _ in range(P * T)]
+    ).reshape(P, T, W).to(torch.int64)
+    write_idx = torch.stack(
+        [torch.randperm(S, generator=gen, device=dev)[:W].sort().values for _ in range(P * T)]
+    ).reshape(P, T, W).to(torch.int64)
+    rw = torch.softmax(torch.randn(P, T, W, generator=gen, device=dev), -1).to(torch.bfloat16)
+    ww = torch.softmax(torch.randn(P, T, W, generator=gen, device=dev), -1).to(torch.bfloat16)
+    values = torch.randn(P, T, D, generator=gen, device=dev, dtype=torch.bfloat16)
+    beta = torch.rand(P, T, 1, generator=gen, device=dev, dtype=torch.bfloat16)
+    log_decay = -torch.rand(P, T, 1, generator=gen, device=dev, dtype=torch.bfloat16)
+    memory0 = torch.zeros(P, S, D, dtype=torch.bfloat16, device=dev)
+
+    spec = dataclasses.replace(
+        program.ops[2].spec, parallel=P, sequence=T, value_dim=D, reads=W, writes=W
+    )
+    routes = CertifiedSparseStateRoutes.certify(
+        spec, read_idx, rw, write_indices=write_idx, write_weights=ww
+    )
+    backend = TritonSparseStateMixerBackend(spec)
+    prepared = backend.prepare(routes, values=values, beta=beta, log_decay=log_decay)
+    native_out, native_state = backend.execute(
+        SparseState(memory=memory0.clone(), sequence_length=0), prepared
+    )
+    ref_out, ref_state = torch_sparse_state_mixer(
+        memory0.clone(),
+        read_idx,
+        rw,
+        write_indices=write_idx,
+        write_weights=ww,
+        values=values,
+        beta=beta,
+        log_decay=log_decay,
+        read_timing=SparseReadTiming.AFTER_UPDATE,
+    )
+    assert (native_out.float() - ref_out.float()).abs().max().item() < 2e-2
+    assert (native_state.memory.float() - ref_state.float()).abs().max().item() < 2e-2
+
+
 def test_loader_rejects_unknown_operation_and_dangling_edge():
     doc = _mha_document()
     bad_op = copy.deepcopy(doc)

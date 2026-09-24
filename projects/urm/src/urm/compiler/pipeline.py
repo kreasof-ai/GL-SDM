@@ -2929,9 +2929,24 @@ def _is_fla_gated_delta_spec(spec: UnifiedMixerSpec) -> bool:
 # implementations may be selected, while semantic legality (equation contract)
 # is enforced independently.
 _GRAPH_TARGETS: dict[str, frozenset[str]] = {
-    "reference": frozenset({"urm.unified.k1.softmax_reference.v1"}),
+    "reference": frozenset(
+        {
+            "urm.unified.k1.softmax_reference.v1",
+            "urm.unified.k2.state_reference.v1",
+            "urm.unified.k3.sparse_delta_reference.v1",
+        }
+    ),
     "library": frozenset({"torch.nn.functional.scaled_dot_product_attention"}),
-    "native": frozenset({"urm_native_k1_online_softmax_v1"}),
+    "native": frozenset(
+        {
+            "urm_native_k1_online_softmax_v1",
+            "urm_native_diagonal_recurrence_v1",
+            "urm_native_matrix_state_recurrence_v1",
+            "urm_native_sparse_route_selection_v0",
+            "urm_native_sparse_state_mixer_v0",
+            "urm_native_sparse_memory_e2e_v0",
+        }
+    ),
 }
 
 
@@ -2952,9 +2967,16 @@ def compile_graph(
     recipe name or backend enum.
     """
     from urm.compiler.select.anchors import (
+        NATIVE_SPARSE_MEMORY_ANCHOR_NAME,
+        NATIVE_SPARSE_ROUTE_ANCHOR_NAME,
+        NATIVE_SPARSE_STATE_MIXER_ANCHOR_NAME,
+        AnchorKind,
         AnchorRegistry,
         TRUSTED_ANCHORS,
+        make_native_sparse_memory_selector,
         make_selector,
+        make_sparse_route_selector,
+        make_sparse_state_mixer_selector,
     )
     from urm.runtime.bind import BoundGraphPlan
 
@@ -2968,6 +2990,20 @@ def compile_graph(
     # does not implement the node's equation still declines.
     in_target = tuple(a for a in TRUSTED_ANCHORS if a.name in allowed)
     registry = AnchorRegistry()
+    # The K3 sparse families use capability-probing selectors (they check the
+    # backend's support_status), registered before the generic catalog.
+    def _core(name: str):
+        return next((a for a in TRUSTED_ANCHORS if a.name == name), None)
+
+    route_anchor = _core(NATIVE_SPARSE_ROUTE_ANCHOR_NAME)
+    if route_anchor is not None and route_anchor.name in allowed:
+        registry.register(make_sparse_route_selector(route_anchor))
+    memory_anchor = _core(NATIVE_SPARSE_MEMORY_ANCHOR_NAME)
+    if memory_anchor is not None and memory_anchor.name in allowed:
+        registry.register(make_native_sparse_memory_selector(memory_anchor))
+    state_anchor = _core(NATIVE_SPARSE_STATE_MIXER_ANCHOR_NAME)
+    if state_anchor is not None and state_anchor.name in allowed:
+        registry.register(make_sparse_state_mixer_selector(state_anchor))
     registry.register(make_selector(in_target))
     active = UrmCompiler(anchors=registry)
     compilation = active.compile(program, intent=intent)

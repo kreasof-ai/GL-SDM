@@ -106,7 +106,7 @@
         "op": {
           "type": "string",
           "description": "Registered typed operation.",
-          "enum": ["score", "select", "gather", "weighted_reduce", "matmul", "transform", "ordered_recurrence", "state_read", "state_update"]
+          "enum": ["score", "select", "gather", "weighted_reduce", "matmul", "transform", "ordered_recurrence", "state_read", "state_update", "sparse_route_generation", "sparse_state_mixer"]
         },
         "inputs": {
           "type": "array",
@@ -225,6 +225,40 @@
               "state": {"type": "string", "minLength": 1},
               "policy": {"type": "string", "enum": ["ordered", "sum", "mean", "last_write", "reject"]},
               "commit_boundary": {"type": "boolean", "default": false}
+            }
+          }}}
+        },
+        {
+          "if": {"properties": {"op": {"const": "sparse_route_generation"}}},
+          "then": {"properties": {"params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["source_extent", "route_width"],
+            "properties": {
+              "source_extent": {"type": "integer", "minimum": 1, "description": "Addressable source slots per partition (perfect square for product-key composition)."},
+              "route_width": {"type": "integer", "minimum": 1},
+              "composition": {"type": "string", "enum": ["pairwise_additive_factors"], "default": "pairwise_additive_factors"},
+              "selection": {"type": "string", "enum": ["top_k"], "default": "top_k"},
+              "normalization": {"type": "string", "enum": ["softmax"], "default": "softmax"}
+            }
+          }}}
+        },
+        {
+          "if": {"properties": {"op": {"const": "sparse_state_mixer"}}},
+          "then": {"properties": {"params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["slots_per_partition", "value_dim", "writes", "reads"],
+            "properties": {
+              "slots_per_partition": {"type": "integer", "minimum": 1},
+              "value_dim": {"type": "integer", "minimum": 1},
+              "writes": {"type": "integer", "minimum": 0},
+              "reads": {"type": "integer", "minimum": 0},
+              "operation": {"type": "string", "enum": ["update", "read_only"], "default": "update"},
+              "read_timing": {"type": "string", "enum": ["before_update", "after_update", "current_state"], "default": "after_update"},
+              "update_rule": {"type": "string", "enum": ["decayed_delta", "additive"], "default": "decayed_delta"},
+              "collision_policy": {"type": "string", "enum": ["ordered", "reject", "sum"], "default": "ordered"},
+              "mode": {"type": "string", "enum": ["inference", "training"], "default": "inference"}
             }
           }}}
         }
