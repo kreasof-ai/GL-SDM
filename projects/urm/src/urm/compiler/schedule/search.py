@@ -1,4 +1,4 @@
-"""Compiler-owned bounded schedule search: solve -> verify -> probe -> retry.
+"""Compiler-owned bounded schedule search: solve -> verify -> retry.
 
 This module closes the loop between candidate selection and kernel lowering:
 
@@ -7,13 +7,12 @@ This module closes the loop between candidate selection and kernel lowering:
       -> Z3 optimization (optional ``solver`` extra) OR deterministic
          heuristic fallback lifted to a complete assignment
       -> independent imperative verification (the SAME verifier both ways)
-      -> optional compile probe of the EXACT selected configuration
       -> bounded nogood/retry within ``SolverLimits.max_nogoods``
       -> a serializable :class:`ScheduleDecision` consumed by lowering
 
-Nothing here imports Torch/Triton or Z3 at module import time; probing is
-injected by GPU-capable callers and solving imports lazily, so CPU-only
-installs work. Serialized decisions carry plain data - never solver objects.
+Nothing here imports Torch/Triton or Z3 at module import time; solving
+imports lazily, so CPU-only installs work. Serialized decisions carry plain
+data - never solver objects.
 """
 
 from __future__ import annotations
@@ -21,102 +20,10 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Protocol
 
 from urm.compiler.solve.constraints import Assignment, ConstraintModel
 from urm.compiler.common.diagnostics import CompilerError, Diagnostic, DiagnosticCode
 from urm.compiler.schedule.space import SchedulePoint
-
-
-class CompileStatus(StrEnum):
-    """Honest probe outcome for one compiled decision."""
-
-    SUCCEEDED = "succeeded"
-    FAILED = "failed"
-    NOT_PROBED = "not_probed"
-
-
-@dataclass(frozen=True, slots=True)
-class KernelResourceUsage:
-    """Register and shared-memory resource facts for one compiled Triton kernel."""
-
-    kernel_name: str
-    registers_per_thread: int | None = None
-    shared_mem_bytes: int | None = None
-    spill_bytes: int | None = None
-    unavailable_reason: str | None = None
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "kernel_name": self.kernel_name,
-            "registers_per_thread": self.registers_per_thread,
-            "shared_mem_bytes": self.shared_mem_bytes,
-            "spill_bytes": self.spill_bytes,
-            "unavailable_reason": self.unavailable_reason,
-        }
-
-
-@dataclass(frozen=True, slots=True)
-class CompileProbeResult:
-    """Outcome of probing one exact launch configuration."""
-
-    ok: bool
-    reason: str | None = None
-    registers_per_thread: int | None = None
-    shared_mem_bytes: int | None = None
-    kernel_resources: dict[str, KernelResourceUsage] | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class CompileContext:
-    """Exact target specialization and launch facts passed to a compile probe."""
-
-    anchor_name: str
-    plan: str
-    intent: str
-    queries: int
-    sources: int
-    route_width: int
-    value_dim: int
-    dtype: str
-    block_d: int
-    num_warps: int
-    num_stages: int
-    grad_values_decomposition: str
-    grad_values_schedule: str
-    schedule_point: SchedulePoint
-    accumulation_dtype: str = "float32"
-    fused_inputs: tuple[str, ...] = ("row_scale",)
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "anchor_name": self.anchor_name,
-            "plan": self.plan,
-            "intent": self.intent,
-            "queries": self.queries,
-            "sources": self.sources,
-            "route_width": self.route_width,
-            "value_dim": self.value_dim,
-            "dtype": self.dtype,
-            "block_d": self.block_d,
-            "num_warps": self.num_warps,
-            "num_stages": self.num_stages,
-            "grad_values_decomposition": self.grad_values_decomposition,
-            "grad_values_schedule": self.grad_values_schedule,
-            "accumulation_dtype": self.accumulation_dtype,
-            "fused_inputs": list(self.fused_inputs),
-        }
-
-
-class CompileProbe(Protocol):
-    """A backend-specific compile/launch probe over concrete configurations.
-
-    Implementations (e.g. a warm Triton launch on representative inputs) are
-    injected by GPU-capable callers; CPU-only compilation omits the probe and
-    records :attr:`CompileStatus.NOT_PROBED` - never a claimed success.
-    """
-
-    def __call__(self, context: CompileContext) -> CompileProbeResult: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,11 +38,6 @@ class ScheduleAttempt:
     nogood_added: bool = False
     nogood_budget_exhausted: bool = False
     nogood_forbidden: dict[str, bool | int | str] | None = None
-    compile_status: CompileStatus = CompileStatus.NOT_PROBED
-    compile_detail: str | None = None
-    registers_per_thread: int | None = None
-    shared_mem_bytes: int | None = None
-    kernel_resources: dict[str, dict[str, object]] | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -148,13 +50,6 @@ class ScheduleAttempt:
             "nogood_budget_exhausted": self.nogood_budget_exhausted,
             "nogood_forbidden": (
                 dict(self.nogood_forbidden) if self.nogood_forbidden else None
-            ),
-            "compile_status": self.compile_status.value,
-            "compile_detail": self.compile_detail,
-            "registers_per_thread": self.registers_per_thread,
-            "shared_mem_bytes": self.shared_mem_bytes,
-            "kernel_resources": (
-                dict(self.kernel_resources) if self.kernel_resources else None
             ),
         }
 
@@ -171,16 +66,11 @@ class ScheduleDecision:
     solver_statistics: dict[str, float | int | str] = field(default_factory=dict)
     verification_checks_run: tuple[str, ...] = ()
     attempts: tuple[ScheduleAttempt, ...] = ()
-    compile_status: CompileStatus = CompileStatus.NOT_PROBED
     fallback_used: bool = False
     rejected_assignments: int = 0
-    compile_failures_observed: int = 0
     nogoods_added: int = 0
     recoveries: int = 0
     retry_budget_exhausted: bool = False
-    registers_per_thread: int | None = None
-    shared_mem_bytes: int | None = None
-    kernel_resources: dict[str, dict[str, object]] | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -192,18 +82,11 @@ class ScheduleDecision:
             "solver_statistics": dict(self.solver_statistics),
             "verification_checks_run": list(self.verification_checks_run),
             "attempts": [attempt.to_dict() for attempt in self.attempts],
-            "compile_status": self.compile_status.value,
             "fallback_used": self.fallback_used,
             "rejected_assignments": self.rejected_assignments,
-            "compile_failures_observed": self.compile_failures_observed,
             "nogoods_added": self.nogoods_added,
             "recoveries": self.recoveries,
             "retry_budget_exhausted": self.retry_budget_exhausted,
-            "registers_per_thread": self.registers_per_thread,
-            "shared_mem_bytes": self.shared_mem_bytes,
-            "kernel_resources": (
-                dict(self.kernel_resources) if self.kernel_resources else None
-            ),
         }
 
 
@@ -230,13 +113,13 @@ def nogood_count(model: ConstraintModel) -> int:
 
 
 class CompilationSearch:
-    """Bounded solve/verify/probe/retry loop over one candidate-bound model.
+    """Bounded solve/verify/retry loop over one candidate-bound model.
 
-    Every unverified assignment is rejected BEFORE any lowering or probe can
-    see it. Every compile-probe failure adds an exact nogood derived from the
-    failed attempt's own assignment (never a stale optimized one) and the
-    search re-solves. Retries stop at ``max_nogoods`` and surface a
-    structured :class:`CompilerError` instead of looping forever.
+    Every unverified assignment is rejected BEFORE any lowering can see it;
+    verification failures add an exact nogood derived from the failed
+    attempt's own assignment (never a stale optimized one) and the search
+    re-solves. Retries stop at ``max_nogoods`` and surface a structured
+    :class:`CompilerError` instead of looping forever.
     """
 
     def __init__(
@@ -245,13 +128,11 @@ class CompilationSearch:
         model: ConstraintModel,
         problem_hint: Mapping[str, object] | None = None,
         max_nogoods: int,
-        probe: CompileProbe | None = None,
         verifier: Verifier | None = None,
     ) -> None:
         del problem_hint
         self.model = model
         self.max_nogoods = max_nogoods
-        self.probe = probe
         self._verifier = verifier
 
 
@@ -331,7 +212,6 @@ class CompilationSearch:
 
         attempts: list[ScheduleAttempt] = []
         rejected = 0
-        compile_failures = 0
         budget_exhausted = False
 
         while True:
@@ -370,104 +250,12 @@ class CompilationSearch:
                     break
                 continue
 
-            status = CompileStatus.NOT_PROBED
-            detail = None
-            regs = None
-            smem = None
-            kres = None
-            if self.probe is not None:
-                context = CompileContext(
-                    anchor_name=self.model.metadata.get(
-                        "anchor_name", "routed_reduction_row_scale_epilogue_v0"
-                    ),
-                    plan=point.plan,
-                    intent=self.model.metadata.get("intent", "inference"),
-                    queries=int(self.model.metadata.get("queries", "1024")),
-                    sources=int(self.model.metadata.get("sources", "512")),
-                    route_width=int(self.model.metadata.get("route_width", "8")),
-                    value_dim=int(self.model.metadata.get("value_dim", "1024")),
-                    dtype=point.dtype,
-                    block_d=point.block_d,
-                    num_warps=point.num_warps,
-                    num_stages=point.num_stages,
-                    grad_values_decomposition=point.grad_values_decomposition,
-                    grad_values_schedule=point.grad_values_schedule,
-                    schedule_point=point,
-                    fused_inputs=("row_scale",) if point.plan == "fused" else (),
-                )
-                try:
-                    result = self.probe(context)
-                    if not isinstance(result, CompileProbeResult):
-                        result = CompileProbeResult(
-                            ok=False,
-                            reason=(
-                                f"probe returned invalid type {type(result).__name__}; "
-                                "expected CompileProbeResult"
-                            ),
-                        )
-                except Exception as error:  # noqa: BLE001
-                    result = CompileProbeResult(
-                        ok=False,
-                        reason=f"probe raised {type(error).__name__}: {error}",
-                    )
-                detail = result.reason
-                regs = result.registers_per_thread
-                smem = result.shared_mem_bytes
-                kres = (
-                    {
-                        k: v.to_dict() if hasattr(v, "to_dict") else dict(v)
-                        for k, v in result.kernel_resources.items()
-                    }
-                    if result.kernel_resources
-                    else None
-                )
-                if result.ok:
-                    status = CompileStatus.SUCCEEDED
-                else:
-                    compile_failures += 1
-                    added, forbidden = self._add_nogood(
-                        assignment,
-                        explanation=(
-                            "exact schedule rejected by compile feedback"
-                            + (f": {result.reason}" if result.reason else "")
-                        ),
-                        origin_kind="compile_feedback",
-                    )
-                    attempts.append(
-                        ScheduleAttempt(
-                            index=index,
-                            selection_policy=policy,
-                            schedule=point.as_dict(),
-                            verified=True,
-                            nogood_added=added is not None,
-                            nogood_budget_exhausted=added is None,
-                            nogood_forbidden=forbidden,
-                            compile_status=CompileStatus.FAILED,
-                            compile_detail=detail,
-                            registers_per_thread=regs,
-                            shared_mem_bytes=smem,
-                            kernel_resources=kres,
-                        )
-                    )
-                    if added is None:
-                        budget_exhausted = True
-                        break
-                    continue
-
-            recoveries = int(
-                any(a.compile_status is CompileStatus.FAILED for a in attempts)
-            )
             attempts.append(
                 ScheduleAttempt(
                     index=index,
                     selection_policy=policy,
                     schedule=point.as_dict(),
                     verified=True,
-                    compile_status=status,
-                    compile_detail=detail,
-                    registers_per_thread=regs,
-                    shared_mem_bytes=smem,
-                    kernel_resources=kres,
                 )
             )
             return ScheduleDecision(
@@ -479,16 +267,10 @@ class CompilationSearch:
                 solver_statistics=solver_stats,
                 verification_checks_run=checks_run,
                 attempts=tuple(attempts),
-                compile_status=status,
                 fallback_used=policy == "cost_heuristic",
                 rejected_assignments=rejected,
-                compile_failures_observed=compile_failures,
                 nogoods_added=nogood_count(self.model),
-                recoveries=recoveries,
                 retry_budget_exhausted=budget_exhausted,
-                registers_per_thread=regs,
-                shared_mem_bytes=smem,
-                kernel_resources=kres,
             )
 
         last = attempts[-1]
@@ -520,11 +302,6 @@ def _no_schedule_error(diagnostics) -> CompilerError:
 
 __all__ = [
     "CompilationSearch",
-    "CompileContext",
-    "CompileProbe",
-    "CompileProbeResult",
-    "CompileStatus",
-    "KernelResourceUsage",
     "ScheduleAttempt",
     "ScheduleDecision",
     "launch_config_of",

@@ -61,6 +61,12 @@ def render_markdown(register: dict) -> str:
         1 for row in mixer if row["kernel_upstream_parity_status"] == "measured_pass"
     )
     native = sum(1 for row in mixer if row["native_parity_status"] == "measured_pass")
+    live_prototypes = sum(
+        1 for row in mixer if row.get("prototype_status") == "kernel_prototype_only"
+    )
+    pending = sum(
+        1 for row in mixer if row.get("prototype_status") == "pending_graph_migration"
+    )
 
     out: list[str] = []
     out.append("# Named architecture coverage register")
@@ -79,9 +85,12 @@ def render_markdown(register: dict) -> str:
         f"{measured} mixer-relevant rows have measured kernel-upstream parity and "
         f"paired profiling evidence against a pinned source; {native} rows "
         "(MHA/MQA/GQA/BitAttention) additionally have a measured URM-native K1 "
-        "profile. Every mixer row is a `kernel_prototype_only` slice: the equation "
-        "core is qualified, while projections, frontends, caches and full-layer "
-        "integration remain open per row."
+        f"profile. {live_prototypes} rows keep a live `kernel_prototype_only` "
+        "slice through the public graph path (the schema-v2 recipes); "
+        f"{pending} rows are `pending_graph_migration`: their equation cores were "
+        "qualified against the pinned sources, and their prototypes are being "
+        "re-authored as typed graph documents. Projections, frontends, caches and "
+        "full-layer integration remain open per row."
     )
     out.append("")
     out.append(
@@ -91,9 +100,8 @@ def render_markdown(register: dict) -> str:
         "**Kernel** = output/state/gradient parity plus paired overhead vs the pinned "
         "upstream kernel slice. **Native** = a URM-generated kernel (not an upstream "
         "dispatch) measured against upstream. Per-recipe model-level numbers are in "
-        "the [master coverage table](../validation/master-table.md); which recipes "
-        "URM computes natively versus only dispatches is in "
-        "[native coverage](../validation/native-coverage.md)."
+        "the [master coverage table](../validation/master-table.md) (rebuilt on the "
+        "public graph path as the graph migration completes)."
     )
     out.append("")
 

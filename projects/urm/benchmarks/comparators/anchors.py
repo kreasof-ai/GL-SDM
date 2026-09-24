@@ -4,13 +4,11 @@ These are pinned source-integration capability declarations (FLA, ATMA, Mamba,
 XMA, Tucker, KATA, Longformer, BDH, H3, Hyena, TDA, FwPKM, FlashAttention, and
 the frozen SDM upstream). They are NOT part of URM core: the core compiler ships
 only URM-owned anchors and a generic provider interface. This module declares the
-upstream capabilities and registers them (plus their executors, via
-``executors.register_all``) so the compiler can select them when a consumer
+upstream capabilities so the compiler can select them when a consumer
 provisions the corresponding source checkout.
 
 Importing this module does not import any upstream library; it only builds the
-capability declarations. Provisioning and executor registration happen in
-``benchmarks.comparators.executors``.
+capability declarations.
 """
 
 from __future__ import annotations
@@ -424,10 +422,10 @@ UPSTREAM_ANCHORS: tuple[ExecutionAnchor, ...] = (
 def register_anchor_providers() -> None:
     """Register the upstream anchor declarations with the compiler core.
 
-    Called by ``benchmarks.comparators.executors.register_all`` so the compiler's
-    default registry includes these providers when the comparator suite is in use.
-    Also installs the pinned-SDM revision-aware selector and the SDM sparse-state
-    fallback selector, which reference the consumer-owned SDM anchors.
+    Consumers (benchmarks, tests) call this so the compiler's default registry
+    includes these providers. Also installs the pinned-SDM revision-aware
+    selector and the SDM sparse-state fallback selector, which reference the
+    consumer-owned SDM anchors.
     """
     from urm.compiler.select.anchors import (
         make_sparse_state_mixer_selector,

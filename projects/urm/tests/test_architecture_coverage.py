@@ -6,7 +6,7 @@ from pathlib import Path
 
 from benchmarks.comparators.anchors import UPSTREAM_ANCHORS
 from urm.compiler.select.anchors import TRUSTED_ANCHORS
-from benchmarks.recipe_catalog import kernel_recipe_names, load_recipe
+from benchmarks.recipe_catalog import kernel_recipe_names, recipe_document
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -17,7 +17,12 @@ def test_named_register_is_complete_and_source_pinned_or_explicitly_blocked():
     )
     assert manifest["schema_version"] == 3
     rows = manifest["architectures"]
-    unified_tests = (ROOT / "tests/test_unified_mixer.py").read_text(encoding="utf-8")
+    test_sources: dict[str, str] = {}
+
+    def _test_names(file_ref: str) -> str:
+        if file_ref not in test_sources:
+            test_sources[file_ref] = (ROOT / file_ref).read_text(encoding="utf-8")
+        return test_sources[file_ref]
     # Anchor coverage spans the URM-owned core anchors plus the consumer-owned
     # upstream providers (the comparator suite registers them).
     trusted_anchor_names = {anchor.name for anchor in (*TRUSTED_ANCHORS, *UPSTREAM_ANCHORS)}
@@ -50,11 +55,11 @@ def test_named_register_is_complete_and_source_pinned_or_explicitly_blocked():
             assert set(row["mode_qualification"].values()) == {"unqualified"}
             assert row["prototype_validated_anchors"]
             assert set(row["prototype_validated_anchors"]) <= trusted_anchor_names
-            assert row["prototype_reference_test"].split("::")[-1] in unified_tests
+            ref_file, ref_test = row["prototype_reference_test"].split("::")
+            assert f"def {ref_test}" in _test_names(ref_file)
             if "prototype_accelerated_test" in row:
-                assert (
-                    row["prototype_accelerated_test"].split("::")[-1] in unified_tests
-                )
+                accel_file, accel_test = row["prototype_accelerated_test"].split("::")
+                assert f"def {accel_test}" in _test_names(accel_file)
         assert row["kernel_upstream_parity_status"] in {
             "not_measured",
             "measured_pass",
@@ -163,15 +168,21 @@ def test_named_register_is_complete_and_source_pinned_or_explicitly_blocked():
             assert comparison is None
             assert row["kernel_upstream_blocker"]["reason"]
             assert row["kernel_upstream_blocker"]["required_action"]
+    # 17 architectures keep a live prototype through the graph path (the 15
+    # schema-v2 recipes); the remaining 59 are pending graph migration.
     assert (
         sum(row.get("prototype_status") == "kernel_prototype_only" for row in rows)
-        == 76
+        == 17
+    )
+    assert (
+        sum(row.get("prototype_status") == "pending_graph_migration" for row in rows)
+        == 59
     )
     assert sum(row.get("native_urm_profile") is not None for row in rows) == 4
     recipe_ids = {
         architecture_id
         for recipe_name in kernel_recipe_names()
-        for architecture_id in load_recipe(recipe_name).architecture_ids
+        for architecture_id in recipe_document(recipe_name)["architecture_ids"]
     }
     prototype_ids = {
         row["id"]

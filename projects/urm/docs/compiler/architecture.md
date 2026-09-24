@@ -6,7 +6,7 @@ invariants; [execution contracts](../runtime/execution.md) define the runtime bo
 ## Frontend and semantic IR
 
 Model authors declare routing, reductions, state transitions and communication.
-`frontend/spec.py` owns `MixerSpec`; `ir/program.py` owns typed operations.
+`ir/program.py` owns the typed operation graph; `frontend/recipes.py` loads the declarative JSON recipes.
 Architecture names belong in presets and external adapters. Kernels accept typed
 operands and semantic parameters, not architecture names as correctness rules.
 

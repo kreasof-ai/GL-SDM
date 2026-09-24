@@ -1,110 +1,29 @@
-"""Typed operations and contracts for Unified Routed Mixers.
+"""Typed operations and contracts for the semantic program IR.
 
-The three semantic families each have a canonical IR home that owns its
-contract and validation boundary:
+The canonical homes:
 
-- :mod:`urm.ir.k1` - K1 normalized routed reduction
-- :mod:`urm.ir.k2` - K2 structured recurrence
-- :mod:`urm.ir.k3` - K3 ordered sparse-state operations
-
-The shared, backend-independent :class:`UnifiedMixerSpec` and its family enums
-live in :mod:`urm.ir.graph`; the explicit effect system lives in
-:mod:`urm.ir.effects`. The declarative frontend spec (``MixerSpec`` and its
-enums) is re-exported here for convenience.
+- :mod:`urm.ir.program` - the typed operation graph (``SemanticProgram`` and
+  its closed op vocabulary) plus the K3 sparse-state contract types.
+- :mod:`urm.ir.effects` - the explicit effect system.
+- :mod:`urm.ir.types` - shared scalar/shape types.
+- :mod:`urm.ir.k3` - K3 launch-schedule helpers and the independent NumPy
+  sparse-state reference.
 """
 
-from urm.frontend.spec import (
-    BalanceStrategy,
-    CapacityPolicy,
-    CollisionPolicy,
-    Domain,
-    EditGateKind,
-    ExpertFunction,
-    ExpertRoutingSpec,
-    ExpertScoreKind,
-    ExpertSelection,
-    MixerSpec,
-    MutationKind,
-    Normalization,
-    RecurrentAlgorithm,
-    RecurrentSpec,
-    Residency,
-    RoutingKind,
-    ScanMode,
-    ScoreActivation,
-    SelectionGranularity,
-    SelectionScope,
-    SparseAttentionSpec,
-    SparseIndexerKind,
-    StateLayout,
-)
-from .graph import (
-    DecayGranularity,
-    FeatureMap,
-    K1Operation,
-    MixerBackend,
-    MixerIntent,
-    MixerKernelFamily,
-    PolynomialBasis,
-    ReadTiming,
-    RecurrenceOperator,
-    RecurrentLayout,
-    StateEffect,
-    StateNormalizer,
-    StateTransition,
-    StateUpdateRule,
-    UnifiedMixerSpec,
-)
+from . import effects, program, types
 
 __all__ = [
-    "BalanceStrategy",
-    "CapacityPolicy",
-    "CollisionPolicy",
-    "DecayGranularity",
-    "Domain",
-    "EditGateKind",
-    "ExpertFunction",
-    "ExpertRoutingSpec",
-    "ExpertScoreKind",
-    "ExpertSelection",
-    "FeatureMap",
-    "K1Operation",
-    "MixerBackend",
-    "MixerIntent",
-    "MixerKernelFamily",
-    "MixerSpec",
-    "MutationKind",
-    "Normalization",
-    "PolynomialBasis",
-    "ReadTiming",
-    "RecurrenceOperator",
-    "RecurrentAlgorithm",
-    "RecurrentLayout",
-    "RecurrentSpec",
-    "Residency",
-    "RoutingKind",
-    "ScanMode",
-    "ScoreActivation",
-    "SelectionGranularity",
-    "SelectionScope",
-    "SparseAttentionSpec",
-    "SparseIndexerKind",
-    "StateEffect",
-    "StateLayout",
-    "StateNormalizer",
-    "StateTransition",
-    "StateUpdateRule",
-    "UnifiedMixerSpec",
-    "k1",
-    "k2",
+    "effects",
     "k3",
+    "program",
+    "types",
 ]
 
 
 def __getattr__(name: str):
-    # Lazy submodule access breaks the import cycle between the family
-    # validation modules (k1/k2/k3) and the program/graph IR they reference.
-    if name in {"k1", "k2", "k3"}:
+    # Lazy submodule access keeps ``urm.ir`` importable without pulling the
+    # NumPy-dependent K3 helpers into minimal environments.
+    if name == "k3":
         import importlib
 
         return importlib.import_module(f"{__name__}.{name}")

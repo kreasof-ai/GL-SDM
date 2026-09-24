@@ -8,7 +8,7 @@ reusable lowerings, not a universal mega-kernel. See the
 
 ## Implemented
 
-`compiler/unified_mixer.py` provides executable, serialized contracts for:
+`compiler/pipeline.py` (`compile_graph`) provides executable, serialized contracts for:
 
 - shared and grouped Q/K/V heads in K1 and K2, plus scalar/head/channel gate
   broadcasting (part of A1);

@@ -260,3 +260,87 @@ def test_loader_rejects_unknown_operation_and_dangling_edge():
     weird["graph"]["outputs"] = ["missing"]
     with pytest.raises((RecipeError, NormalizeError)):
         normalize_graph_document(load_graph_recipe_document(weird).document)
+
+
+# ---------------------------------------------------------------------------
+# Catalog-wide graph coverage: every schema-v2 recipe keeps forward+backward
+# coverage through the public path (migrated from the retired legacy sweep).
+# ---------------------------------------------------------------------------
+
+KERNELS_DIR = __import__("pathlib").Path(__file__).resolve().parents[1] / "recipes" / "kernels"
+
+
+def _v2_graph_recipe_names() -> tuple[str, ...]:
+    import json
+
+    return tuple(
+        json.loads(p.read_text(encoding="utf-8"))["name"]
+        for p in sorted(KERNELS_DIR.glob("*.json"))
+        if json.loads(p.read_text(encoding="utf-8")).get("schema_version") == 2
+    )
+
+
+@pytest.mark.parametrize("recipe_name", _v2_graph_recipe_names())
+def test_every_graph_recipe_runs_forward_and_backward_through_the_graph_path(
+    recipe_name,
+):
+    """Every migrated recipe keeps coverage through the public graph path.
+
+    Operands are built from the graph document's declared inputs; execution
+    goes through compile_graph + BoundGraphPlan on the reference target (the
+    torch reference executors are differentiable, so autograd covers backward
+    even for the inference-intent K3 recipe).
+    """
+    torch = pytest.importorskip("torch")
+    from urm.compiler.pipeline import CompilationIntent
+
+    recipe = load_graph_recipe_file(KERNELS_DIR / f"{recipe_name}.json")
+    declared = [entry["name"] for entry in recipe.document["graph"]["inputs"]]
+
+    def leaf(*shape, dtype=None):
+        return torch.randn(*shape, dtype=dtype, requires_grad=True)
+
+    if recipe_name == "sparse_delta_memory":
+        from urm.ir.program import DType, SparseRouteSelectionSpec
+
+        slots, value_dim, width = 4096, 128, 4
+        route_spec = SparseRouteSelectionSpec(1, 16, slots, width, DType.BFLOAT16)
+        available = {
+            "read_scores": torch.randn(
+                1, 16, route_spec.score_width, dtype=torch.bfloat16
+            ),
+            "write_scores": torch.randn(
+                1, 16, route_spec.score_width, dtype=torch.bfloat16
+            ),
+            "values": leaf(1, 16, value_dim, dtype=torch.bfloat16),
+            "beta": leaf(1, 16, 1, dtype=torch.bfloat16),
+            "log_decay": leaf(1, 16, 1, dtype=torch.bfloat16),
+            "memory": torch.randn(1, slots, value_dim, dtype=torch.bfloat16),
+        }
+    else:
+        available = {
+            "query": leaf(1, 8, 2, 8),
+            "key": leaf(1, 8, 2, 8),
+            "value": leaf(1, 8, 2, 8),
+            "score_bias": leaf(8, 8),
+            "attention_mask": torch.ones(1, 8, 8, dtype=torch.bool).tril(),
+        }
+    operands = {name: available[name] for name in declared}
+    if recipe_name == "sparse_delta_memory":
+        # K3 route generation has no reference anchor: the typed graph binds
+        # the native route/state kernels, which require CUDA.
+        if not torch.cuda.is_available():
+            pytest.skip("K3 graph path requires CUDA")
+        operands = {name: tensor.cuda() for name, tensor in operands.items()}
+        target, intent = "native", "inference"
+    else:
+        target, intent = "reference", "training"
+    program = normalize_graph_document(recipe.document)
+    plan = compile_graph(program, target=target, intent=CompilationIntent(intent))
+    result = plan.execute(**operands)
+    output = result["output"]
+    loss = output.float().square().mean()
+    if "final_state" in result:
+        loss = loss + result["final_state"].float().square().mean()
+    loss.backward()
+    assert output.numel() > 0

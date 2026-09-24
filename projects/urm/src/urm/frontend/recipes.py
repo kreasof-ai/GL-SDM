@@ -1,10 +1,9 @@
 """Versioned JSON recipe loaders (kernel fragments and complete model graphs).
 
-The recipe *catalog* is declarative JSON only: ``recipes/kernels/*.json`` holds
-schema-v1 kernel-fragment spec dumps and schema-v2 typed graph documents, and
-``recipes/architectures/*.json`` holds complete-model graphs. This module
-contains the loading and validation machinery and nothing else — no
-architecture-named content lives in core URM.
+The recipe *catalog* is declarative JSON only: ``recipes/kernels/*.json``
+holds schema-v2 typed graph documents and ``recipes/architectures/*.json``
+holds complete-model graphs. This module contains the loading and validation
+machinery and nothing else — no architecture-named content lives in core URM.
 """
 
 from __future__ import annotations
@@ -13,7 +12,6 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from urm.ir.graph import UnifiedMixerSpec
 
 # ======================================================================
 # Versioned JSON recipe loader (kernel fragments and complete model graphs).
@@ -25,100 +23,8 @@ KERNEL_FRAGMENT = "kernel_fragment"
 COMPLETE_MODEL_GRAPH = "complete_model_graph"
 
 
-@dataclass(frozen=True, slots=True)
-class MixerRecipe:
-    """A named kernel-level mapping with its model boundary made explicit.
-
-    Typed container for schema-v1 kernel-fragment documents; the content (name,
-    spec, coverage metadata) comes entirely from the JSON document.
-    """
-
-    architecture_ids: tuple[str, ...]
-    spec: UnifiedMixerSpec
-    component_scope: str
-    required_external_stages: tuple[str, ...] = ()
-
-
 class RecipeError(ValueError):
     """Raised when a recipe document fails schema or semantic validation."""
-
-
-def load_kernel_recipe_document(document: dict) -> MixerRecipe:
-    """Validate and load one kernel-fragment recipe document.
-
-    The document must declare ``kind: kernel_fragment`` and the supported
-    ``schema_version``. The typed spec is reconstructed via
-    :meth:`UnifiedMixerSpec.from_dict`, which rejects unknown fields.
-    """
-    if not isinstance(document, dict):
-        raise RecipeError("recipe document must be a JSON object")
-    version = document.get("schema_version")
-    if version != KERNEL_SCHEMA_VERSION:
-        raise RecipeError(f"unsupported recipe schema_version: {version!r}")
-    kind = document.get("kind")
-    if kind != KERNEL_FRAGMENT:
-        raise RecipeError(
-            f"kernel recipe must declare kind={KERNEL_FRAGMENT!r}, got {kind!r}"
-        )
-    name = document.get("name")
-    if not isinstance(name, str) or not name.strip():
-        raise RecipeError("kernel recipe requires a non-empty name")
-    scope = document.get("component_scope")
-    if not isinstance(scope, str) or not scope.strip():
-        raise RecipeError(f"kernel recipe {name!r} requires a component_scope")
-    spec_payload = document.get("spec")
-    if not isinstance(spec_payload, dict):
-        raise RecipeError(f"kernel recipe {name!r} requires a typed spec object")
-    try:
-        spec = UnifiedMixerSpec.from_dict(spec_payload)
-    except (TypeError, ValueError) as error:
-        raise RecipeError(f"kernel recipe {name!r} has an invalid spec: {error}") from error
-    architecture_ids = document.get("architecture_ids", [])
-    external = document.get("required_external_stages", [])
-    if not all(isinstance(a, str) for a in architecture_ids):
-        raise RecipeError(f"kernel recipe {name!r} architecture_ids must be strings")
-    if not all(isinstance(s, str) for s in external):
-        raise RecipeError(
-            f"kernel recipe {name!r} required_external_stages must be strings"
-        )
-    return MixerRecipe(
-        architecture_ids=tuple(architecture_ids),
-        spec=spec,
-        component_scope=scope,
-        required_external_stages=tuple(external),
-    )
-
-
-def load_kernel_recipe_file(path: str | Path) -> MixerRecipe:
-    """Load a kernel-fragment recipe from a JSON file."""
-    text = Path(path).read_text(encoding="utf-8")
-    try:
-        document = json.loads(text)
-    except json.JSONDecodeError as error:
-        raise RecipeError(f"invalid JSON in {path}: {error}") from error
-    return load_kernel_recipe_document(document)
-
-
-def load_kernel_recipe_dir(directory: str | Path) -> dict[str, MixerRecipe]:
-    """Load every schema-v1 ``*.json`` kernel recipe in a directory, keyed by name.
-
-    Graph documents (schema_version 2) are loaded by
-    :func:`load_graph_recipe_file`; this v1 loader skips them.
-    """
-    root = Path(directory)
-    recipes: dict[str, MixerRecipe] = {}
-    for path in sorted(root.glob("*.json")):
-        try:
-            document = json.loads(path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as error:
-            raise RecipeError(f"invalid JSON in {path}: {error}") from error
-        if document.get("schema_version") == GRAPH_SCHEMA_VERSION:
-            continue  # graph document; not a v1 spec-dump
-        recipe = load_kernel_recipe_document(document)
-        if recipe.spec.name in recipes:
-            raise RecipeError(f"duplicate kernel recipe name: {recipe.spec.name}")
-        recipes[recipe.spec.name] = recipe
-    return recipes
 
 
 @dataclass(frozen=True, slots=True)
@@ -346,13 +252,9 @@ __all__ = [
     "KERNEL_SCHEMA_VERSION",
     "ArchitectureLayer",
     "ArchitectureRecipe",
-    "MixerRecipe",
     "RecipeError",
     "load_architecture_recipe_document",
     "load_architecture_recipe_file",
     "load_graph_recipe_document",
     "load_graph_recipe_file",
-    "load_kernel_recipe_dir",
-    "load_kernel_recipe_document",
-    "load_kernel_recipe_file",
 ]

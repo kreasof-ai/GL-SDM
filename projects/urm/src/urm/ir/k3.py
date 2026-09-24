@@ -15,7 +15,7 @@ decays each selected slot once, before retrieval and update::
 
 Write indices are unique within a token; a selected slot decays even when its
 weight is zero. The shared, backend independent spec lives in
-:mod:`urm.ir.graph`; this module owns the K3-specific semantic contract and its
+:mod:`urm.ir.program`; this module owns the K3-specific semantic contract and its
 validation boundary.
 
 Ownership
@@ -47,7 +47,6 @@ from typing import TYPE_CHECKING
 import numpy as np
 import numpy.typing as npt
 
-from urm.ir.graph import MixerKernelFamily, UnifiedMixerSpec
 from urm.ir.program import (
     DType,
     MergePolicy,
@@ -63,28 +62,9 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 
-def is_sparse_state_family(spec: UnifiedMixerSpec) -> bool:
-    """Whether a unified spec belongs to the K3 ordered sparse-state family."""
-    return spec.family is MixerKernelFamily.SPARSE_DELTA
-
-
-def validate_sparse_state_contract(spec: UnifiedMixerSpec) -> None:
-    """Raise unless ``spec`` is a well-formed K3 contract.
-
-    The authoritative field-level invariants are enforced by
-    :meth:`UnifiedMixerSpec.__post_init__`; this boundary asserts family
-    membership so callers get a K3-specific error rather than a generic one.
-    """
-    if not is_sparse_state_family(spec):
-        raise ValueError(
-            f"K3 sparse-state contract requires family=SPARSE_DELTA, got {spec.family.value}"
-        )
-
-
 NATIVE_SPARSE_STATE_MIXER_NAME = "urm_native_sparse_state_mixer_v0"
 
 
-@dataclass(frozen=True, slots=True)
 class SparseStateCapabilityEnvelope:
     """Pre-tuning limits of the first native A10G-oriented lowering."""
 

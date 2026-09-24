@@ -29,7 +29,6 @@ from urm.ir.effects import (
     STATE_READ_EFFECT,
     EffectSignature,
 )
-from urm.ir.graph import MixerKernelFamily, UnifiedMixerSpec
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -509,23 +508,6 @@ class SparseStateMixerAccess(SemanticOp):
 
 
 @dataclass(frozen=True, slots=True)
-class UnifiedMixerAccess(SemanticOp):
-    """One closed K1/K2/K3 mixer equation presented to the general compiler.
-
-    The spec carries the equation; backend selection, intent validation,
-    candidate enumeration, and anchor resolution remain compiler concerns.
-    """
-
-    spec: UnifiedMixerSpec
-
-    @property
-    def effect(self) -> EffectSignature:
-        if self.spec.family is MixerKernelFamily.SOFTMAX:
-            return REDUCING
-        return ORDERED_STATE
-
-
-@dataclass(frozen=True, slots=True)
 class CollectiveExchange(SemanticOp):
     """Collective semantic intent over a named mesh axis."""
 
@@ -549,7 +531,6 @@ SemanticNode = (
     | StateUpdate
     | SparseRouteGeneration
     | SparseStateMixerAccess
-    | UnifiedMixerAccess
     | CollectiveExchange
 )
 

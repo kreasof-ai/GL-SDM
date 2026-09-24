@@ -1,10 +1,11 @@
 """Persistent-state single-token decode sessions for the native K1/K2/K3 kernels.
 
-This is the decode/inference counterpart to the training-oriented
-:meth:`CompiledMixerPlan.execute` path. The training path is built for sequence
-throughput: it constructs an autograd graph, allocates the per-token state
-history, and (for K3) certifies routes with GPU value scans on every call. That
-is the correct way to *train*, but the wrong way to *decode*.
+This is the decode/inference counterpart to the training-oriented bound-plan
+execution path (:meth:`urm.runtime.bind.BoundGraphPlan.execute`). The training
+path is built for sequence throughput: it constructs an autograd graph,
+allocates the per-token state history, and (for K3) certifies routes with GPU
+value scans on every call. That is the correct way to *train*, but the wrong
+way to *decode*.
 
 A decode session follows the reference decode-kernel pattern (see ATMA's
 ``gated_delta_decode_step``): the persistent state is allocated once and updated

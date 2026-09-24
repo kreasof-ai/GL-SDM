@@ -24,16 +24,3 @@ for _p in _add:
     if _p not in _parts:
         _parts.insert(0, _p)
 os.environ["PYTHONPATH"] = os.pathsep.join(_parts)
-
-# Register the external (upstream/comparator) executors so plans compiled with a
-# library backend can bind their selected anchor at execution time. The core
-# compiler/runtime hold no comparator or upstream imports; the consumer
-# (here, the test suite) provisions and registers them.
-try:  # pragma: no cover - registration is a consumer side effect
-    from benchmarks.comparators.executors import register_all
-
-    register_all()
-except Exception:
-    # If the comparator package or an upstream checkout is unavailable, leave the
-    # registry empty; plans selecting an external anchor will decline at execute.
-    pass

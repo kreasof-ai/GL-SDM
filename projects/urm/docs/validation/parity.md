@@ -3,7 +3,7 @@
 This is the acceptance policy and the current parity status. The
 [coverage register](../planning/coverage.md) identifies the workloads; measured
 results live in the [master coverage table](master-table.md) (model level) and
-[native coverage](native-coverage.md) (which recipes URM computes natively).
+the master coverage table (which recipes URM computes natively).
 
 ## Current status
 

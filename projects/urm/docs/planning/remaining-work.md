@@ -31,32 +31,47 @@ pinned revisions under `/tmp/urm-comparator-pins`).
   IR and output), float64 NumPy reference parity, incompatible-anchor decline, and
   plan-binding failure on tampering.
 
-## Core hygiene: legacy path quarantined, catalog de-Pythonized, K2/K3 probes
+## Transitional apparatus retired (hard cut)
 
-- `compiler/pipeline.py` (7855 → ~1800 lines) is the pure planner + graph path
-  (`compile_graph`/`_GRAPH_TARGETS`). The transitional family-dispatch path —
+The transitional machinery was removed outright rather than carried through
+the migration:
+
+- **`compiler/mixer.py` deleted** (the whole legacy family-dispatch path:
   `compile_mixer`, `CompiledMixerPlan`, `mixer_semantic_program`,
   `compile_frontend_mixer`, the external-executor registry, and the ~30
-  family-specific reference/native executors (including the ATMA tile-width
-  code) — moved to `compiler/mixer.py` with an honest slated-for-deletion
-  docstring. Dependency direction is strictly mixer → pipeline; pipeline no
-  longer imports the recipes module at all.
-- `frontend/recipes.py` is pure JSON loading/validation machinery; the
-  hardcoded 74-architecture Python catalog (`MIXER_RECIPE_NAMES`,
-  `named_mixer_recipe`) is deleted — the JSON documents are the only
-  authority. Consumers resolve names through the new consumer-side
-  `benchmarks/recipe_catalog.py` (outside core); the 22 call sites that used
-  v2-migrated names through the legacy catalog now compile through the public
-  graph path. The five family spec builders live with the legacy path in
-  `compiler/mixer.py`.
-- `compiler/schedule/probes/` now has `triton_k2.py` and `triton_k3.py`
-  alongside `triton_k1.py` (exact-specialization compile probes driving the
-  production launchers and reading register/shared-mem facts from the compiled
-  kernel caches). Schedule-search *consumption* for K2/K3 remains step 4 —
-  today the search covers K1 (WeightedReduce) only, and K2/K3 launch configs
-  are derived analytically in the lowering.
+  family-specific reference/native executors). `compiler/pipeline.py` is the
+  pure planner + graph path (`compile_graph`/`_GRAPH_TARGETS`).
+- **`compiler/schedule/probes/` deleted** (all three Triton probes plus the
+  probe machinery in `schedule/search.py`: `CompileProbe`, `CompileContext`,
+  `CompileProbeResult`, `KernelResourceUsage`, `CompileStatus`, probe feedback
+  nogoods, and resource fields on `ScheduleDecision`). The schedule search is
+  now solve→verify→retry (analytical only); exact-specialization verification
+  is designed into the per-family schedule stages when they land (step 4),
+  not revived as a bolt-on probe directory.
+- **The legacy spec vocabulary deleted**: `ir/graph.py` (`UnifiedMixerSpec` +
+  family enums), `ir/k1.py`, `ir/k2.py` (spec validators), `frontend/spec.py`
+  (`MixerSpec` + frontend enums), `ir/program.py`'s `UnifiedMixerAccess` op,
+  the NumPy canonical core (`backends/reference/numpy/{graph,k1,k1_routed}.py`),
+  and the legacy K1 launcher (`backends/triton/k1/launcher.py`).
+- **`frontend/recipes.py`** is the v2 graph + architecture JSON loader only;
+  the 59 schema-v1 spec-dump JSONs are deleted (the catalog is exactly the 15
+  schema-v2 graph documents; the remaining recipes are re-authored as typed
+  graphs from the pinned upstream sources during the K2/K1-variant migration).
+- **Consumers**: the legacy test files and benchmark harnesses were deleted,
+  not migrated (`test_unified_mixer.py`, the per-family `unified_mixer_*.py`
+  benchmarks, `master_table.py`, `representation_coverage.py`,
+  `native_coverage_table.py`, `comparators/executors.py`, the probe-driven
+  epilogue/compilation-matrix harnesses and their artifacts). The all-recipe
+  forward/backward sweep now runs through the graph path in
+  `tests/test_graph_vertical_slice.py`. The architecture register
+  (`benchmarks/architecture-coverage.json`) records 17 architectures with a
+  live prototype through the graph path and 59 `pending_graph_migration`.
 
-Suite: 894 passed, 0 failed; core imports without torch.
+**Consequence**: the recipe catalog currently compiles 15 recipes (14 K1 +
+1 K3) through the public graph path. The master-table driver is rebuilt
+graph-native as the K2 bulk migration lands (the acceptance artifact remains
+the 62-recipe reproduction). Suite: 421 passed, 0 failed; core imports without
+torch.
 
 ## Step 3 done: K3 graph path + SDM composite retired
 
@@ -79,7 +94,7 @@ the generic K3 fallback's capability probe (comparator-injected, no SDM import i
 core), legacy-dispatch string literals pending catalog deletion, and docstring
 provenance notes.
 
-## Step 2 done: legacy registry deleted
+## Step 3 (first half) done: K3 recipe is a graph document
 
 The `sparse_delta_memory` recipe is now a v2 graph document composing
 `sparse_route_generation` → `sparse_state_mixer`, compiled by the ordinary
@@ -110,11 +125,10 @@ Review feedback confirmed: architecture-specific knowledge must leave the core.
 - `default_registry()` = URM-owned sparse selectors + core anchors + registered
   consumer providers. Suite: 941 passed, 0 failed.
 
-Remaining arch-specific residue in core: ~80 string literals in `pipeline.py`'s
-legacy `compile_mixer` recipe-name→anchor dispatch (deleted in step 3), the Python
-catalog in `frontend/recipes.py` (deleted once the graph path covers the catalog),
-and the `MixerBackend`/`RecurrentAlgorithm`/`EXTERNAL_OPAQUE` semantics in
-`ir/graph.py` + `frontend/spec.py`.
+The arch-specific residue this section tracked is gone: the legacy
+`compile_mixer` dispatch, the Python catalog, and the
+`MixerBackend`/`RecurrentAlgorithm`/`EXTERNAL_OPAQUE` vocabulary were all
+deleted in the transitional-apparatus cut (see above).
 
 ## Step 2 done: legacy registry deleted
 
@@ -123,150 +137,39 @@ and the `MixerBackend`/`RecurrentAlgorithm`/`EXTERNAL_OPAQUE` semantics in
 - The compiler `CapabilityRegistry` is the only selection API; the layout tests
   assert the public plan-binder surface (`BoundGraphPlan`). Suite: 941 passed.
 
+## Remaining (current state after the transitional-apparatus cut)
+
+Steps 1–3 are done (MHA vertical slice, legacy registry deleted, K3 graph path +
+SDM composite retired), and the transitional apparatus is gone (legacy family
+path, probes, spec vocabulary, v1 catalog). What remains, in the plan's order:
+
+- **Recipe migration (bulk):** the catalog compiles 15 recipes (14 K1 + 1 K3)
+  through the graph path. The remaining families are re-authored as typed graph
+  documents from the pinned upstream sources: 44 K2 equations (transition/scan
+  graphs + per-family schedule/cost) and the K1 variant equations. Largest
+  single block of work.
+- **Step 4 — per-family partition/schedule/cost:** `partition/graph.py`,
+  `partition/{k1,k2,k3}.py`, `schedule/{model,k1,k2,k3}.py`,
+  `cost/{k1,k2,k3}.py`; per-region schedules; critical path by graph edges.
+  Exact-specialization verification is designed into these stages (the
+  transitional probe apparatus was removed, not extended).
+- **Step 5 — evidence closure:** demote one-node Samba/PAttention architecture
+  JSONs to fragments; remove `urm::` registrations from
+  `benchmarks/comparators/sdm/compiled.py`; the master-table rebuild labels
+  model-level rows "generic decoder integration".
+- **Applications (ATMA-derived):** `train/{data,optimizer,loop,config}.py` +
+  `architectures/urm_decoder/`; frozen SDM model → `benchmarks/models/`;
+  `inference/{api,engine,scheduler,cache,model_runner,sampling}.py` around
+  bound plans (borrow from `/tmp/urm-comparator-pins/atma` structure).
+- **Verification (acceptance):** build the graph-native master-table driver;
+  run the 62-recipe sweep (native + upstream columns); regenerate
+  `results/validation/master-table.json` + `docs/validation/master-table.md`.
+
 ## Environment / provisioning state
 
 - GPU: NVIDIA A10G (23 GB), torch 2.14, triton 3.8, FLA 0.5.2 (pip).
 - All 24 comparator sources provisioned at pinned revisions under
   `/tmp/urm-comparator-pins`; CUDA toolchain + flash_attn SDPA shim set up.
 - The mamba1 `selective_scan_cuda` extension failed to build against torch 2.14
-  (upstream `mamba @ e9594ce1` source); affects only the `mamba1_ssm_core`
-  upstream column. Retry or pin-fix is open.
-- `benchmarks/master_table.py` does not yet call
-  `benchmarks.comparators.register_all()`; post-cutover it must, since external
-  executors are consumer-registered. Probe also shows a `float != BFloat16`
-  dtype bug on several K2 probe paths.
-
-## Remaining (in the plan's order)
-
-Step 1 (MHA vertical slice) and step 2 (legacy registry) are done. The remaining
-core work, all required before the master table can be reproduced *through the
-graph path*:
-
-- **Recipe migration (bulk):** 73 spec-dump recipes remain on the v1 catalog.
-  By family: 28 K1, 44 K2, 1 K3 (sparse_delta_memory). Only `mha` is a graph
-  document. Each K2/K3 recipe needs its equation decomposed into typed nodes
-  (transitions, scans, FFT convs, ordered state update/read) — this is steps
-  3–4 and the largest single block of work.
-- **Step 3 — multi-node graphs:** retire the special `SparseMemoryPlan` /
-  `runtime/bind.py` SDM binder / `backends/triton/k3/memory.py` monolith in
-  favor of a route→update→read typed graph through the common path.
-- **Step 4 — per-family partition/schedule/cost/probes:** `partition/graph.py`,
-  `partition/{k1,k2,k3}.py`, `schedule/{model,k1,k2,k3}.py`, `cost/{k1,k2,k3}.py`,
-  `schedule/probes/triton_{k2,k3}.py`; per-region schedules; critical path by
-  graph edges.
-- **Semantic corrections:** remove `UnifiedMixerAccess`, `EXTERNAL_OPAQUE`,
-  `MixerBackend`, `RecurrentAlgorithm` from core; `compile_mixer` recipe-name
-  dispatch deleted once the graph path covers the catalog; `frontend/api.py`.
-- **Step 5 — evidence closure:** demote one-node Samba/PAttention architecture
-  JSONs to fragments; remove `urm::` registrations from
-  `benchmarks/comparators/sdm/compiled.py`; relabel master-table "model-level"
-  → "generic decoder integration".
-- **Applications (ATMA-derived):** `train/{data,optimizer,loop,config}.py` +
-  `architectures/urm_decoder/`; frozen SDM model → `benchmarks/models/`;
-  `inference/{api,engine,scheduler,cache,model_runner,sampling}.py` around
-  bound plans (borrow from `/tmp/urm-comparator-pins/atma` structure).
-- **Verification:** migrate `benchmarks/master_table.py` to the public JSON →
-  compile → bind path; run the 62-recipe sweep; regenerate
-  `results/validation/master-table.json` + `docs/validation/master-table.md`.
-
-## Corrections to earlier completion claims
-
-- **`runtime/registry.py` survives.** The legacy `MixerSpec`-dispatched
-  `BackendRegistry` is still present at its old import path, still re-exported by
-  `runtime/__init__.py`, and still imported by `tests/test_backend.py` and
-  `tests/test_project_layout.py`. The earlier claim that "0 of 92 old paths survive"
-  was wrong; completion gate 1 of `refactor-list.md` is not met while this file
-  exists.
-
-## Gate-level gaps (end-state rules / required semantic corrections)
-
-1. `EXTERNAL_OPAQUE` remains in `ir/graph.py` and is exercised by
-   `recipes/kernels/bdh_attention_core.json`. Plan: remove it as a coverage
-   shortcut; per end-state rule 4, BDH becomes explicitly unsupported.
-2. `MixerBackend` remains in `ir/graph.py` with ~279 references across
-   src/tests/benchmarks. Plan: remove backend identity from semantics.
-3. `RecurrentAlgorithm` (MAMBA, GATED_DELTANET, KIMI_DELTA_ATTENTION, ...) remains
-   the core descriptor of `frontend/spec.py`. Plan: replace architecture names and
-   fixed model shortcuts with typed transition/route/state nodes.
-4. `UnifiedMixerAccess` remains the compile target (7 references in `compiler/`).
-   Plan's first required correction: compile a graph of typed operations, not an
-   opaque spec inspected by a separate executor. This is the largest remaining item.
-5. `benchmarks/comparators/sdm/compiled.py` still registers `urm::` production
-   namespaces (two `custom_op` registrations). Plan: remove them.
-
-## Named-file splits not done
-
-| Plan target | Current state |
-|---|---|
-| `frontend/api.py` | `compile` exposed via `frontend/__init__.__getattr__` instead |
-| `compiler/normalize/` | empty package; builders still in `ir/program.py` |
-| `ir/ops.py`, `ir/state.py` | missing; `ir/mixer.py` split incomplete |
-| `compiler/schedule/model.py` | missing; `kernel_plan` split incomplete |
-| `compiler/schedule/{k1,k2,k3}.py` | missing; per-family knobs not split from `space.py` |
-| `compiler/select/{k1,k2,k3}.py` | missing; per-family capability envelopes inline |
-| `runtime/operands.py` | missing; route/operand certification still in k3 launchers |
-| `backends/triton/k2/convolution.py` | missing; FFT convolution not split from `inner_state.py` |
-
-Also: `recipes/kernels/__init__.py` exists — a JSON data directory should not be a
-Python package.
-
-## Deeper required work not done
-
-- Recipe-name dispatch is still the runtime path: `compiler/pipeline.py` calls
-  `named_mixer_recipe` from the Python catalog; the 74 JSON kernel recipes exist but
-  are not consumed by the compile path. Plan: JSON is authoritative; delete the
-  Python catalog.
-- `runtime/state.py` sessions construct from raw parameters, not the selected plan.
-- `compiler/cost/model.py` covers K1 only; no K2/K3, route, memory, backward, or
-  end-to-end critical-path estimates.
-- Rewrite rules not expanded (two rules exist; the plan requires sparse-work
-  elimination, fusion/locality, legal scan reassociation, and composed K3 routing).
-- `benchmarks/master_table.py` still contains `RecipeMixer` and "model-level"
-  labels; evidence reclassification to "generic decoder integration" is not done.
-- `train/` contains only `loop.py`; the model/data/optimizer split,
-  `benchmarks/accounting/`, and `architectures/urm_decoder/` do not exist.
-- `inference/` is an empty package (no API/scheduler/cache/runner).
-- `architectures/` is an empty package (no samba/hla/atma components).
-- Full source-model validation for Samba/PAttention (source revision, exact graph,
-  training gradients, decode continuity, measured shapes/devices, comparator
-  identity) is not done; their rows must stay "generic decoder integration" until
-  then.
-
-## Decisions needed before proceeding
-
-1. **Full graph decomposition** (remove `UnifiedMixerAccess`; normalize → per-op
-   partition/select/schedule/lower over typed multi-op graphs): do it now, or land
-   the small gate fixes first (registry deletion, `urm::` removal, `frontend/api.py`,
-   normalize extraction)?
-2. **Removing `EXTERNAL_OPAQUE` / `MixerBackend` / `RecurrentAlgorithm`** changes the
-   public spec schema and makes BDH (and any recipe relying on opaque recurrence)
-   explicitly unsupported per plan rule 4. Confirm that is intended.
-3. **`inference/`, `architectures/`, full `train/`** are new applications, not
-   relocations. Minimal working scaffolding against the public API, or full
-   Atma-style implementations? The pinned ATMA checkout at `/tmp/opencode/atma-src`
-   can serve as the structural reference.
-
-## Suggested landing order
-
-1. Small gate fixes: delete the legacy runtime registry (rewrite the two importing
-   tests against the public API), remove `urm::` registrations, create
-   `frontend/api.py`, populate `compiler/normalize/`, drop
-   `recipes/kernels/__init__.py`.
-2. JSON-as-source cutover: the compile path loads recipes from `recipes/`; delete
-   the Python catalog.
-3. Semantic corrections: `EXTERNAL_OPAQUE` → explicit unsupported; `MixerBackend` →
-   capability facts; `RecurrentAlgorithm` → typed nodes; state sessions consume the
-   selected plan.
-4. Full graph decomposition (`UnifiedMixerAccess` removal) with the per-family
-   select/schedule/model splits and the cost-model extension.
-5. Consumer builds: `master_table.py` reclassification, `train/`, `inference/`,
-   `architectures/`.
-
-## Contested boundaries (objections to forcing the letter of the plan)
-
-- Route/operand certification is currently backend-owned: the k3 launchers certify
-  their own operand layouts. Moving it to `runtime/operands.py` must not break
-  backend self-containment or the K3 GPU path; the split should extract the
-  runtime-facing validation surface, not relocate the certificates blindly.
-- `ir/ops.py` vs `ir/program.py` boundaries should follow actual usage and import
-  direction, not the filename list alone.
+  (upstream `mamba @ e9594ce1` source); affects only the future mamba1 upstream
+  column. Retry or pin-fix is open.

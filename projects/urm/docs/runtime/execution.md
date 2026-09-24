@@ -5,7 +5,7 @@ is normative.
 
 ## Pipeline and ownership
 
-1. `frontend/spec.py` owns model-facing declarations; `ir/program.py` owns
+1. `frontend/recipes.py` loads declarative JSON recipes; `ir/program.py` owns
    typed semantic operations over logical domains and explicit state effects.
 2. `compiler/rewrite/engine.py` owns registered transformations, their preconditions,
    numerical envelope, backward obligations and saved-state policy.

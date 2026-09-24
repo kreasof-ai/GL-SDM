@@ -97,7 +97,7 @@ envelope:
 - **K3** has a native sparse-state candidate for Sparse Delta Memory.
 
 The [master coverage table](../validation/master-table.md) records per-recipe
-model-level evidence and [native coverage](../validation/native-coverage.md)
+model-level evidence
 records which recipes URM computes natively; those are kernel- and model-slice
 results, not production qualification. This matrix defines what must be true for
 that to change, and its native-status column is kept honest by a compiler-backed

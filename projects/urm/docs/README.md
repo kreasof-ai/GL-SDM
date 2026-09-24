@@ -24,7 +24,7 @@ Read in this order:
    [parity plan](validation/parity.md): numerical, integration and performance gates.
    [Representation coverage](validation/representation-coverage.md) records the
    evidence separating K1/K2/K3 expressibility from native generation.
-   [Native coverage](validation/native-coverage.md) is the honest measure of the
+   [Master table](validation/master-table.md) is the per-recipe record of the
    unified generator's reach - what URM computes with its own kernels versus
    what it can only dispatch to upstream.
    [Master coverage table](validation/master-table.md) is the consolidated

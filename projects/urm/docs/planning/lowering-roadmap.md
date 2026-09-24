@@ -22,7 +22,7 @@ Representational coverage is broader than native generation: all 62 covered
 recipes lower into a canonical core and match their independent equation, but
 the native generator reaches a subset of them. See
 [representation coverage](../validation/representation-coverage.md) and
-[native coverage](../validation/native-coverage.md) for the honest split.
+the master coverage table for the per-recipe split.
 
 ## Evidence levels
 

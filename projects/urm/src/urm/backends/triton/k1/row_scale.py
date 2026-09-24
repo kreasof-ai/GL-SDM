@@ -30,11 +30,8 @@ these exact implementations; there is no second set of kernels.
 
 Layering note: this backend reads the compiler's *schedule-space vocabulary*
 (``urm.compiler.schedule.space`` constants/enums and the ``SchedulePoint``
-descriptor) only to validate a launch config it is handed. The exact compile
-probe and resource collection live on the compiler side in
-:mod:`urm.compiler.schedule.probes.triton_k1`, which imports this backend's
-launchers (never the reverse). The backend imports no compiler search or plan
-type; execution stays behind the backend boundary.
+descriptor) only to validate a launch config it is handed. The backend imports
+no compiler search or plan type; execution stays behind the backend boundary.
 """
 
 from __future__ import annotations

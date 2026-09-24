@@ -9,7 +9,6 @@ from __future__ import annotations
 
 __all__ = [
     "TorchRoutedReductionBackend",
-    "TritonOnlineSoftmaxBackend",
     "TritonRoutedReductionBackend",
     "TritonSparseRouteBackend",
     "TritonSparseStateMixerBackend",
@@ -21,10 +20,6 @@ def __getattr__(name: str):
         from .reference.torch.k1 import TorchRoutedReductionBackend
 
         return TorchRoutedReductionBackend
-    if name == "TritonOnlineSoftmaxBackend":
-        from .triton.k1.launcher import TritonOnlineSoftmaxBackend
-
-        return TritonOnlineSoftmaxBackend
     if name == "TritonRoutedReductionBackend":
         from .triton.k1.routed_launcher import TritonRoutedReductionBackend
 

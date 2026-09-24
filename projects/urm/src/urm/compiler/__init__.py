@@ -3,7 +3,7 @@
 Layering (docs/compiler/compiler-charter.md, docs/compiler/kernel-generation.md):
 
     architecture/NAS specification
-      -> semantic routing and state IR        (ir/program.py, ir/k1|k2|k3.py)
+      -> semantic routing and state IR        (ir/program.py, ir/k3.py)
       -> verified algebraic reparameterization (rewrite/)
       -> rewrite/lowering candidate enumeration (pipeline.py)
       -> backend-independent constraint IR      (solve/constraints.py)
@@ -31,14 +31,6 @@ __all__ = [
     "DeviceLimits",
     "Diagnostic",
     "DiagnosticCode",
-    "CompiledMixerPlan",
-    "MixerBackend",
-    "MixerIntent",
-    "MixerKernelFamily",
-    "UnifiedMixerSpec",
-    "compile_frontend_mixer",
-    "compile_mixer",
-    "mixer_semantic_program",
 ]
 
 
@@ -55,19 +47,4 @@ def __getattr__(name: str):
         from urm.compiler.solve.constraints import ConstraintModel
 
         return ConstraintModel
-    if name in {
-        "CompiledMixerPlan",
-        "MixerBackend",
-        "MixerIntent",
-        "MixerKernelFamily",
-        "UnifiedMixerSpec",
-        "compile_frontend_mixer",
-        "compile_mixer",
-        "mixer_semantic_program",
-    }:
-        # Transitional family-dispatch path (slated for deletion as recipes
-        # migrate to graph documents); lives outside the planner module.
-        from urm.compiler import mixer
-
-        return getattr(mixer, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

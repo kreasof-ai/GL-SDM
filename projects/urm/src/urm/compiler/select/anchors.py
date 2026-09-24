@@ -508,10 +508,7 @@ def make_sparse_state_mixer_selector(
     def _select(request: AnchorRequest) -> AnchorDecision | None:
         if request.kind is not AnchorKind.SPARSE_STATE_MIXER:
             return None
-        from urm.ir.program import SparseStateMixerAccess, UnifiedMixerAccess
-
-        if isinstance(request.semantic_op, UnifiedMixerAccess):
-            return None
+        from urm.ir.program import SparseStateMixerAccess
 
         if not isinstance(request.semantic_op, SparseStateMixerAccess):
             return AnchorDecision(

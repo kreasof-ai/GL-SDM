@@ -8,7 +8,6 @@ plans through an explicit pipeline:
       -> independent imperative model verification
       -> CANDIDATE-BOUND schedule solve (or deterministic heuristic fallback)
          -> independent schedule verification -> bounded nogood/retry
-         -> optional compile probe of the exact selected configuration
       -> anchor selection carrying the selected LAUNCH CONFIGURATION
       -> placement/sharding -> executable plan (+ serialized decision)
       -> deterministic compilation trace
@@ -32,9 +31,6 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
-from urm.ir.graph import (
-    MixerKernelFamily,
-)
 from urm.compiler.cost.model import CostEstimate, DeviceLimits, combine
 from urm.compiler.common.diagnostics import (
     CompilerError,
@@ -80,7 +76,6 @@ from urm.ir.program import (
     SparseStateMixerAccess,
     StateUpdate,
     Transform,
-    UnifiedMixerAccess,
     WeightedReduce,
 )
 
@@ -90,7 +85,7 @@ if TYPE_CHECKING:
 
     from urm.compiler.solve.constraints import Assignment, ConstraintModel
     from urm.compiler.select.anchors import ExecutionAnchor
-    from urm.compiler.schedule.search import CompileProbe, ScheduleDecision
+    from urm.compiler.schedule.search import ScheduleDecision
     from urm.ir.program import SemanticNode, SemanticProgram
     from urm.compiler.solve.z3 import FeasibilityResult, OptimizationResult
     from urm.compiler.verify.plan import VerificationReport
@@ -534,14 +529,12 @@ class UrmCompiler:
         rules: Sequence[RewriteRule] | None = None,
         anchors: AnchorRegistry | None = None,
         device_limits_path: Path | None = None,
-        compile_probe: CompileProbe | None = None,
         max_nogoods: int = 8,
         schedule_verifier: ScheduleVerifier | None = None,
     ) -> None:
         self.engine = RewriteEngine(rules) if rules is not None else RewriteEngine()
         self.anchors = anchors if anchors is not None else default_registry()
         self.device_limits = DeviceLimits.load(device_limits_path)
-        self.compile_probe = compile_probe
         self.max_nogoods = max_nogoods
         self.schedule_verifier = schedule_verifier
 
@@ -898,7 +891,7 @@ class UrmCompiler:
         schedule_params: ScheduleParams,
         effective_anchor: ExecutionAnchor | None = None,
     ) -> ScheduleDecision | None:
-        """Solve, verify, and (optionally) probe the candidate-bound schedule.
+        """Solve and verify the candidate-bound schedule.
 
         Returns ``None`` honestly when the compiled program contains no
         routed-reduction work for the schedule stage to decide. Structured
@@ -921,7 +914,6 @@ class UrmCompiler:
         search = CompilationSearch(
             model=model,
             max_nogoods=self.max_nogoods,
-            probe=self.compile_probe,
             verifier=self.schedule_verifier,
         )
         return search.run()
@@ -1141,11 +1133,7 @@ class UrmCompiler:
                 )
             )
             if override is not None:
-                if isinstance(op, UnifiedMixerAccess):
-                    decision = self._apply_override(
-                        request_kind, visitors, override, op
-                    )
-                elif request_kind is AnchorKind.SPARSE_ROUTE_SELECTION:
+                if request_kind is AnchorKind.SPARSE_ROUTE_SELECTION:
                     from urm.compiler.select.anchors import NATIVE_SPARSE_ROUTE_ANCHOR_NAME
 
                     if override != NATIVE_SPARSE_ROUTE_ANCHOR_NAME:
@@ -1530,14 +1518,6 @@ class UrmCompiler:
             return AnchorKind.ROUTED_REDUCTION, ()
         if isinstance(op, OrderedRecurrence):
             return AnchorKind.RECURRENT_SCAN, ()
-        if isinstance(op, UnifiedMixerAccess):
-            from urm.compiler.pipeline import MixerKernelFamily
-
-            return {
-                MixerKernelFamily.SOFTMAX: AnchorKind.ATTENTION,
-                MixerKernelFamily.RECURRENCE: AnchorKind.RECURRENT_SCAN,
-                MixerKernelFamily.SPARSE_DELTA: AnchorKind.SPARSE_STATE_MIXER,
-            }[op.spec.family], ()
         if isinstance(op, SparseRouteGeneration):
             return AnchorKind.SPARSE_ROUTE_SELECTION, ()
         if isinstance(op, SparseStateMixerAccess):

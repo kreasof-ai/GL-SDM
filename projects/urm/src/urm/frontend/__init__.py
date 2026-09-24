@@ -1,18 +1,11 @@
-"""Backend-independent model specification frontend.
+"""Versioned JSON recipe loaders.
 
-Exposes the declarative spec, the named-recipe catalog, and the versioned JSON
-recipe loader for kernel fragments and complete model graphs. The public compile
-API is :func:`compile`, delegating to the compiler pipeline.
+The recipe catalog is declarative JSON only (``recipes/kernels/*.json``,
+``recipes/architectures/*.json``); this package holds the loading and
+validation machinery and nothing else. Compilation entry points live in
+:mod:`urm.compiler.pipeline` (:func:`compile_graph`).
 """
 
-from .spec import MixerSpec
+from . import recipes
 
-__all__ = ["MixerSpec", "compile"]
-
-
-def __getattr__(name: str):
-    if name == "compile":
-        from urm.compiler.mixer import compile_mixer
-
-        return compile_mixer
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+__all__ = ["recipes"]
