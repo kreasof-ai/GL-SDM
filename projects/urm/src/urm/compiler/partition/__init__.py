@@ -1,5 +1,7 @@
-"""Graph partitioning into K1/K2/K3 subplans.
+"""Graph partitioning into legal execution regions.
 
-Owns the partitioning of a typed semantic graph into per-family subplans,
-including the K3 route-then-state composition (:mod:`urm.compiler.partition.k3`).
+Owns the partitioning of a typed semantic graph into per-family regions before
+backend selection. The K3 route→state composition is an ordinary typed graph
+(``sparse_route_generation`` → ``sparse_state_mixer``), not a special plan; see
+:mod:`urm.compiler.normalize.graph` and the graph compile path.
 """

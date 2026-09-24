@@ -95,26 +95,13 @@ def build_program(spec):
 
     if spec.name == "sparse_delta_memory":
         from urm.ir.program import (
-            SDMExecutionMode,
             SparseStateExecutionMode,
-            sparse_delta_memory_program,
             sparse_route_selection_program,
             sparse_state_mixer_program,
         )
 
         return (
             (
-                sparse_delta_memory_program(
-                    name=spec.name,
-                    parallel=1,
-                    sequence=128,
-                    slots_per_partition=4096,
-                    value_dim=256,
-                    writes=64,
-                    reads=64,
-                    dtype=DType.BFLOAT16,
-                    mode=SDMExecutionMode.TRAINING,
-                ),
                 sparse_state_mixer_program(
                     name="sparse_state_mixer_kernel_only",
                     parallel=1,
@@ -464,7 +451,6 @@ def main() -> None:
         "routed_reduction",
         "urm_native_sparse_state_mixer",
         "urm_native_sparse_route_selection",
-        "urm_native_sparse_memory_e2e",
     )
     UPSTREAM_ANCHORS = {
         "flash_attention_adapter",

@@ -85,7 +85,9 @@ def test_model_benchmark_has_no_direct_native_backend_shortcut() -> None:
     model = (root / "train" / "loop.py").read_text(encoding="utf-8")
     assert "TritonSparseMemoryBackend" not in benchmark
     assert "TritonSparseMemoryBackend" not in model
-    assert "compile_sparse_memory_plan(spec)" in model
+    # The model's native path goes through the public K3 graph compile + binder.
+    assert "compile_graph(" in model
+    assert "compile_sparse_memory_plan" not in model
 
 
 @pytest.mark.parametrize("width", [65, 128])

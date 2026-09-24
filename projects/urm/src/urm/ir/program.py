@@ -161,17 +161,6 @@ class RouteSpec:
         return self.selection is SelectionKind.THRESHOLD
 
 
-class SDMExecutionMode(StrEnum):
-    """Autograd intent of the restricted sparse-memory mixer skeleton."""
-
-    INFERENCE = "inference"
-    TRAINING = "training"
-
-
-class SparseAddressingKind(StrEnum):
-    PRODUCT_KEY_TOP_K = "product_key_top_k"
-
-
 class SparseScoreComposition(StrEnum):
     """Closed score-composition vocabulary for sparse route production."""
 
@@ -279,81 +268,6 @@ class SparseRouteSelectionSpec:
     @property
     def score_width(self) -> int:
         return 2 * self.factor_extent
-
-
-@dataclass(frozen=True, slots=True)
-class SparseMemoryMixerSpec:
-    """URM-owned restricted algebra for ordered sparse-memory access.
-
-    This describes mathematical choices only. It contains no upstream module,
-    callable, tensor-layout convention, or kernel implementation identity.
-    """
-
-    parallel: int
-    sequence: int
-    slots_per_partition: int
-    value_dim: int
-    writes: int
-    reads: int
-    dtype: DType = DType.BFLOAT16
-    mode: SDMExecutionMode = SDMExecutionMode.INFERENCE
-    operation: SparseStateOperation = SparseStateOperation.UPDATE
-    addressing: SparseAddressingKind = SparseAddressingKind.PRODUCT_KEY_TOP_K
-    normalization: ScoreNormalization = ScoreNormalization.SOFTMAX
-    update_rule: SparseUpdateRule = SparseUpdateRule.DECAYED_DELTA
-    collision_policy: MergePolicy = MergePolicy.ORDERED
-    within_token_collision_policy: MergePolicy = MergePolicy.REJECT
-    read_timing: SparseReadTiming = SparseReadTiming.AFTER_UPDATE
-    state_policy: SparseStatePolicy = SparseStatePolicy.PERSISTENT_IN_PLACE
-    page_size: int = 1
-
-    def __post_init__(self) -> None:
-        dimensions = (
-            "parallel",
-            "sequence",
-            "slots_per_partition",
-            "value_dim",
-            "reads",
-        )
-        for name in dimensions:
-            if getattr(self, name) <= 0:
-                raise ValueError(f"SDM {name} must be positive")
-        if self.writes < 0:
-            raise ValueError("sparse memory writes must be non-negative")
-        if self.operation is SparseStateOperation.READ_ONLY:
-            if (
-                self.writes != 0
-                or self.read_timing is not SparseReadTiming.CURRENT_STATE
-            ):
-                raise ValueError(
-                    "read-only sparse memory requires writes=0 and current-state reads"
-                )
-            if self.mode is SDMExecutionMode.TRAINING:
-                raise ValueError("read-only sparse memory does not advertise training")
-        elif self.writes <= 0:
-            raise ValueError("updating sparse memory requires writes > 0")
-        root = round(self.slots_per_partition**0.5)
-        if root * root != self.slots_per_partition:
-            raise ValueError("SDM slots_per_partition must be a perfect square")
-        if self.slots_per_partition % 8:
-            raise ValueError("SDM slots_per_partition must be divisible by 8")
-        max_width = min(128, self.slots_per_partition)
-        if self.writes > max_width or self.reads > max_width:
-            raise ValueError("SDM read/write widths exceed the frozen upstream subset")
-        if self.reads > root or self.writes > root:
-            raise ValueError(
-                "product-key read/write widths must not exceed factor extent"
-            )
-        if self.dtype not in (DType.FLOAT32, DType.BFLOAT16):
-            raise ValueError("SDM adapter supports float32 and bfloat16")
-        if self.mode is SDMExecutionMode.TRAINING and self.sequence < 16:
-            raise ValueError(
-                "SDM upstream training kernel on the frozen runtime requires "
-                "sequence >= 16"
-            )
-
-
-SparseDeltaMemorySpec = SparseMemoryMixerSpec
 
 
 @dataclass(frozen=True, slots=True)
@@ -571,17 +485,6 @@ class StateUpdate(SemanticOp):
 
 
 @dataclass(frozen=True, slots=True)
-class SparseMemoryAccess(SemanticOp):
-    """Restricted sparse-memory skeleton; external SDM is one temporary anchor."""
-
-    spec: SparseMemoryMixerSpec
-
-    @property
-    def effect(self) -> EffectSignature:
-        return ORDERED_STATE
-
-
-@dataclass(frozen=True, slots=True)
 class SparseRouteGeneration(SemanticOp):
     """Pure score-to-route operation with explicit constrained semantics."""
 
@@ -622,9 +525,6 @@ class UnifiedMixerAccess(SemanticOp):
         return ORDERED_STATE
 
 
-SparseDeltaMemoryAccess = SparseMemoryAccess
-
-
 @dataclass(frozen=True, slots=True)
 class CollectiveExchange(SemanticOp):
     """Collective semantic intent over a named mesh axis."""
@@ -647,7 +547,6 @@ SemanticNode = (
     | OrderedRecurrence
     | StateRead
     | StateUpdate
-    | SparseMemoryAccess
     | SparseRouteGeneration
     | SparseStateMixerAccess
     | UnifiedMixerAccess
@@ -810,83 +709,6 @@ def routed_reduction_program(
             ),
         ),
         outputs=("base",),
-    )
-
-
-def sparse_delta_memory_program(
-    *,
-    name: str = "sparse_delta_memory",
-    parallel: int = 1,
-    sequence: int = 128,
-    slots_per_partition: int = 4096,
-    value_dim: int = 256,
-    writes: int = 64,
-    reads: int = 64,
-    dtype: DType = DType.BFLOAT16,
-    mode: SDMExecutionMode = SDMExecutionMode.INFERENCE,
-    operation: SparseStateOperation = SparseStateOperation.UPDATE,
-    read_timing: SparseReadTiming = SparseReadTiming.AFTER_UPDATE,
-) -> SemanticProgram:
-    """Compatibility builder for the typed sparse-memory mixer skeleton."""
-    spec = SparseMemoryMixerSpec(
-        parallel=parallel,
-        sequence=sequence,
-        slots_per_partition=slots_per_partition,
-        value_dim=value_dim,
-        writes=writes,
-        reads=reads,
-        dtype=dtype,
-        mode=mode,
-        operation=operation,
-        read_timing=read_timing,
-    )
-    root = round(slots_per_partition**0.5)
-    inputs = [
-        TensorHandle("read_scores", dtype, (parallel, sequence, 2 * root)),
-        TensorHandle(
-            "memory",
-            dtype,
-            (parallel, slots_per_partition, value_dim),
-        ),
-    ]
-    op_inputs = ["read_scores", "memory"]
-    outputs = ["readings", "updated_memory", "read_addresses", "read_weights"]
-    if operation is SparseStateOperation.UPDATE:
-        inputs = [
-            TensorHandle("write_scores", dtype, (parallel, sequence, 2 * root)),
-            TensorHandle("values", dtype, (parallel, sequence, value_dim)),
-            TensorHandle("beta", dtype, (parallel, sequence, 1)),
-            TensorHandle("log_decay", dtype, (parallel, sequence, 1)),
-            *inputs,
-        ]
-        op_inputs = [
-            "write_scores",
-            "read_scores",
-            "values",
-            "beta",
-            "log_decay",
-            "memory",
-        ]
-        outputs = [
-            "readings",
-            "updated_memory",
-            "write_addresses",
-            "write_weights",
-            "read_addresses",
-            "read_weights",
-        ]
-    return SemanticProgram.build(
-        name=name,
-        inputs=tuple(inputs),
-        ops=(
-            SparseMemoryAccess(
-                name="sdm_access",
-                inputs=tuple(op_inputs),
-                outputs=tuple(outputs),
-                spec=spec,
-            ),
-        ),
-        outputs=tuple(outputs),
     )
 
 

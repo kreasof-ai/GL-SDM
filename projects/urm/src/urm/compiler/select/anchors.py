@@ -31,7 +31,6 @@ class AnchorKind(StrEnum):
     GROUPED_GEMM = "grouped_gemm"
     ROUTED_REDUCTION = "routed_reduction"
     PAGE_GATHER_UPDATE = "page_gather_update"
-    SPARSE_DELTA_MEMORY = "sparse_delta_memory"
     SPARSE_ROUTE_SELECTION = "sparse_route_selection"
     SPARSE_STATE_MIXER = "sparse_state_mixer"
     COLLECTIVE_EXCHANGE = "collective_exchange"
@@ -340,17 +339,16 @@ class AnchorRegistry:
         )
 
 
-NATIVE_SPARSE_MEMORY_ANCHOR_NAME = "urm_native_sparse_memory_e2e_v0"
-
-# Injectable capability probe for the pinned SDM upstream checkout. The compiler
-# core never imports the comparator package; the consumer that provisions the SDM
-# checkout installs the probe via ``set_sdm_support_probe``. When unset, the SDM
-# selectors decline with DEPENDENCY_MISSING rather than importing a comparator.
+# Injectable capability probe for the pinned SDM upstream checkout, used by the
+# generic K3 sparse-state fallback. The compiler core never imports the
+# comparator package; the consumer that provisions the SDM checkout installs the
+# probe via ``set_sdm_support_probe``. When unset, the fallback declines with
+# DEPENDENCY_MISSING rather than importing a comparator.
 _SDM_SUPPORT_PROBE: Callable[[], object] | None = None
 
 
 def set_sdm_support_probe(probe: Callable[[], object] | None) -> None:
-    """Install (or clear) the pinned-SDM support probe used by the SDM selectors."""
+    """Install (or clear) the pinned-SDM support probe used by the K3 fallback."""
     global _SDM_SUPPORT_PROBE
     _SDM_SUPPORT_PROBE = probe
 
@@ -461,15 +459,6 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
         supported_schedules=("segmented", "full_row"),
     ),
     ExecutionAnchor(
-        kind=AnchorKind.SPARSE_DELTA_MEMORY,
-        name=NATIVE_SPARSE_MEMORY_ANCHOR_NAME,
-        effect=ORDERED_STATE,
-        backward_verified_dtypes=frozenset({"float32", "bfloat16"}),
-        deterministic_accumulation=False,
-        commit_capable=True,
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
         kind=AnchorKind.SPARSE_ROUTE_SELECTION,
         name=NATIVE_SPARSE_ROUTE_ANCHOR_NAME,
         effect=PURE,
@@ -506,124 +495,6 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
         commit_capable=True,
         supported_visitors=frozenset(),
     ),)
-
-
-def make_sdm_selector(
-    anchor: ExecutionAnchor, support_probe: SDMSupportProbe | None = None
-) -> AnchorSelector:
-    """Runtime/revision-aware selector for the external original-SDM adapter."""
-
-    def _select(request: AnchorRequest) -> AnchorDecision | None:
-        if request.kind is not AnchorKind.SPARSE_DELTA_MEMORY:
-            return None
-        from urm.ir.program import (
-            MergePolicy,
-            ScoreNormalization,
-            SparseAddressingKind,
-            SparseDeltaMemoryAccess,
-            SparseReadTiming,
-            SparseStatePolicy,
-            SparseUpdateRule,
-        )
-
-        if not isinstance(request.semantic_op, SparseDeltaMemoryAccess):
-            return AnchorDecision(
-                anchor=None,
-                decline=Decline(
-                    DiagnosticCode.UNSUPPORTED_SEMANTICS,
-                    "SDM anchor requires a typed SparseDeltaMemoryAccess operation",
-                ),
-            )
-        spec = request.semantic_op.spec
-        exact = (
-            spec.addressing is SparseAddressingKind.PRODUCT_KEY_TOP_K
-            and spec.normalization is ScoreNormalization.SOFTMAX
-            and spec.update_rule is SparseUpdateRule.DECAYED_DELTA
-            and spec.collision_policy is MergePolicy.ORDERED
-            and spec.within_token_collision_policy is MergePolicy.REJECT
-            and spec.read_timing is SparseReadTiming.AFTER_UPDATE
-            and spec.state_policy is SparseStatePolicy.PERSISTENT_IN_PLACE
-            and spec.page_size == 1
-        )
-        if not exact:
-            return AnchorDecision(
-                anchor=None,
-                decline=Decline(
-                    DiagnosticCode.UNSUPPORTED_SEMANTICS,
-                    "SDM semantics do not match the frozen upstream contract",
-                ),
-            )
-        probe = support_probe if support_probe is not None else _default_sdm_support_probe
-        support = probe()
-        if not support.supported:
-            code = {
-                "missing_dependency": DiagnosticCode.DEPENDENCY_MISSING,
-                "incompatible_revision": DiagnosticCode.UPSTREAM_REVISION_MISMATCH,
-                "modified_upstream_checkout": DiagnosticCode.UPSTREAM_REVISION_MISMATCH,
-                "unsupported_hardware": DiagnosticCode.UNSUPPORTED_HARDWARE,
-                "incompatible_runtime": DiagnosticCode.DEPENDENCY_MISSING,
-            }.get(support.code, DiagnosticCode.ANCHOR_DECLINED)
-            return AnchorDecision(
-                anchor=None,
-                decline=Decline(code, support.reason or support.code),
-            )
-        return AnchorDecision(anchor=anchor, decline=None)
-
-    return _select
-
-
-def make_native_sparse_memory_selector(
-    anchor: ExecutionAnchor,
-    support_probe: Callable[[object], object] | None = None,
-) -> AnchorSelector:
-    """Prefer the fully native score-to-state pipeline when v0 can represent it."""
-
-    def _select(request: AnchorRequest) -> AnchorDecision | None:
-        if request.kind is not AnchorKind.SPARSE_DELTA_MEMORY:
-            return None
-        preferred = (request.schedule_params or {}).get("anchor_override")
-        # Abstain when the caller explicitly requested the pinned external SDM
-        # provider (registered by the comparator consumer, not core).
-        if preferred == "facebook_sparse_delta_memory_183e7df_external_adapter":
-            return None
-        from urm.ir.program import SparseMemoryAccess
-
-        if not isinstance(request.semantic_op, SparseMemoryAccess):
-            return None
-        probe = support_probe
-        if probe is None:
-            try:
-                from urm.backends.triton.k3.memory import TritonSparseMemoryBackend
-
-                probe = TritonSparseMemoryBackend.support_status
-            except Exception as error:  # noqa: BLE001
-                if preferred == NATIVE_SPARSE_MEMORY_ANCHOR_NAME:
-                    return AnchorDecision(
-                        anchor=None,
-                        decline=Decline(
-                            DiagnosticCode.DEPENDENCY_MISSING,
-                            f"native sparse memory dependencies unavailable: {error!r}",
-                        ),
-                    )
-                return None
-        status = probe(request.semantic_op.spec)
-        if status.supported:
-            return AnchorDecision(anchor=anchor, decline=None)
-        if preferred != NATIVE_SPARSE_MEMORY_ANCHOR_NAME:
-            return None
-        code = {
-            "missing_dependency": DiagnosticCode.DEPENDENCY_MISSING,
-            "unsupported_hardware": DiagnosticCode.UNSUPPORTED_HARDWARE,
-            "unsupported_device": DiagnosticCode.UNSUPPORTED_HARDWARE,
-            "unsupported_semantics": DiagnosticCode.UNSUPPORTED_SEMANTICS,
-            "unsupported_shape": DiagnosticCode.ANCHOR_DECLINED,
-        }.get(status.code, DiagnosticCode.ANCHOR_DECLINED)
-        return AnchorDecision(
-            anchor=None,
-            decline=Decline(code, status.reason or status.code),
-        )
-
-    return _select
 
 
 def make_sparse_state_mixer_selector(
@@ -844,12 +715,6 @@ def default_registry() -> AnchorRegistry:
         if anchor.kind is AnchorKind.SPARSE_ROUTE_SELECTION
     )
     registry.register(make_sparse_route_selector(sparse_route_anchor))
-    native_sparse_memory_anchor = next(
-        anchor
-        for anchor in TRUSTED_ANCHORS
-        if anchor.name == NATIVE_SPARSE_MEMORY_ANCHOR_NAME
-    )
-    registry.register(make_native_sparse_memory_selector(native_sparse_memory_anchor))
     sparse_state_anchor = next(
         anchor
         for anchor in TRUSTED_ANCHORS

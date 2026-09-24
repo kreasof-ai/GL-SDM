@@ -97,9 +97,15 @@ def test_native_pretraining_uses_compiler_serialized_schedule() -> None:
     assert len(mixers) == 1
     plan = mixers[0]._executor.serialized_plan()
     dispatch = [step for step in plan["steps"] if step["kind"] == "anchor_dispatch"]
-    assert dispatch[0]["anchor"] == "urm_native_sparse_memory_e2e_v0"
-    assert dispatch[0]["launch_config"]["schedule_family"] == (
-        "native_route_then_partition_scan"
+    # The K3 graph lowers to route-generation + state-mixer anchors (no special
+    # SDM e2e plan); each step carries its own compiler-selected schedule.
+    assert [step["anchor"] for step in dispatch] == [
+        "urm_native_sparse_route_selection_v0",
+        "urm_native_sparse_route_selection_v0",
+        "urm_native_sparse_state_mixer_v0",
+    ]
+    assert dispatch[-1]["launch_config"]["schedule_family"] == (
+        "partition_owned_ordered_token_scan"
     )
 
 

@@ -410,15 +410,6 @@ UPSTREAM_ANCHORS: tuple[ExecutionAnchor, ...] = (
         supported_visitors=frozenset(),
     ),
     ExecutionAnchor(
-        kind=AnchorKind.SPARSE_DELTA_MEMORY,
-        name=SDM_EXTERNAL_ANCHOR_NAME,
-        effect=ORDERED_STATE,
-        backward_verified_dtypes=frozenset({"float32", "bfloat16"}),
-        deterministic_accumulation=False,
-        commit_capable=True,
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
         kind=AnchorKind.SPARSE_STATE_MIXER,
         name=SDM_SPARSE_STATE_FALLBACK_ANCHOR_NAME,
         effect=ORDERED_STATE,
@@ -439,7 +430,6 @@ def register_anchor_providers() -> None:
     fallback selector, which reference the consumer-owned SDM anchors.
     """
     from urm.compiler.select.anchors import (
-        make_sdm_selector,
         make_sparse_state_mixer_selector,
         register_anchor_provider,
         register_anchor_selector,
@@ -447,8 +437,6 @@ def register_anchor_providers() -> None:
 
     register_anchor_provider(UPSTREAM_ANCHORS)
 
-    sdm_external = next(a for a in UPSTREAM_ANCHORS if a.name == SDM_EXTERNAL_ANCHOR_NAME)
-    register_anchor_selector(make_sdm_selector(sdm_external))
     # SDM sparse-state fallback: native anchor stays in core; the fallback is the
     # consumer-owned pinned SDM route adapter.
     from urm.compiler.select.anchors import (

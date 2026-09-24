@@ -11,7 +11,6 @@ __all__ = [
     "TorchRoutedReductionBackend",
     "TritonOnlineSoftmaxBackend",
     "TritonRoutedReductionBackend",
-    "TritonSparseMemoryBackend",
     "TritonSparseRouteBackend",
     "TritonSparseStateMixerBackend",
 ]
@@ -30,10 +29,6 @@ def __getattr__(name: str):
         from .triton.k1.routed_launcher import TritonRoutedReductionBackend
 
         return TritonRoutedReductionBackend
-    if name == "TritonSparseMemoryBackend":
-        from .triton.k3.memory import TritonSparseMemoryBackend
-
-        return TritonSparseMemoryBackend
     if name == "TritonSparseRouteBackend":
         from .triton.k3.route_launcher import TritonSparseRouteBackend
 

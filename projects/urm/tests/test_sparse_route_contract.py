@@ -21,7 +21,6 @@ from urm.ir.program import (
     SparseRouteSelectionSpec,
     SparseRouteTiePolicy,
     SparseScoreComposition,
-    sparse_delta_memory_program,
     sparse_route_selection_program,
 )
 
@@ -77,15 +76,6 @@ def test_route_semantic_drift_fails_closed(kwargs, match) -> None:
     values.update(kwargs)
     with pytest.raises(ValueError, match=match):
         SparseRouteSelectionSpec(**values)
-
-
-def test_composite_product_key_width_must_not_exceed_factor_extent() -> None:
-    with pytest.raises(ValueError, match="factor extent"):
-        sparse_delta_memory_program(
-            slots_per_partition=64,
-            writes=9,
-            reads=4,
-        )
 
 
 def test_compiler_selects_native_route_and_records_exact_schedule() -> None:

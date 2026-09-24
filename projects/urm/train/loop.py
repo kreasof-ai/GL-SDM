@@ -11,8 +11,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from urm.runtime.bind import compile_sparse_memory_plan
-from urm.ir.program import DType, SDMExecutionMode, SparseMemoryMixerSpec
+from urm.ir.program import DType
 
 MixerBackend = Literal["upstream_sdm", "urm_native", "sdpa"]
 
@@ -316,22 +315,89 @@ class SparseMemoryMixer(nn.Module):
         )
         self._pending_state = None
         self.profile_ranges = False
-        spec = SparseMemoryMixerSpec(
-            config.parallel,
-            config.sequence_length,
-            config.slots_per_partition,
-            config.value_dim,
-            config.writes,
-            config.reads,
-            DType.BFLOAT16,
-            SDMExecutionMode.TRAINING,
-        )
-        object.__setattr__(self, "_spec", spec)
+        # The native path is a compiled K3 route->update->read graph bound through
+        # the public plan binder (no special SDM plan or monolith).
         cpu_rng = torch.get_rng_state()
         cuda_rng = torch.cuda.get_rng_state_all() if torch.cuda.is_available() else []
         try:
             if backend == "urm_native":
-                object.__setattr__(self, "_executor", compile_sparse_memory_plan(spec))
+                from urm.compiler.normalize.graph import normalize_graph_document
+                from urm.compiler.pipeline import compile_graph
+
+                # Build the K3 route->update->read graph for this model's dims.
+                # The equation params (slots, value_dim, widths) come from the
+                # config; parallel/sequence are runtime batch dims.
+                document = {
+                    "schema_version": 2,
+                    "name": "sdm_pretraining",
+                    "kind": "kernel_fragment",
+                    "graph": {
+                        "inputs": [
+                            {"name": "read_scores", "dtype": "bfloat16", "shape": ["P", "T", "W"]},
+                            {"name": "write_scores", "dtype": "bfloat16", "shape": ["P", "T", "W"]},
+                            {"name": "values", "dtype": "bfloat16", "shape": ["P", "T", "D"]},
+                            {"name": "beta", "dtype": "float32", "shape": ["P", "T", "1"]},
+                            {"name": "log_decay", "dtype": "float32", "shape": ["P", "T", "1"]},
+                            {"name": "memory", "dtype": "bfloat16", "shape": ["P", "S", "D"]},
+                        ],
+                        "nodes": [
+                            {
+                                "id": "read_routes",
+                                "op": "sparse_route_generation",
+                                "inputs": ["read_scores"],
+                                "outputs": ["read_addresses", "read_weights"],
+                                "params": {
+                                    "source_extent": config.slots_per_partition,
+                                    "route_width": config.reads,
+                                },
+                            },
+                            {
+                                "id": "write_routes",
+                                "op": "sparse_route_generation",
+                                "inputs": ["write_scores"],
+                                "outputs": ["write_addresses", "write_weights"],
+                                "params": {
+                                    "source_extent": config.slots_per_partition,
+                                    "route_width": config.writes,
+                                },
+                            },
+                            {
+                                "id": "update_and_read",
+                                "op": "sparse_state_mixer",
+                                "inputs": [
+                                    "memory",
+                                    "read_addresses",
+                                    "read_weights",
+                                    "write_addresses",
+                                    "write_weights",
+                                    "values",
+                                    "beta",
+                                    "log_decay",
+                                ],
+                                "outputs": ["output", "final_state"],
+                                "params": {
+                                    "slots_per_partition": config.slots_per_partition,
+                                    "value_dim": config.value_dim,
+                                    "writes": config.writes,
+                                    "reads": config.reads,
+                                    "operation": "update",
+                                    "read_timing": "after_update",
+                                    "update_rule": "decayed_delta",
+                                    "collision_policy": "ordered",
+                                    "mode": "training",
+                                },
+                            },
+                        ],
+                        "outputs": ["output"],
+                    },
+                }
+                from urm.compiler.pipeline import CompilationIntent
+
+                program = normalize_graph_document(document)
+                plan = compile_graph(
+                    program, target="native", intent=CompilationIntent.TRAINING
+                )
+                object.__setattr__(self, "_executor", plan)
             else:
                 from benchmarks.comparators.sdm.upstream import (
                     MODE_TRAINING,
@@ -411,24 +477,21 @@ class SparseMemoryMixer(nn.Module):
         )
 
     def forward(self, x):
-        from urm.backends.triton.k3.state_launcher import SparseState
-
         b, t, _ = x.shape
         with self._profile("pretraining::sparse_memory::learned_projections"):
             read_scores, write_scores, values, beta, log_decay = self._project(x)
         memory = self.persistent_memory
         if self.backend_name == "urm_native":
-            with self._profile("pretraining::sparse_memory::native_prepare"):
-                prepared = self._executor.prepare(
-                    read_scores,
+            with self._profile("pretraining::sparse_memory::native_pipeline"):
+                result = self._executor.execute(
+                    read_scores=read_scores,
                     write_scores=write_scores,
                     values=values,
                     beta=beta,
                     log_decay=log_decay,
+                    memory=memory,
                 )
-            with self._profile("pretraining::sparse_memory::native_pipeline"):
-                result = self._executor.execute(SparseState(memory), prepared)
-            readings, final = result.readings, result.state.memory
+            readings, final = result["output"], result["final_state"]
         else:
             adapter = self._executor
             address = adapter.direct_calls["address"]
@@ -559,7 +622,6 @@ class URMDecoderLM(nn.Module):
         for mixer in self.sparse_mixers():
             mixer.profile_ranges = enabled
             if mixer.backend_name == "urm_native":
-                mixer._executor.backend.profile_ranges = enabled
                 from urm.backends.triton.k3 import state as state_kernels
 
                 state_kernels.PROFILE_RANGES = enabled
