@@ -106,7 +106,7 @@
         "op": {
           "type": "string",
           "description": "Registered typed operation.",
-          "enum": ["score", "select", "gather", "weighted_reduce", "matmul", "transform", "ordered_recurrence", "state_read", "state_update", "sparse_route_generation", "sparse_state_mixer"]
+          "enum": ["score", "select", "gather", "weighted_reduce", "matmul", "transform", "ordered_recurrence", "linear_delta_state", "state_read", "state_update", "sparse_route_generation", "sparse_state_mixer"]
         },
         "inputs": {
           "type": "array",
@@ -153,6 +153,22 @@
               "capacity_policy": {"type": "string", "enum": ["dropless", "fixed_capacity", "expert_quota"], "default": "dropless"},
               "deterministic": {"type": "boolean", "default": true},
               "causal": {"type": "boolean", "default": false},
+              "scale_rule": {"type": "string", "enum": ["key_dim_rsqrt", "explicit_operand"], "default": "key_dim_rsqrt"},
+              "head_map": {"type": "string", "enum": ["shared", "equal", "single", "grouped"], "default": "shared"},
+              "group_size": {"type": ["integer", "null"], "minimum": 1},
+              "roles": {
+                "type": "object",
+                "description": "Closed K1 role → graph edge binding.",
+                "additionalProperties": false,
+                "properties": {
+                  "query": {"type": "string", "minLength": 1},
+                  "key": {"type": "string", "minLength": 1},
+                  "value": {"type": "string", "minLength": 1},
+                  "score_bias": {"type": "string", "minLength": 1},
+                  "attention_mask": {"type": "string", "minLength": 1},
+                  "scale": {"type": "string", "minLength": 1}
+                }
+              },
               "epilogue": {
                 "type": ["object", "null"],
                 "additionalProperties": false,
@@ -259,6 +275,37 @@
               "update_rule": {"type": "string", "enum": ["decayed_delta", "additive"], "default": "decayed_delta"},
               "collision_policy": {"type": "string", "enum": ["ordered", "reject", "sum"], "default": "ordered"},
               "mode": {"type": "string", "enum": ["inference", "training"], "default": "inference"}
+            }
+          }}}
+        },
+        {
+          "if": {"properties": {"op": {"const": "linear_delta_state"}}},
+          "then": {"properties": {"params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["delta", "gate_scope", "read_timing", "scale_rule", "roles"],
+            "properties": {
+              "delta": {"type": "boolean", "description": "c=1 delta correction; false is the additive law."},
+              "gate_scope": {"type": "string", "enum": ["none", "scalar", "head", "channel"]},
+              "read_timing": {"type": "string", "enum": ["after_update", "before_update"], "default": "after_update"},
+              "scale_rule": {"type": "string", "enum": ["one", "key_dim_rsqrt", "explicit_operand"], "default": "one"},
+              "normalized": {"type": "boolean", "default": false},
+              "epsilon": {"type": "number", "exclusiveMinimum": 0, "default": 1e-6},
+              "roles": {
+                "type": "object",
+                "description": "Closed K2 role → graph edge binding.",
+                "additionalProperties": false,
+                "required": ["query", "key", "value", "beta", "log_decay", "initial_state"],
+                "properties": {
+                  "query": {"type": "string", "minLength": 1},
+                  "key": {"type": "string", "minLength": 1},
+                  "value": {"type": "string", "minLength": 1},
+                  "beta": {"type": "string", "minLength": 1},
+                  "log_decay": {"type": "string", "minLength": 1},
+                  "initial_state": {"type": "string", "minLength": 1},
+                  "scale": {"type": "string", "minLength": 1}
+                }
+              }
             }
           }}}
         }

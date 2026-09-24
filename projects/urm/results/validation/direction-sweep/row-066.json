@@ -1,0 +1,37 @@
+{
+  "id": "arch-066",
+  "architecture": "CAT (Controllably Efficient / Compress-And-Attend)",
+  "source_repo": "fla",
+  "source_revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": ["fla/models/cat/modeling_cat.py"],
+  "equation_summary": "CAT interleaves compressed chunk representations into the decoder sequence. A CATCompressor (separate transformer with block-diagonal FlexAttention) maps each chunk to a fixed-size fx vector; the decoder sequence is [fx_shifted, sep, tokens...] per chunk plus a final [fx, sep]. Decoder self-attention uses the structural mask cat_mask = (compressed_token | within_block) & causal: queries attend causally within their local block AND to prior compressed fx tokens at kv_idx%block_size==0. Architectural tokens (adaptive token, separator, fx) carry token identity; the mask is a fixed structural mask, not a schedule-only chunk substitution.",
+  "state_shape": "no recurrent state; decoder attends over an interleaved sequence of compressed fx tokens + separator + raw tokens (fixed structural block mask)",
+  "read_timing": "n-a",
+  "gate_scope": "none",
+  "normalization": "softmax (FlexAttention SDPA) under the structural CAT mask",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM ledger graph 'E[chunk compression/adaptive and separator tokens]; U1.S[compressed history ∪ local block]; E[decoder output/cache]' matches CATModel.forward + CATDecoderAttention",
+    "CONFIRM blocker 'Architectural token identity and source mask; no schedule-only chunk substitution' — adaptive/sep/fx tokens are real architectural tokens and the mask is the explicit cat_mask structural mask",
+    "CONFIRM the decoder mixer is softmax attention (FlexAttention) restricted to compressed-history ∪ local-block, i.e. U1.S over an indexed source set; it needs B[indexed_K1_schedule] for efficient sparse coverage (the mask here is materialized as a FlexAttention BlockMask)"
+  ],
+  "direction": "composition-now",
+  "axis": null,
+  "axis_clients": ["arch-005", "arch-066"],
+  "direction_justification": "The decoder mixer is softmax attention (U1.S) over an explicit structural source set (compressed fx tokens ∪ local block) with architectural token identity handled externally by the compressor — composition-now, with efficient sparse traversal gated on the indexed K1 schedule.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "CAT explicitly does NOT support KV cache / past_key_values (forward warns and forces use_cache=False, lines 545-548) — decode-mode cache behavior is unavailable in source",
+    "Adaptive power-of-2 chunk-size training schedule (train_chunk_size_schedule) changes the mask/sequence per step; parity must pin chunk_size per configuration",
+    "The compressor (block-diagonal independent-chunk attention) is itself a U1.S[block-diagonal] call that must be recorded, not only the decoder"
+  ],
+  "evidence_citations": [
+    "fla/models/cat/modeling_cat.py:100-105 — cat_mask = (compressed_token | within_block) & causal (structural mask)",
+    "fla/models/cat/modeling_cat.py:595-599 — interleaved [fx_shifted, sep, tokens] + final [fx, sep] sequence construction",
+    "fla/models/cat/modeling_cat.py:316 — CATDecoderAttention uses flex_attention (softmax SDPA) with the block_mask",
+    "fla/models/cat/modeling_cat.py:108-112 — block_diagonal compressor mask (independent chunk compression)",
+    "fla/models/cat/modeling_cat.py:545-548 — CAT does not support KV cache; use_cache forced False"
+  ]
+}

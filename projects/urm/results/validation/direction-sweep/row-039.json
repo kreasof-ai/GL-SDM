@@ -1,0 +1,37 @@
+{
+  "id": "arch-039",
+  "architecture": "Titans",
+  "source_repo": "fla",
+  "source_revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": [
+    "fla/ops/titans/naive.py",
+    "fla/ops/titans/log_impl.py"
+  ],
+  "equation_summary": "Titans maintains TWO coupled matrix states M_t and S_t. S_t = eta_t * S_{t-1} - 2*theta_t * k_t^T @ v_new, then M_t = (1-alpha_t)*M_{t-1} + S_t. The 'v_new' is the gradient of an inner loss: km = k_t @ M_{t-1} is layer-normalized to km_hat, grad = w*km_hat + b - (v_t - k_t), then grad is preconditioned (grad*w, then a D*grad - sum/proj correction against km_hat). Output is o_t = q_t @ M_t followed by a layer-norm with residual scale/bias. This is a per-token nonlinear inner-loss gradient step (a learned optimizer), NOT an affine delta law.",
+  "state_shape": "two coupled [B,H,D,D] matrices (M memory + S momentum/optimizer state)",
+  "read_timing": "after-update",
+  "gate_scope": "data-dependent (theta/alpha/eta per-token; inner nonlinear normalize+precondition)",
+  "normalization": "inner layer-norm on km_hat and on the output; eps division present",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM ledger call graph `E[model memory hierarchy/outer attention/projections] ; B[closed typed inner-loss/update region] ; E[block output]` matches the source: projections/normalize are external, the M/S inner-loss update is the blocked region.",
+    "CONFIRM ledger blockers `No callback, no bare affine-K2 relabel; optimizer state and outer VJP` — the source (naive.py:160-204) is exactly an inner optimizer loop with a momentum state S, which cannot be relabeled as affine K2.",
+    "CONFIRM the task's prior: this is external-only. There is NO reusable closed descriptor; the inner loss involves a data-dependent nonlinear normalize+precondition (naive.py:172-183) that does not factor into a fixed linear-delta transition."
+  ],
+  "direction": "external-only",
+  "axis": "A12 inner optimization",
+  "axis_clients": ["arch-039", "arch-055"],
+  "direction_justification": "The mixer is an architecture-specific per-token inner-loss gradient/optimizer loop over two coupled matrix states with a nonlinear data-dependent preconditioner; it shares no closed law with any other family and cannot be substituted by affine K2, so it stays an external comparator under the A12 inner-optimization axis.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Whether the chunked variant (chunk_titans_linear, naive.py:216) that precomputes beta/f/g/G cumulative products could ever admit a closed semiseparable-like descriptor; the inner nonlinear normalize+precondition at 172-183 appears to forbid it, but a formal impossibility/equivalence proof is not produced here."
+  ],
+  "evidence_citations": [
+    "fla/ops/titans/naive.py:127-128 — docstring update rule M_t=(1-alpha_t)M_{t-1}+S_t, S_t=eta_t*S_{t-1}-theta_t*grad(M_{t-1};x_t)",
+    "fla/ops/titans/naive.py:170-183 — inner loss gradient: km layer-norm, grad=w*km_hat+b-(v-k), preconditioner D*grad-sum-proj against km_hat",
+    "fla/ops/titans/naive.py:187-190 — S_t and M_t coupled matrix updates (two states)",
+    "fla/ops/titans/naive.py:193-197 — output q_t@M_t then residual layer-norm"
+  ]
+}

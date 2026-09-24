@@ -1,0 +1,36 @@
+{
+  "id": "arch-054",
+  "architecture": "AttnRes",
+  "source_repo": "fla",
+  "source_revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": ["fla/ops/attnres/naive.py", "fla/ops/attnres/__init__.py"],
+  "equation_summary": "AttnRes aggregates previous-layer residual sources over the DEPTH domain. Each residual source v_l is RMSNorm-ed (rms_weight) to form k_l; logits p_l = softmax_over_depth( (k_l . (query*scale)) ) with softmax over dim=0 (the residual-source / depth axis); output o = sum_l p_l * v_l (unnormalized v, not the normed k). An optional output RMSNorm (output_rms_weight) fuses the following prenorm. Depth is the source domain, NOT sequence; there is no sequence state or causal mask.",
+  "state_shape": "no sequence state; operates over a stack [L,...,D] of L residual sources, query [D]",
+  "read_timing": "n-a",
+  "gate_scope": "none",
+  "normalization": "softmax over the depth/source axis (RMSNorm on keys, optional RMSNorm on output)",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM ledger graph 'E[collect previous residual states/depth params]; U1.S(depth as source domain, source normalization); E[residual update/next layer]' matches naive_attnres",
+    "CONFIRM source normalization: RMSNorm on each residual source for the key (line 67), softmax over depth dim=0 (line 68), weighted sum of unnormalized v (line 69)",
+    "CONFIRM blocker 'do not treat depth as sequence state' — the source has no recurrence/causal mask; depth is a small dense source axis (L = layer index), consistent with the ledger's warning"
+  ],
+  "direction": "composition-now",
+  "axis": null,
+  "axis_clients": ["arch-054"],
+  "direction_justification": "The mixer is exactly softmax-attention over a dense depth source domain with a per-source pseudo-query and RMSNorm keys — a U1.S call with a non-sequence logical domain, needing no new core semantics.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Cross-layer lifetime: the stack of residuals must be kept live across all layers (memory/lifetime), and the depth softmax probability gradients route back per-source — cross-layer VJP envelope needs runtime verification",
+    "Whether the pseudo-query is a learned per-layer vector and how scale default 1.0 is set in the full model (this file is the op only)"
+  ],
+  "evidence_citations": [
+    "fla/ops/attnres/naive.py:67 — k = rms_norm(v, rms_weight) per residual source",
+    "fla/ops/attnres/naive.py:68 — p = softmax(einsum(k, query*scale)) over dim=0 (depth axis)",
+    "fla/ops/attnres/naive.py:69 — o = einsum(p, v) weighted sum of unnormalized residuals",
+    "fla/ops/attnres/naive.py:72-73 — optional output RMSNorm fusing the following prenorm",
+    "fla/ops/attnres/naive.py:63 — residuals stacked along dim=0 = depth/source axis, no sequence recurrence"
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "id": "arch-075",
+  "architecture": "Conformer",
+  "source_repo": "conformer",
+  "source_revision": "2950325ea62c8052f448aaf11affdabe169ec8ab",
+  "source_files": [
+    "espnet2/asr_transducer/encoder/modules/attention.py",
+    "espnet2/asr_transducer/encoder/blocks/conformer.py",
+    "espnet2/asr/encoder/conformer_encoder.py"
+  ],
+  "equation_summary": "RelPositionMultiHeadedAttention (Transformer-XL style): scores = [(q + u)·kᵀ + rel_shift((q + v)·pᵀ)] / sqrt(d_k) where u,v are per-head learned bias vectors and p = linear_pos(pos_enc) over 2T−1 relative positions; noncausal softmax with source mask (and optional chunk mask) applied by -inf fill with all-masked rows zeroed post-softmax; output = softmax(scores)·v then linear_out. The Conformer block wraps this with external macaron FFN (×0.5), a depthwise convolution module, second FFN, LayerNorms and residuals. A simplified_attention_score variant replaces (q+v)·p with linear_pos(pos_enc) directly (per-head scalar position term).",
+  "state_shape": "none (encoder; streaming chunk_forward keeps external attention left-context cache [1,left_ctx,D] and conv cache)",
+  "read_timing": "n-a",
+  "gate_scope": "none",
+  "normalization": "softmax (all-masked rows → 0 via masked_fill)",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM `E[QKV/relative-position frontend] ; U1.S(noncausal,exact bias) ; E[convolution/FFN/norm/residual]`: the mixer is exactly softmax attention with an additive bias term (matrix_bd, the rel-shifted position score) — bias construction (linear_pos, pos_bias_u/v, rel_shift) and the conv/FFN/macaron/norm stack are all external E stages (attention.py:116-147, 185-222; conformer.py:101-136).",
+    "CONFIRM 'Relative-position variant and full encoder; no attention-only Conformer claim': two score variants exist (full u/v-bias rel-shift vs simplified_attention_score, attention.py:43-55, 83-114) and the block is noncausal full-context by default with a separate streaming chunk_forward (conformer.py:138-197) using left_context caches — the complete encoder claim needs the variant + both modes, matching the blocker.",
+    "NOTE: the bias is added pre-softmax at 1/sqrt(d_k) scale (attention.py:147) — it fits U1.S's bias field exactly (bias_ij = rel_shift((q+v)·pᵀ)/√d), so no new core semantics are needed; rel_shift is a strided-view reindex (attention.py:60-81), an external ordinary op.",
+    "NOTE: streaming mode uses separate att_cache/conv_cache and chunk masks (conformer.py:57-79, 167-195); cache policy is external per the ownership rule."
+  ],
+  "direction": "composition-now",
+  "axis": null,
+  "axis_clients": [],
+  "direction_justification": "The mixer is exactly U1.S with an additive relative-position bias and noncausal mask; the bias construction, convolution, macaron FFNs and norms are all external ordinary operators — zero new core semantics, only an external module + recipe.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Which relative-position variant is admitted (full u/v bias vs simplified_attention_score) — both exist in the pinned source and differ in the bias term.",
+    "Streaming chunk_forward semantics (left_context cache, chunk masks, conv cache) must be in the external graph for a full-encoder claim; the default forward is noncausal full-context.",
+    "Legacy (espnet2/legacy) RelPositionMultiHeadedAttention implementations exist in the same pin; the record should pin the asr_transducer module variant used here."
+  ],
+  "evidence_citations": [
+    "espnet2/asr_transducer/encoder/modules/attention.py:116-147 — compute_attention_score: ((q+u)·kᵀ + rel_shift((q+v)·pᵀ))/√d_k",
+    "espnet2/asr_transducer/encoder/modules/attention.py:83-114 — simplified_attention_score variant (linear_pos direct per-head term)",
+    "espnet2/asr_transducer/encoder/modules/attention.py:60-81 — rel_shift as strided view (external reindex op)",
+    "espnet2/asr_transducer/encoder/modules/attention.py:185-222 — forward_attention: -inf mask, softmax, masked_fill all-masked→0, matmul v, linear_out",
+    "espnet2/asr_transducer/encoder/blocks/conformer.py:101-136 — block wiring: macaron FFN(×0.5) → self_att → conv_mod → FFN(×0.5) with norms/residuals (all external)",
+    "espnet2/asr/encoder/conformer_encoder.py:254-277 — selection among MultiHeadedAttention / LegacyRelPosition / RelPosition attention classes"
+  ]
+}

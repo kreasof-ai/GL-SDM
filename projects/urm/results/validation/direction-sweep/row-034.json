@@ -1,0 +1,38 @@
+{
+  "id": "arch-034",
+  "architecture": "PGDN (preconditioned Gated DeltaNet)",
+  "source_repo": "fla",
+  "source_revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": [
+    "fla/ops/precond_gated_delta_rule/naive.py",
+    "fla/layers/precond_gated_deltanet.py"
+  ],
+  "equation_summary": "Two states per token (naive.py:122-146): an evolving preconditioner metric A in R^K updated as A <- exp(g_atk_t) * A + beta_atk_t * k_t^2 (diagonal covariance of L2-normalized keys); then a NONLINEAR state-dependent preconditioner M = exp(-log(x) * s), s = (log(A+eps) - center)/(1+|log(A+eps) - center|) (symmetric squash of log-metric around a center); k_precond = k_t * M; then a standard gated delta on S: S <- exp(g_t) S; delta = beta_t*(v_t - k_t^T S); S <- S + k_precond ⊗ delta; o_t = (scale*q_t)^T S. The write key is modulated by a nonlinear function of the running metric A — state-dependent coefficients inside the recurrence. Initial S and A are separate operands; final state returns both (naive.py:100-105,148-154).",
+  "state_shape": "[B,HV,K,V] matrix S plus [B,H,K] diagonal metric A",
+  "read_timing": "after-update",
+  "gate_scope": "head",
+  "normalization": "none",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM call graph E[QKV/gates/ATK parameters] ; B[K2 memory+evolving metric and nonlinear preconditioning] ; E[output]: the second state A and the nonlinear squash M(A) feeding the write key are exactly the blocked semantics (naive.py:132-139,145).",
+    "CONFIRM 'state-dependent coefficients; no affine scan assertion': M depends nonlinearly on running A (log, r/(1+|r|), exp), so the per-token transition on S is not affine in the operands — the coefficient k_precond is a nonlinear functional of the state trajectory.",
+    "CONFIRM metric VJP blocker: gradients must flow through A's recurrence and the squash; GVA shares A across a group (naive.py:86-92) — ABI detail to preserve."
+  ],
+  "direction": "external-only",
+  "axis": null,
+  "axis_clients": [],
+  "direction_justification": "The nonlinear state-dependent preconditioner (a squash of the running key-covariance metric modulating the write key) is an architecture-specific recurrence with no evident second client and a per-token state-dependence that cannot share the closed linear-delta law, so it stays an external comparator.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "source-model-qualified"],
+  "open_questions": [
+    "If a second preconditioned-memory architecture (beyond PKDA, which shares the ATK scheme) were admitted, whether a closed 'diagonal metric + monotone pointwise preconditioner on the write key' descriptor could be factored — currently only PGDN/PKDA share it, both from the same family.",
+    "Whether the center/logx/eps constants are fixed numerical policy or per-model parameters (source: x=1.5, eps=1e-6, center default -0.2, naive.py:24-26,113-120)."
+  ],
+  "evidence_citations": [
+    "fla/ops/precond_gated_delta_rule/naive.py:132 - ATK metric recurrence A <- exp(g_atk) A + beta_atk * k^2 on L2-normalized keys",
+    "fla/ops/precond_gated_delta_rule/naive.py:135-139 - nonlinear squash s = (log(A+eps)-center)/(1+|log(A+eps)-center|); M = exp(-logx*s); k_precond = k*M — state-dependent write coefficient",
+    "fla/ops/precond_gated_delta_rule/naive.py:142-146 - inner gated delta on S uses k for retrieval but k_precond for the write",
+    "fla/ops/precond_gated_delta_rule/naive.py:100-105,148-154 - separate initial/final state for S and A; GVA shares A per group"
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "id": "arch-070",
+  "architecture": "Tucker attention",
+  "source_repo": "tucker",
+  "source_revision": "c3e3d3cec991f4303b824c7fb7cbb95e3748d5c7",
+  "source_files": ["ViT/src/attn/tucker.py"],
+  "equation_summary": "Tucker attention factorizes Q/K/V and the output via a Tucker decomposition (core tensor + factor matrices). Pre: Q_tilde=x@Us_pre[0], K_tilde=x@Us_pre[2], V_tilde=x@Us_post[0], and a score core B_pre=einsum(Us_pre[1],Core_pre) folded into the score; the flash path computes softmax attention of Q_tilde against K_tilde with the B_pre core (FlashAttentionTucker), non-flash path does explicit einsum att=softmax(q k^T/scale, causal mask) then y=einsum(att,v). Output is reconstructed by the post Tucker folding (_tucker_foldings_output). The mixer reduction is plain softmax; factorization is external.",
+  "state_shape": "standard attention; factorized Q/K/V (and output) via Tucker core+factors, optional low-rank cache of factor tensors",
+  "read_timing": "n-a",
+  "gate_scope": "none",
+  "normalization": "softmax (flash Tucker path / explicit softmax in the non-flash path)",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM ledger graph 'E[Tucker QKV factors]; U1.S; E[output/factorized cache]' matches ViTTuckerAttention.forward (Tucker foldings + softmax attention + output folding)",
+    "CONFIRM blocker 'Factorization gradients and cache; no Tucker-named K1' — the mixer is softmax U1.S and the Tucker factorization stays external; no Tucker-specific core kernel is claimed",
+    "CONFIRM factorized-cache claim is structural (factors are the low-rank representation); the audit does not assert any expanded-cache performance comparison, matching the ledger's 'no expanded-cache comparison' constraint"
+  ],
+  "direction": "composition-now",
+  "axis": null,
+  "axis_clients": ["arch-069", "arch-070"],
+  "direction_justification": "Tucker attention's core reduction is plain softmax U1.S with the Tucker QKV/output factorization as external ordinary operators, so it is composition-now with the factorized cache handled externally.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "The score core B_pre is folded into the attention score inside FlashAttentionTucker (not fully shown here); whether that fold is exactly equivalent to a reprojected Q/K or is a genuine in-score term must be proved for the external projection rewrite",
+    "This ViT file uses causal=False in the flash path; the causal LLM variant (llama3 dir) may differ and needs its own cache/parity record"
+  ],
+  "evidence_citations": [
+    "ViT/src/attn/tucker.py:99-118 — _tucker_foldings_attn: Q_tilde/K_tilde/V_tilde from factor matrices, B_pre=einsum(Us_pre[1],Core_pre)",
+    "ViT/src/attn/tucker.py:203-221 — flash path softmax attention via FlashAttentionTucker; non-flash explicit att=softmax(qk^T/scale,mask)@v",
+    "ViT/src/attn/tucker.py:163-191 — _tucker_foldings_output_optimized reconstructs output via Tucker post factors",
+    "ViT/src/attn/tucker.py:43-66 — Tucker core (Core_pre/Core_post) and factor matrices (Us_pre/Us_post) are external parameters"
+  ]
+}

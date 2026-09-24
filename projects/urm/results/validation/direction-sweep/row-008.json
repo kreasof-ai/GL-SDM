@@ -1,0 +1,30 @@
+{
+  "id": "arch-008",
+  "architecture": "FoX (Forgetting Transformer)",
+  "source_repo": "fla",
+  "source_revision": "fla@864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": ["fla/ops/forgetting_attn/naive.py", "fla/layers/forgetting_attn.py"],
+  "equation_summary": "Score s_ij = scale * q_i k_j^T + (gc_i - gc_j) where gc = cumsum(logsigmoid(f)) is the cumulative per-head log forget gate; causal (optionally windowed) mask; softmax over keys; output = softmax @ v. This is a K1 reduction whose score carries a non-pairwise cumulative-log-gate additive term, not plain softmax with a fixed bias. The layer computes f = logsigmoid(f_proj(x)) externally and passes it to the mixer; decode uses attn_decoding_one_step with the same cumulative gate.",
+  "state_shape": "external KV cache plus cached gate f [B,T,HQ]",
+  "read_timing": "n-a",
+  "gate_scope": "data-dependent per-head scalar log-decay (cumulative sum enters pairwise score)",
+  "normalization": "softmax",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM E[QKV/forget gates] ; B[K1 cumulative-log-gate score] ; E[output/cache] matches naive_forgetting_attn: score += gc_i - gc_j with gc = cumsum(g), softmax, @v.",
+    "CONFIRM the blocker text: no softmax-only or pairwise-bias materialization claim is possible because gc_i - gc_j is a data-dependent cumulative term; exact gate VJP and a stable tiled formula are genuinely required before any native path."
+  ],
+  "direction": "axis",
+  "axis": "A13 score/reducer algebra (stable time/channel score modulation; shared with arch-011 Wall)",
+  "axis_clients": ["arch-008", "arch-011"],
+  "direction_justification": "The mixer differs from U1.S by a closed typed score-modulation property (cumulative log-gate difference added to logits) that is reusable by at least Wall attention, so it is an axis, not a one-off branch.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": ["Whether the optional output gate (g_proj sigmoid) and qk_norm variants in the layer stay external (they should); the stable tiled evaluation of the cumulative gate difference needs a documented numerical envelope."],
+  "evidence_citations": [
+    "fla/ops/forgetting_attn/naive.py:43-51 — gc = g.cumsum(1); ref = scale*q.k^T + gc_i - gc_j; causal/window mask; softmax; @v.",
+    "fla/layers/forgetting_attn.py:101-102 — f = logsigmoid(f_proj(hidden_states)) computed externally.",
+    "fla/layers/forgetting_attn.py:129-137 — decode path attn_decoding_one_step(q,k,v,f) shares the same gate semantics; cache stores (k,v,f)."
+  ]
+}

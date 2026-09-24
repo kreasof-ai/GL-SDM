@@ -1,0 +1,40 @@
+{
+  "id": "arch-048",
+  "architecture": "ABC (Attention with Bounded-state Control)",
+  "source_repo": "fla",
+  "source_revision": "pinned /tmp/urm-comparator-pins/fla",
+  "source_files": [
+    "/tmp/urm-comparator-pins/fla/fla/ops/abc/naive.py",
+    "/tmp/urm-comparator-pins/fla/fla/layers/abc.py"
+  ],
+  "equation_summary": "Two coupled additive accumulators sharing one slot-decay. When g is not supplied it is derived from the slot logits: z=logcumsumexp(s), g_t=z_{t-1}-z_t (per-slot, so exp(g_t)=Z_{t-1}/Z_t) and s_t:=exp(s_t-z_t)=softmax(s)_t (cumulative-softmax normalized slot gates). Stage 1: hk_t = hk_{t-1}*exp(g_t)[None,:] + k_t ⊗ s_t; ok_t = (scale*q_t)ᵀ hk_t (a [M] slot vector); interstage qv_t = softmax(ok_t) over slots (external). Stage 2: hv_t = hv_{t-1}*exp(g_t)[:,None] + s_t ⊗ v_t; o_t = qv_tᵀ hv_t. Both are additive (c=0) channel/slot-decayed accumulations with after-update read; neither uses the delta correction (v - kᵀM k), so each is U2.A-with-channel-decay in transition, not the canonical delta law.",
+  "state_shape": "two matrices: hk [K,M] (key x slot) and hv [M,V] (slot x value), per head",
+  "read_timing": "after-update",
+  "gate_scope": "channel (per-slot) data-dependent decay exp(g_t) identical in both stages; gate derived from cumulative-softmax of slot logits when not passed explicitly",
+  "normalization": "external interstage softmax over slot scores ok; stage-1 write weights s are cumulative-softmax normalized; no denominator state",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM two-stage structure: B[K2 stage-1 slot summary hk] ; E[slot softmax qv=softmax(ok)] ; B[K2 stage-2 value summary hv] matches naive_recurrent_abc (naive.py:47-67).",
+    "CONFIRM coupling: the SAME per-slot decay g enters stage 1 as g_i[..., None, :] (slot axis on columns) and stage 2 as g_i[..., :, None] (slot axis on rows), and stage-2's keys are the stage-1 write gates s — the coupling is a typed tensor edge plus shared gate operand, not a shared transition algebra.",
+    "CONFIRM ledger blocker 'two calls cannot be replaced by one generic K2 by name': states hk[K,M] and hv[M,V] have different shapes/axes and the interstage softmax is data-dependent on hk, so no single canonical K2 call covers both.",
+    "CORRECT (refinement): both stages are ADDITIVE (v=s or v=v written directly, no kᵀM retrieval correction), so each stage is U2.A (additive, channel-decayed) rather than U2.D; the ledger's 'B[K2 ...]' is fine but any descriptor must record c=0 plus the cumulative-softmax-derived gate (logcumsumexp), which is a data-dependent gate provenance the canonical K2 gate field must accept."
+  ],
+  "direction": "combinator",
+  "axis": null,
+  "axis_clients": ["arch-048", "arch-049", "arch-074"],
+  "direction_justification": "ABC is exactly two U2.A-family calls joined by a family-generic typed structure: an interstage softmax on the first call's output feeding the second call's queries, with a shared slot-decay operand — a cross-call composition (cf. ledger's own reuse matrix row 'Cross-call output combination 048/049'), not a new core mixer.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Is the cumulative-softmax-derived gate (g from logcumsumexp(s)) expressible as a closed K2 gate-provenance descriptor, or must gates be passed as precomputed external operands (the layer always passes s only; chunk.py derives g internally)?",
+    "Chunked kernels (chunk.py) need verification that they reproduce the naive two-pass coupling exactly, including initial_state handling for both hk and hv."
+  ],
+  "evidence_citations": [
+    "/tmp/urm-comparator-pins/fla/fla/ops/abc/naive.py:26-30 — g derived from logcumsumexp of slot logits; s replaced by cumulative softmax",
+    "/tmp/urm-comparator-pins/fla/fla/ops/abc/naive.py:47-53 — stage 1: hk = hk*exp(g) + k⊗s; ok = (scale*q)ᵀhk (additive, after-update read)",
+    "/tmp/urm-comparator-pins/fla/fla/ops/abc/naive.py:55-67 — interstage softmax qv=softmax(ok); stage 2: hv = hv*exp(g) + s⊗v; o = qvᵀhv",
+    "/tmp/urm-comparator-pins/fla/fla/ops/abc/naive.py:69-70 — final_state is the (hk, hv) bundle: two-state ownership",
+    "/tmp/urm-comparator-pins/fla/fla/layers/abc.py:210-219 — layer passes only s (clamped slot logits) to chunk_abc; gate derivation is internal to the op"
+  ]
+}

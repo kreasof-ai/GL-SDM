@@ -1,0 +1,34 @@
+{
+  "id": "arch-024",
+  "architecture": "HGRN2",
+  "source_repo": "fla",
+  "source_revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": ["fla/layers/hgrn2.py", "fla/ops/gla/naive.py"],
+  "equation_summary": "HGRN2 is the GLA channel-decay mixer in a value-first state layout. It computes q = swish(q_proj), g = logsigmoid(f_proj) (with optional lower-bound logaddexp), k = 1 - exp(g) (the complement gate as the 'key'), v = i_proj, then calls chunk_gla / fused_recurrent_gla with gk=g and state_v_first=True. The state law is the GLA channel-diagonal decay h_t = diag(exp(g_t)) h_{t-1} + k_t^T v_t, o_t = q_t h_t (after-update read), with the state stored/traversed value-first.",
+  "state_shape": "[B,H,K,V] matrix, value-first layout",
+  "read_timing": "after-update",
+  "gate_scope": "channel (per-forget-channel diagonal gate g, data-dependent)",
+  "normalization": "none",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM E[Q/K/input/gates]: q/f/i projections, swish, logsigmoid, k = 1 - exp(g) complement are external frontend",
+    "CONFIRM U2.A(channel decay, value-first layout): the mixer call is literally chunk_gla/fused_recurrent_gla with state_v_first=True",
+    "CONFIRM 'layout is physical only if equation preserved': state_v_first changes only the physical layout/traversal, not the equation; the ledger's blocker is correct",
+    "CONFIRM blockers: layout-is-physical caveat and B[channel-decay native envelope]"
+  ],
+  "direction": "composition-k2-gated",
+  "axis": null,
+  "axis_clients": ["arch-024", "arch-019", "arch-022"],
+  "direction_justification": "HGRN2's mixer is exactly the GLA channel-decay U2.A; the value-first layout is a physical state-layout flag (state_v_first) that preserves the equation, so it composes once the channel-decay envelope and K2 binder exist.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Confirm the value-first physical layout is admitted as a layout flag on the K2 descriptor rather than a semantic change; the equation is unchanged but cache/state ABI must record the layout."
+  ],
+  "evidence_citations": [
+    "fla/layers/hgrn2.py:156-164 — q = swish(q_proj); g = logsigmoid(f_proj); k = 1 - g.exp(): external gate/complement construction",
+    "fla/layers/hgrn2.py:168-198 — fused_recurrent_gla / chunk_gla called with gk=g, state_v_first=True: mixer is GLA channel-decay U2.A in value-first layout",
+    "fla/ops/gla/naive.py:37-40 — h = h*gk[...,None] + k^T v; o = (q*scale) h: the underlying channel-diagonal decay law"
+  ]
+}

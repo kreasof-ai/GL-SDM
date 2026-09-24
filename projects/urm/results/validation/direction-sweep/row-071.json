@@ -1,0 +1,40 @@
+{
+  "id": "arch-071",
+  "architecture": "Longformer",
+  "source_repo": "longformer",
+  "source_revision": "caefee668e39cacdece7dd603a0bebf24df6d8ca",
+  "source_files": [
+    "longformer/longformer.py",
+    "longformer/sliding_chunks.py"
+  ],
+  "equation_summary": "Plain softmax attention with a pattern-restricted visible set: scores q·k/sqrt(d) over a dilated sliding band of width 2w+1 per query (mask_invalid_locations; -10000 added outside band and at padding), softmaxed jointly in fp32 with the extra global columns concatenated — non-global query i attends to band(i) ∪ {global tokens} (symmetric attention, or causal-only band when autoregressive=True in the tvm mode). Global token OUTPUTS are overwritten by a separate full attention pass with separate projections query_global/key_global/value_global: global queries attend to the ENTIRE sequence (masked only by padding). Head map is MHA (equal heads).",
+  "state_shape": "none (full recompute; encoder, no KV cache in this source)",
+  "read_timing": "n-a",
+  "gate_scope": "none",
+  "normalization": "softmax (fp32), -10000 additive mask; all-masked rows handled by post-softmax masked_fill with key_padding_mask",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM `E[QKV/global/padding mask] ; U1.S[local ∪ global] ; E[encoder output]`: the mixer is exactly softmax attention restricted to local band ∪ global token set, with separate global projections and padding masks all external E stages (longformer.py:138-217).",
+    "CONFIRM 'Global-query semantics and B[indexed_K1_schedule]': global queries use SEPARATE q_global/k_global/v_global projections and full-sequence attention whose output OVERWRITES attn at the global positions (longformer.py:221-251) — this asymmetry (global tokens as keys in every row's softmax, but global rows recomputed with different weights) is exactly the global-query semantics the blocker demands; efficient coverage of the band+global index set needs the indexed-K1 schedule (the source uses diagonaled_mm/sliding_chunks custom ops).",
+    "NOTE: two softmax normalizations exist (band∪global rows normalized jointly, longformer.py:187-188; global rows normalized separately, longformer.py:244) — both are still exact U1.S instances with appropriate masks/bias, so the direction is unchanged; the joint normalization constant across band+global columns must be preserved by any descriptor."
+  ],
+  "direction": "axis",
+  "axis": "A2 locality routing / indexed K1 schedule (B[indexed_K1_schedule])",
+  "axis_clients": ["arch-005", "arch-006", "arch-007", "arch-071", "arch-072"],
+  "direction_justification": "The mixer equation is exactly U1.S over an indexed source set (local band ∪ global tokens, with the separate global-row pass); the only gap to coverage is the closed indexed-K1 schedule/property, not new reducer semantics.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "autoregressive=True is only supported in the 'tvm' attention mode (asserted at longformer.py:84-86); sliding_chunks modes are noncausal-only — the mode envelope must be recorded.",
+    "Per-layer attention_window/attention_dilation lists and dilation support (tvm only) belong to the route descriptor.",
+    "Dropout is applied to attention probabilities (training); padding uses -10000 rather than -inf, a numerical-policy detail for parity."
+  ],
+  "evidence_citations": [
+    "longformer/longformer.py:97-102 — attention_mask encoding: <0 padding, 0 local, >0 global",
+    "longformer/longformer.py:146-176 — banded qk via diagonaled/sliding-chunks matmul + mask_invalid_locations + padding d_mask",
+    "longformer/longformer.py:179-193 — extra global key columns concatenated before the joint fp32 softmax",
+    "longformer/longformer.py:221-251 — separate query_global/key_global/value_global full-attention pass overwriting outputs at global positions",
+    "longformer/longformer.py:33-52 — config: attention_window per layer, dilation, autoregressive flag, attention_mode"
+  ]
+}

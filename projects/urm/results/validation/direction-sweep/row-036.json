@@ -1,0 +1,40 @@
+{
+  "id": "arch-036",
+  "architecture": "Rodimus",
+  "source_repo": "fla",
+  "source_revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": [
+    "fla/layers/rodimus.py",
+    "fla/ops/gla/fused_recurrent.py",
+    "fla/ops/gla/chunk.py"
+  ],
+  "equation_summary": "Rodimus has no fla/ops/rodimus directory; the mixer is a GLA call from the layer (fla/layers/rodimus.py:188-210): k is L2-normalized then multiplied by an external input gate it_gate = softplus(g_gate)^sigmoid(tau_gate) (rodimus.py:173-184); the URM-relevant call is chunk_gla/fused_recurrent_gla(q,k,v, gk=rt_gate_log, state_v_first=True) with rt_gate_log = -softplus(g_gate)*sigmoid(tau_gate), a per-CHANNEL log decay on the K axis, mem_size=64 keys, and default scale = mem_size^-0.5 applied to q inside the op (fla/ops/gla/fused_recurrent.py:116-117). The state equation is GLA's additive law: S_t = Diag(exp(gk_t)) S_{t-1} + k_t v_t^T, read after update, with the source-defined 1/sqrt(64) read scale and a value-first physical layout flag. External: short conv, low-rank input gate i_gate_proj on v, residual_weight add, RMSNormGated output (rodimus.py:102-127,227-231).",
+  "state_shape": "[B,H,K,V] matrix (K=mem_size=64)",
+  "read_timing": "after-update",
+  "gate_scope": "channel",
+  "normalization": "none",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM call graph E[short conv/QKV/gates/norm] ; U2.A(channel decay,source read scale) ; E[output]: the mixer is literally GLA = U2.A with channel-diagonal gk (rodimus.py:201-210 calling chunk_gla with g=rt_gate_log per-channel), and the read scale is the source default K^-0.5 with K=mem_size=64 — a source-defined scale field, as the ledger names.",
+    "CONFIRM blockers: 'Source scale, nonzero state and V-first layout' — initial_state passed through (rodimus.py:205-208), state_v_first=True is a physical layout flag that must preserve the equation (rodimus.py:196,208), and B[channel-decay native envelope] is the right native-envelope blocker.",
+    "MISSING-BLOCKER minor: the residual-add of shift_hidden_states * residual_weight and the RMSNormGated output are external but must be in the model module for a complete claim (rodimus.py:227-231); covered by the E[...] stages, noted for completeness."
+  ],
+  "direction": "composition-k2-gated",
+  "axis": null,
+  "axis_clients": [],
+  "direction_justification": "Rodimus's mixer is exactly U2.A (additive GLA law) with channel-diagonal decay and a source-defined read scale — all within the K2 gated contract's named semantic fields; the gate craft, conv, and norms are external, so only B[K2_graph_execution] plus the channel-decay envelope block it.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "There is no fla/ops/rodimus — the ledger's source path should be fla/layers/rodimus.py plus fla/ops/gla/*; confirm the register records the actual pinned paths.",
+    "Whether state_v_first=True is purely physical (layout only) or has any observable numeric effect under the descriptor — source treats it as a layout flag."
+  ],
+  "evidence_citations": [
+    "fla/layers/rodimus.py:201-210 - mixer call is chunk_gla(q,k,v,g=rt_gate_log, state_v_first=True): U2.A with channel decay",
+    "fla/layers/rodimus.py:173-184 - external gate craft: it_gate=softplus(g)^sigmoid(tau) on normalized k, rt_gate_log=-g*tau per channel",
+    "fla/ops/gla/fused_recurrent.py:116-117 - default read scale = K^-0.5 (here K=mem_size=64), a source-defined scale",
+    "fla/layers/rodimus.py:118-127 - q/k project to mem_size=64; low-rank input gate modulates v externally",
+    "fla/layers/rodimus.py:227-231 - external residual_weight add and RMSNormGated output"
+  ]
+}

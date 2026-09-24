@@ -1,0 +1,37 @@
+{
+  "id": "arch-068",
+  "architecture": "TDA (Threshold Differential Attention)",
+  "source_repo": "tda",
+  "source_revision": "cd8ddc9d5b43a1dcf86f9cfda302edb5cc108da2",
+  "source_files": ["triton_threshold_attention.py"],
+  "equation_summary": "Threshold Rectified Attention: out = (ReLU(Q@K^T - tau))^p @ V, NOT softmax. tau(i) = beta * sqrt(2*log(i+1)/d) is a position-dependent threshold; causal mask zeroes j>i before the threshold. Differential variant: optionally L2-normalize q1,k1,q2,k2 (cosine), compute two threshold-relu paths out1,out2, then out = out1 - clamp(lambda,0,1)*out2. No normalization denominator at all — the reducer is the threshold-ReLU-power nonlinearity applied to the score, then a plain @V contraction.",
+  "state_shape": "no recurrent state; causal [T,T] score map reduced by threshold-ReLU-power then contracted with V (flash-style tiled, never materialized)",
+  "read_timing": "n-a",
+  "gate_scope": "none",
+  "normalization": "none (NO softmax/denominator; threshold-ReLU-power score reducer; optional L2-normalize of Q,K for the differential variant)",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM ledger graph 'E[Q1/K1,Q2/K2,V,β/threshold/λ]; (B[K1 threshold-ReLU-power reduction]_1 || same_2); E[weighted difference/output]' matches differential_threshold_rela_triton",
+    "CONFIRM blocker 'Exact source normalization and threshold gradient; U1.S softmax is invalid' — the reducer is ReLU(QK^T-tau)^p with NO softmax denominator (kernel lines 82-109), so softmax substitution is invalid",
+    "CONFIRM threshold gradient: backward uses d(ReLU^p)/dx = p*ReLU^(p-1)*1{x>0} (kernel lines 196-206), and tau depends on position i (not a learnable per-element bias)",
+    "MISSING-BLOCKER the threshold-ReLU-power reducer is a NON-softmax reducer — this is the A13 score/reducer algebra axis, which must be admitted before any native branch; it is used inside a Diff-like two-branch structure"
+  ],
+  "direction": "axis",
+  "axis": "A13 score/reducer algebra (threshold-ReLU-power non-softmax reducer) + Diff combinator for the two-branch merge",
+  "axis_clients": ["arch-067", "arch-068", "arch-064", "arch-073"],
+  "direction_justification": "TDA replaces the softmax reducer with a threshold-ReLU-power nonlinearity (no denominator) — a closed, reusable non-softmax score/reducer property (A13) — and then applies a Diff-style weighted difference, so the reducer itself is an axis, not plain U1.S composition.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Position-dependent threshold tau(i)=beta*sqrt(2 log(i+1)/d) couples the reducer to absolute position; how this composes with continuation/decode offsets is unresolved",
+    "Whether the threshold-ReLU-power reducer shares a physical path with the polar reducer (064) or KATA (073) is an admission question; the equations are distinct, so a shared native branch is optional",
+    "lambda clamping to [0,1] and optional cosine L2-normalization are config choices that must be pinned per model"
+  ],
+  "evidence_citations": [
+    "triton_threshold_attention.py:82-101 — qk_relu = ReLU(qk - tau); qk_powered = relu^p; acc += qk_powered @ v (no softmax)",
+    "triton_threshold_attention.py:62-63 — tau = beta*sqrt(2*log(i+1)/d) position-dependent threshold",
+    "triton_threshold_attention.py:196-206 — backward d(ReLU^p)/dx = p*ReLU^(p-1)*1{x>0}",
+    "triton_threshold_attention.py:511-517 — two threshold paths, out = out1 - clamp(lambda,0,1)*out2 (Diff-like merge)"
+  ]
+}

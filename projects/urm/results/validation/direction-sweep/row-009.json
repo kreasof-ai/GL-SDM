@@ -1,0 +1,31 @@
+{
+  "id": "arch-009",
+  "architecture": "Log-linear attention",
+  "source_repo": "fla",
+  "source_revision": "fla@864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": ["fla/ops/log_linear_attn/naive.py", "fla/ops/log_linear_attn/chunk.py"],
+  "equation_summary": "y = (H ∘ structured dyadic level masks) applied as o = ((H .* level_masks) q k^T) v: H = exp(segsum(g)) decomposed over ceil(log2 T)+1 dyadic levels with per-level scales L; equivalently a hierarchical linear-attention state where each dyadic level l carries its own [K,V] state with decay and level scale, and a query reads the sum over levels. The chunked kernel keeps a LogLinearAttentionState (ht plus q/k/v/g/level_scales carry for partial chunks) with 64-token base chunks.",
+  "state_shape": "hierarchical per-level state: [N,H,K,V] per dyadic level plus partial-chunk carry (q_prev/k_prev/v_prev/g_prev/level_scales_prev)",
+  "read_timing": "after-update",
+  "gate_scope": "data-dependent per-head decay g plus per-level scales",
+  "normalization": "none (linear attention over hierarchical state)",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM E[QKV/dyadic levels] ; B[K2 hierarchical level state/read] ; E[output/cache] matches the source: the equation is a K2-family linear attention but with a hierarchy of dyadic level states, not a single additive state.",
+    "CONFIRM the blocker: the exact 64-token boundary and arbitrary partial-chunk state equations (LogLinearAttentionState with q/k/v/g/level_scales carry) must be transcribed; a plain additive-K2 substitution is explicitly not valid."
+  ],
+  "direction": "axis",
+  "axis": "A4 hierarchical chunks / level state (K2 hierarchical level state/read; shared with arch-046 LogLinearMamba2)",
+  "axis_clients": ["arch-009", "arch-046"],
+  "direction_justification": "The mixer is a hierarchical K2 state (one state per dyadic level with level scales and partial-chunk carry), a closed reusable property distinct from the canonical single-state K2 law.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": ["The naive reference builds the full H matrix via level masks; the chunked kernel's streaming state equivalence for arbitrary partial chunks must be proven against it, including the level_scales broadcast semantics."],
+  "evidence_citations": [
+    "fla/ops/log_linear_attn/naive.py:44-57 — H = sum over levels of exp(segsum(g)) * level_mask; o = (H q k^T) v via einsum.",
+    "fla/ops/log_linear_attn/naive.py:21-41 — construct_level_mask: dyadic level structure (1<<level) boundaries.",
+    "fla/ops/log_linear_attn/chunk.py:1115-1122 — LogLinearAttentionState carries ht plus q_prev/k_prev/v_prev/g_prev/level_scales_prev partial-chunk state.",
+    "fla/ops/log_linear_attn/chunk.py:1524-1531 — level_scales [B,T,H,L]; initial/final state [N,H,K,V] per level stack."
+  ]
+}

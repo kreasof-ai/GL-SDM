@@ -22,6 +22,14 @@ from urm.ir.program import (
     CapacityPolicy,
     DType,
     EpilogueSpec,
+    K1Descriptor,
+    K1HeadMap,
+    K1ScaleRule,
+    K2GateScope,
+    K2ReadTiming,
+    K2ScaleRule,
+    LinearDeltaSpec,
+    LinearDeltaState,
     LogicalDomain,
     Matmul,
     MergePolicy,
@@ -62,6 +70,86 @@ def _enum(enum_type: Any, value: Any, *, field: str) -> Any:
         raise NormalizeError(f"invalid {field} {value!r}; expected one of: {legal}") from error
 
 
+_K1_ROLES = frozenset(
+    {"query", "key", "value", "score_bias", "attention_mask", "scale"}
+)
+_K2_ROLES = frozenset(
+    {"query", "key", "value", "beta", "log_decay", "initial_state", "scale"}
+)
+
+
+def _roles(
+    raw: Any, *, legal: frozenset[str], node_id: str
+) -> tuple[tuple[str, str], ...]:
+    """Validate a role→edge mapping; unknown roles or non-string maps reject."""
+    if raw is None:
+        return ()
+    if not isinstance(raw, dict):
+        raise NormalizeError(f"node {node_id!r}: roles must be an object")
+    roles: list[tuple[str, str]] = []
+    for role, edge in raw.items():
+        if role not in legal:
+            raise NormalizeError(
+                f"node {node_id!r}: unknown role {role!r}; legal: {sorted(legal)}"
+            )
+        if not isinstance(edge, str) or not edge:
+            raise NormalizeError(
+                f"node {node_id!r}: role {role!r} must name an edge"
+            )
+        roles.append((role, edge))
+    return tuple(sorted(roles))
+
+
+def _k1_descriptor(params: dict[str, Any], roles: tuple[tuple[str, str], ...]) -> K1Descriptor:
+    head_map_raw = params.get("head_map")
+    if head_map_raw is None:
+        # Derive the coarsest legal map from the declared roles only: an
+        # explicit scale/mask/bias role set still defaults to the shared map.
+        head_map_raw = "shared"
+    return K1Descriptor(
+        scale_rule=_enum(K1ScaleRule, params.get("scale_rule", "key_dim_rsqrt"), field="k1.scale_rule"),
+        head_map=_enum(K1HeadMap, head_map_raw, field="k1.head_map"),
+        group_size=params.get("group_size"),
+        causal=bool(params.get("causal", False)),
+        score_bias="score_bias" in dict(roles),
+        attention_mask="attention_mask" in dict(roles),
+        accumulation_dtype=DType.FLOAT32,
+    )
+
+
+_K2_PARAMS = frozenset(
+    {"delta", "gate_scope", "read_timing", "scale_rule", "normalized", "epsilon", "roles"}
+)
+_K1_PARAMS = frozenset(
+    {
+        "query_domain", "source_domain", "selection", "normalization", "top_k",
+        "threshold", "page_size", "capacity_policy", "deterministic", "causal",
+        "scale_rule", "head_map", "group_size", "roles", "epilogue",
+    }
+)
+
+
+def _reject_unknown_params(params: dict[str, Any], legal: frozenset[str], node_id: str) -> None:
+    unknown = set(params) - legal
+    if unknown:
+        raise NormalizeError(
+            f"node {node_id!r}: unknown param(s) {sorted(unknown)}; legal: {sorted(legal)}"
+        )
+
+
+def _linear_delta_spec(params: dict[str, Any]) -> LinearDeltaSpec:
+    return LinearDeltaSpec(
+        delta=bool(params.get("delta", True)),
+        gate_scope=_enum(K2GateScope, params.get("gate_scope", "none"), field="k2.gate_scope"),
+        read_timing=_enum(
+            K2ReadTiming, params.get("read_timing", "after_update"), field="k2.read_timing"
+        ),
+        scale_rule=_enum(K2ScaleRule, params.get("scale_rule", "one"), field="k2.scale_rule"),
+        normalized=bool(params.get("normalized", False)),
+        epsilon=float(params.get("epsilon", 1e-6)),
+    )
+
+
 def _route_spec(params: dict[str, Any]) -> RouteSpec:
     return RouteSpec(
         query_domain=_enum(LogicalDomain, params["query_domain"], field="query_domain"),
@@ -95,17 +183,52 @@ def _build_node(node: dict[str, Any], *, index: int) -> SemanticNode:
     if op == "gather":
         return Gather(name=node_id, inputs=inputs, outputs=outputs, spec=_route_spec(params))
     if op == "weighted_reduce":
+        _reject_unknown_params(params, _K1_PARAMS, node_id)
         epilogue = params.get("epilogue")
         epilogue_spec = None
         if epilogue is not None:
             kind = _enum(TransformKind, epilogue["kind"], field="epilogue.kind")
             epilogue_spec = EpilogueSpec(kind=kind, scale=epilogue["scale"])
+        roles = _roles(params.get("roles"), legal=_K1_ROLES, node_id=node_id)
+        normalization = _enum(
+            ScoreNormalization, params["normalization"], field="normalization"
+        )
+        k1 = (
+            _k1_descriptor(params, roles)
+            if normalization is ScoreNormalization.SOFTMAX
+            else None
+        )
         return WeightedReduce(
             name=node_id,
             inputs=inputs,
             outputs=outputs,
             spec=_route_spec(params),
             epilogue=epilogue_spec,
+            roles=roles,
+            k1=k1,
+        )
+    if op == "linear_delta_state":
+        _reject_unknown_params(params, _K2_PARAMS, node_id)
+        roles = _roles(params.get("roles"), legal=_K2_ROLES, node_id=node_id)
+        if not roles:
+            raise NormalizeError(
+                f"node {node_id!r}: linear_delta_state requires an explicit roles mapping"
+            )
+        missing = [
+            r
+            for r in ("query", "key", "value", "beta", "log_decay", "initial_state")
+            if r not in dict(roles)
+        ]
+        if missing:
+            raise NormalizeError(
+                f"node {node_id!r}: linear_delta_state is missing required roles {missing}"
+            )
+        return LinearDeltaState(
+            name=node_id,
+            inputs=inputs,
+            outputs=outputs,
+            spec=_linear_delta_spec(params),
+            roles=roles,
         )
     if op == "matmul":
         return Matmul(

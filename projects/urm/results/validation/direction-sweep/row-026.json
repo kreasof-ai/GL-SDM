@@ -1,0 +1,41 @@
+{
+  "id": "arch-026",
+  "architecture": "Gated DeltaNet",
+  "source_repo": "fla",
+  "source_revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": [
+    "fla/ops/gated_delta_rule/naive.py",
+    "fla/ops/gated_delta_rule/gate.py",
+    "fla/ops/gated_delta_rule/fused_recurrent.py",
+    "fla/layers/gated_deltanet.py"
+  ],
+  "equation_summary": "Per token with matrix state S in R^{K x V}: S' = exp(g_t) * S_{t-1} with g_t a per-HEAD scalar log-decay; delta = beta_t * (v_t - k_t^T S'); S_t = S' + k_t delta^T; o_t = (scale*q_t)^T S_t. Decay precedes retrieval and read is after update (naive.py:54-59). g itself is computed externally as g = -exp(A_log)*softplus(g_in + dt_bias) (gate.py:20-50), so the value is data-dependent but the gate SCOPE is a plain per-head scalar — not a data-dependent-position gate in the sense of a typed axis.",
+  "state_shape": "[B,H,K,V] matrix",
+  "read_timing": "after-update",
+  "gate_scope": "head",
+  "normalization": "none",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM call graph E[QKV/beta/decay gate] ; U2.D(explicit decay) ; E[output/cache]: mixer op signature takes g:[B,T,H] scalar per head (naive.py:31,54) and applies decay-then-delta-then-read in canonical order.",
+    "CONFIRM decay ordering blocker: chunk naive (naive.py:127-153) uses cumsum log-decay with decay applied to state before retrieval — source-specific ordering must be preserved as stated.",
+    "CORRECT note: the 'ATMA decode equivalence' string does not correspond to anything findable in the pinned fla source (no ATMA/atma symbol in fla/); interpret it as the general requirement that the fused_recurrent decode path (fused_recurrent.py:121 applies scale to q, exp(g) decay per step) matches the chunk path — the blocker stands but the name is unverifiable from source."
+  ],
+  "direction": "composition-k2-gated",
+  "axis": null,
+  "axis_clients": [],
+  "direction_justification": "The mixer is exactly U2.D with a per-head scalar gate (head-scope decay), which the canonical linear-delta contract already admits, so only B[K2_graph_execution] blocks it.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "What 'ATMA' refers to — no such identifier exists in the pinned fla tree; confirm whether it names an external decode kernel or is a stale label.",
+    "Whether beta sigmoid and A_log/dt_bias parameterization belong in the descriptor's numerical policy or stay fully external (current ledger treats them as E[], which source supports)."
+  ],
+  "evidence_citations": [
+    "fla/ops/gated_delta_rule/naive.py:54-59 - per-step: h *= exp(g) (scalar per head), delta rule with beta, read after update",
+    "fla/ops/gated_delta_rule/naive.py:46-48 - default scale = 1/sqrt(K) applied to q",
+    "fla/ops/gated_delta_rule/gate.py:20-50 - g = -exp(A_log)*softplus(g+dt_bias), per-head scalar, computed outside the mixer",
+    "fla/ops/gated_delta_rule/fused_recurrent.py:121 - decode path applies q*scale then per-step exp(g) decay, same law",
+    "fla/layers/gated_deltanet.py:151-165,309-325 - A_log/dt_bias parameters and beta projection are external layer concerns"
+  ]
+}

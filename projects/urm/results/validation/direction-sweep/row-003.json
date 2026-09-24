@@ -1,0 +1,29 @@
+{
+  "id": "arch-003",
+  "architecture": "GQA",
+  "source_repo": "fla + flash",
+  "source_revision": "fla@864a87f6ce5be8828bef81eb22baafd41937cdf2, flash@1bda8f9290cd48d030f1516f0e680cd464ef3554",
+  "source_files": ["fla/ops/attn/naive.py", "flash_attn/flash_attn_interface.py"],
+  "equation_summary": "Same softmax attention equation as MHA with an explicit grouped head map: HQ query heads partitioned into H groups of size G = HQ // H, each group sharing one KV head. Verified in the fla naive reference (reshape to [B,T,H,G,D], shared k per group) and the flash pin head-broadcast ABI.",
+  "state_shape": "no persistent mixer state; external grouped KV cache [B,T,H,D]",
+  "read_timing": "n-a",
+  "gate_scope": "none",
+  "normalization": "softmax",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM E[QKV/position] ; U1.S(explicit grouped head map) ; E[output/grouped-KV cache] matches the source; the head map is a descriptor field, not new semantics.",
+    "CONFIRM B[grouped-head gradients_and_decode] is the correct residual blocker covering grouped-KV gradient accumulation and cache/decode modes."
+  ],
+  "direction": "composition-now",
+  "axis": null,
+  "axis_clients": [],
+  "direction_justification": "The mixer is exactly U1.S with an explicit grouped query->KV head map; differs from 001/002 only in that descriptor field.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [],
+  "evidence_citations": [
+    "fla/ops/attn/naive.py:46-58 — G = HQ // H, q reshaped to [B,T,H,G,D]; scores shared across the group.",
+    "flash_attn/flash_attn_interface.py:1170-1173 — GQA as KV-head broadcast with divisible head counts."
+  ]
+}

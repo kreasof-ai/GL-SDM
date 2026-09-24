@@ -1,0 +1,40 @@
+{
+  "id": "arch-064",
+  "architecture": "POLAR",
+  "source_repo": "atma",
+  "source_revision": "28bb3de8afbe7c0b00115e0fbff36afc9ad49c11",
+  "source_files": [
+    "model/reference.py",
+    "model/blocks.py"
+  ],
+  "equation_summary": "sigma_ij = (q_i·k_j)/sqrt(dk) with causal (-inf above diagonal) and optional sliding-window band mask. Per-head length temperature t_i = 1 + softplus(len_gain)·log(n_i) and null logit nu_i = null_base + softplus(null_slope)·sqrt(log(n_i+1)), n_i = causal key count (capped at window). Weights w = softmax over [t·sigma_real, t·nu] with the null sink as one extra logit column; masked entries neutralized to 0 BEFORE the temperature product, then re-set to -inf. Direction c = normalize(w_r·V + w_null·v_null, p=2, eps=1e-6) (unit vector; null sink contributes v_null, not zero). Magnitude mag = tanh(softplus(mag_beta)·log1p(n_eff·(1-w_null))) with participation ratio n_eff = 1/sum(w_hat^2), w_hat = w_r/sum(w_r). Output y = proj(c * sigmoid(gate)) + mu_proj(mag).",
+  "state_shape": "none (materialized [B,H,Tq,Tk] reduction; KV cache at decode). Online kernel uses streamed accumulators (M,L,Q2,S)",
+  "read_timing": "n-a",
+  "gate_scope": "per-head static learned params (len_gain, null_base, null_slope, mag_beta; sigmoid output gate per channel) — not data-dependent decay",
+  "normalization": "softmax over keys + 1 null-sink logit, then L2-normalized direction and tanh-bounded count channel",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM call graph `E[QKV/canonical convolution] ; B[K1 polar direction/count reducer] ; E[output gate/projections]`: reference.py PolarAttention.forward does exactly QKV projections + qk rms_norm + residual Canon causal conv1d on q/k/v (E), then polar_reduce (the blocked non-softmax-algebra reducer), then proj(c*sigmoid(gate)) + mu_proj(mag) (E).",
+    "CONFIRM blocker 'Score/reducer identity, neutral elements and VJP; no softmax substitution': the reducer is a softmax kernel only in its weights; the observable is post-softmax (L2-normalized direction incl. learned v_null null contribution + participation-ratio count channel), so plain U1.S cannot reproduce it — a closed score/reducer descriptor is genuinely required.",
+    "NOTE (not a ledger defect): GQA head map, Canon convolution, and the optional TitansMemory (MAG) additive third channel are all external E stages, consistent with the ledger graph; the online kernel (blocks.py:171-243) proves a 4-accumulator streamed identity equal to the materialized oracle up to fp order."
+  ],
+  "direction": "axis",
+  "axis": "A13 score/reducer algebra (polar direction/count K1 reducer)",
+  "axis_clients": ["arch-064", "arch-065"],
+  "direction_justification": "The reducer differs from the closed U1.S contract by a closed typed property (temp-sharpened softmax + EV-corrected null sink feeding an L2-normalized direction channel and a bounded participation-ratio count channel), and it is reused verbatim by Foveal — the definition of the A13 score/reducer-algebra axis.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "polar_variant ablations (direction_only / constant_magnitude / fixed_null / fixed_temperature) change the channel semantics — the descriptor must pin which variant is admitted.",
+    "The Triton/flex fused sparse variants (used by 065) implement the same identity via lse/lse2 tricks; VJP of the count channel (Q2 accumulator) needs an independent reference.",
+    "Windowed mode caps n at the window for temp/null; interaction of the window mask with the null-sink EV correction must be in the descriptor."
+  ],
+  "evidence_citations": [
+    "model/blocks.py:120-164 — polar_reduce: temp/null construction, null-sink softmax concat, direction c = normalize(w_r·V + w_null·v_null), n_eff participation ratio, mag = tanh(beta·log1p(m_eff))",
+    "model/blocks.py:104-117 — polar_temp_null: temp = 1+softplus(len_gain)·log(n); null = null_base + softplus(null_slope)·sqrt(log(n+1))",
+    "model/blocks.py:142-146 — masked entries neutralized to 0 before temp product then re-applied as -inf (NaN-avoidance; neutral-element evidence)",
+    "model/reference.py:163-195 — causal -inf mask, optional window band mask, polar_reduce call, output = proj(c·sigmoid(gate)) + mu_proj(mag), optional MAG memory branch",
+    "model/blocks.py:171-243 — _PolarOnline: streamed (M,L,Q2,S) online identity equal to polar_reduce up to fp summation order; null sink folded as one extra logit"
+  ]
+}

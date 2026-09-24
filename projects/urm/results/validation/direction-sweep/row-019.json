@@ -1,0 +1,33 @@
+{
+  "id": "arch-019",
+  "architecture": "GLA",
+  "source_repo": "fla",
+  "source_revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": ["fla/ops/gla/naive.py", "fla/layers/gla.py"],
+  "equation_summary": "GLA keeps a matrix state h[B,H,K,V] with a per-KEY-CHANNEL, per-token data-dependent decay gate: gk = logsigmoid(gk_proj(x)) / gate_logit_normalizer has shape [B,T,H,K], and h_t = exp(gk_t) ⊗ h_{t-1} (broadcast over V) + k_t^T v_t, o_t = (q_t*scale) h_t (after-update read). This is a channel-diagonal transition G_t = diag(exp(gk_t)) acting on the K axis of the state.",
+  "state_shape": "[B,H,K,V] matrix",
+  "read_timing": "after-update",
+  "gate_scope": "channel (data-dependent per-key-channel diagonal gate, time-varying)",
+  "normalization": "none",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM E[QKV/key-channel gate]: gk_proj produces key_dim values reshaped to [H,K], i.e. per-key-channel, matching the ledger's 'key-channel gate' and 'channel-diagonal G'",
+    "CONFIRM the update is U2.A with a channel-diagonal decay: h = h*gk[...,None] + k^T v; o = (q*scale) h",
+    "CONFIRM blockers: B[channel-decay native envelope] and B[K2_graph_execution] are the correct blockers for a channel-diagonal gate"
+  ],
+  "direction": "composition-k2-gated",
+  "axis": null,
+  "axis_clients": ["arch-019", "arch-024", "arch-022", "arch-028", "arch-036"],
+  "direction_justification": "GLA is exactly U2.A with a channel-diagonal decay gate (key-channel scope) supplied as a data-dependent operand; the ledger already carries the channel-decay envelope blocker, so no new axis descriptor is needed.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "The channel-decay native envelope must support a [K]-diagonal transition on the state K axis; confirm the low-rank gk_proj (gate_low_rank_dim) factorization stays external and does not leak into the descriptor."
+  ],
+  "evidence_citations": [
+    "fla/ops/gla/naive.py:37-40 — gk_i = gk[:,:,i].exp(); h = h*gk_i[...,None] + k_i^T v_i; o = (q_i*scale) h: channel-diagonal decay, after-update read",
+    "fla/layers/gla.py:158-159 — gk_proj maps hidden_size -> key_dim_per_group (per-key-channel gate)",
+    "fla/layers/gla.py:238-241 — gk reshaped to [H, head_k_dim]; gk = logsigmoid(gk)/gate_logit_normalizer: data-dependent per-channel gate"
+  ]
+}

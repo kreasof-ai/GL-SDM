@@ -1,0 +1,43 @@
+{
+  "id": "arch-078",
+  "architecture": "Hopfield",
+  "source_repo": "hopfield",
+  "source_revision": "f56f929c95b77a070ae675ea4f56b6d54d36e730",
+  "source_files": [
+    "hflayers/__init__.py",
+    "hflayers/activation.py",
+    "hflayers/functional.py"
+  ],
+  "equation_summary": "Modern Hopfield association = iterated softmax attention: with stored patterns Y (keys), state patterns R (queries), pattern projections (values), one update computes ξ = softmax(β·q·kᵀ) (β = scaling, default 1/sqrt(head_dim) per head, optionally learned per-head tensor) and the next query is q ← ξ·k (functional.py:337,400-419). The loop repeats per-head while update_step < update_steps_max (or unbounded when <0) AND ‖ξ_old − ξ‖₂ > update_steps_eps (functional.py:424-432); heads deactivate independently via masked_scatter. Final output = dropout(ξ)·v then out_proj. Optional static key/query/value patterns, key_padding_mask, attn_mask, add_zero_attn (zero pattern appended), bias_kv, in-Hopfield-space LayerNorm, and per-pattern input LayerNorms are external frontend options.",
+  "state_shape": "none persistent (patterns are inputs or static buffers; iteration state ξ/q is internal to one call)",
+  "read_timing": "n-a",
+  "gate_scope": "none",
+  "normalization": "softmax over stored-pattern domain (per association step); optional LayerNorms on patterns/projections are external",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM `E[patterns/projections/scaling] ; repeat source association steps { U1.S(exact static/dynamic mask) } ; E[norm/output]`: each association step is exactly U1.S — softmax(β·q·kᵀ + mask)·v with per-head scaling and static/dynamic masks (functional.py:339-343, 400-422, 438-439) — with projections, pattern norms, scaling and masks all external; the iteration wrapper is external control flow over repeated U1.S calls.",
+    "CONFIRM 'Iteration/stopping, learned scaling and pattern gradients': update_steps_max / update_steps_eps per-head stopping with independent head deactivation (functional.py:150-165, 424-432), per-head learned scaling tensor applied to q each step (functional.py:339-343; __init__.py:142-146), and gradients flowing through the iteration to the (possibly static) patterns are precisely the recorded requirements.",
+    "CONFIRM 'one-step fragment only': update_steps_max=0 default performs exactly one association (ξ computed once, loop exits), which is the only fragment that maps trivially to a single U1.S call; the general iterated case needs the loop semantics recorded.",
+    "NOTE: the q ← ξ·k feedback (functional.py:334-337) makes step n+1's query depend on step n's association over KEYS (not values) — this query-refresh edge is part of the external iteration, not of U1.S itself."
+  ],
+  "direction": "composition-now",
+  "axis": null,
+  "axis_clients": [],
+  "direction_justification": "Each association step is exactly U1.S over the stored-pattern domain with an additive mask and per-head scale; the iteration loop, stopping criterion, query refresh, projections and norms are external ordinary/control-flow structure — no new core semantics.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Data-dependent iteration count (per-head eps-stopping) yields a variable number of U1.S calls per head/batch — the external module must record max-step bounds and how per-head deactivation maps to batched execution.",
+    "update_steps_max=None (unbounded) mode has no static trip count; the admitted envelope should pin a finite max.",
+    "Whether static patterns (key_as_static/query_as_static/value_as_static buffers) count as model parameters for the parity record must be specified.",
+    "dropout on ξ, add_zero_attn and bias_kv pattern concatenation are variant options to pin in the external graph."
+  ],
+  "evidence_citations": [
+    "hflayers/functional.py:187-432 — Hopfield update iteration: while update_active_heads.any(), q←ξ·k query refresh (334-337), per-head scaling (339-343), scores bmm + masks (400-415), ξ = softmax (417-422), per-head stopping on ‖ξ_old−ξ‖₂ > eps or step < max (424-432)",
+    "hflayers/functional.py:438-439 — final output dropout(ξ)·v",
+    "hflayers/__init__.py:142-149 — scaling default 1/sqrt(head_dim), learned per-head tensor; update_steps_max/eps plumbing",
+    "hflayers/__init__.py:173-219 — _associate: optional input LayerNorms on stored/state/projection patterns, then association_core with masks and scaling",
+    "hflayers/functional.py:150-165 — per-head update_steps_max/eps tensor adaptation (incl. None→unbounded −1)"
+  ]
+}

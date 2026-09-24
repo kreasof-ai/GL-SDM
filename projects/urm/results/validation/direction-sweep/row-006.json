@@ -1,0 +1,32 @@
+{
+  "id": "arch-006",
+  "architecture": "MoBA",
+  "source_repo": "fla",
+  "source_revision": "fla@864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": ["fla/ops/moba/parallel.py"],
+  "equation_summary": "Each sequence is split into chunks; the last chunk per sample is excluded from the target pool (causality). Gate score for a candidate block = q . mean_pool(k_block) (fp32 einsum 'nhk,thk->nht'); blocks ending before the query or past sample end are masked -inf; top-(topk-1) blocks are selected per (head, token), with the current block always served by chunk-local self-attention. Selected-block attention and local self-attention are merged via an online-softmax LSE combine, equal to a single softmax over the union of attended keys.",
+  "state_shape": "external KV cache; block-mean gate weights derived externally",
+  "read_timing": "n-a",
+  "gate_scope": "data-dependent block route scores (mean-pooled key dot query)",
+  "normalization": "softmax with LSE merge over local ∪ selected blocks",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM E[block scores/top-k] ; U1.S[local ∪ selected blocks] ; E[output] matches parallel_moba: mean-pooled block gating, top-k chunk selection, chunk-local self-attn, LSE-merged union softmax.",
+    "CONFIRM B[block route ABI/ties] and B[indexed_K1_schedule] are required: block selection uses topk over per-head gate scores with -inf masking, and the selected-block traversal is an indexed K1 schedule; top-k cost is correctly included."
+  ],
+  "direction": "axis",
+  "axis": "A2 indexed softmax traversal / route ABI (shared with 005/007/071/072)",
+  "axis_clients": ["arch-005", "arch-006", "arch-007", "arch-071", "arch-072"],
+  "direction_justification": "The mixer equation over the selected union is exactly U1.S[R], but efficient coverage requires the shared indexed-K1 schedule axis and a closed block-route ABI (topk, tie policy, causal masking of blocks).",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": ["Tie-breaking in torch.topk (sorted=False) is not specified; the ledger's B[block route ABI/ties] must pin a canonical tie policy before parity claims."],
+  "evidence_citations": [
+    "fla/ops/moba/parallel.py:98-101 — last chunk of each sample excluded from target pool.",
+    "fla/ops/moba/parallel.py:430-438 — key_gate_weight = mean over block tokens of k (fp32); gate = einsum(key_gate_weight, q).",
+    "fla/ops/moba/parallel.py:448-458 — causal/sample-end -inf masking, topk selection, gate_mask.",
+    "fla/ops/moba/parallel.py:409-416 — topk-1 chunks from MoBA plus current block via self-attn; fallback to plain causal self-attn when no targets.",
+    "fla/ops/moba/parallel.py:327-328 — LSE-based online softmax merge equals single softmax over the union of attended keys."
+  ]
+}

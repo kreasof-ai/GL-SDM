@@ -1,0 +1,39 @@
+{
+  "id": "arch-050",
+  "architecture": "Raven (router + GSA)",
+  "source_repo": "fla",
+  "source_revision": "pinned /tmp/urm-comparator-pins/fla",
+  "source_files": [
+    "/tmp/urm-comparator-pins/fla/fla/layers/raven.py",
+    "/tmp/urm-comparator-pins/fla/fla/ops/gsa/naive.py"
+  ],
+  "equation_summary": "Raven is an external router feeding the exact two-stage GSA mixer. Router logits r_proj(x) (lin or MLP), optional training-time Gumbel noise (subtract log-exponential), orig_scores = sigmoid(router) or softmax(router); topk slot indices over scores (plus optional r_bias); sigmoid case renormalizes selected weights by their sum (+1e-9); a multihot slot vector s_multihot is scattered; decay f = f * s_multihot (f from Mamba2-style -exp(A_log)*softplus(a_proj(x)+dt_bias), or GLA-style logsigmoid(f_proj)/8), then s = 1 - exp(f). These (q,k,v,s,g=f) go into chunk_gsa / fused_recurrent_gsa — the 049 two-stage additive slot-summary + interstage softmax + value-summary call graph unchanged. q,k pass a feature map (swish/relu/t2r) and RMSNorm, optional RoPE; v = gate_fn(v); output gated RMSNorm + o_proj.",
+  "state_shape": "same as 049 GSA: hk [K,M] and hv [M,V] per head (kv groups repeated across query heads)",
+  "read_timing": "after-update",
+  "gate_scope": "channel (per-slot) data-dependent decay; router-selected slots zero the decay contribution elsewhere (f *= s_multihot) so unselected slots get s=0 writes and exp(0)=1 decay — sparse slot selection realized as dense gated GSA",
+  "normalization": "router: sigmoid+sum-renormalization or softmax; interstage slot softmax inside GSA; FusedRMSNormGated output",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM ledger claim: Raven = E[router/top-k/feature map/decays] ; (049 exact two-stage GSA call graph) ; E[norm/output] — layers/raven.py:265-326 computes router/topk/decays then calls chunk_gsa/fused_recurrent_gsa with s,g exactly as in 049.",
+    "CONFIRM 'Source Raven routing and GQA': num_kv_heads/num_kv_groups repetition (raven.py:300-301) and router variants (sigmoid/softmax, lin/mlp, Gumbel noise, bias_rmm) are all external frontend concerns; no core route op is needed since routing only modulates dense gate tensors (f *= s_multihot).",
+    "CONFIRM 'no Raven backend path': everything outside fla.ops.gsa is ordinary GEMM/norm/feature-map/scatter ops.",
+    "CORRECT (minor): the ledger's E[router/top-k] should also record that training-time Gumbel noise is RNG-sensitive under activation checkpointing (raven.py:283-286) — a parity-relevant external detail, not a core blocker."
+  ],
+  "direction": "combinator",
+  "axis": null,
+  "axis_clients": ["arch-050", "arch-049"],
+  "direction_justification": "Raven adds only an external router frontend whose output is injected as dense gate operands into the already-representable 049 two-call GSA composition; zero new core semantics beyond the 049 combinator.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Router gradients flow through topk_weights into s and f — does the planned external graph preserve the gather/scatter VJP exactly (sigmoid renormalization included)?",
+    "Mamba2 vs GLA decay_type provenance must both be covered as external gate generators; confirm both reproduce source numerics."
+  ],
+  "evidence_citations": [
+    "/tmp/urm-comparator-pins/fla/fla/layers/raven.py:265-297 — router logits, Gumbel noise, sigmoid/softmax scores, topk, multihot scatter, f *= s_multihot, s = 1-exp(f)",
+    "/tmp/urm-comparator-pins/fla/fla/layers/raven.py:303-326 — calls fused_recurrent_gsa / chunk_gsa with q,k,v,s,g=f: the 049 call graph verbatim",
+    "/tmp/urm-comparator-pins/fla/fla/layers/raven.py:267-271 — Mamba2 (-A*softplus) vs GLA (logsigmoid/8) decay provenance",
+    "/tmp/urm-comparator-pins/fla/fla/ops/gsa/naive.py:47-67 — the underlying two-stage additive GSA equations Raven inherits"
+  ]
+}

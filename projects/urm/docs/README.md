@@ -8,9 +8,10 @@ This tree separates **what URM must mean**, **what the current code runs**, and 
 2. [K1](kernels/softmax-attention.md), [K2](kernels/linear-delta.md), and [K3](kernels/sparse-delta.md): the currently written equation contracts and their limits.
 3. [Generality axes](compiler/generality-axes.md): typed extensions to prove before broadening a family.
 4. [76-architecture composition ledger](planning/architecture-composition.md): external call graphs, unresolved internal axes and per-ID closeout record. It is a target, not a coverage claim.
-5. [Roadmap](planning/roadmap.md): ordered work, file ownership and completion gates.
-6. [Runtime contract](runtime/execution.md): serialized plans, provider ABI and state sessions.
-7. [Evidence rules and current status](validation/evidence.md): what can be claimed now, how to measure, and how historical results are labeled.
+5. [Verified direction sweep](planning/direction-sweep.md): per-architecture verified direction (composition / combinator / axis / external-only) against pinned source, with the ledger corrections it surfaced.
+6. [Roadmap](planning/roadmap.md): ordered work, file ownership and completion gates.
+7. [Runtime contract](runtime/execution.md): serialized plans, provider ABI and state sessions.
+8. [Evidence rules and current status](validation/evidence.md): what can be claimed now, how to measure, and how historical results are labeled.
 
 ## Machine records and generated pages
 

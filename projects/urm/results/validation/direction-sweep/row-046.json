@@ -1,0 +1,37 @@
+{
+  "id": "arch-046",
+  "architecture": "LogLinearMamba2",
+  "source_repo": "fla",
+  "source_revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": [
+    "fla/ops/log_linear_attn/naive.py",
+    "fla/ops/log_linear_attn/chunk.py"
+  ],
+  "equation_summary": "LogLinearMamba2 (fla log_linear_attn) keeps a HIERARCHICAL set of level states kv_0..kv_L, one per dyadic level. The effective transition matrix is H = sum_level A ∘ mask_level where A=exp(segsum(g)) is the cumulative decay and mask_level selects dyadic sub-blocks (naive.py:44-51). Output = (H ∘ (q k^T-decay)) contracted with v. In the chunked kernel (chunk.py), each level state kv_l is a [K,V] matrix that is decayed by exp(g_last) each chunk and accumulated via dot(k,v); a carry step (chunk.py:341-386) propagates a completed lower level into the next higher level (kv_{l+1} += kv_l; kv_l=0) at dyadic boundaries, implementing hierarchical pooling. Partial-chunk streaming is handled via offsets and copy_input/copy_last_chunk kernels.",
+  "state_shape": "hierarchical set of [K,V] level states kv_0..kv_L (one per dyadic level), plus offsets and a carried last partial chunk (q/k/v/g/level_scales_prev)",
+  "read_timing": "after-update",
+  "gate_scope": "channel (per-channel decay g) + dyadic level structure",
+  "normalization": "none",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM ledger call graph `E[Mamba-2 frontend/dt/level transforms] ; B[K2 hierarchical level state of 009] ; E[output/cache]` — frontend/level transforms external; the hierarchical level state is the blocked region, explicitly shared with row 009 Log-linear attention.",
+    "CONFIRM ledger blocker `Partial-chunk streaming and source layer, not only aligned chunks` — the kernel explicitly handles partial chunks via offsets, copy_input_kernel and copy_last_chunk_kernel (chunk.py:434-608, 546-608), and only applies the state update when the last chunk is full (chunk.py:285-287).",
+    "CONFIRM task hypothesis: this shares axis A4 (hierarchical chunks) with 009. The dyadic level state and the level-carry (kv_{l+1}+=kv_l at boundaries) is exactly the A4 hierarchical-chunk property; an additive-K2 single-state substitution is invalid."
+  ],
+  "direction": "axis",
+  "axis": "A4 hierarchical chunks (dyadic level state with boundary carry)",
+  "axis_clients": ["arch-009", "arch-046"],
+  "direction_justification": "LogLinearMamba2 is a hierarchical dyadic level state with level-carry at boundaries and explicit partial-chunk streaming — the A4 hierarchical-chunks property shared with 009 Log-linear attention, which cannot be reduced to a single additive K2 state.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Exact MAX_LEVEL growth rule for continued sequences (chunk.py:1185-1199 adds an extra level for power-of-two lengths) and the precise level_scale semantics across the Mamba-2 frontend boundary; the Mamba-2-specific dt/level transform frontend is not transcribed here."
+  ],
+  "evidence_citations": [
+    "fla/ops/log_linear_attn/naive.py:44-51 — H = sum_level A ∘ mask_level, dyadic level masks",
+    "fla/ops/log_linear_attn/chunk.py:285-339 — level states kv_0..kv_L decayed by exp(g_last), accumulated via dot(k,v), only on full chunks",
+    "fla/ops/log_linear_attn/chunk.py:341-386 — level carry: kv_{l+1}+=kv_l, kv_l=0 at dyadic boundaries (hierarchical pooling)",
+    "fla/ops/log_linear_attn/chunk.py:434-608 — copy_input/copy_last_chunk kernels implement partial-chunk streaming with offsets"
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "id": "arch-015",
+  "architecture": "Linear attention",
+  "source_repo": "fla",
+  "source_revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": ["fla/ops/linear_attn/naive.py", "fla/layers/linear_attn.py"],
+  "equation_summary": "Additive linear attention over a matrix state S[B,H,K,V]: per token S_t = S_{t-1} + k_t^T v_t and o_t = (q_t*scale) S_t, i.e. the read is AFTER the update. There is no decay (G=I). The optional normalized variant keeps a second cumulative-key state k_cum = cumsum(k) and divides o by ((q*scale) . k_cum + 1e-10). The feature map (elu/relu/hadamard/t2r/dpfp/identity) is applied to q,k externally before the call.",
+  "state_shape": "[B,H,K,V] matrix; normalized variant adds a [B,H,K] cumulative-key (denominator) state",
+  "read_timing": "after-update",
+  "gate_scope": "none",
+  "normalization": "optional denominator-state with explicit epsilon (1e-10) division",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM numerator = U2.A (plain additive, no decay, after-update read) matches naive_recurrent_linear_attn S = S + k^T v; o = (q*scale) S",
+    "CONFIRM the normalized variant is a denominator cumulative-key state plus external epsilon division, matching the ledger's `|| U2.A(denominator if normalized)` composition hint and the `E[epsilon division/output]` stage",
+    "CONFIRM blockers: denominator state, epsilon, read timing and B[K2_graph_execution] are exactly the open items"
+  ],
+  "direction": "composition-k2-gated",
+  "axis": null,
+  "axis_clients": ["arch-015", "arch-020", "arch-021"],
+  "direction_justification": "The mixer is exactly U2.A (G=I, additive, after-update read); normalization is a second U2.A denominator call plus external epsilon division, so no new core semantics beyond the K2 graph binder.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "The denominator state is a vector cumulative-key sum; whether it is admitted as a degenerate U2.A (v=1) call or a dedicated denominator-state descriptor is a binder-level decision the source does not force."
+  ],
+  "evidence_citations": [
+    "fla/ops/linear_attn/naive.py:35-37 — S = S + einsum(k_t, v_t); o_t = einsum(S, q_t*scale): additive update, after-update read, no decay",
+    "fla/ops/linear_attn/naive.py:38-40 — normalized variant: k_cum = k.cumsum(1); o = o / ((q*scale*k_cum).sum(-1) + 1e-10): denominator state + explicit epsilon division",
+    "fla/layers/linear_attn.py:97-111 — elu/relu/hadamard/t2r/dpfp/identity feature map applied to q,k BEFORE the op call (external)",
+    "fla/layers/linear_attn.py:163-164 — feature_map_q(q), feature_map_k(k) are external frontend stages"
+  ]
+}

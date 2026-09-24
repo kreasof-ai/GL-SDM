@@ -1,0 +1,35 @@
+{
+  "id": "arch-055",
+  "architecture": "TTT",
+  "source_repo": "fla",
+  "source_revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": ["fla/ops/ttt/naive.py"],
+  "equation_summary": "TTT-Linear runs a per-mini-batch inner gradient-descent optimizer on a fast-weight model. State (h [B,H,D,D], hb bias [B,H,1,D]) is the inner model's parameters; each mini-batch computes reconstruction kh = k_i@h + hb, LayerNorm-statistics-normalized target (w*kh_hat + b vs v_i - k_i), an explicit gradient v_new via the LN backward Jacobian (line 57), and a gradient step h = h - (eta*k_i)^T v_new, hb = hb - sum(eta*v_new). Output o_i = q_i@h - (eta*tril(q_i k_i^T))@v_new + hb ... then a final LayerNorm-with-residual. This is an architecture-specific inner optimizer loop, not a fixed mixer law.",
+  "state_shape": "fast-weight matrix h [B,H,D,D] plus bias hb [B,H,1,D] (inner optimizer parameters), evolved per mini-batch",
+  "read_timing": "before-update",
+  "gate_scope": "data-dependent",
+  "normalization": "none (uses LayerNorm statistics inside the inner objective, not a softmax/denominator normalization)",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM ledger graph 'E[QKV/inner objective and model schedule]; B[typed inner optimizer state/update]; E[outer output/cache]' matches ttt_linear's per-mini-batch GD loop",
+    "CONFIRM blocker 'TTT-Linear versus TTT-MLP, higher-order gradients and no arbitrary callback' — the inner solve cannot share a closed law and is an architecture-specific optimizer loop",
+    "CONFIRM this op is TTT-Linear (ttt_linear); a TTT-MLP variant (MLP fast-weight) would be a different inner model and is not in this file"
+  ],
+  "direction": "external-only",
+  "axis": "inner optimization (shared candidate with arch-039 Titans)",
+  "axis_clients": ["arch-039", "arch-055"],
+  "direction_justification": "TTT is a per-token/mini-batch nonlinear inner gradient-descent optimizer over fast weights with higher-order-gradient requirements — an architecture-specific optimizer loop that does not transfer as a closed reusable mixer law, so it stays an external comparator.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "TTT-MLP (MLP fast-weight inner model) is a distinct equation not present in this naive reference and would need its own audit",
+    "Higher-order (double) gradient through the inner GD step and checkpoint policy are not derivable from this forward-only reference"
+  ],
+  "evidence_citations": [
+    "fla/ops/ttt/naive.py:45-62 — per-mini-batch loop: kh=k_i@h+hb, LN-normalized target, gradient v_new, h=h-(eta*k_i)^T v_new",
+    "fla/ops/ttt/naive.py:57 — v_new = (D*g - sum(g) - kh_hat*(g*kh_hat).sum)/(rstd*D): explicit LayerNorm-backward Jacobian (inner optimizer step)",
+    "fla/ops/ttt/naive.py:59-62 — output uses h BEFORE the state update at line 61 (read-before-write within the mini-batch)",
+    "fla/ops/ttt/naive.py:39-40 — state is fast-weight matrix h and bias hb (inner model parameters)"
+  ]
+}

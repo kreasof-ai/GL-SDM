@@ -1,0 +1,35 @@
+{
+  "id": "arch-017",
+  "architecture": "RetNet / multiscale retention",
+  "source_repo": "fla",
+  "source_revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": ["fla/ops/retention/naive.py", "fla/ops/retention/fused_recurrent.py", "fla/layers/multiscale_retention.py"],
+  "equation_summary": "Retention uses a STATIC per-head scalar decay gamma_h = 1 - 2^(-5-h); the state law is S_t = gamma_h * S_{t-1} + k_t^T v_t, o_t = (q_t/sqrt(d)) S_t (after-update read). The naive/parallel form materializes the fixed lower-triangular decay mask 2^((i-j)*s_h). The fla layer applies rotary embeddings to q,k and a swish/RMSNorm output gate externally; the fused_recurrent path delegates to simple_gla with g_gamma[h]=log(1-2^(-5-h)).",
+  "state_shape": "[B,H,K,V] matrix",
+  "read_timing": "after-update",
+  "gate_scope": "head (static per-head scalar gamma_h)",
+  "normalization": "none",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM head-dependent scalar decay gamma_h = 1-2^(-5-h), static over time",
+    "CORRECT the prompt's hypothesis of a DATA-DEPENDENT position gate is FALSE in the pinned source: the decay/position factor is a fixed per-head constant and a static causal decay mask, not data-dependent; no A10 axis is needed",
+    "CONFIRM swish output gate and rotary are external E stages (g_proj + FusedRMSNormGated / RMSNorm + gate_fn; RotaryEmbedding)",
+    "CONFIRM 'parallel U2.A(decay per bank)' — each head is an independent U2.A state with its own scalar decay; bank combine/norm is external",
+    "CONFIRM blocker: independent states and source combine, B[K2_graph_execution]"
+  ],
+  "direction": "composition-k2-gated",
+  "axis": null,
+  "axis_clients": ["arch-017", "arch-016", "arch-018"],
+  "direction_justification": "Retention is exactly U2.A with a static head-scalar decay; there is no data-dependent gate in the pinned source, so no new axis is required beyond K2 graph execution.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "The 'multiscale bank' is realized as independent per-head states combined by the external output gate/norm; confirm the descriptor treats per-head scalar decay as the head gate scope (same as Lightning) rather than a separate bank abstraction."
+  ],
+  "evidence_citations": [
+    "fla/ops/retention/naive.py:15-18 — s = log2(1-2^(-5-h)); n = 2^((i-j)*s) masked tril; s = einsum(q*k, n): static per-head scalar decay, fixed decay mask, NOT data-dependent",
+    "fla/ops/retention/fused_recurrent.py:48-59 — g_gamma = log(1-2^(-5-h)); delegates to fused_recurrent_simple_gla",
+    "fla/layers/multiscale_retention.py:246 — rotary applied to q,k externally; lines 300-311 — g_proj + FusedRMSNormGated/RMSNorm + gate_fn swish output gate external"
+  ]
+}

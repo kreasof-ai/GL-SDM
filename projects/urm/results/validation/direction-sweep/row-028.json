@@ -1,0 +1,40 @@
+{
+  "id": "arch-028",
+  "architecture": "KDA",
+  "source_repo": "fla",
+  "source_revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": [
+    "fla/ops/kda/naive.py",
+    "fla/ops/kda/gate.py",
+    "fla/layers/kda.py"
+  ],
+  "equation_summary": "Per token (naive.py:59-63): S <- S * exp(g_t) with g_t in R^K per-K-CHANNEL log decay (per value head); S <- S + (beta_t * k_t) ⊗ (v_t - k_t^T S_decayed); o_t = q_t^T S with q pre-scaled by 1/sqrt(K). So this is U2.D with channel-diagonal G = Diag(exp(g_t)) along the key axis, scalar beta per head, and read scale 1/sqrt(K) as an explicit, defaulted scale operand (naive.py:48-49,52). GVA head expansion (H qk heads -> HV value heads) is an external repeat_interleave (naive.py:47,52-53).",
+  "state_shape": "[B,HV,K,V] matrix",
+  "read_timing": "after-update",
+  "gate_scope": "channel",
+  "normalization": "none",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM call graph E[QKV/A_log,dt,bias/norm] ; U2.D(key-channel decay,read scale=1/sqrt(K)) ; E[gated output]: g is computed externally from A_log/dt_bias (fla/layers/kda.py:176-184,252-269) and the mixer takes g:[B,T,HV,K] channel decay + scalar beta, exactly channel-diagonal U2.D.",
+    "CONFIRM read scale is a descriptor field: scale is an explicit optional argument defaulting to K^-0.5 (naive.py:18,48-49), applied to q before the recurrence (naive.py:52) — matches the ledger's 'read scale=1/sqrt(K)' as a semantic field, not a baked constant.",
+    "CONFIRM blockers B[channel-decay delta native envelope] (channel-diagonal G on the delta law is beyond plain U2.D envelope) and exact gate/cache ABI (initial_state added at naive.py:56-57, final state returned)."
+  ],
+  "direction": "composition-k2-gated",
+  "axis": null,
+  "axis_clients": [],
+  "direction_justification": "KDA is exactly the canonical U2.D law with channel-scope diagonal decay and an explicit read-scale field, both of which the K2 gated contract names as semantic fields — blocked only on B[K2_graph_execution] plus the channel-decay native envelope.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Whether GVA (HV value heads sharing H qk heads via repeat_interleave) should be a K2 descriptor head-map field analogous to K1's query-to-KV map, or always an external expand — currently external in source.",
+    "Whether use_beta_sigmoid_in_kernel / negative-eigenvalue beta*2 are numerical-policy fields of the descriptor or external (currently kernel flags in layer)."
+  ],
+  "evidence_citations": [
+    "fla/ops/kda/naive.py:61-63 - per-step: S *= exp(g_i) channel decay, then S += (beta*k) ⊗ (v - k^T S), read o = q^T S after update",
+    "fla/ops/kda/naive.py:31,89 - g operand shape [B,T,HV,K]: per-dimension (channel) log decay",
+    "fla/ops/kda/naive.py:48-49,52 - scale defaults to K^-0.5 and is an explicit function argument applied to q",
+    "fla/ops/kda/naive.py:47,52-53 - GVA handled by repeat_interleave of q/k outside the recurrence",
+    "fla/layers/kda.py:36-37,176-184 - external gate computation g = -exp(A_log)*softplus(f_proj(x)+dt_bias) with per-channel dt_bias"
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "id": "arch-067",
+  "architecture": "Differential Attention (Diff Transformer V1)",
+  "source_repo": "differential",
+  "source_revision": "50224e387211f15ac6a3b2685730b9a0c850f145",
+  "source_files": ["Diff-Transformer/multihead_diffattn.py"],
+  "equation_summary": "V1 computes ONE softmax over the concatenated 2*num_heads map then splits: attn_weights = softmax(q k^T + mask) over the full [2H,T,S], viewed as [bsz,H,2,T,S], then combined as attn = attn[...,0,:,:] - lambda_full * attn[...,1,:,:]. lambda_full = exp(sum(lambda_q1*lambda_k1)) - exp(sum(lambda_q2*lambda_k2)) + lambda_init, lambda_init = 0.8-0.6*exp(-0.3*depth). Output attn@v, subln (RMSNorm over 2*head_dim), scaled by (1-lambda_init). So the base plan is two U1.S calls (softmax over each half) merged by Diff(F,G,lambda)=F - lambda*G; V2's paired-head one-call rewrite is a LATER proven rewrite.",
+  "state_shape": "standard causal KV cache per branch (shared V [B,H,S,2*head_dim]); no recurrent state",
+  "read_timing": "n-a",
+  "gate_scope": "none",
+  "normalization": "softmax (per branch over sequence), plus RMSNorm subln on the differenced output",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM ledger graph 'E[Q1/K1,Q2/K2,V,λ frontend]; (U1.S_1 || U1.S_2); E[weighted difference/per-head norm/output]' matches MultiheadDiffAttn.forward",
+    "CONFIRM blocker 'Exact V1 λ and cache; V2 paired-head one-call rewrite separately proved with VJP and cost' — V1 uses the explicit lambda_full formula (lines 109-113) and a single softmax split into two halves; the V2 one-call paired-head form is a separate proven rewrite, not the base plan",
+    "CONFIRM this is the flagship combinator: Diff(F,G,λ)=F-λG is family-generic and admitted as IR graph structure (two U1.S calls + typed weighted merge), not a provider branch"
+  ],
+  "direction": "combinator",
+  "axis": null,
+  "axis_clients": ["arch-067", "arch-068"],
+  "direction_justification": "Differential attention is the canonical combinator Diff(F,G,λ)=F-λG over two mixer calls with a learned scalar λ, admitted as family-generic typed IR structure (two U1.S calls plus a weighted-merge), with V2 fusion deferred as a proven rewrite.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "V1 here computes softmax once over the 2H concatenated map then subtracts the two halves — equivalent to two separate softmax calls only because softmax normalizes per (head-half) row over S; confirm per-row normalization makes the split exact (it does, softmax is over last dim S independently per [.,.,2,T,S] slice)",
+    "λ gradient (lambda_q1/k1/q2/k2 parameters) and the (1-lambda_init) output scale must be in the VJP; the shared-V cache ABI for the two branches needs a decode-mode record"
+  ],
+  "evidence_citations": [
+    "Diff-Transformer/multihead_diffattn.py:105-107 — softmax over the full attention map (per row over src_len)",
+    "Diff-Transformer/multihead_diffattn.py:109-113 — lambda_full = exp(lq1.lk1)-exp(lq2.lk2)+lambda_init; attn = w[...,0] - lambda_full*w[...,1]",
+    "Diff-Transformer/multihead_diffattn.py:26-27 — lambda_init_fn(depth)=0.8-0.6*exp(-0.3*depth)",
+    "Diff-Transformer/multihead_diffattn.py:115-117 — attn@v, subln (RMSNorm 2*head_dim), *(1-lambda_init)"
+  ]
+}

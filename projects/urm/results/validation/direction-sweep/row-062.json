@@ -1,0 +1,36 @@
+{
+  "id": "arch-062",
+  "architecture": "M2RNN",
+  "source_repo": "xma",
+  "source_revision": "384ed0a7bd82ced1f40609603dd541cac5416844",
+  "source_files": [
+    "xma/layers/m2rnn/torch_implementation.py"
+  ],
+  "equation_summary": "M2RNN keeps a MATRIX memory state h in [B,N,K,V]. Per step s with input outer product x_s = k_s ⊗ v_s: candidate = tanh( h_{s-1} @ W + x_s ); h_s = f_s * h_{s-1} + (1 - f_s) * candidate, where f_s is a per-token scalar gate (from xf). The read y_s = q_s @ h_s (project the matrix state by query). Weights W shared across steps. This is a closed NONLINEAR (tanh) matrix-memory gated transition, not an affine scan; the state is a matrix and the update passes through tanh and a data-dependent gate.",
+  "state_shape": "matrix memory h [B,N,K,V] (per-head K x V)",
+  "read_timing": "after-update",
+  "gate_scope": "data-dependent scalar gate f_s plus tanh nonlinearity; fixed shared W",
+  "normalization": "none",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM ledger call graph `E[matrix-memory projections/gates] ; B[K2 closed nonlinear matrix transition] ; E[output/cache]` — projections/gate external; the closed nonlinear matrix transition is the blocked region.",
+    "CONFIRM ledger blocker `Matrix state shape, packed lengths and full gradients` — the state is a [B,N,K,V] matrix (torch_implementation.py:33), and cu_seqlens/packed raises NotImplementedError (line 30); full gradients through the tanh+gate matrix recurrence are required.",
+    "CONFIRM task hypothesis: this is external-only. The tanh nonlinearity and the data-dependent gate make the transition NONLINEAR, so it does NOT map to affine K2 (which is a linear matrix-state law). No affine-scan substitution is legal."
+  ],
+  "direction": "external-only",
+  "axis": null,
+  "axis_clients": [],
+  "direction_justification": "M2RNN is a closed nonlinear (tanh) matrix-memory gated recurrence with a data-dependent scalar gate; it does not map to the affine linear K2 law and provides no reusable descriptor for other families, so it stays an external comparator.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Packed/varlen (cu_seqlens) is NotImplementedError in the torch reference (torch_implementation.py:30); packed-length handling cannot be closed from this reference alone."
+  ],
+  "evidence_citations": [
+    "xma/layers/m2rnn/torch_implementation.py:33 — h0 zeros [B,N,K,V] matrix state",
+    "xma/layers/m2rnn/torch_implementation.py:52-58 — candidate=tanh(h_prev@W + k⊗v); h=f*h_prev+(1-f)*candidate (nonlinear gated matrix update)",
+    "xma/layers/m2rnn/torch_implementation.py:63 — y = q @ h (query readout of matrix state)",
+    "xma/layers/m2rnn/torch_implementation.py:30 — cu_seqlens (packed lengths) raise NotImplementedError"
+  ]
+}

@@ -136,6 +136,7 @@ GRAPH_OPERATIONS: frozenset[str] = frozenset(
         "state_update",
         "sparse_route_generation",
         "sparse_state_mixer",
+        "linear_delta_state",
     }
 )
 

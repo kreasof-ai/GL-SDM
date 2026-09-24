@@ -1,0 +1,44 @@
+{
+  "id": "arch-073",
+  "architecture": "KATA",
+  "source_repo": "kata",
+  "source_revision": "f93fe75750be6400a0068749794985d70666926d",
+  "source_files": [
+    "kata/layer.py",
+    "kata/references/feature_maps.py",
+    "kata/kernels/parallel_kata.py",
+    "README.md"
+  ],
+  "equation_summary": "Flash-KATA (the trained KATA-SPD path): causal score A[t,s] = Σ_g (scale·q_g[t]·k_g[s])² (concat-SPD; the kata_quadratic_sum variant uses Σ_{g,h}(q_g·k_h)²), all scores ≥ 0, future masked to 0, optional data-dependent offset gate (<q,k> + a_t·a_s)² and optional GDN-style decay A·exp(min(c_t − c_s, 0)); output o = (Σ_s A·v_s) / max(Σ_s A, 1-safe) — a positive squared-group-dot score with sum normalization (denominator tracked, no softmax, no epsilon in the kernel's safe-division). Optional qk-norm (rmsnorm or l2), RoPE (full-head or per-group), and short conv are external frontends. The psi-materialized paths route through FLA chunk/fused linear-attn kernels with normalize=True; a delta-rule erase variant (DeltaKATA) is a separate mixer.",
+  "state_shape": "no fixed-size state in the flash quadratic path (standard KV cache of post-RoPE k/v for decode); psi-feature paths use an FLA linear-attn recurrent state; DeltaKATA uses the delta-rule state",
+  "read_timing": "n-a",
+  "gate_scope": "none in the base score; optional data-dependent per-token/head offset gate (sigmoid) and optional data-dependent decay cumsum (separate blocked variants)",
+  "normalization": "sum-of-scores denominator (b_acc), safe-divided by max(den, 1) in-kernel; no softmax",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM `E[QKV/grouping] ; B[K1 positive squared-group-dot normalized reducer] ; E[model output/cache]`: layer.py KataAttention.forward does external QKV/conv/qk-norm/RoPE/grouping, then the blocked reducer (parallel_kata_attn kernels: b_scores += (scale·qk_g)², causal-zero mask, o = ΣA·v / safe(ΣA), parallel_kata.py:154-232), then external RMSNorm + o_proj and KV cache update.",
+    "CONFIRM 'Exact source score, denominator and VJP': the reducer is positive and non-softmax with a plain-sum denominator — it is NOT the U1.S contract, so the B[K1 ...] axis blocker is correct; backward uses dA→2·qk·dA per group (parallel_kata.py:616-619).",
+    "CONFIRM 'optional polynomial U2 rewrite needs proof and state-size cost': the psi feature maps (spd_concat/spd_sum, feature_maps.py:29-129) materialize ⟨psi(q),psi(k)⟩ = Σ(q_g·k_g)² with qd = M·E(E+1)/2 (packed) or M·E² — a U2.A realization exists only through that polynomial feature expansion, whose state is quadratically larger than K2's [K,Dv] matrix and whose equality/normalization proof plus state-size cost are exactly what the ledger demands.",
+    "NOTE: concat vs sum score variants, offset gate, decay, and DeltaKATA erase are distinct blocked sub-equations; the admitted minimal case should be the plain masked concat-SPD normalized reducer."
+  ],
+  "direction": "axis",
+  "axis": "A13 score/reducer algebra (positive squared-group-dot normalized K1 reducer)",
+  "axis_clients": ["arch-073"],
+  "direction_justification": "The mixer differs from U1.S by a closed typed property — a positive squared-group-dot score with sum normalization — which is a new score/reducer-algebra descriptor (A13 family), not a combinator and not the existing softmax contract.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Only one structural client is currently pinned for this exact reducer (068 TDA and 064/065 polar are different reducer equations per the ledger reuse matrix) — a second independent client or the polynomial-U2 proof is needed before any native branch.",
+    "The in-kernel safe division uses max(den, 1) rather than den + eps (parallel_kata.py:233-235); the numerical-policy field must record this exactly.",
+    "The flash path's KV-cache decode (kata_quadratic_decode) vs the psi-materialized FLA state path: both are claimed equal to the same equation, but only the flash path is the trained/default recipe."
+  ],
+  "evidence_citations": [
+    "kata/kernels/parallel_kata.py:154-155,202-203 — b_scores += (scale·q_g·k_g)² per group (concat-SPD score)",
+    "kata/kernels/parallel_kata.py:210,232-235 — causal mask zeroes future scores; b_acc = Σ scores; o = o / max(b_acc, 1)",
+    "kata/kernels/parallel_kata.py:616-619,835-838 — VJP: d(score)/d(qk) = 2·qk per group",
+    "kata/layer.py:420-500 — dispatch: kata_quadratic / kata_quadratic_sum flash paths, offset-gate augmentation, optional decay, KV cache of (k_in, v)",
+    "kata/references/feature_maps.py:29-129 — psi maps proving ⟨psi(q),psi(k)⟩ = Σ_g(q_g·k_g)² (packed/full/sum variants) and their quadratic output dims",
+    "kata/layer.py:510-536 — psi-materialized fallback routed through FLA chunk/fused_recurrent linear-attn kernels with normalize=True"
+  ]
+}

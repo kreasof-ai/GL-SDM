@@ -1,0 +1,31 @@
+{
+  "id": "arch-011",
+  "architecture": "Wall attention",
+  "source_repo": "fla",
+  "source_revision": "fla@864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": ["fla/ops/wall_attn/naive.py", "fla/layers/wall_attn.py"],
+  "equation_summary": "Per pair (i,j): s_ij = sum_n q_in k_jn exp2(P_in - P_jn) * scale * RCP_LN2, where P is the prefix cumsum of a per-channel log2 gate g [B,T,HQ,K]; optional additional FoX-style per-head scalar cumulative gate; causal/window/varlen mask; base-2 softmax with max-shift stabilization and optional sink bias; output = weights @ v. The per-channel decay enters *inside* the channel sum of the dot product, so it is not expressible as an additive pairwise logit bias.",
+  "state_shape": "external KV cache; optional sink bias and per-head scalar gate",
+  "read_timing": "n-a",
+  "gate_scope": "data-dependent per-channel log-decay gate (plus optional per-head scalar gate)",
+  "normalization": "softmax (base-2, max-shifted, optional sink in denominator)",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM E[QKV/per-channel gates] ; B[K1 channel-decay score] ; E[optional gate/sink/window/cache] matches naive_wall_attn: channel-decay score with optional sink/window/varlen branches.",
+    "CONFIRM the blocker: stable interval decay evaluation and the optional branches must be pinned, and no scalar-bias approximation is valid because the per-channel decay sits inside the channel contraction (sum_n q k 2^(P_in - P_jn))."
+  ],
+  "direction": "axis",
+  "axis": "A13 score/reducer algebra (channel-decay score modulation; scalar-gate special case shared with arch-008 FoX)",
+  "axis_clients": ["arch-008", "arch-011"],
+  "direction_justification": "The mixer differs from U1.S by a closed typed score property (per-channel interval decay inside the dot product), reusable in its scalar form by FoX, hence an axis with independent references before any native path.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": ["Scalar-per-head gate (g_scalar) and channel gate coexist in the source; whether one descriptor subsumes both (channel gate with broadcast) needs a proven equivalence, and the ledger correctly forbids merging them by name."],
+  "evidence_citations": [
+    "fla/ops/wall_attn/naive.py:29-31 — s_ij = sum_n q_in k_jn exp2(P_in - P_jn) * scale * RCP_LN2 docstring.",
+    "fla/ops/wall_attn/naive.py:38-44 — P = cumsum(g) scaled by RCP_LN2; scores computed with exp2(P_i - P_j) inside the channel sum.",
+    "fla/ops/wall_attn/naive.py:66-77 — optional FoX-style scalar cumulative gate added to logits; sink bias enters denominator.",
+    "fla/layers/wall_attn.py:42,61 — layer documents monotone prefix and optional FoX-style per-head scalar gate."
+  ]
+}

@@ -2,11 +2,11 @@
 
 **Target:** a small semantic core that compiles legal combinations of K1/K2/K3 regions, plus external model modules that compose those calls and ordinary operators. The [compiler charter](../compiler/compiler-charter.md) and [76-row composition ledger](architecture-composition.md) are binding. This roadmap is an ordered set of completion gates, **not** a claim that any listed future capability works now. No transitional architecture dispatch, callback escape hatch, or temporary source-named backend branch is admitted.
 
-## Current baseline (HEAD `4cb35c5`)
+## Current baseline (HEAD `4cb35c5`, with Batch 0 landed)
 
-- The public graph catalog has 14 dense-softmax K1 fragments and one route-to-state K3 fragment. K2 anchors can be selected but the graph binder cannot execute K2. No complete source-model module is qualified through the public graph path.
-- Core still has two capability-selection stories, literal `query`/`key` name matching, omitted JSON semantic fields, runtime equation/dispatch logic, source-comparator policy leakage, and incomplete NumPy/Torch family symmetry. K3 route provenance and reference read timing need repair.
-- `architectures/` and `inference/` are marker packages. `train/loop.py` remains tied to an SDM comparison model. The old 62-recipe master table and 76 kernel-slice comparisons are historical; neither certifies current model coverage. See [evidence](../validation/evidence.md).
+- The public graph catalog has 14 dense-softmax K1 fragments, one route-to-state K3 fragment, and **two K2 `linear_delta_state` fragments (DeltaNet, GLA)** that now execute end-to-end through the public graph path on the reference tier. No complete source-model module is qualified yet.
+- **Batch 0 landed:** the closed K1 descriptor (`K1Descriptor`: scale law, head map, causal, all-masked-row policy) and the closed K2 descriptor (`LinearDeltaSpec`: delta/additive, gate scope, read timing, scale rule, normalized) are typed in IR; `weighted_reduce` and `linear_delta_state` bind operands by **role, not name**; unknown JSON semantic fields are rejected at normalize; the retired string-set `CapabilityRegistry` (`select/registry.py`, `lower/plan.py`, `test_backend.py`) is removed, leaving the anchor/selector contract as the single provider story; the missing differentiable Torch K2 reference (`backends/reference/torch/k2.py`) is added and verified against the independent NumPy VJP oracle; and DeltaNet/GLA match the pinned FLA source for output **and** final state (~1e-7).
+- Still open from the baseline: K3 route-provenance/read-timing hardening, the SDM probe removal, native K2/K3 schedules (Gate 2), and the external model modules (Gate 3). `architectures/` and `inference/` remain marker packages; `train/loop.py` is still SDM-tied. The old 62-recipe master table and 76 kernel-slice comparisons are historical; neither certifies current model coverage. See [evidence](../validation/evidence.md).
 
 ## Gate 0 — Semantic truth before breadth
 

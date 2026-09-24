@@ -1,0 +1,36 @@
+{
+  "id": "arch-052",
+  "architecture": "YOCO",
+  "source_repo": "fla",
+  "source_revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": ["fla/layers/yoco.py", "fla/ops/simple_gla/naive.py"],
+  "equation_summary": "YOCO has two decoders. Self-decoder = Simple-GLA: S_t = exp(g_t) * S_{t-1} + k_t^T v_t (head-scalar data-dependent log-sigmoid gate gk, after-update read o_i = q_i^T S_i, scale 1/sqrt(K)); see naive_recurrent_simple_gla lines 83-91. Cross-decoder = softmax attention (parallel_attn) of per-token query q_i against a SHARED KV cache built once by YOCOSharedKVBuilder from a source hidden state (kv_norm then k/v projections), with interleaved RoPE on both paths. The composition crosses two families: U2.A state for the self-decoder, U1.S over the shared-KV cache for the cross-decoder.",
+  "state_shape": "self-decoder [B,H,K,V] matrix recurrent state; cross-decoder shared [B,S,H_kv,D] KV cache",
+  "read_timing": "after-update",
+  "gate_scope": "data-dependent",
+  "normalization": "none (softmax only in the U1.S cross-decoder)",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM ledger graph E[RoPE/gates/projections]; U2.A(Simple-GLA self-decoder); E[shared KV/cache construction]; U1.S(cross-decoder); E[output] matches yoco.py: YOCOGatedRetention (chunk_simple_gla) + YOCOSharedKVBuilder + YOCOCrossAttention (parallel_attn)",
+    "CONFIRM blocker 'Both state/cache regimes and layer order; no Simple-GLA fragment as YOCO claim' is correct and necessary",
+    "MISSING-BLOCKER the U2.A self-decoder additionally has the common prerequisite B[K2_graph_execution] (no U2 call binds end to end yet); the row must also inherit the Simple-GLA gate VJP / low-precision chunk concerns of arch-018"
+  ],
+  "direction": "composition-k2-gated",
+  "axis": null,
+  "axis_clients": ["arch-018", "arch-052"],
+  "direction_justification": "Both the Simple-GLA self-decoder (U2.A) and the shared-KV softmax cross-decoder (U1.S) are closed contracts, so the composition needs no new core semantics but is gated on the K2 graph binder for the self-decoder branch.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Exact layer ordering (which layers are self- vs cross-decoder) comes from modeling_yoco.py, not yet audited here",
+    "Whether the shared-KV cache is built from one designated layer's hidden state and reused across all cross-decoder layers (official YOCO) needs modeling-file confirmation"
+  ],
+  "evidence_citations": [
+    "fla/layers/yoco.py:196-217 — chunk_simple_gla / fused_recurrent_simple_gla with g=gk head gate, initial_state=recurrent_state",
+    "fla/layers/yoco.py:178 — gk = logsigmoid(gk_proj(x))/gate_logit_normalizer (data-dependent head gate)",
+    "fla/ops/simple_gla/naive.py:83-91 — S = S*exp(g) + k^T v ; o = q^T S (after-update read), scale 1/sqrt(K)",
+    "fla/layers/yoco.py:289-325 — YOCOSharedKVBuilder builds shared (k,v) once with kv_norm + RoPE, caches as attn_state",
+    "fla/layers/yoco.py:424-445 — YOCOCrossAttention softmax attention over shared_k/shared_v (parallel_attn / decoding)"
+  ]
+}

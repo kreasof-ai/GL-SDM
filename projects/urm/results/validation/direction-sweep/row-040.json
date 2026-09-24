@@ -1,0 +1,36 @@
+{
+  "id": "arch-040",
+  "architecture": "RWKV-4",
+  "source_repo": "fla",
+  "source_revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": [
+    "fla/ops/rwkv4/fused_recurrent.py"
+  ],
+  "equation_summary": "RWKV-4 WKV keeps a THREE-part per-channel state (alpha, beta, eps) where eps is a running max-shift. At step t with current (k_t,v_t): tau=max(u+k_t, eps); wkv_t = (e^{eps-tau}*alpha + e^{u+k_t-tau}*v_t)/(e^{eps-tau}*beta + e^{u+k_t-tau}); then the state is re-stabilized: eps'=max(w+eps, k_t), alpha'=e^{w+eps-eps'}*alpha + e^{k_t-eps'}*v_t, beta'=e^{w+eps-eps'}*beta + e^{k_t-eps'}. w=-exp(w_raw) is a per-channel decay, u a per-channel bonus. This is a max-shifted normalized (numerator/denominator) vector state, NOT a raw additive K2 matrix state.",
+  "state_shape": "per-channel 3-tuple of vectors (alpha numerator [C], beta denominator [C], eps max-shift [C]); state stored as [B,3,C]",
+  "read_timing": "before-update",
+  "gate_scope": "channel (per-channel w decay and u bonus)",
+  "normalization": "denominator-state (beta) with max-shift (eps) rescaling; division per step",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM ledger call graph `E[time/channel mixing/projections] ; B[K2 max-shifted normalized vector state] ; E[output gate]` — projections/time-mix are external; the WKV max-shift normalized recurrence is the blocked region.",
+    "CONFIRM ledger blocker `Stable rescaling and cache continuation; no raw additive-state substitution` — the kernel carries an explicit eps max-shift state (fused_recurrent.py:99-110) that must be preserved across cache continuation, and the state is NOT a raw additive K2 matrix.",
+    "MISCLASSIFIED risk averted: the task hypothesized 'axis (max-shift state) or external-only'. The max-shift normalized vector state is a closed typed property (state carries an extra eps register + denominator), but it is RWKV-4-specific in this exact form; it is recorded here as the distinguishing descriptor. The read is BEFORE update (wkv uses old alpha/beta/eps at line 99-102, update at 105-110)."
+  ],
+  "direction": "axis",
+  "axis": "max-shifted normalized vector state (denominator + max-shift register, before-update read)",
+  "axis_clients": ["arch-040"],
+  "direction_justification": "The WKV recurrence is a closed, typed, reusable property — a max-shift-stabilized numerator/denominator vector state with before-update read — that differs from the canonical K2 matrix law by an explicit eps register and denominator division, so it is an axis candidate (single client now; needs a second client for native admission).",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Whether any second architecture shares this exact max-shift normalized vector state (needed for two-client native admission); RWKV-5/6 use a matrix state with a static bonus instead, so this axis may remain single-client/external."
+  ],
+  "evidence_citations": [
+    "fla/ops/rwkv4/fused_recurrent.py:99-102 — wkv read from current alpha/beta with max-shift tau=max(u+k,eps), before state update",
+    "fla/ops/rwkv4/fused_recurrent.py:105-110 — state re-stabilization: eps'=max(w+eps,k), alpha/beta rescaled by e^{w+eps-eps'} and accumulated",
+    "fla/ops/rwkv4/fused_recurrent.py:77-90 — state layout: alpha/beta/eps planes (state_s_abe strides), per-channel w and u",
+    "fla/ops/rwkv4/fused_recurrent.py:461 — w = -exp(w.float()) applied at entry"
+  ]
+}

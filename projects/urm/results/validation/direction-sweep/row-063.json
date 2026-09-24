@@ -1,0 +1,35 @@
+{
+  "id": "arch-063",
+  "architecture": "BDH",
+  "source_repo": "bdh",
+  "source_revision": "2b0d7a45b058d4309c84a10e0768d541fe18bdc2",
+  "source_files": ["bdh.py"],
+  "equation_summary": "BDH attention: with K is Q (tied), scores = (RoPE(Q) @ RoPE(K)^T).tril(diagonal=-1) then scores @ V. diagonal=-1 makes it STRICT-PAST: position i reads only positions j<i, excluding the current token. There is NO softmax — it is a linear/additive reduction (positive after the ReLU sparsity nonlinearity F.relu(x_latent) upstream). Reading the strict-past scores is a READ-BEFORE-WRITE: the current token's own contribution is never in its read set. This is the canonical read-timing case; U2.A reads AFTER update and cannot be used unchanged.",
+  "state_shape": "no explicit recurrent state; equivalent unnormalized linear-attention accumulation over strict-past positions (score matrix [T,T] lower-triangular excluding diagonal)",
+  "read_timing": "before-update",
+  "gate_scope": "none",
+  "normalization": "none (linear/additive, no softmax denominator; upstream F.relu provides positivity)",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM ledger graph 'E[encoder/value projections/RoPE]; B[K2 strict-past additive read-before-write]; E[norm/MLP/dropout/residual]' matches Attention.forward + BDH block",
+    "CONFIRM blocker 'Exact strict-past timing; U2.A is after-update and cannot be used unchanged' — scores use tril(diagonal=-1) (strict past) with no softmax, so this is a DIFFERENT descriptor (read-before-write additive), not U2.A",
+    "CONFIRM BDH is the canonical read-timing axis example; the ledger correctly does not alias it to U2.A"
+  ],
+  "direction": "axis",
+  "axis": "read-timing axis (strict-past additive read-before-write K2 descriptor)",
+  "axis_clients": ["arch-063"],
+  "direction_justification": "BDH is a strict-past additive read-before-write linear reduction (no softmax, no decay gate) that differs from the closed U2.A after-update contract by exactly the read-timing property, so it is a distinct closed descriptor / axis, not composition over U2.A.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "The full BDH block couples attention with the ReLU sparsity, encoder_v and decoder (neuron-like) projections; whether the strict-past additive law alone (without the surrounding sparsity/gating) is the reusable read-timing descriptor needs an independent reference",
+    "No softmax denominator and no gate: confirm this stays a pure additive accumulation across positions (it does — scores@V with no normalization)"
+  ],
+  "evidence_citations": [
+    "bdh.py:73-74 — scores = (QR @ KR.mT).tril(diagonal=-1); return scores @ V (strict-past, no softmax, additive)",
+    "bdh.py:58 — assert K is Q (tied query/key)",
+    "bdh.py:69-70 — RoPE applied to Q (=K) before the score",
+    "bdh.py:125-131 — x_sparse = F.relu(x @ encoder); attn(Q=x_sparse,K=x_sparse,V=x) (positivity from ReLU upstream)"
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "id": "arch-023",
+  "architecture": "HGRN",
+  "source_repo": "fla",
+  "source_revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": ["fla/ops/hgrn/naive.py", "fla/layers/hgrn.py"],
+  "equation_summary": "HGRN keeps a VECTOR state h[B,D] with a per-channel data-dependent forget gate: h_t = exp(f_t) * h_{t-1} + i_t, and the output o_t = h_t (the state is read out directly each step). f = logsigmoid(f_proj(x)) (optionally lower-bounded via logaddexp), and i = swiglu(i_proj(x), 1 - exp(f)). There is no q/k/v and no matrix state; it is a channel-gated vector recurrence, not a matrix-valued linear-delta law.",
+  "state_shape": "vector [B,D]",
+  "read_timing": "after-update",
+  "gate_scope": "channel (per-channel data-dependent vector gate)",
+  "normalization": "none",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM B[K2 vector gated transition]: HGRN is a vector-state, channel-gated additive recurrence, not the matrix [K,V] U2.A law",
+    "CONFIRM 'matrix-A is not assumed': the ledger correctly does NOT claim this is U2.A; it flags a distinct vector gated transition descriptor",
+    "CONFIRM blockers: read/update order (after-update, o_t = h_t) and vector-state VJP"
+  ],
+  "direction": "axis",
+  "axis": "A-vec channel-gated vector state transition (vector K2)",
+  "axis_clients": ["arch-023"],
+  "direction_justification": "HGRN's mixer is a vector-valued channel-gated recurrence h_t = exp(f_t)⊙h_{t-1} + i_t with o_t = h_t; this is a different state shape (vector, no key/value outer product) than the canonical matrix K2 law, so it needs a closed vector-state descriptor rather than plain U2.A.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Whether the vector-state gated transition generalizes to a second client; HGRN2 moves to a matrix GLA state, so HGRN may be a single-client axis and could be kept external-only if no second client materializes."
+  ],
+  "evidence_citations": [
+    "fla/ops/hgrn/naive.py:28-30 — h = g[:,i].exp()*h + x[:,i]; o[:,i] = h: vector channel-gated additive recurrence, state read out directly (after-update)",
+    "fla/ops/hgrn/naive.py:21 — h = zeros(B, D): vector state, not [K,V] matrix",
+    "fla/layers/hgrn.py:135-139 — f = logsigmoid(f_proj); i = swiglu(i_proj, 1 - f.exp()): external gate/input construction"
+  ]
+}

@@ -17,6 +17,8 @@ from typing import Any
 
 from urm.compiler.pipeline import CompilationResult
 from urm.ir.program import (
+    K1ScaleRule,
+    LinearDeltaState,
     ScoreNormalization,
     SemanticProgram,
     SparseRouteGeneration,
@@ -36,24 +38,60 @@ def _torch() -> Any:
     return torch
 
 
+_K1_OPTIONAL_ROLES = ("score_bias", "attention_mask", "scale")
+
+
+def _bind_k1_operands(
+    node: WeightedReduce, tensors: dict[str, Any]
+) -> dict[str, Any]:
+    """Bind K1 operands by role; fall back to positional order for the legacy
+    unroled form. The closed descriptor (``node.k1``) is the only equation
+    authority — no scale is computed here from a tensor shape."""
+    roles = dict(node.roles)
+    if roles:
+        missing = [r for r in ("query", "key", "value") if r not in roles]
+        if missing:
+            raise PlanBindingError(f"K1 node {node.name!r} is missing roles {missing}")
+        bound = {r: tensors.get(roles[r]) for r in ("query", "key", "value", *_K1_OPTIONAL_ROLES) if r in roles}
+    else:
+        names = list(node.inputs)
+        bound = {"query": tensors.get(names[0]) if len(names) > 0 else None,
+                 "key": tensors.get(names[1]) if len(names) > 1 else None,
+                 "value": tensors.get(names[2]) if len(names) > 2 else None}
+        for role, name in zip(("score_bias", "attention_mask"), names[3:]):
+            bound[role] = tensors.get(name)
+    for required in ("query", "key", "value"):
+        if bound.get(required) is None:
+            raise PlanBindingError(f"K1 node {node.name!r}: role {required!r} is unbound")
+    return bound
+
+
 def _execute_k1_attention_node(
     node: WeightedReduce, anchor: str, tensors: dict[str, Any]
 ) -> Any:
     """Execute one typed K1 attention node against its selected anchor.
 
-    The node's :class:`RouteSpec` carries the equation semantics (softmax
-    normalization, causal masking, dense selection); the anchor selects the
-    implementation. Operands are bound by name from the tensor table.
+    The equation (scale law, causal masking, all-masked-row policy) comes from
+    the node's closed :class:`K1Descriptor`; the anchor selects only the
+    implementation. Operands bind by role, never by global name lookup.
     """
     torch = _torch()
-    query = tensors["query"]
-    key = tensors["key"]
-    value = tensors["value"]
-    score_bias = tensors.get("score_bias")
-    attention_mask = tensors.get("attention_mask")
-    causal = bool(node.spec.causal)
-    key_dim = query.shape[-1]
-    scale = key_dim ** -0.5
+    operands = _bind_k1_operands(node, tensors)
+    query, key, value = operands["query"], operands["key"], operands["value"]
+    score_bias = operands.get("score_bias")
+    attention_mask = operands.get("attention_mask")
+    scale_operand = operands.get("scale")
+    k1 = node.k1
+    causal = bool(node.spec.causal) if k1 is None else bool(k1.causal)
+
+    # Resolve the score scale from the descriptor's scale rule. Runtime never
+    # invents a scale; an explicit operand or the key-dim rule is used as-is.
+    if k1 is not None and k1.scale_rule is K1ScaleRule.EXPLICIT_OPERAND:
+        if scale_operand is None:
+            raise PlanBindingError(f"K1 node {node.name!r}: scale role is unbound")
+        scale = float(scale_operand)
+    else:
+        scale = float(query.shape[-1]) ** -0.5
 
     if anchor == "urm_native_k1_online_softmax_v1":
         from urm.backends.triton.k1.online import execute_online_softmax
@@ -96,7 +134,7 @@ def _execute_k1_attention_node(
         q = query.to(torch.float32).transpose(1, 2)
         k = key.to(torch.float32).transpose(1, 2)
         v = value.to(torch.float32).transpose(1, 2)
-        if k.shape[1] != q.shape[1]:  # GQA/MQA: expand groups
+        if k.shape[1] != q.shape[1]:  # grouped head map: expand shared KV heads
             repeat = q.shape[1] // k.shape[1]
             k = k.repeat_interleave(repeat, dim=1)
             v = v.repeat_interleave(repeat, dim=1)
@@ -117,9 +155,53 @@ def _execute_k1_attention_node(
                 mask = mask.unsqueeze(1)
             scores = scores.masked_fill(~mask, float("-inf"))
         probs = torch.softmax(scores, dim=-1)
+        # Closed all-masked-row policy: a fully masked row returns zero.
         probs = torch.nan_to_num(probs, nan=0.0)
         return torch.matmul(probs, v).transpose(1, 2).to(value.dtype)
     raise PlanBindingError(f"no graph executor for K1 attention anchor {anchor!r}")
+
+
+def _execute_k2_state_node(node: LinearDeltaState, anchor: str, tensors: dict[str, Any]) -> tuple[Any, Any]:
+    """Execute one typed K2 linear-delta state node against its selected anchor.
+
+    The equation (delta/additive, gate scope, read timing, scale, normalized)
+    is the node's closed :class:`LinearDeltaSpec`; the anchor selects only the
+    implementation. Operands bind by role.
+    """
+    if anchor not in {
+        "urm.unified.k2.state_reference.v1",
+        "urm_native_diagonal_recurrence_v1",
+        "urm_native_matrix_state_recurrence_v1",
+    }:
+        raise PlanBindingError(f"no graph executor for K2 state anchor {anchor!r}")
+    roles = dict(node.roles)
+    missing = [r for r in ("query", "key", "value", "beta", "log_decay", "initial_state") if r not in roles]
+    if missing:
+        raise PlanBindingError(f"K2 node {node.name!r} is missing roles {missing}")
+    operands = {r: tensors.get(roles[r]) for r in roles}
+    for r in ("query", "key", "value", "beta", "log_decay", "initial_state"):
+        if operands[r] is None:
+            raise PlanBindingError(f"K2 node {node.name!r}: role {r!r} is unbound")
+    scale_op = operands.get("scale")
+    scale = None if scale_op is None else float(scale_op)
+
+    # The differentiable Torch reference is the reference-tier implementation.
+    # The two native anchor names share the same typed request/result ABI; on a
+    # CPU-only plan they execute the same reference recurrence (a native Triton
+    # schedule is a separate, explicitly selected tier).
+    from urm.backends.reference.torch.k2 import torch_linear_delta_state
+
+    result = torch_linear_delta_state(
+        operands["initial_state"],
+        operands["key"],
+        operands["query"],
+        operands["value"],
+        operands["beta"],
+        operands["log_decay"],
+        spec=node.spec,
+        scale=scale,
+    )
+    return result
 
 
 def _execute_sparse_route_node(node: SparseRouteGeneration, anchor: str, tensors: dict[str, Any]) -> tuple[Any, Any]:
@@ -282,6 +364,8 @@ class BoundGraphPlan:
                 op.spec.normalization is ScoreNormalization.SOFTMAX
             ):
                 result = _execute_k1_attention_node(op, step.anchor, tensors)
+            elif isinstance(op, LinearDeltaState):
+                result = _execute_k2_state_node(op, step.anchor, tensors)
             elif isinstance(op, SparseRouteGeneration):
                 result = _execute_sparse_route_node(op, step.anchor, tensors)
             elif isinstance(op, SparseStateMixerAccess):

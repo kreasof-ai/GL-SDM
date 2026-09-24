@@ -1,0 +1,38 @@
+{
+  "id": "arch-029",
+  "architecture": "Gated DeltaProduct",
+  "source_repo": "fla",
+  "source_revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": [
+    "fla/ops/gated_delta_product/naive.py",
+    "fla/layers/gated_deltaproduct.py"
+  ],
+  "equation_summary": "Per token t with R = num_householder ordered factors (naive.py:51-63): first apply per-head scalar decay h <- h * exp(g_t); then for j = 0..R-1 in order: h <- h + (v_{tj} - h^T k_{tj}) beta_{tj} ⊗ k_{tj} — i.e. R sequential delta updates, each retrieving from the state produced by the previous factor; then read o_t = (scale*q_t)^T h. k/v/beta have T*R in the time axis (naive.py:37-39). The within-token transition is the ORDERED PRODUCT of R Householder-like deltas (I - beta_j k_j k_j^T), which does not collapse to a single delta unless R=1.",
+  "state_shape": "[B,H,K,V] matrix",
+  "read_timing": "after-update",
+  "gate_scope": "head",
+  "normalization": "none",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM call graph E[rank-R factor and gate generation] ; B[K2 ordered multi-delta transition] ; E[output]: the mixer consumes R ordered (k_j, v_j, beta_j) triples per token and applies them sequentially (naive.py:55-59) — an ordered multi-delta, exactly the blocker named.",
+    "CONFIRM 'no single-delta collapse': factor j retrieves from the state after factor j-1's write (naive.py:59 mutates h inside the j loop), so the composed transition is a non-commuting ordered product of Householder factors; only R=1 reduces to gated DeltaNet.",
+    "CONFIRM independent factor VJPs and rank/cost bound are required: beta is per-factor sigmoid (fla/layers/gated_deltaproduct.py:229-233) and each factor has its own k/v/beta gradients."
+  ],
+  "direction": "axis",
+  "axis": "A8 ordered multi-delta (rank-R) transition: within-token ordered product of R delta factors applied to one matrix state",
+  "axis_clients": ["arch-029", "arch-031", "arch-032"],
+  "direction_justification": "The ordered rank-R delta product is a closed, typed, reusable transition property (any K2 client could request R>1) that differs from the single-delta contract, so it is an axis with descriptor + references first.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Whether R is bounded in the descriptor (source asserts k/v/beta time axis = T*R exactly; chunk kernels exist only for specific R) and what rank/cost bound the admission record should require.",
+    "Whether the per-token scalar decay g applied once BEFORE the R factors (not between them) is the only legal ordering, or whether interleaved decay-per-factor is a separate descriptor variant."
+  ],
+  "evidence_citations": [
+    "fla/ops/gated_delta_product/naive.py:51-63 - decay once per token, then ordered loop over num_householder deltas mutating h, then read",
+    "fla/ops/gated_delta_product/naive.py:37-41 - k/v/beta carry T*num_householder on the time axis; g is per-token [B,T,H]",
+    "fla/ops/gated_delta_product/naive.py:59 - h updated in place across factors: transition = ordered product of (I - beta_j k_j k_j^T) deltas",
+    "fla/layers/gated_deltaproduct.py:229-233 - external sigmoid beta per factor with optional x2, rearranged to (t n) ordering"
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "id": "arch-037",
+  "architecture": "Comba",
+  "source_repo": "fla",
+  "source_revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": [
+    "fla/ops/comba/naive.py",
+    "fla/layers/comba.py"
+  ],
+  "equation_summary": "Per token (naive.py:52-62): S' = exp(g_t) * S_{t-1} with per-head scalar log decay; delta read uses an INDEPENDENT predict key p_t: delta = beta_t * (v_t - p_t^T S'); the write commits along a separate write key k_t: S_t = S' + k_t delta^T; o_t = (scale*q_t)^T S_t, read after update. So the retrieval/eraser key p and the write key k are distinct operands (naive.py:59 retrieves with b_p, :61 writes with b_k). Layer: beta=sigmoid, g=logsigmoid(a_proj) per head, optional q/k L2-norm in kernel, and a static per-channel decay.sigmoid() modulation p = k * sigmoid(decay) in one mode (layers/comba.py:272,281,296).",
+  "state_shape": "[B,H,K,V] matrix",
+  "read_timing": "after-update",
+  "gate_scope": "head",
+  "normalization": "none",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM call graph E[dual-key projections/gates] ; B[K2 delta with independent predict/write keys] ; E[output]: the mixer takes separate p (predict) and k (write) operands and uses them asymmetrically (naive.py:56,59,61) — a dual-key delta, exactly the blocked descriptor.",
+    "CONFIRM 'Separate key gradients; no tied-key rewrite': setting p=k recovers GDN (026), but the source keeps them independent with independent projections, so VJPs for p and k must both exist and no tied-key substitution is legal.",
+    "CONFIRM blockers cover the law; the optional static per-channel p-modulation (layers/comba.py:272) is an external operand transform and needs no core change."
+  ],
+  "direction": "axis",
+  "axis": "A8 dual-key delta (independent predict/erase key and write key on the rank-1 delta update)",
+  "axis_clients": ["arch-037", "arch-027"],
+  "direction_justification": "Decoupling the retrieval key from the write key is a closed typed property of the rank-1 delta update (related to GDN2's distinct erase factor) that does not collapse to the single-key U2.D law, so it is an axis with descriptor + references first.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Whether the dual-key property should be unified with GDN2's distinct erase factor into one 'asymmetric rank-1 delta' descriptor (p plays the role of b*k in GDN2 with b implicit) or kept as separate axes.",
+    "Whether q/k L2-norm in kernel and the static decay.sigmoid() p-modulation are numerical-policy fields or external."
+  ],
+  "evidence_citations": [
+    "fla/ops/comba/naive.py:57-62 - decay, retrieve with independent predict key p (b_v - (h*p).sum), scale by beta, write along separate key k, read after update",
+    "fla/ops/comba/naive.py:31-34 - operand list includes both k:[B,T,H,K] and p:[B,T,H,K] as separate tensors",
+    "fla/ops/comba/naive.py:138,146 - chunk form builds the WY system on p_beta @ k^T: asymmetric key pair in the inverse",
+    "fla/layers/comba.py:169-170,281 - external beta=sigmoid, g=logsigmoid per head; separate projections for the two keys"
+  ]
+}

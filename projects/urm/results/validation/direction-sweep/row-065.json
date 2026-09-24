@@ -1,0 +1,42 @@
+{
+  "id": "arch-065",
+  "architecture": "Foveal",
+  "source_repo": "atma",
+  "source_revision": "28bb3de8afbe7c0b00115e0fbff36afc9ad49c11",
+  "source_files": [
+    "foveal_cpt/attention.py",
+    "model/blocks.py",
+    "model/reference.py"
+  ],
+  "equation_summary": "Foveal wraps an ATMA base attention (PolarAttention or CausalSelfAttention) with a learned MQA page index: page scores s_qp = <normalize(q_block), normalize(mean-pooled k_page)>/sqrt(index_dim) from detached x with the first query token of each block as the causal routing representative. select_pages picks, per query block, the smallest set of remote completed pages whose sorted softmax mass reaches (top_p − local_mass), clamped to [min_remote, min(max_remote, available)]; the local window is the last local_window tokens (local pages partial with exact causal masking). The visible key set per query block is local band ∪ selected remote pages, and the mixer on that set is the SAME polar_reduce as 064 (temp/null computed with FULL-prefix n_keys, per protocol) or plain SDPA softmax for the softmax base. Output reuses the base proj/sigmoid-gate and mu_proj(mag).",
+  "state_shape": "route metadata per query block (page_indices [B,QB,remote_capacity], page_counts, local_indices/counts) + base-model KV cache; mixer itself stateless",
+  "read_timing": "n-a",
+  "gate_scope": "per-head static learned polar params (inherited from base) — same as 064; routing thresholds (top_p, min/max_remote) are runtime buffer scalars",
+  "normalization": "route softmax for page selection (external); mixer normalization inherited from 064 polar reducer (softmax weights + L2 direction + tanh count)",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM 'Reuse 064 reducer': _polar_sparse feeds the route-restricted key set into the identical polar_reduce (dense fallback at attention.py:602-621) or the fused Triton polar_attention_sparse with the same v_null/null_base/null_slope/len_gain/mag_beta params (attention.py:529-542); temp/null use full-prefix n_keys (attention.py:497, 506-522 'Keep full-prefix Polar temperature/null calibration').",
+    "CONFIRM 'exact route ABI; include selection cost and gradients': select_pages (attention.py:73-163) is a discrete top-p (nucleus) page selection over a masked softmax of page scores with min/max remote clamps and page-completion causality (page q never indexes itself; only pages < q complete); page selection is detached (attention.py:404) while the differentiable score tensor is retained for teacher distillation — a non-R.PK route semantics that must be transcribed exactly, and the selection pass cost is real.",
+    "MISSING-BLOCKER (minor): the graph depends on an indexed/sparse traversal of the polar reducer over local ∪ remote pages, so B[indexed_K1_schedule] (efficient sparse coverage; dense boolean mask is a correctness oracle only, per the ledger's own U1.S[R] note) applies to the Foveal row as well, in addition to the A13 polar-reducer axis and the route ABI. The ledger's reuse matrix row 'Indexed softmax traversal' lists 005/006/007/071/072 but not 065.",
+    "CONFIRM geometric/local/remote decomposition: local window = exact causal band of width local_window (mask_mod kv>q-local_window, attention.py:166-171); remote pages come from the learned geometric index (cosine-scored mean-pooled page keys, attention.py:357-379)."
+  ],
+  "direction": "axis",
+  "axis": "A13 score/reducer algebra (polar reducer, shared with 064) + A2 locality routing (indexed local ∪ remote page traversal)",
+  "axis_clients": ["arch-064", "arch-065"],
+  "direction_justification": "Foveal = the 064 polar reducer (A13) evaluated on a learned geometric local ∪ remote route set (A2 indexed routing); both are closed typed properties reusable by other families, so the row decomposes onto two axes rather than any single closed kernel contract.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Route ABI details that a descriptor must pin: top-p nucleus with local-mass subtraction, min/max remote clamping, page-completion causality (page q invisible to its own block), first-token-of-block representative, padded-index canonical form and tie policy on equal page scores.",
+    "The flex/LSE-based polar emulation (attention.py:561-600) reconstructs n_eff via 2·lse − lse2 with a dummy zero value column — its VJP equivalence to polar_reduce needs a proven rewrite record.",
+    "Teacher/distillation loss and the LM-output index stream are training-only external stages; whether they enter the served graph affects the closeout record."
+  ],
+  "evidence_citations": [
+    "foveal_cpt/attention.py:73-163 — select_pages: complete/remote page masks, nucleus (top-p) selection on sorted remote softmax mass, min/max clamps, local block enumeration",
+    "foveal_cpt/attention.py:357-379 — _index: detached input, first-token query representative, mean-pooled page keys, cosine page scores /sqrt(index_dim)",
+    "foveal_cpt/attention.py:495-542 — _polar_sparse: route-restricted polar reduction reusing base polar params; Triton sparse kernel consumes route directly",
+    "foveal_cpt/attention.py:602-621 — dense fallback calls polar_reduce with the route-allowed -inf mask (same reducer as 064)",
+    "foveal_cpt/attention.py:794-802 — polar branch output = proj(direction·sigmoid(gate)) + mu_proj(mag); softmax branch uses plain SDPA on the same route"
+  ]
+}

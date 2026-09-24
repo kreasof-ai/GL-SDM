@@ -1,0 +1,32 @@
+{
+  "id": "arch-013",
+  "architecture": "DeltaFormer",
+  "source_repo": "fla",
+  "source_revision": "fla@864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": ["fla/ops/deltaformer/naive.py", "fla/layers/deltaformer.py"],
+  "equation_summary": "Two stages: (1) strict-causal triangular value correction — with P = tril_softmax(q k^T / sqrt(D), strict=True) (rows over j < i only), u_t = v_t - beta_t * sum_{j<t} P_tj u_j, i.e. u = (I + diag(beta) strict_tril(P))^{-1} v by forward substitution; (2) ordinary causal softmax attention o = softmax(q k^T / sqrt(D), causal incl. diagonal) @ u. The correction is a data-dependent strict-past triangular solve on values, followed by U1.S on the corrected values.",
+  "state_shape": "external KV cache for (k, corrected-u) or recomputed u; beta from external projection",
+  "read_timing": "n-a",
+  "gate_scope": "data-dependent per-token beta (defaults to ones)",
+  "normalization": "softmax (strict for the correction stage, non-strict causal for the output stage)",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM E[QKV/beta] ; B[strict-causal triangular value correction] ; U1.S(corrected V) ; E[output] matches naive_deltaformer_attn: strict tril softmax probs, sequential u_t = v_t - beta_t * (P_t @ u_<t), then causal attention over u.",
+    "CONFIRM the blocker: strict-past correction and its gradients must be preserved (stage 1 is strict-causal while stage 2 includes the diagonal), and no ordinary attention-only claim is possible.",
+    "CORRECT: the strict softmax uses a clamped denominator (clamp_min 1e-20, line 37) so fully-masked row t=0 yields all-zero probs; this edge policy must be part of the descriptor, not assumed."
+  ],
+  "direction": "axis",
+  "axis": "typed causal triangular transform (strict-past value correction; family shared with arch-010 PaTH)",
+  "axis_clients": ["arch-010", "arch-013"],
+  "direction_justification": "The mixer is U1.S over values corrected by a data-dependent strict-causal triangular solve — a closed typed transform that differs from ordinary external projections and recurs in the PaTH family, hence an axis.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": ["Whether the DeltaFormer correction (value-domain solve with softmax-defined coefficients) and the PaTH transform (operand-domain Householder/UT correction) admit one shared descriptor or remain two distinct axis descriptors; cache semantics for corrected u across decode steps need a proof."],
+  "evidence_citations": [
+    "fla/ops/deltaformer/naive.py:13-39 — tril_softmax strict=True: probs on j < i, clamp_min(1e-20) denominator.",
+    "fla/ops/deltaformer/naive.py:97-109 — u_t = v_t - beta_t * sum_{j<t} P_tj u_j; then naive_causal_attention over u.",
+    "fla/ops/deltaformer/naive.py:42-55 — stage-2 attention: causal mask incl. diagonal, softmax, @u.",
+    "fla/layers/deltaformer.py:122,141 — beta from external b_proj; two-stage op invoked with beta."
+  ]
+}

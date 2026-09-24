@@ -1,0 +1,35 @@
+{
+  "id": "arch-060",
+  "architecture": "RNN",
+  "source_repo": "xma",
+  "source_revision": "384ed0a7bd82ced1f40609603dd541cac5416844",
+  "source_files": [
+    "xma/layers/rnn/torch_implementation.py"
+  ],
+  "equation_summary": "Vanilla RNN. Per step s: h_s = tanh( h_{s-1} @ W + x_s ), with h in [B,N,H]. The transition is a FIXED matrix W applied to the previous hidden state plus the input, passed through a tanh nonlinearity. Weights W are shared across all timesteps. y_s = h_s. This is a closed NONLINEAR (tanh) vector transition, not an affine/linear scan.",
+  "state_shape": "vector h [B,N,H] (N heads, H hidden)",
+  "read_timing": "after-update",
+  "gate_scope": "none (fixed shared weight W, tanh nonlinearity)",
+  "normalization": "none",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM ledger call graph `E[input/recurrent projections] ; B[K2 closed nonlinear vector transition] ; E[output/cache]` — input projection external; the nonlinear tanh vector recurrence is the blocked region.",
+    "CONFIRM ledger blocker `Activation, weight sharing, packed lengths and VJP; no affine scan assumed` — the source uses tanh (torch_implementation.py:42), shares W across steps (line 34), and raises NotImplementedError for cu_seqlens/packed (line 28).",
+    "CONFIRM task hypothesis: this is external-only. The tanh nonlinearity makes the transition NONLINEAR, so it does NOT map to the affine K2 law. No affine-scan substitution is legal; a nonlinear per-token recurrence with a fixed shared W does not transfer to any other (even hypothetical) architecture combination as a reusable K2 descriptor."
+  ],
+  "direction": "external-only",
+  "axis": null,
+  "axis_clients": [],
+  "direction_justification": "The RNN recurrence is a closed nonlinear (tanh) vector transition with a fixed shared weight matrix, which does not map to the affine K2 law and provides no reusable closed descriptor for other families, so it stays an external comparator.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Packed/varlen (cu_seqlens) is NotImplementedError in the torch reference (torch_implementation.py:28); the packed-length blocker cannot be closed from this reference alone."
+  ],
+  "evidence_citations": [
+    "xma/layers/rnn/torch_implementation.py:40-47 — h = tanh(h_prev @ W + x_s); y=h; weight shared across steps",
+    "xma/layers/rnn/torch_implementation.py:34 — W repeat_interleave, shared across all timesteps",
+    "xma/layers/rnn/torch_implementation.py:28 — cu_seqlens (packed lengths) raise NotImplementedError"
+  ]
+}

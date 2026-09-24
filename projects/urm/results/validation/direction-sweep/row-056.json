@@ -1,0 +1,43 @@
+{
+  "id": "arch-056",
+  "architecture": "FwPKM (Fast-Weight Product-Key Memory)",
+  "source_repo": "fwpkm",
+  "source_revision": "b1c8e234b523d70245fa197eed4b80a985c413a8",
+  "source_files": [
+    "/tmp/urm-comparator-pins/fwpkm/src/models/fwpkm/fwpkm.py"
+  ],
+  "equation_summary": "Read (per token): product-key address search — split query into halves, score each against two sub-key banks (dot_product OR default 'idw': -log(1e-3 + ||q-k||²), i.e. NOT an inner product), per-factor top-k, pairwise-additive combination, overall top-k; normalize selected scores with softmax/temperature (or silu/relu) over the JOINT heads*topk dimension; y = Σ_j w_j V[idx_j] (weighted embedding-bag sum, read-only). Write (per chunk): inner SGD on the fast weights — mem_loss = 0.5*MSE(retrieved, lookahead target ref_v, masked/gated); values-gradient via autograd, rescaled by num_samples*v_dim*topk*heads and divided by per-slot access counts (bincount, zeros->1), optional clip to [-1,1]; update V ← V - lr*(g + wd*V); keys get only the marginal-entropy addressing-loss gradient; create_graph=self.training (higher-order). Chunked queues with lookahead offset; cache is the signal queue plus in-place fast-weight commit.",
+  "state_shape": "fast-weight bank: values [S, v_dim] with S = subsize^2 slots; keys [2*heads*subsize, k_dim/2]; per-slot rows, read-only per token, updated per chunk by optimizer step",
+  "read_timing": "before-update",
+  "gate_scope": "none in the read; write side has external per-token loss gates/weights and masks",
+  "normalization": "softmax with temperature over the joint heads*topk selected set (score_transform); silu/relu non-softmax options; no state denominator",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM call graph: E[product-key address search/entropy] (get_indices + compute_addr_loss marginal entropy, fwpkm.py:871-934, 117-147) ; B[K1 selected-logit score/reducer] for the read (score_transform softmax + weighted embedding-bag sum, fwpkm.py:105-115, 149-198) ; E[fast-weight write/optimizer/cache] (update_fw inner SGD, fwpkm.py:266-367).",
+    "CONFIRM ledger blocker: the read-only fragment does not establish the write — verified: the write is a chunk-level inner SGD loop on an MSE memorization loss with access-count gradient normalization, weight decay, optional clipping and higher-order gradients (fwpkm.py:295-367), which does NOT equal the K3 token-ordered decayed-delta rule (no decay, no per-token delta, batch-coupled via bincount scaling and chunk lookahead queues). U3 promotion remains correctly blocked.",
+    "CORRECT (refinement): with the default qk_score_type='idw' the address score is -log(1e-3+||q-k||²), not a dot product — so even the E[product-key address search] stage is further from R.PK/K1's inner-product score than plain PKM; score computation stays external. Also the softmax normalizes over heads*topk jointly with temperature (fwpkm.py:179), and silu/relu reducer options would leave the K1 softmax reducer contract.",
+    "MISSING-BLOCKER (minor): the ledger does not note the lookahead target construction (update_ref from future ref_v positions, fwpkm.py:473-480, 690-697) and the signal-queue cache, which are required for any exact write-parity record."
+  ],
+  "direction": "axis",
+  "axis": "A-inner-optimization (typed inner optimizer state/update: closed loss + optimizer descriptor, higher-order gradients, checkpoint policy)",
+  "axis_clients": ["arch-039", "arch-055", "arch-056"],
+  "direction_justification": "The read fragment is representable (external PK address search + K1 softmax-over-selected-logs reducer), but the defining write law is an inner SGD optimization loop on fast weights — the same closed-property gap as 039/055 TTT, so it belongs to the inner-optimization axis; until that typed descriptor exists the write (and hence the full row) stays external, and it never maps to K3.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Is the values-only gradient mode (mem_grad_to_values_only=True, keys trained only by addr_loss) the canonical configuration for parity, or must both modes be typed?",
+    "Access-count gradient normalization (bincount division) couples all tokens in a chunk — does the typed optimizer descriptor admit such batch-coupled scaling?",
+    "Do the silu/relu score_nonlinear variants need to be in scope, or is the softmax configuration the frozen parity target?",
+    "fp32 fast weights (fp32_fw=True) with bf16 compute: dtype boundary must be explicit in any descriptor."
+  ],
+  "evidence_citations": [
+    "/tmp/urm-comparator-pins/fwpkm/src/models/fwpkm/fwpkm.py:853-869 — qk scores: dot_product or default idw (-log(1e-3+||q-k||²)), not an inner product in the default config",
+    "/tmp/urm-comparator-pins/fwpkm/src/models/fwpkm/fwpkm.py:904-923 — product-key search: per-factor topk, pairwise-additive combination, overall topk",
+    "/tmp/urm-comparator-pins/fwpkm/src/models/fwpkm/fwpkm.py:105-115,177-187 — softmax/temperature over joint heads*topk, weighted embedding-bag read (K1-style reducer over selected logits)",
+    "/tmp/urm-comparator-pins/fwpkm/src/models/fwpkm/fwpkm.py:266-272 — inner SGD update p ← p - lr*(g + wd*p)",
+    "/tmp/urm-comparator-pins/fwpkm/src/models/fwpkm/fwpkm.py:295-350 — mem_loss*0.5, autograd inner gradients with create_graph, num_samples*v_dim*topk*heads scaling, bincount per-slot normalization, optional clipping",
+    "/tmp/urm-comparator-pins/fwpkm/src/models/fwpkm/fwpkm.py:464-509 — chunk-coupled write with lookahead target construction and gated/masked MSE",
+    "/tmp/urm-comparator-pins/fwpkm/src/models/fwpkm/fwpkm.py:560-820 — signal-queue cache and deferred update in streaming (forward_w_past)"
+  ]
+}

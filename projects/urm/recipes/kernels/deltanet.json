@@ -1,0 +1,45 @@
+{
+  "schema_version": 2,
+  "name": "deltanet",
+  "kind": "kernel_fragment",
+  "architecture_ids": ["arch-025"],
+  "component_scope": "canonical delta-rule state (no decay): M_t = M_(t-1) + k_t beta_t (v_t - k_t^T M_(t-1))^T, read after update",
+  "required_external_stages": [
+    "Q/K/V projections",
+    "key normalization",
+    "beta projection"
+  ],
+  "graph": {
+    "inputs": [
+      {"name": "query", "dtype": "float32", "shape": ["B", "H", "T", "K"]},
+      {"name": "key", "dtype": "float32", "shape": ["B", "H", "T", "K"]},
+      {"name": "value", "dtype": "float32", "shape": ["B", "H", "T", "V"]},
+      {"name": "beta", "dtype": "float32", "shape": ["B", "H", "T"]},
+      {"name": "log_decay", "dtype": "float32", "shape": ["B", "H", "T"]},
+      {"name": "initial_state", "dtype": "float32", "shape": ["B", "H", "K", "V"]}
+    ],
+    "nodes": [
+      {
+        "id": "delta_state",
+        "op": "linear_delta_state",
+        "inputs": ["query", "key", "value", "beta", "log_decay", "initial_state"],
+        "outputs": ["output", "final_state"],
+        "params": {
+          "delta": true,
+          "gate_scope": "none",
+          "read_timing": "after_update",
+          "scale_rule": "key_dim_rsqrt",
+          "roles": {
+            "query": "query",
+            "key": "key",
+            "value": "value",
+            "beta": "beta",
+            "log_decay": "log_decay",
+            "initial_state": "initial_state"
+          }
+        }
+      }
+    ],
+    "outputs": ["output", "final_state"]
+  }
+}

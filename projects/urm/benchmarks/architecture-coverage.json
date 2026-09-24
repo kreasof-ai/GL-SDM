@@ -1106,7 +1106,7 @@
    },
    "callable": "resolve_before_execution",
    "tolerances": "freeze_before_execution",
-   "prototype_status": "pending_graph_migration",
+   "prototype_status": "kernel_prototype_only",
    "kernel_upstream_parity_status": "measured_pass",
    "kernel_upstream_profile_status": "measured_pass",
    "kernel_upstream_comparison": {
@@ -1133,7 +1133,13 @@
     ],
     "performance_gate_fraction": 0.1,
     "scope": "compiled K2 kernel slice; architecture gate/projection stages remain external"
-   }
+   },
+   "prototype_kernel": "K2_state_recurrence",
+   "prototype_scope": "Reference-tier public graph path (canonical K2 linear-delta law); forward+backward through compile_graph/BoundGraphPlan. Native schedule is a separate tier.",
+   "prototype_validated_anchors": [
+    "urm.unified.k2.state_reference.v1"
+   ],
+   "prototype_reference_test": "tests/test_graph_vertical_slice.py::test_every_graph_recipe_runs_forward_and_backward_through_the_graph_path"
   },
   {
    "id": "arch-020",
@@ -1384,7 +1390,7 @@
    },
    "callable": "resolve_before_execution",
    "tolerances": "freeze_before_execution",
-   "prototype_status": "pending_graph_migration",
+   "prototype_status": "kernel_prototype_only",
    "kernel_upstream_parity_status": "measured_pass",
    "kernel_upstream_profile_status": "measured_pass",
    "kernel_upstream_comparison": {
@@ -1411,7 +1417,13 @@
     ],
     "performance_gate_fraction": 0.1,
     "scope": "compiled K2 kernel slice; architecture gate/projection stages remain external"
-   }
+   },
+   "prototype_kernel": "K2_state_recurrence",
+   "prototype_scope": "Reference-tier public graph path (canonical K2 linear-delta law); forward+backward through compile_graph/BoundGraphPlan. Native schedule is a separate tier.",
+   "prototype_validated_anchors": [
+    "urm.unified.k2.state_reference.v1"
+   ],
+   "prototype_reference_test": "tests/test_graph_vertical_slice.py::test_every_graph_recipe_runs_forward_and_backward_through_the_graph_path"
   },
   {
    "id": "arch-026",

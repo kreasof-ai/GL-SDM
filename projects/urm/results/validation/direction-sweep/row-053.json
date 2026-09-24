@@ -1,0 +1,37 @@
+{
+  "id": "arch-053",
+  "architecture": "Samba",
+  "source_repo": "samba",
+  "source_revision": "617c7a0f8c71f1b7cb6180b86f9543d146f5c66f",
+  "source_files": ["lit_gpt/model.py"],
+  "equation_summary": "Block has TWO arrangement modes. Mode 1 (per-layer mixer selection, Block.__init__ lines 318-339): attn_layer_pos overrides; else periodic tests set use_mamba (idx%mb_per_layer==0), use_retnet (idx%ret_per_layer==0 -> MultiScaleRetention), use_gla (idx%gla_per_layer==0 -> GatedLinearAttention); unmatched layers fall to CausalSelfAttention. Mode 2 (mamba_swa_mlp, lines 310-314, 357-361): ONE block runs Mamba(norm_m(x))+x THEN attention(norm_attn(x))+x, two norms and two residuals in one block. Attention branch = softmax SDPA (causal, optional local window via flash_attn window_size) = U1.S; RetNet/GLA = U2.A; Mamba = selective SSM (separate axis).",
+  "state_shape": "attention/GQA branch [B,S,H_kv,D] KV cache; RetNet/GLA [B,H,K,V] matrix state; Mamba selective-SSM state",
+  "read_timing": "n-a",
+  "gate_scope": "data-dependent",
+  "normalization": "softmax (attention branch only)",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM ledger graph 'config-derived ordered Block list; each Block = E[norm]; selected mixer call(s)' and the worked configuration rule (section after 078) both match model.py Block with two modes",
+    "CONFIRM both arrangement modes from source: per-layer selection (320-339) and mamba_swa_mlp running Mamba then attention in one Block (357-361)",
+    "CONFIRM attention branch is U1.S (scaled_dot_product_attention / flash_attn causal, line 565-599), retention->MultiScaleRetention and GLA->GatedLinearAttention are U2.A",
+    "CORRECT Mamba branch is NOT U2.A; it is the selective-SSM law requiring the Mamba axis (A8), so the mamba_swa_mlp and use_mamba configs are gated on that axis, not merely B[K2_graph_execution]"
+  ],
+  "direction": "composition-now",
+  "axis": "A8 selective SSM (Mamba axis) for the use_mamba / mamba_swa_mlp configs only",
+  "axis_clients": ["arch-043", "arch-044", "arch-053"],
+  "direction_justification": "The attention/retention/GLA configs are plain U1.S / U2.A composition with config-derived scheduling, but any config that selects Mamba (including mamba_swa_mlp) is gated on the Mamba selective-SSM axis, so this split is recorded honestly.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Exact precedence when multiple periodic divisors coincide for a layer (use_mamba tested first at line 326) and whether attn_layer_pos uses eval() on a config string (line 321) — config-derived ordering must be reproduced exactly",
+    "Attention KV cache is shared across the two sub-mixers in mamba_swa_mlp via kv_cache pass-through (line 359-360); Mamba inference cache ABI is a TODO in source"
+  ],
+  "evidence_citations": [
+    "lit_gpt/model.py:310-314 — mamba_swa_mlp builds self.mb=Mamba and self.attn=CausalSelfAttention with norm_m/norm_attn",
+    "lit_gpt/model.py:357-361 — forward runs x=mb(norm_m(x))+x then h=attn(norm_attn(x)) ; x=h+x (two residuals, one block)",
+    "lit_gpt/model.py:320-339 — per-layer selection: attn_layer_pos eval, use_mamba/use_retnet/use_gla periodic, else CausalSelfAttention",
+    "lit_gpt/model.py:565-599 — scaled_dot_product_attention causal + optional local window = U1.S",
+    "lit_gpt/model.py:334-337 — MultiScaleRetention and GatedLinearAttention (U2.A) branches"
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "id": "arch-033",
+  "architecture": "Gated Oja rule",
+  "source_repo": "fla",
+  "source_revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": [
+    "fla/ops/gated_oja_rule/fused_recurrent.py",
+    "fla/ops/gated_oja_rule/chunk.py",
+    "fla/ops/gated_oja_rule/chunk_kkt.py"
+  ],
+  "equation_summary": "Per token (fused_recurrent.py:99-107): h <- h * exp(gv_t) where gv_t is per-VALUE-channel log decay ([V] per value head); k_tilde = beta_t * (k_t - h v_t) — an Oja correction subtracting the state-read along the VALUE vector v (not the delta-rule key read k^T S); h <- h + k_tilde ⊗ v_t; o_t = (scale*q_t)^T h, read after update. beta may be headwise scalar or per-V-channel (IS_BETA_HEADWISE flag, fused_recurrent.py:93-96); optional q/k L2-norm in kernel. The update's correction contracts the state along the value axis — the transpose orientation of the canonical delta correction.",
+  "state_shape": "[B,HV,K,V] matrix",
+  "read_timing": "after-update",
+  "gate_scope": "channel",
+  "normalization": "none",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM call graph E[QKV/gates] ; B[K2 value-channel decay+Oja correction] ; E[output]: decay gv is per-VALUE channel (fused_recurrent.py:67,101) and the correction is the Oja term k - h v (fused_recurrent.py:103) — both differ from the canonical K-axis delta descriptor, as the blocker names.",
+    "CONFIRM 'exact update ordering and backward envelope' blocker is well-placed: the chunk path builds the KKT system over (v, gv) pairs (chunk.py:41-55 uses chunk_scaled_dot_kkt_fwd with k=v, gk=gv) and the fused_recurrent backward is explicitly NOT implemented (fused_recurrent.py:213-218) — backward envelope is genuinely unresolved upstream.",
+    "MISSING-BLOCKER minor: the IS_BETA_HEADWISE vs per-channel beta and use_q/k_l2norm kernel flags (fused_recurrent.py:43-45) are operand/numerical-policy variants the descriptor must record; covered under 'exact update ordering' but worth naming."
+  ],
+  "direction": "axis",
+  "axis": "A8 alternate rank-1 correction orientation (value-axis decay + Oja correction contracting state along the value vector)",
+  "axis_clients": ["arch-033"],
+  "direction_justification": "Value-channel decay plus the Oja correction k - h v is a closed typed variant of the rank-1 update law (transpose orientation of delta), single-client today but composable with the delta family in principle; descriptor + references first, with the backward envelope explicitly open upstream.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "The fused_recurrent backward is unimplemented upstream (fused_recurrent.py:213-218) — the VJP for gv may require materializing all hidden states; whether a chunk-path backward exists with a qualified envelope must be established before any admission.",
+    "Whether beta headwise vs per-channel and the in-kernel L2 norms are descriptor numerical-policy fields or external operand transforms."
+  ],
+  "evidence_citations": [
+    "fla/ops/gated_oja_rule/fused_recurrent.py:99-107 - h *= exp(gv) on the value axis; k_tilde = beta*(k - h·v); h += k_tilde⊗v; read after update",
+    "fla/ops/gated_oja_rule/fused_recurrent.py:67-71 - gv indexed per value channel; beta either headwise or per-V-channel (IS_BETA_HEADWISE)",
+    "fla/ops/gated_oja_rule/fused_recurrent.py:213-218 - backward explicitly not implemented upstream; dg requires full hidden-state materialization",
+    "fla/ops/gated_oja_rule/chunk.py:41-55 - chunk path forms the KKT system over (v, gv, beta) then solve_tril — distinct WY system from delta rule"
+  ]
+}

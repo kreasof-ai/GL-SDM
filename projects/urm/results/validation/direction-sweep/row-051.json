@@ -1,0 +1,42 @@
+{
+  "id": "arch-051",
+  "architecture": "MoM (Mixture of Memories)",
+  "source_repo": "fla",
+  "source_revision": "pinned /tmp/urm-comparator-pins/fla",
+  "source_files": [
+    "/tmp/urm-comparator-pins/fla/fla/layers/mom.py",
+    "/tmp/urm-comparator-pins/fla/fla/ops/gated_delta_rule/naive.py"
+  ],
+  "equation_summary": "Router: softmax over gate(x) logits -> top-k memories per token, weights renormalized to sum 1; tokens are packed per memory (transform(): sort by (batch, memory), pad to per-memory max_len, producing variable-length streams per memory with cu_seqlens). Each selected memory runs the gated delta rule (chunk_gated_delta_rule, use_qk_l2norm_in_kernel=True, state_v_first=True): M_t = exp(g_t)*M_{t-1} + k_t δ_tᵀ with δ_t = β_t(v_t - k_tᵀ(exp(g_t)M_{t-1})) per memory-expert stream, per-expert k/v/beta/a projections (or shared when single_kv_proj). Merge is external: reconstruct() scatter-adds per-memory outputs back to token positions, weights by routing_weights and sums over topk. Optional shared_mem adds a full-sequence gated-delta output over all tokens.",
+  "state_shape": "per-memory gated-delta matrix state [K,V] (state_v_first layout) per head per memory, plus per-expert conv states; variable-length packed streams",
+  "read_timing": "after-update",
+  "gate_scope": "data-dependent scalar-per-head log-decay g=-exp(A_log)*softplus(a_proj(x)+dt_bias) and beta=sigmoid(b_proj(x)) per memory expert",
+  "normalization": "router softmax + top-k renormalization; qk l2norm inside kernel; FusedRMSNormGated output; no state denominator",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM call graph: E[router/top-k/pack] (mom.py:471-492 transform) ; parallel U2.D per selected memory (chunk_gated_delta_rule per memory stream, mom.py:595-607 — the canonical gated delta law = U2.D with scalar-per-head gate) ; E[merge/shared memory/output] (reconstruct scatter-add weighted merge mom.py:645-646, shared_mem branch mom.py:649-652).",
+    "CONFIRM blockers: route ownership (router + transform/reconstruct live outside the mixer), variable stream lengths (per-memory packed cu_seqlens), expert state/cache (per-memory recurrent_state plus conv state shuffling via prepare/handle_recurrent_state), router gradients (through routing_weights into the merge), and no ungated one-stream equivalence.",
+    "CONFIRM the merge is external: it is a pure typed scatter-add + weighted sum over topk (reconstruct, mom.py:215-287), an ordinary indexed operator — not a combinator needing admission; likewise the pack (argsort/gather/pad) is external.",
+    "CORRECT (refinement): the ledger says 'parallel U2.D' — exactly right in law (gated delta), but execution is a single packed varlen call over concatenated per-memory streams with cu_seqlens, plus per-stream initial/final state gather/scatter; the URM graph must model it as per-memory U2.D calls with per-memory states or as a varlen batched U2.D, and the cache shuffling (mom.py:824-860) is external."
+  ],
+  "direction": "combinator",
+  "axis": null,
+  "axis_clients": ["arch-051", "arch-059"],
+  "direction_justification": "MoM is a family-generic routed-expert composition: external top-k router and pack/unpack around N independent U2.D (gated delta rule) calls with an external weighted scatter-add merge — the same shape as top-k MoE (059) with mixers as experts, so it admits as an IR graph structure once B[K2_graph_execution] exists.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Variable per-memory stream lengths and per-memory initial/final state gather/scatter: is a varlen U2.D descriptor (cu_seqlens + per-stream state slots) a closed typed property, or does each memory need a separate U2.D call with its own state handle?",
+    "shared_mem branch adds a second full-sequence U2.D summed with the merged output — confirm both branches' state lifetimes in cache (recurrent_state[0] vs recurrent_state[-1]).",
+    "Router gradient path goes only through the merge weights (routing_weights) and routing_mask; confirm no gradient through selected_memories indices is required."
+  ],
+  "evidence_citations": [
+    "/tmp/urm-comparator-pins/fla/fla/layers/mom.py:471-483 — softmax router, top-k, renormalized routing weights, routing mask",
+    "/tmp/urm-comparator-pins/fla/fla/layers/mom.py:123-212 — transform(): sort/pack tokens per memory into variable-length padded streams",
+    "/tmp/urm-comparator-pins/fla/fla/layers/mom.py:595-607 — chunk_gated_delta_rule per packed memory stream (canonical gated delta law, qk-l2norm, state_v_first)",
+    "/tmp/urm-comparator-pins/fla/fla/layers/mom.py:215-287 — reconstruct(): external scatter-add + routing-weight merge over topk",
+    "/tmp/urm-comparator-pins/fla/fla/layers/mom.py:649-652,736-760 — optional shared_mem full-sequence gated-delta branch added to merged output",
+    "/tmp/urm-comparator-pins/fla/fla/layers/mom.py:824-860 — external per-memory recurrent-state gather/scatter for cache continuation"
+  ]
+}

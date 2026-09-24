@@ -160,6 +160,57 @@ class RouteSpec:
         return self.selection is SelectionKind.THRESHOLD
 
 
+class K2GateScope(StrEnum):
+    """Granularity of the K2 diagonal decay gate G_t (a semantic field)."""
+
+    NONE = "none"
+    SCALAR = "scalar"
+    HEAD = "head"
+    CHANNEL = "channel"
+
+
+class K2ReadTiming(StrEnum):
+    """K2 canonical law reads after the update; before-update is a distinct descriptor."""
+
+    AFTER_UPDATE = "after_update"
+    BEFORE_UPDATE = "before_update"
+
+
+class K2ScaleRule(StrEnum):
+    """How the K2 read scale is determined (a semantic field)."""
+
+    ONE = "one"
+    KEY_DIM_RSQRT = "key_dim_rsqrt"
+    EXPLICIT_OPERAND = "explicit_operand"
+
+
+@dataclass(frozen=True, slots=True)
+class LinearDeltaSpec:
+    """The closed K2 compact fixed-address ordered-state equation contract.
+
+    Canonical law per independent partition (see docs/kernels/linear-delta.md):
+    ``Z_t = G_t M_(t-1)``; ``h_t = k_tᵀ Z_t``; ``δ_t = β_t(v_t − c·h_t)``;
+    ``M_t = Z_t + k_t δ_tᵀ``; ``y_t = scale · q_tᵀ M_t``. ``c=0`` is additive,
+    ``c=1`` is delta correction. Decay precedes retrieval and the canonical read
+    is after the update. Gate scope, read timing, output scale and the
+    accumulation policy are semantic fields — nothing is inferred at runtime.
+    """
+
+    delta: bool = True  # c ∈ {0, 1}: False = additive, True = delta correction
+    gate_scope: K2GateScope = K2GateScope.NONE
+    read_timing: K2ReadTiming = K2ReadTiming.AFTER_UPDATE
+    scale_rule: K2ScaleRule = K2ScaleRule.ONE
+    normalized: bool = False  # a normalized variant carries a denominator state
+    epsilon: float = 1e-6
+    accumulation_dtype: DType = DType.FLOAT32
+
+    def __post_init__(self) -> None:
+        if self.normalized and self.epsilon <= 0:
+            raise ValueError("a normalized K2 variant requires epsilon > 0")
+        if self.accumulation_dtype is not DType.FLOAT32:
+            raise ValueError("K2 v1 requires float32 accumulation")
+
+
 class SparseScoreComposition(StrEnum):
     """Closed score-composition vocabulary for sparse route production."""
 
@@ -341,6 +392,54 @@ class SparseStateMixerSpec:
             raise ValueError("SparseStateMixer v0 uses one logical slot per page")
 
 
+class K1ScaleRule(StrEnum):
+    """How the K1 score scale is determined (a semantic field, never runtime math)."""
+
+    KEY_DIM_RSQRT = "key_dim_rsqrt"
+    EXPLICIT_OPERAND = "explicit_operand"
+
+
+class K1HeadMap(StrEnum):
+    """Query→KV head sharing law. MHA/MQA/GQA differ by this field only."""
+
+    SHARED = "shared"
+    EQUAL = "equal"
+    SINGLE = "single"
+    GROUPED = "grouped"
+
+
+@dataclass(frozen=True, slots=True)
+class K1Descriptor:
+    """The closed softmax-attention equation contract for one K1 node.
+
+    Every semantic choice the K1 kernel contract makes is a typed field here:
+    the score scale law, the query→KV head map, masking/position policy, the
+    all-masked-row behavior and the accumulation/cast policy. Nothing about the
+    equation is inferred from tensor names, shapes, or defaults at execution
+    time.
+    """
+
+    scale_rule: K1ScaleRule = K1ScaleRule.KEY_DIM_RSQRT
+    head_map: K1HeadMap = K1HeadMap.SHARED
+    group_size: int | None = None
+    causal: bool = False
+    score_bias: bool = False
+    attention_mask: bool = False
+    masked_row: str = "zero"  # closed edge policy: fully masked rows return zero
+    accumulation_dtype: DType = DType.FLOAT32
+
+    def __post_init__(self) -> None:
+        if self.head_map is K1HeadMap.GROUPED:
+            if not (isinstance(self.group_size, int) and self.group_size >= 1):
+                raise ValueError("grouped head map requires a positive group_size")
+        elif self.group_size is not None:
+            raise ValueError("group_size is only legal with the grouped head map")
+        if self.masked_row != "zero":
+            raise ValueError("the only defined all-masked-row policy is 'zero'")
+        if self.accumulation_dtype is not DType.FLOAT32:
+            raise ValueError("K1 v1 requires float32 accumulation")
+
+
 @dataclass(frozen=True, slots=True)
 class EpilogueSpec:
     """Typed, constrained epilogue attached to a reduction anchor.
@@ -402,11 +501,19 @@ class Gather(SemanticOp):
 
 @dataclass(frozen=True, slots=True)
 class WeightedReduce(SemanticOp):
-    """``out[q, d] = sum_k w[q, k] * gathered[q, k, d]`` over the route width."""
+    """``out[q, d] = sum_k w[q, k] * gathered[q, k, d]`` over the route width.
+
+    ``roles`` binds the closed K1 role vocabulary (``query``, ``key``,
+    ``value``, optional ``score_bias``/``attention_mask``/``scale``) to the
+    graph edges named in ``inputs``; an empty mapping is the legacy positional
+    form. ``k1`` carries the closed equation contract for softmax nodes.
+    """
 
     spec: RouteSpec
     epilogue: EpilogueSpec | None = None
     shape_hint: tuple[int, int, int, int] | None = None
+    roles: tuple[tuple[str, str], ...] = ()
+    k1: K1Descriptor | None = None
 
     @property
     def effect(self) -> EffectSignature:
@@ -508,6 +615,26 @@ class SparseStateMixerAccess(SemanticOp):
 
 
 @dataclass(frozen=True, slots=True)
+class LinearDeltaState(SemanticOp):
+    """K2 compact fixed-address ordered-state access with a closed descriptor.
+
+    ``roles`` binds the closed K2 role vocabulary (``query``, ``key``,
+    ``value``, ``beta``, ``log_decay``, ``initial_state``, optional ``scale``)
+    to the graph edges named in ``inputs``. Outputs are ``(reading,
+    final_state)``; a normalized variant additionally carries the denominator
+    state. The node owns ordered-state effects; the exact equation is the
+    closed descriptor, not a backend choice.
+    """
+
+    spec: LinearDeltaSpec
+    roles: tuple[tuple[str, str], ...] = ()
+
+    @property
+    def effect(self) -> EffectSignature:
+        return ORDERED_STATE
+
+
+@dataclass(frozen=True, slots=True)
 class CollectiveExchange(SemanticOp):
     """Collective semantic intent over a named mesh axis."""
 
@@ -527,6 +654,7 @@ SemanticNode = (
     | Matmul
     | Transform
     | OrderedRecurrence
+    | LinearDeltaState
     | StateRead
     | StateUpdate
     | SparseRouteGeneration

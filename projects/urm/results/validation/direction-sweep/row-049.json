@@ -1,0 +1,39 @@
+{
+  "id": "arch-049",
+  "architecture": "GSA (Gated Slot Attention)",
+  "source_repo": "fla",
+  "source_revision": "pinned /tmp/urm-comparator-pins/fla",
+  "source_files": [
+    "/tmp/urm-comparator-pins/fla/fla/ops/gsa/naive.py",
+    "/tmp/urm-comparator-pins/fla/fla/layers/gsa.py"
+  ],
+  "equation_summary": "Same two-stage slot-summary architecture as ABC but with an explicitly supplied per-slot log-decay g (the layer computes f = logsigmoid(f_proj(x))/gate_logit_normalizer, then s = 1 - exp(f), and passes g=f). Stage 1: hk_t = hk_{t-1}*exp(g_t)[None,:] + k_t ⊗ s_t; ok_t = (scale*q_t)ᵀ hk_t; interstage qv_t = softmax(ok_t) (external). Stage 2: hv_t = hv_{t-1}*exp(g_t)[:,None] + s_t ⊗ v_t; o_t = qv_tᵀ hv_t. Both stages are additive (c=0) per-slot-decayed accumulations with after-update read; gates are data-dependent channel-scope and are NOT derived from cumulative softmax inside the op (unlike ABC's g=None path).",
+  "state_shape": "two matrices per head: hk [K,M] (key x slot) and hv [M,V] (slot x value)",
+  "read_timing": "after-update",
+  "gate_scope": "channel (per-slot) data-dependent log-decay g supplied externally (logsigmoid/normalizer provenance); identical gate in both stages",
+  "normalization": "external interstage softmax over slots; stage-1 write gates s = 1-exp(g) (bounded complement of decay); no denominator state",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM call graph E[QKV/slot gates] ; B[K2 stage-1] ; E[slot softmax] ; B[K2 stage-2] ; E[output] matches naive_recurrent_gsa (naive.py:47-67) and the layer's g/s production (layers/gsa.py:186-198).",
+    "CONFIRM ledger blocker 'compare ABC/GSA state and gate semantics before any shared descriptor': verified — ABC (g=None path) derives g from logcumsumexp(s) and renormalizes s to cumulative softmax, whereas GSA receives g externally and sets s=1-exp(g); the transition algebra is identical but gate provenance and write-gate semantics differ, so a shared descriptor must parameterize gate provenance.",
+    "CORRECT (refinement, same as ABC): both stages are additive U2.A-with-channel-decay, not the canonical delta law U2.D — no retrieval correction term appears in either stage.",
+    "CONFIRM GQA-style num_kv_groups repetition of k,v,s,g across query groups (naive.py:31) is an external head-map concern."
+  ],
+  "direction": "combinator",
+  "axis": null,
+  "axis_clients": ["arch-048", "arch-049", "arch-050", "arch-074"],
+  "direction_justification": "GSA is the same family-generic two-call composition as ABC (two additive channel-decayed K2 calls joined by an external interstage softmax over the first call's output); the distinct gate provenance is an external operand, so admission is as a typed cross-call graph structure, not a new core mixer or axis.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Do chunk_gsa / fused_recurrent_gsa reproduce the naive two-pass equations exactly (including the shared g and the s=1-exp(g) coupling) under chunked evaluation?",
+    "Should the shared-decay operand be modeled as one typed state edge reused by both calls or recomputed per call (identical values, different VJP paths)?"
+  ],
+  "evidence_citations": [
+    "/tmp/urm-comparator-pins/fla/fla/ops/gsa/naive.py:47-53 — stage 1 additive slot-summary with per-slot decay and after-update read",
+    "/tmp/urm-comparator-pins/fla/fla/ops/gsa/naive.py:55-67 — interstage softmax plus stage 2 value summary with the same decay and s as keys",
+    "/tmp/urm-comparator-pins/fla/fla/layers/gsa.py:186-198 — external gate provenance: f=logsigmoid(f_proj)/8, s=1-exp(f)",
+    "/tmp/urm-comparator-pins/fla/fla/ops/gsa/naive.py:27-30 — when g is None the ABC-style logcumsumexp derivation is shared code, confirming the only ABC/GSA difference is gate provenance"
+  ]
+}

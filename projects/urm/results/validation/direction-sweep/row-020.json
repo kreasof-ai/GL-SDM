@@ -1,0 +1,33 @@
+{
+  "id": "arch-020",
+  "architecture": "Based",
+  "source_repo": "fla",
+  "source_revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": ["fla/ops/based/naive.py", "fla/layers/based.py"],
+  "equation_summary": "Based applies a second-order Taylor feature map phi to q,k (external) so that exp(q.k) ≈ 1 + q.k + (q.k)^2/2, then runs normalized linear attention: numerator o = cumsum over phi(q)(phi(k)^T v), denominator z = sum of the feature-map attention row, output o/(z + 1e-6). The recurrent/chunk path uses explicit TaylorFeatureMap + chunk_linear_attn(normalize=True); the parallel path computes the implicit 1+x+x^2/2 kernel directly. There is no decay (G=I).",
+  "state_shape": "[B,H,K,V] matrix (expanded feature-dim state); plus a [B,H,K_feat] denominator cumulative state",
+  "read_timing": "after-update",
+  "gate_scope": "none",
+  "normalization": "denominator-state with explicit epsilon (1e-6) division",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM E[QKV/Taylor-2 feature map]: TaylorFeatureMap is applied externally before chunk_linear_attn; the parallel kernel uses the implicit 1+x+x^2/2 form",
+    "CONFIRM numerator || denominator U2.A with external division: o/(z+1e-6) with z = row-sum denominator state",
+    "CONFIRM blockers: prove feature map and denominator equivalence; cost expanded state — the Taylor expansion enlarges the feature/state dimension"
+  ],
+  "direction": "composition-k2-gated",
+  "axis": null,
+  "axis_clients": ["arch-020", "arch-015", "arch-021"],
+  "direction_justification": "Based is U2.A (numerator) plus a U2.A denominator state with external Taylor-2 feature map and epsilon division; the only caveat is the enlarged feature state cost, which the ledger already records.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "The feature map expands the effective K dimension (1 + d + d^2/2 terms); the expanded-state cost must be measured before any native claim, as the ledger notes."
+  ],
+  "evidence_citations": [
+    "fla/ops/based/naive.py:22-29 — attn = 1 + qk + (qk)^2/2, masked tril; o = attn@v; z = attn.sum(-1); o/(z+1e-6): implicit Taylor-2 kernel with denominator normalization",
+    "fla/layers/based.py:78 — TaylorFeatureMap(head_dim); lines 99-107 — parallel uses implicit kernel, chunk path applies feature_map then chunk_linear_attn(normalize=True)",
+    "fla/layers/based.py:130 — reference: (q*(k*v).cumsum).sum / ((q*k.cumsum).sum + eps): numerator/denominator linear-attention form"
+  ]
+}

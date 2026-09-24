@@ -1,0 +1,31 @@
+{
+  "id": "arch-014",
+  "architecture": "BitAttention",
+  "source_repo": "fla + flash",
+  "source_revision": "fla@864a87f6ce5be8828bef81eb22baafd41937cdf2, flash@1bda8f9290cd48d030f1516f0e680cd464ef3554",
+  "source_files": ["fla/layers/bitattn.py", "flash_attn/flash_attn_interface.py"],
+  "equation_summary": "External FusedBitLinear projections produce q, k, v (and the output projection), rotary is applied externally, and the mixer is plain causal softmax attention (flash_attn_func/varlen with optional sliding window) with GQA head mapping. The BitLinear quantization and its gradient policy live entirely in the external module; the K1 call sees ordinary dense q/k/v tensors.",
+  "state_shape": "external KV cache (flattened head layout) managed by the layer",
+  "read_timing": "n-a",
+  "gate_scope": "none",
+  "normalization": "softmax",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM E[BitLinear QKV and its gradient policy/RoPE] ; U1.S ; E[output/cache] matches fla/layers/bitattn.py: q/k/v/o are FusedBitLinear, rotary external, then flash_attn causal/windowed softmax.",
+    "CONFIRM the blocker: full quantized projection and cache parity are external concerns, and no BitLinear code may enter K1 — the mixer call itself is exactly U1.S."
+  ],
+  "direction": "composition-now",
+  "axis": null,
+  "axis_clients": [],
+  "direction_justification": "The mixer is exactly U1.S; BitLinear projections, their gradient policy and RoPE are all external ordinary operators, so only an external module and recipe are needed.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": ["Parity of the quantized-projection forward/backward against the pinned BitLinear implementation is an external-module evidence item, not a core blocker."],
+  "evidence_citations": [
+    "fla/layers/bitattn.py:69-72 — q/k/v/o projections are FusedBitLinear (external).",
+    "fla/layers/bitattn.py:113 — rotary applied externally before the mixer.",
+    "fla/layers/bitattn.py:159-163 — flash_attn_func(q,k,v,causal=True,window_size=...) is the entire mixer.",
+    "flash_attn/flash_attn_interface.py:1156-1173 — flash_attn_func ABI: softmax attention with GQA head broadcast."
+  ]
+}

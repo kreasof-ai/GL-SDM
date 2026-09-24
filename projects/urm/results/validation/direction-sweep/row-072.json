@@ -1,0 +1,40 @@
+{
+  "id": "arch-072",
+  "architecture": "Sparse Transformer",
+  "source_repo": "sparse_transformer",
+  "source_revision": "c53f3bdbf6225be0582f0357072e82b13c69be7d",
+  "source_files": [
+    "attention.py"
+  ],
+  "equation_summary": "Plain causal softmax attention w = softmax((q·kᵀ)·(1/sqrt(d))·mask − 1e9·(1−mask)) · v (attention_impl, fp32 upcast for fp16) with four exact static sparsity patterns: 'all' = causal band (matrix_band_part lower triangle); 'local' = causal band of bandwidth local_attn_ctx; 'strided' = keys j with j ≤ i and (i−j) mod stride == 0 (implemented blockwise on a strided-transposed layout); 'fixed' = per-head block layout where each query block attends to its local block row plus specific strided columns (layout[q, idx::stride]) with causal cut-off, heads cycling through num_verts sub-patterns. The blocksparse path uses a block-level layout plus a positionwise mask callback (diagonal blocks lower-triangular; local blocks banded).",
+  "state_shape": "none (TF1 session graph, full recompute)",
+  "read_timing": "n-a",
+  "gate_scope": "none",
+  "normalization": "softmax with -1e9 additive mask (finite, not -inf)",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM `E[QKV/source all/local/strided/fixed pattern] ; U1.S[exact blocks] ; E[output]`: attention.py:8-29 (get_attn_mask) defines exact all/local/strided masks and attention.py:114-182 (get_blocksparse_obj) defines the fixed per-head block layouts; the mixer itself is stock softmax (attention.py:76-86, 100-104).",
+    "CONFIRM 'B[indexed_K1_schedule]; compare optimized source traversal, not dense masked SDPA': the source's optimized path is the blocksparse kernels over an explicit block layout (attention.py:90-111), so efficient URM coverage needs the indexed-K1 schedule; the dense attention_impl is only the correctness oracle.",
+    "NOTE: 'strided' is realized by a data-layout transpose (strided_transpose, attention.py:32-39) feeding block-diagonal block chunks — the logical source pattern is the (q−k) mod stride == 0 set; the transpose is a physical-schedule detail that the descriptor must not bake into semantics.",
+    "NOTE: masking uses finite -1e9 rather than -inf (attention.py:82) — a numerical-policy difference from U1.S defaults that parity tests must match."
+  ],
+  "direction": "axis",
+  "axis": "A2 locality routing / indexed K1 schedule (B[indexed_K1_schedule])",
+  "axis_clients": ["arch-005", "arch-006", "arch-007", "arch-071", "arch-072"],
+  "direction_justification": "The mixer is exactly U1.S restricted to exact static block patterns; only the indexed traversal/schedule property is missing — no new reducer semantics.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "The 'fixed' pattern is defined only through the block-layout construction with num_verts/vertsize head cycling (attention.py:134-167); the closed per-head index-set descriptor must be derived from this code, not the paper prose.",
+    "Recomputation decorator (@recomputable) and TF1 execution are irrelevant to semantics but affect the reference harness.",
+    "blocksize divisibility constraints (n_ctx % blocksize, local_attn_ctx % blocksize) bound the legal shape envelope."
+  ],
+  "evidence_citations": [
+    "attention.py:8-29 — get_attn_mask: exact all/local/strided logical masks (strided = causal ∧ (q−k) mod stride == 0)",
+    "attention.py:69-87 — attention_impl: softmax(q·kᵀ/√d ·mask −1e9(1−mask))·v, fp32 upcast",
+    "attention.py:114-182 — get_blocksparse_obj: block layouts for all/local/strided/fixed incl. per-head fixed layouts with causal cut-off",
+    "attention.py:185-212 — get_callback: positionwise mask within enabled blocks (diagonal lower-tri, local bandwidth)",
+    "attention.py:90-111 — blocksparse_attention_impl: query_key_op → masked_softmax → weight_value_op over the block layout; strided via layout transpose"
+  ]
+}

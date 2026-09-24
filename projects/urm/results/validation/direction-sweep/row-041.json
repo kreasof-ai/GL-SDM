@@ -1,0 +1,37 @@
+{
+  "id": "arch-041",
+  "architecture": "RWKV-6",
+  "source_repo": "fla",
+  "source_revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": [
+    "fla/ops/rwkv6/recurrent_naive.py",
+    "fla/ops/rwkv6/chunk_naive.py"
+  ],
+  "equation_summary": "RWKV-6 keeps a matrix state h in [B,H,K,V]. With kv_i = k_i ⊗ v_i and per-channel decay w_i=w[i].exp(): the output is o_i = sum_K( (h + u * kv_i) * q_i*scale ), i.e. h PLUS a static bonus u*kv_i on the current token's outer product, THEN the state updates h = h*w_i + kv_i. The read uses h from the previous step (before the additive kv_i commit) augmented by the data-independent bonus u*kv_i; the bonus u is a static per-head [K] vector, not state. The chunked form (chunk_naive.py:45) computes intra_intra_o = (q_i*u*k_i).sum * v_i as a separate diagonal term.",
+  "state_shape": "[B,H,K,V] matrix state h plus static bonus u (per-head [K], not part of state)",
+  "read_timing": "before-update",
+  "gate_scope": "channel (per-channel decay w_i.exp())",
+  "normalization": "none",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM ledger call graph `E[time mix/projections] ; B[K2 channel decay+static bonus read] ; E[output gate]` — time-mix/projections external; channel-decay matrix state with the static bonus read is the blocked region.",
+    "CONFIRM ledger blocker `Bonus read timing and final-state cotangent distinction`. The bonus u*kv_i is added to h ONLY for the read (recurrent_naive.py:39), while the state commit h=h*w_i+kv_i (line 41) does NOT include the bonus. So the read sees (h + u*kv_i) but the state stores only h. This read-vs-commit asymmetry is the key blocker, and the backward must distinguish the final-state cotangent from the bonus-augmented read cotangent (recurrent_naive.py:71-98).",
+    "ANSWER to task question: the bonus read timing is a READ-TIMING descriptor field, not merely a gate field. Canonical K2 reads AFTER update; RWKV-6 reads (h_prev + u*kv_i) BEFORE the kv_i commit. This is a distinct before-update+bonus read-timing descriptor."
+  ],
+  "direction": "axis",
+  "axis": "A1 slot/channel gate scope + before-update bonus-read timing descriptor",
+  "axis_clients": ["arch-041", "arch-042"],
+  "direction_justification": "RWKV-6 differs from canonical K2 by two closed typed properties: a channel-diagonal decay gate and a before-update read augmented by a static bonus u*kv_i that is excluded from the state commit; the bonus-read-timing descriptor field is the reusable blocker shared with RWKV-7.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Whether the bonus-read (h+u*kv_i read, plain kv_i commit) can be expressed as a K2 read-timing enum plus a bonus operand, or needs a fully separate descriptor; the VJP (dq_aux vs dq split at recurrent_naive.py:72-75) suggests a distinct field."
+  ],
+  "evidence_citations": [
+    "fla/ops/rwkv6/recurrent_naive.py:38-41 — kv_i=k_i⊗v_i; o_i=(h+u*kv_i)*q_i read BEFORE update; h=h*w_i+kv_i commit excludes bonus",
+    "fla/ops/rwkv6/recurrent_naive.py:71-76 — backward distinguishes h_i=(h+u*kv_i) for dq vs h alone for dq_aux",
+    "fla/ops/rwkv6/chunk_naive.py:45 — chunked intra_intra_o=(q_i*u*k_i).sum*v_i is a separate diagonal bonus term",
+    "fla/ops/rwkv6/recurrent_naive.py:37 — w_i=w[i].exp() per-channel decay"
+  ]
+}

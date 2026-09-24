@@ -1,0 +1,38 @@
+{
+  "id": "arch-031",
+  "architecture": "Generalized delta IPLR",
+  "source_repo": "fla",
+  "source_revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": [
+    "fla/ops/generalized_delta_rule/iplr/naive.py",
+    "fla/ops/generalized_delta_rule/README.md"
+  ],
+  "equation_summary": "Per token (iplr/naive.py:27-35): kv_t = k_t ⊗ v_t + (alpha_t^T S_{t-1}) ⊗ beta_t; S_t = S_{t-1} + kv_t; o_t = (scale*q_t)^T S_t. Written as a transition: S_t = S_{t-1} (I + alpha_t beta_t^T)^T applied on the key axis plus the additive rank-1 k_t v_t^T — i.e. an identity-plus-rank-1 (IPLR) transition with NO diagonal decay, plus an additive write. Equivalently h-vector form: read of the low-rank term uses alpha, written back along beta. Explicit initial/final state (naive.py:24-25,36).",
+  "state_shape": "[B,H,K,V] matrix",
+  "read_timing": "after-update",
+  "gate_scope": "none",
+  "normalization": "none",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM call graph E[QKV/left/right factors] ; B[K2 I+LR^T transition] ; E[output]: the mixer takes alpha,beta in R^K factors and applies transition I + alpha beta^T on the state before the additive k v^T write (naive.py:33-34) — a low-rank transition distinct from both U2.A (G diagonal) and U2.D.",
+    "CONFIRM blockers: rank growth and boundary state are the right concerns — the chunked reference (naive.py:55-72) accumulates the alpha/beta products via forward substitution; all four operand VJPs (q,k,alpha,beta,v) required.",
+    "CONFIRM no diagonal decay: unlike DPLR there is no gk operand (naive.py:15 vs dplr naive.py:16) — correctly a separate row from 032."
+  ],
+  "direction": "axis",
+  "axis": "A8 low-rank transition (identity/diagonal plus rank-1 factor products on the state transition)",
+  "axis_clients": ["arch-031", "arch-032", "arch-027", "arch-042"],
+  "direction_justification": "The I + LR^T state transition is a closed typed property generalizing the diagonal-G contract, shared with DPLR and related to RWKV-7's diagonal+rank-one transition, so it is an axis with descriptor + references first.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Whether the descriptor should parameterize transition rank (here rank 1 per token: single alpha,beta) or allow rank-R factor sets per token for composition with 029.",
+    "Whether the additive k v^T write coexisting with the low-rank transition is one descriptor field or a combination of an IPLR-transition call and a separate additive write."
+  ],
+  "evidence_citations": [
+    "fla/ops/generalized_delta_rule/iplr/naive.py:12 - header: S_t = S_t @ (I + alpha_t beta_t^T) + v_t k_t^T (transposed-layout statement of the same law)",
+    "fla/ops/generalized_delta_rule/iplr/naive.py:33-35 - per-token: S += k⊗v + (alpha^T S)⊗beta; read o = q^T S after update",
+    "fla/ops/generalized_delta_rule/iplr/naive.py:22 - output scale q *= d_k^-0.5",
+    "fla/ops/generalized_delta_rule/iplr/naive.py:15 - signature has no gk: pure I+LR^T with no diagonal decay, distinguishing it from DPLR"
+  ]
+}

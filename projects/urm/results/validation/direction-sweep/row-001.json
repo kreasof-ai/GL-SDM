@@ -1,0 +1,29 @@
+{
+  "id": "arch-001",
+  "architecture": "MHA",
+  "source_repo": "fla + flash",
+  "source_revision": "fla@864a87f6ce5be8828bef81eb22baafd41937cdf2, flash@1bda8f9290cd48d030f1516f0e680cd464ef3554",
+  "source_files": ["fla/ops/attn/naive.py", "flash_attn/flash_attn_interface.py"],
+  "equation_summary": "y_i = softmax(scale * q_i k_j^T over causal-visible keys) v_j with an explicit query->KV head map; in the equal-head case the map is identity (HQ == H, G = HQ // H = 1). The fla naive reference reshapes q to [B,T,H,G,D] and shares k across the group dim; the flash pin documents the same MQA/GQA head-broadcast ABI. Optional per-head cumulative gate bias and sink bias exist in the fla reference but are not part of plain MHA.",
+  "state_shape": "no persistent mixer state; external KV cache [B,T,H,D] managed by the model module",
+  "read_timing": "n-a",
+  "gate_scope": "none",
+  "normalization": "softmax",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM E[QKV/position] ; U1.S(equal-head, source mask) ; E[output/cache] matches the source: projections and rotary are external, the mixer is plain causal softmax attention with identity head map.",
+    "CONFIRM B[full_layer_and_cache_modes] is the right residual blocker: the mixer equation is fully covered by U1.S; only layer wiring, cache policy and decode modes remain external."
+  ],
+  "direction": "composition-now",
+  "axis": null,
+  "axis_clients": [],
+  "direction_justification": "The mixer equation is exactly U1.S with an identity query->KV head map; only an external modeling module and recipe are needed.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": ["The fla naive reference also supports optional cumulative log-gate bias and sink bias; these are out of scope for plain MHA but must be excluded explicitly in the descriptor to avoid silently widening the contract."],
+  "evidence_citations": [
+    "fla/ops/attn/naive.py:46-92 — scores = einsum(q,k)*scale, causal mask, optional window, softmax, einsum with v; group G = HQ//H shares k/v across query heads.",
+    "flash_attn/flash_attn_interface.py:1170-1173 — flash_attn_func supports MQA/GQA by broadcasting KV heads; Q heads divisible by KV heads."
+  ]
+}

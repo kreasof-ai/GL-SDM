@@ -1,0 +1,46 @@
+{
+  "id": "arch-047",
+  "architecture": "SDM (Sparse Delta Memory)",
+  "source_repo": "sdm",
+  "source_revision": "183e7df809131b80ad4393741029d0f20fc3640b",
+  "source_files": [
+    "/tmp/urm-comparator-pins/sdm/lingua/sparse_delta_memory/layer.py",
+    "/tmp/urm-comparator-pins/sdm/lingua/sparse_delta_memory/triton_argsort.py",
+    "/home/sagemaker-user/GL-SDM/projects/urm/benchmarks/comparators/sdm/upstream.py",
+    "/home/sagemaker-user/GL-SDM/projects/urm/benchmarks/comparators/sdm/reference.py",
+    "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/ir/program.py"
+  ],
+  "equation_summary": "Product-key addressing: split per-head score vector into two halves q1,q2 of width sqrt(slots); take per-half top-k_sub via torch.topk; form pairwise-additive combined scores top_val1[a]+top_val2[b] (fused_outer_add_topk), take overall top-k, address = idx1*half_key+idx2, then sort addresses ascending (stable bitonic argsort or torch.sort). Route weights are ScaledSoftmax (softmax with scale, default 1.0) over the selected scores, separately for write (write_act) and read (read_act). State update per selected slot (token order, unique within token): retrieved = sum_n w_n * M[idx_n]*exp(g); delta = beta*(v - retrieved); M[idx_n] = M[idx_n]*exp(g) + w_n*delta; read AFTER update: y = sum_n q_val_n * M[q_idx_n].",
+  "state_shape": "per-partition [slots_per_partition, Dv] slot-value bank; P=B*H partitions",
+  "read_timing": "after-update",
+  "gate_scope": "data-dependent scalar-per-head log-decay g=-A*softplus(a_proj(x)+dt_bias) and beta=sigmoid(b_proj(x)); optional key_weighted_decay makes decay per-write-slot (exp(g*k_val))",
+  "normalization": "softmax route weights (read_act/write_act, ScaledSoftmax with configurable scale); no state denominator",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": false,
+  "ledger_verdicts": [
+    "CONFIRM external call graph: E[product-key projections (Wq_read/Wk_write + optional BatchNorm)] -> product-key route -> gated sparse write-read -> E[readings LayerNorm/output gate/Wo] matches layer.py forward (lines 850-1002).",
+    "CONFIRM the update law matches U3.D decayed-delta: selected-slot decay exp(g), retrieved weighted sum, delta=beta*(v-retrieved), write w_n*delta, after-update read (layer.py:740-759 and adapter mutation_order 'decay_retrieve_delta_scatter_then_read', upstream.py:440).",
+    "CORRECT: the pinned source router does NOT exactly match R.PK on two documented points: (a) tie policy — R.PK mandates SparseRouteTiePolicy.HIGHEST_ADDRESS (ir/program.py:176,233), but the source uses torch.topk for factor and combined selection with no promised cross-backend tie order, and the URM comparator oracle explicitly declares ties 'outside the frozen contract' (reference.py:15-19); (b) normalization — R.PK freezes ScoreNormalization.SOFTMAX, while the source applies ScaledSoftmax(scale) with configurable read_act_scale/write_act_scale (layer.py:395-403,540-553) and even permits non-softmax activations (l2_normalize/nn activations). The URM adapter pins scale=1.0 and Softmax, so the adapter-frozen configuration matches R.PK up to the tie-policy gap.",
+    "MISSING-BLOCKER: ledger lists router provenance/VJP/collision/cost but does not record the tie-policy and activation-scale gaps vs the closed R.PK vocabulary; an exact R.PK claim additionally requires a highest-address tie realization (the source's triton_argsort is stable-ascending only for the final address sort, layer.py:613-622; it does not impose highest-address tie-breaking on topk selection)."
+  ],
+  "direction": "composition-now",
+  "axis": null,
+  "axis_clients": ["arch-047", "arch-056"],
+  "direction_justification": "The mixer update/read law is exactly the closed U3.D decayed-delta contract with a certified external route trace, and the router is external by design; only the R.PK tie-policy/scale identity proof (already the ledger's stated blocker) stands between 'represented' and full row claim, requiring no new core semantics.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Does any deployed SDM configuration use read_act_scale/write_act_scale != 1.0 or non-Softmax activations, which would push the route weights outside R.PK's frozen SOFTMAX field?",
+    "Torch.topk tie order is backend-dependent; is a highest-address-tie realization (or explicit tie-agnostic certification) acceptable for the R.PK proof?",
+    "key_weighted_decay=True changes decay to per-write-slot exp(g*k_val); is that variant in scope for U3.D or a separate descriptor?"
+  ],
+  "evidence_citations": [
+    "/tmp/urm-comparator-pins/sdm/lingua/sparse_delta_memory/layer.py:581-624 — product-key route: per-half topk, pairwise-additive combined topk (fused_outer_add_topk), address idx1*half+idx2, ascending sort",
+    "/tmp/urm-comparator-pins/sdm/lingua/sparse_delta_memory/layer.py:395-403,540-553 — ScaledSoftmax route weights with configurable scale; non-softmax acts allowed",
+    "/tmp/urm-comparator-pins/sdm/lingua/sparse_delta_memory/layer.py:740-759 — decay-retrieve-delta write then after-update read (inference step law)",
+    "/tmp/urm-comparator-pins/sdm/lingua/sparse_delta_memory/triton_argsort.py:1-10 — stable ascending argsort used only for final address ordering, ties broken by original position",
+    "/home/sagemaker-user/GL-SDM/projects/urm/benchmarks/comparators/sdm/reference.py:15-19 — oracle: ties intentionally outside frozen contract; upstream topk promises no cross-backend tie order",
+    "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/ir/program.py:173-176,225-261 — R.PK frozen vocabulary: PAIRWISE_ADDITIVE_FACTORS, TOP_K, SOFTMAX, ASCENDING, HIGHEST_ADDRESS tie policy",
+    "/home/sagemaker-user/GL-SDM/projects/urm/benchmarks/comparators/sdm/upstream.py:430-441,662-683 — adapter certifies trace (strictly increasing addresses, softmax-normalized weights, within-token uniqueness) and pins Softmax scale=1.0"
+  ]
+}

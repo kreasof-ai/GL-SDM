@@ -1,0 +1,40 @@
+{
+  "id": "arch-045",
+  "architecture": "Mamba-3",
+  "source_repo": "mamba",
+  "source_revision": "e9594ce1c732d97440f0332fdc43170a2294dbfa",
+  "source_files": [
+    "mamba_ssm/ops/triton/mamba3/mamba3_siso_fwd.py",
+    "mamba_ssm/ops/triton/mamba3/mamba3_siso_step.py",
+    "mamba_ssm/modules/mamba3.py"
+  ],
+  "equation_summary": "Mamba-3 combines a rotary phase, an SSM, and a prior-K/V bundle with FOUR carried states. Per step (mamba3_siso_step.py): an angle state is advanced by tanh(angle)*PI*dt and reduced mod 2pi (rotary phase); Q,K are rotated by cos/sin of that phase; then the SSM state updates ssm = ssm*exp2(adt) + (beta*v_prev)k_prev^T + (gamma*v)k^T where beta=exp2(adt)*dt*(1-trap), gamma=trap*dt, using BOTH the previous K/V state (trapezoidal discretization) and the current K/V. Output = ssm @ q + D*v, optionally * silu(z). The four carried states are: angle phase, SSM matrix, K state, V state.",
+  "state_shape": "four-state bundle: SSM matrix [H,dv,dqk] + angle phase [H,dqk/2] + K state [H,dqk] + V state [H,dv]",
+  "read_timing": "after-update",
+  "gate_scope": "data-dependent (dt, trap, adt per-token; trapezoidal coefficients), coefficients input-precomputable",
+  "normalization": "none",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM ledger call graph `E[projection/A,dt,trapezoid frontend] ; B[K2 rotary phase+SSM+prior-K/V bundle] ; E[output/cache]` — the trapezoid/dt/A frontend is external; the rotary+SSM+prior-K/V bundle is the blocked region.",
+    "CONFIRM ledger blocker `SISO and MIMO separate, four-state VJP/cache` — the source keeps SISO and MIMO in separate kernels (mamba3_siso_* vs mamba3_mimo_*) and carries FOUR states (angle, SSM, K, V) through both the step kernel (mamba3_siso_step.py:302) and the chunked fwd (mamba3_siso_fwd.py:494-499).",
+    "ANSWER to task: this is axis A9 (complex/block-real state) for the rotary phase (angle state, mod-2pi, cos/sin rotation) COMBINED with a coupled four-state bundle. The rotary phase state is the A9 property; the SSM+prior-K/V trapezoid bundle is a coupled/multiple-state ownership concern. The trapezoid term (beta*v_prev)k_prev^T uses the PRIOR K/V, so the recurrence is not a simple additive K2.",
+    "MISSING-BLOCKER: the ledger should note the rotary phase state is an A9 (complex/block-real) descriptor, distinct from the A8 low-rank transition of Mamba-2; the prior-K/V trapezoid term is an additional read-timing/coupling field not present in plain SSD."
+  ],
+  "direction": "axis",
+  "axis": "A9 complex/block-real state (rotary phase) + coupled four-state bundle (SSM + prior-K/V trapezoid)",
+  "axis_clients": ["arch-045"],
+  "direction_justification": "Mamba-3 is a rotary-phase (complex/block-real, A9) SSM with a coupled four-state bundle including a prior-K/V trapezoid term; the phase state plus the multi-state trapezoid coupling do not reduce to affine K2 and currently have only one client, so it stays an axis descriptor pending a second client.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Whether the rotary phase can be hoisted into the external frontend (rotating Q,K) leaving a pure real SSM, or whether the phase state must be carried in-core for cache/decode continuity; the mod-2pi angle state suggests it must be carried.",
+    "MIMO variant (mamba3_mimo_*) not transcribed; its state coupling may differ."
+  ],
+  "evidence_citations": [
+    "mamba_ssm/ops/triton/mamba3/mamba3_siso_step.py:150-159 — angle state advanced by tanh(angle)*PI*dt, reduced mod 2pi (rotary phase state)",
+    "mamba_ssm/ops/triton/mamba3/mamba3_siso_step.py:189-200 — beta=exp2(adt)*dt*(1-trap), gamma=trap*dt; ssm=ssm*exp2(adt)+(beta*v_prev)k_prev^T+(gamma*v)k^T (prior-K/V trapezoid)",
+    "mamba_ssm/ops/triton/mamba3/mamba3_siso_step.py:302 — four states: Input_Angle_State, Input_SSM_State, Input_K_State, Input_V_State",
+    "mamba_ssm/ops/triton/mamba3/mamba3_siso_fwd.py:494-499 — Initial_States tuple = (SSM_State, K_State, V_State) plus angle state"
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "id": "arch-025",
+  "architecture": "DeltaNet",
+  "source_repo": "fla",
+  "source_revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": [
+    "fla/ops/delta_rule/naive.py",
+    "fla/ops/delta_rule/README.md",
+    "fla/layers/delta_net.py"
+  ],
+  "equation_summary": "Per token with matrix state S in R^{K x V}: delta = beta_t * (v_t - k_t^T S_{t-1}); S_t = S_{t-1} + k_t delta_t^T (no decay, G=I); o_t = q_t^T S_t with q pre-scaled by 1/sqrt(d_k). This is exactly the canonical delta law with c=1, beta present, no gate: delta-rule-recurrence at naive.py:27-35 does retrieve-from-UNdecayed state, rank-1 write, then read after update. Initial state added at start, final state returned; q,k L2-normed and beta=sigmoid (optionally x2) in the layer, all external.",
+  "state_shape": "[B,H,K,V] matrix",
+  "read_timing": "after-update",
+  "gate_scope": "none",
+  "normalization": "none",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM call graph E[QKV/beta/key norm] ; U2.D(no decay) ; E[output]: naive.py:32-35 shows exactly c=1 delta with G=I (no decay term anywhere), beta broadcast [B,T,H]->[...,None] at naive.py:21-22, key l2/sum norm and sigmoid-beta external in fla/layers/delta_net.py:94,105,138,237-238.",
+    "CONFIRM blockers: initial/final state explicit (naive.py:24-25,36), all VJPs and B[K2_graph_execution] are the true prerequisites; no additional semantic blocker needed since the equation is the closed U2.D contract."
+  ],
+  "direction": "composition-k2-gated",
+  "axis": null,
+  "axis_clients": [],
+  "direction_justification": "The mixer equation IS exactly U2.D with G=I (c=1, beta, no gate, after-update read), so it is blocked only on B[K2_graph_execution].",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Whether the optional 'allow negative eigenvalues' beta*2 variant and qk_norm='sum' variant are distinct external recipes or need descriptor-level flags (they are external operand transforms, so no)."
+  ],
+  "evidence_citations": [
+    "fla/ops/delta_rule/naive.py:32-35 - exact delta recurrence: v <- beta*(v - k^T S); S <- S + k delta^T; o <- q^T S; no decay",
+    "fla/ops/delta_rule/naive.py:19 - output scale q *= d_k^-0.5 (source read scale 1/sqrt(K))",
+    "fla/ops/delta_rule/naive.py:24-25,36 - explicit initial/final state handling",
+    "fla/layers/delta_net.py:94,105 - qk_norm l2/sum and use_beta are external layer options",
+    "fla/ops/delta_rule/README.md:11-20 - chunked form is a product of generalized Householder factors I - beta k k^T, same law"
+  ]
+}

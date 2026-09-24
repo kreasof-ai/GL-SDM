@@ -1,0 +1,30 @@
+{
+  "id": "arch-012",
+  "architecture": "Parallax",
+  "source_repo": "fla",
+  "source_revision": "fla@864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": ["fla/ops/parallax/naive.py", "fla/ops/parallax/parallel.py"],
+  "equation_summary": "With s1 = scale*(q.k^T), s2 = r.k^T (unscaled), p1 = exp(s1 - max), d1 = sum(p1), p2 = p1*s2, d2 = sum(p2), O1 = p1@v, O2 = p2@v: out = O1/d1 * (1 + d2/d1) - O2/d1, i.e. E[v]*(1+E[r.k]) - E[(r.k)v] under the shared softmax measure. This requires one shared max/softmax denominator plus FOUR sufficient statistics (O1, O2, d1, d2) rather than the single weighted-value statistic of U1.S.",
+  "state_shape": "external KV cache; secondary query r is an external projection",
+  "read_timing": "n-a",
+  "gate_scope": "none",
+  "normalization": "shared softmax denominator (max-shifted) reused across two statistics",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM E[QKV/secondary query r] ; B[K1 shared-softmax multi-statistic reducer] ; E[correction/output] matches naive_parallax exactly, including the unscaled s2 and the d2/d1 correction.",
+    "CONFIRM the blocker: E[v]*(1+E[r.k])-E[(r.k)v] and the reducer VJP must be proven; the ledger's 'repeated K1 passes are an explicit costed fallback' is correct since two U1.S passes (one with v, one with (r.k) v as an effective value) plus the scalar statistics reproduce the equation at extra cost.",
+    "CORRECT: the source computes p1 with a single max shift over s1 only (line 82-86); any two-pass U1.S fallback must reuse the same max/denominator, which a generic U1.S call does not expose — this must be recorded in the fallback proof."
+  ],
+  "direction": "axis",
+  "axis": "A13 score/reducer algebra (shared-softmax multi-statistic reducer)",
+  "axis_clients": ["arch-012"],
+  "direction_justification": "The reducer needs four coupled statistics under one softmax denominator, a closed typed extension of the K1 reducer that a plain U1.S call cannot express without exposing shared max/denominator state; a costed two-pass composition is only a fallback.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": ["Only one client is currently known; if no second client emerges the axis may need to be reclassified external-only per the two-client admission rule. Whether the two-pass fallback can share the denominator legally (U1.S does not expose max/lse as operands) is unresolved."],
+  "evidence_citations": [
+    "fla/ops/parallax/naive.py:24-31 — docstring: s1 scaled, s2 unscaled; out = O1/d1*(1+d2/d1) - O2/d1.",
+    "fla/ops/parallax/naive.py:82-95 — single max over s1; p1, d1, p2 = p1*s2, d2; O1, O2 einsums; final combine."
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "id": "arch-077",
+  "architecture": "Hyena",
+  "source_repo": "safari",
+  "source_revision": "02220c69d247e5473616cd053a443ad99fd2559b",
+  "source_files": [
+    "src/models/sequence/hyena.py",
+    "src/ops/fftconv.py"
+  ],
+  "equation_summary": "HyenaOperator: u → in_proj (order+1 projections), depthwise short conv (kernel 3), split into x_0..x_{order−1}, v; long filters k are IMPLICITLY generated: k = ExponentialModulation(t, MLP_sin(pos_emb(t))) (positional embedding → sine-activation MLP → exponential decay modulation, optional L1 normalization). Then the order-specific recurrence: for each o, v = dropout(v ⊙ x_i) (or outer_mixing variant: v = Σ v ⊙ x_i over a broadcast axis) followed by the causal FFT conv v = irfft(rfft(v)·rfft(k_o))[:l] + bias·v; final y = activation(v ⊙ x_0) → out_proj. All long convolutions are external causal FFT convs (fftconv_ref: rfft size 2L, norm='forward').",
+  "state_shape": "none (recurrence() fast-inference mode is explicitly NotImplemented, hyena.py:305-307); filter generation is per-length, no streaming state",
+  "read_timing": "n-a",
+  "gate_scope": "none (data-dependent pointwise gate multiplies are external ops)",
+  "normalization": "none (optional L1 normalization of the generated filter, off by default)",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM `E[implicit filter generation/short conv/projections] ; E[order-specific causal FFT-conv/gates] ; E[output/cache]`: hyena.py:309-355 is exactly in_proj → short_filter → implicit filter (hyena.py:116-206: pos_emb → Sin MLP → ExponentialModulation) → order loop of gate-multiply + filter_fn (FFT conv, hyena.py:189-206) → final multiply with x_0 → out_proj; every stage is an external ordinary op.",
+    "CONFIRM 'No compact general U2 realization established; do not count FFT path as native three-kernel mixer coverage': the source has no state-space/scan realization of the implicit-filter long conv (the fast-inference recurrence is NotImplemented), the graph binds no U1/U2/U3 call, and the FFT convs remain external ops.",
+    "NOTE: the filter is a full-length (L up to l_max) implicitly generated kernel — generation cost is per-(length, order) and the bias-per-order layout (hyena.py:327-329) must be in the external graph; num_blocks block reshaping and post_order_ffn head mixing are additional external variants to pin."
+  ],
+  "direction": "composition-now",
+  "axis": null,
+  "axis_clients": [],
+  "direction_justification": "The mixer is entirely external ordinary operators — implicit filter MLP, short conv, causal FFT convs, gate multiplies — expressible today with FFT as an external op; no URM kernel semantics are required and no compact U2 realization is claimed.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "order, num_blocks, outer_mixing, post_order_ffn, and filter hyperparameters (filter_order, num_inner_mlps, modulation pct) define a family of variants — the admitted row must pin one configuration.",
+    "fused_fft_conv=True switches to the CUDA fftconv_func; reference-path parity must be recorded.",
+    "Any future recurrent/state-space distillation of the implicit filter (the paper's distillation claim) would be a separate blocked rewrite — the pinned source explicitly does not implement it."
+  ],
+  "evidence_citations": [
+    "src/models/sequence/hyena.py:309-355 — HyenaOperator.forward: in_proj → short conv → per-order gate multiply + filter_fn (FFT conv) → v⊙x_0 → out_proj",
+    "src/models/sequence/hyena.py:116-206 — HyenaFilter: implicit filter k = modulation(t, MLP_sin(pos_emb)), bias, fftconv application",
+    "src/models/sequence/hyena.py:28-47 — fftconv_ref: causal linear conv via rfft (n=2L, norm='forward', [:seqlen]) + D residual",
+    "src/models/sequence/hyena.py:305-307 — recurrence() raises NotImplementedError (no compact state realization)",
+    "src/models/sequence/hyena.py:64-113 — PositionalEmbedding (complex exponential bands) and ExponentialModulation (exp decay per channel)"
+  ]
+}

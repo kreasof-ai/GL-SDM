@@ -1,0 +1,38 @@
+{
+  "id": "arch-032",
+  "architecture": "Generalized delta DPLR",
+  "source_repo": "fla",
+  "source_revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": [
+    "fla/ops/generalized_delta_rule/dplr/naive.py",
+    "fla/ops/generalized_delta_rule/README.md"
+  ],
+  "equation_summary": "Per token (dplr/naive.py:28-36): S' = Diag(exp(gk_t)) S_{t-1} with gk_t in R^K channel-wise log decay; kv_t = k_t ⊗ v_t + (alpha_t^T S_{t-1}) ⊗ beta_t (low-rank term read off the PRE-decay state, committed along beta); S_t = S' + kv_t; o_t = (scale*q_t)^T S_t. Transition is Diag(exp(gk)) + beta alpha^T — diagonal PLUS rank-1 (DPLR), strictly generalizing IPLR (031) by the channel-diagonal factor. Note ordering detail: the low-rank read uses the un-decayed S_{t-1} while the diagonal decay multiplies it (naive.py:34-35).",
+  "state_shape": "[B,H,K,V] matrix",
+  "read_timing": "after-update",
+  "gate_scope": "channel",
+  "normalization": "none",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM call graph E[QKV/diagonal+left/right factors] ; B[K2 D+LR^T transition] ; E[output]: mixer operands are k,v,alpha,beta,gk — diagonal gk plus left/right factors, exactly D+LR^T (naive.py:16,34-35).",
+    "CONFIRM 'Diagonal distinct from rank factors; no IPLR default': gk is an independent channel-decay operand and the rank-1 read (alpha^T S) is computed from the PRE-decay state and added to the decayed state (naive.py:34-35) — DPLR is not IPLR-with-a-default; the ordering must be preserved.",
+    "CONFIRM rank growth and boundary state: chunked form (naive.py:57-99) uses gk cumsum and a forward-substituted A_ab inverse; all factor VJPs required."
+  ],
+  "direction": "axis",
+  "axis": "A8 low-rank transition (diagonal plus rank-1 factor products on the state transition)",
+  "axis_clients": ["arch-032", "arch-031", "arch-042"],
+  "direction_justification": "D+LR^T is the same closed low-rank-transition property as 031 extended by a channel-diagonal factor — reusable (RWKV-7 row 042 names the same structure), hence axis rather than a one-off.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Whether the descriptor must expose the ordering subtlety that the rank-1 read uses the pre-decay state (naive.py:34 computes (alpha^T S) before decay is applied at :35) or whether that is fixed by the DPLR law definition.",
+    "Whether IPLR is admitted as the gk=0 special case of the DPLR descriptor or remains a separate descriptor (ledger keeps them as separate rows)."
+  ],
+  "evidence_citations": [
+    "fla/ops/generalized_delta_rule/dplr/naive.py:34-35 - S = S*exp(gk) + k⊗v + (alpha^T S)⊗beta: diagonal-plus-rank-1 transition with the rank-1 read off the pre-decay state",
+    "fla/ops/generalized_delta_rule/dplr/naive.py:16 - signature adds gk (diagonal log decay) vs IPLR's absence of it",
+    "fla/ops/generalized_delta_rule/dplr/naive.py:23 - output scale q *= d_k^-0.5",
+    "fla/ops/generalized_delta_rule/dplr/naive.py:97-99 - inter-chunk state: S <- S*exp(gk_cum[-1]) + (k*decay)^T v + (beta*decay)^T v2, preserving D+LR^T across chunks"
+  ]
+}

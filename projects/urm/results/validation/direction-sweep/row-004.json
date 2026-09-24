@@ -1,0 +1,31 @@
+{
+  "id": "arch-004",
+  "architecture": "MLA",
+  "source_repo": "fla",
+  "source_revision": "fla@864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": ["fla/layers/mla.py"],
+  "equation_summary": "External module projects hidden states to a low-rank latent (kv_lora_rank) plus a shared rope key, then expands per head: k = [k_nope_from_latent ; k_rot_broadcast], v = v_from_latent (padded to qk_head_dim if needed for flash-attn, output cropped back to v_head_dim). The mixer itself is plain causal U1.S over the expanded heads; the source explicitly notes a TODO that only compressed_kv + k_rot could be cached and the full k,v recovered.",
+  "state_shape": "external KV cache; source caches expanded k,v with a TODO for compressed latent cache",
+  "read_timing": "n-a",
+  "gate_scope": "none",
+  "normalization": "softmax",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM E[latent KV and position projections] ; U1.S(explicit latent-to-head view) ; E[output/latent cache] matches fla/layers/mla.py: latent projection, rotary, head expansion, then flash-attn causal softmax.",
+    "CONFIRM B[prove expansion/cropping and compressed-cache equality] is exactly the right blocker: the v-pad/crop (lines 191-192, 228-229) and the compressed-cache TODO (line 176) are unproven rewrites, and the ledger correctly forbids an expanded-cache performance claim."
+  ],
+  "direction": "composition-now",
+  "axis": null,
+  "axis_clients": [],
+  "direction_justification": "The mixer equation is exactly U1.S over externally expanded latent heads; latent projection/expansion is an ordinary external op, and compressed-cache equality is a recorded blocker, not new core semantics.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": ["Whether the compressed latent cache (kv_lora_rank per token) is numerically and performance-equivalent to the expanded per-head cache remains to be proven; the source itself only flags it as a TODO."],
+  "evidence_citations": [
+    "fla/layers/mla.py:107-112 — kv_proj = Linear(hidden->kv_lora_rank) -> RMSNorm -> Linear(kv_lora_rank -> heads*(qk_nope+v_dim)); k_rot shared single-head rope key.",
+    "fla/layers/mla.py:172-174 — k_rot repeated to all heads; k = cat(k_pass, k_rot), q = cat(q_pass, q_rot).",
+    "fla/layers/mla.py:176-177 — TODO: only cache compressed_kv and k_rot and recover full k,v.",
+    "fla/layers/mla.py:191-192,228-229 — v padded to qk_head_dim for flash-attn and output cropped back to v_head_dim."
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "id": "arch-069",
+  "architecture": "TPA (Tensor Product Attention, T6)",
+  "source_repo": "tpa",
+  "source_revision": "c276c80d5ad807881dedb4707d8d3c20b4e97ec6",
+  "source_files": ["model/T6.py"],
+  "equation_summary": "TPA factorizes the QKV projections via a CP decomposition (CPLinear): A_q=W_A_q(x) [.,H,q_rank], B_q=W_B_q(x) [.,q_rank,head_dim], then q=bmm(A_q,B_q)/q_rank (likewise k,v with rank). RoPE is applied to the B_q/B_k factors. The MIXER itself is plain causal softmax attention: y = F.scaled_dot_product_attention(q,k,v,is_causal=True). The factorized A/B representation is what enables a factorized (low-rank) KV cache — the expanded per-head K/V need not be materialized for caching.",
+  "state_shape": "standard causal attention; cache can hold factorized A_k/B_k,A_v/B_v rather than expanded [B,S,H,D] K/V",
+  "read_timing": "n-a",
+  "gate_scope": "none",
+  "normalization": "softmax (SDPA causal)",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM ledger graph 'E[CP-factorized QKV/RoPE]; U1.S; E[output/factorized cache]' matches T6 CausalSelfAttention: CPLinear produces q,k,v then F.scaled_dot_product_attention(is_causal=True)",
+    "CONFIRM blocker 'Source factorized projection and cache; no expanded-cache comparison' — the mixer is plain U1.S and the CP-factorized projections/cache are external; no expanded-cache performance equality is claimed",
+    "CONFIRM factorized QKV projections are EXTERNAL ordinary operators (CPLinear bmm + rank scaling); the core mixer is unmodified softmax attention"
+  ],
+  "direction": "composition-now",
+  "axis": null,
+  "axis_clients": ["arch-069", "arch-070"],
+  "direction_justification": "TPA's CP-factorized QKV projections are external ordinary operators and the mixer is exactly causal softmax U1.S, so it is composition-now with the factorized-cache claim carried externally (no expanded-cache comparison).",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "This audit reads the non-cached training path (T6.py CausalSelfAttention); the factorized-cache decode path lives in T6_infer*.py and must be checked separately to prove the cache holds A/B factors rather than expanded K/V",
+    "The per-rank scaling (div by q_rank/rank at lines 134-136) and RoPE applied to B factors must be preserved exactly in the external projection module"
+  ],
+  "evidence_citations": [
+    "model/T6.py:111-136 — CPLinear: A_q/B_q/A_k/B_k/A_v/B_v factors, q=bmm(A_q,B_q)/q_rank, RoPE on B_q/B_k",
+    "model/T6.py:172-177 — y = F.scaled_dot_product_attention(q,k,v,is_causal=True): plain U1.S mixer",
+    "model/T6.py:64-83 — CP decomposition rank/q_rank definition (external factorized projections)"
+  ]
+}

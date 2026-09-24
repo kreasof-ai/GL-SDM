@@ -1,0 +1,29 @@
+{
+  "id": "arch-002",
+  "architecture": "MQA",
+  "source_repo": "fla + flash",
+  "source_revision": "fla@864a87f6ce5be8828bef81eb22baafd41937cdf2, flash@1bda8f9290cd48d030f1516f0e680cd464ef3554",
+  "source_files": ["fla/ops/attn/naive.py", "flash_attn/flash_attn_interface.py"],
+  "equation_summary": "Same softmax attention equation as MHA, with the query->KV head map set to 'all HQ query heads attend to a single KV head' (H = 1, G = HQ). The fla naive reference computes scores per group with shared k/v; the flash pin documents the head-broadcast ABI where nheads_k = 1.",
+  "state_shape": "no persistent mixer state; external shared KV cache [B,T,1,D]",
+  "read_timing": "n-a",
+  "gate_scope": "none",
+  "normalization": "softmax",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM E[QKV/position] ; U1.S(all query heads->one KV head) ; E[output/shared-KV cache] matches the source; only the head map differs from arch-001.",
+    "CONFIRM B[shared-head gradients_and_decode] captures the real residual work: gradient flow through the broadcast KV and decode/cache behavior, not new mixer semantics."
+  ],
+  "direction": "composition-now",
+  "axis": null,
+  "axis_clients": [],
+  "direction_justification": "The mixer is exactly U1.S with a many-query->one-KV head map; no new core semantics beyond an external module and recipe.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [],
+  "evidence_citations": [
+    "fla/ops/attn/naive.py:46-58 — G = HQ // H; q reshaped to [B,T,H,G,D] so all G query heads in a group share the same k.",
+    "flash_attn/flash_attn_interface.py:1170-1173 — MQA/GQA supported by passing fewer KV heads than Q heads."
+  ]
+}

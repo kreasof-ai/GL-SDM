@@ -1,0 +1,32 @@
+{
+  "id": "arch-010",
+  "architecture": "PaTH attention",
+  "source_repo": "fla",
+  "source_revision": "fla@864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": ["fla/ops/path_attn/naive.py", "fla/layers/path_attn.py"],
+  "equation_summary": "Per chunk, build a strictly-lower Householder/delta transform: w_beta = w * beta; T_mat = I + inv(I + tril(w_beta w^T,-1)) - I (computed by forward substitution on -(w_beta@w^T) strictly lower); transformed operands A_local = tril(q k^T) - tril(q w^T) @ (T_mat @ tril(w_beta k^T)), q' = q - tril(q w^T) @ (T_mat w_beta), k' = k - (T_mat w_beta k^T)^T w; cross-chunk scores A_ij = q'_i k'_j^T with progressive q' correction q' -= q' H_j. Final logits = (A + gc_i - gc_j) * scale, softmax, @v. The typed causal triangular (UT-transform) operand correction precedes an otherwise-standard softmax attention.",
+  "state_shape": "external KV cache; decode uses rank-one-updated k cache (k -= beta*(k.w)w) and w conv state",
+  "read_timing": "n-a",
+  "gate_scope": "data-dependent per-head cumulative gate g plus per-token beta",
+  "normalization": "softmax",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM E[QKV,w/beta/g,short convolution] ; B[typed causal triangular transform] ; U1.S(transformed operands) ; E[output] matches naive_path_attn: short conv + l2-norm on w are external layer ops; the triangular T_mat/UT transform produces corrected operands; the final reduction is softmax attention with cumulative-gate bias.",
+    "CONFIRM the blocker: the triangular operator needs its VJP/traffic proof and 'no projection-only equivalence' is correct — the transform is a data-dependent strictly-causal triangular solve, not a per-token projection.",
+    "MISSING-BLOCKER: the final score also adds a FoX-style cumulative log-gate bias (A + gc_i - gc_j, naive.py line 94); this reuses the arch-008 score-modulation axis and should be recorded as a dependency, not silently folded into U1.S."
+  ],
+  "direction": "axis",
+  "axis": "typed causal triangular transform (UT/Householder operand correction); also depends on A13 cumulative-log-gate score bias (arch-008)",
+  "axis_clients": ["arch-010", "arch-013"],
+  "direction_justification": "The mixer needs a closed typed causal triangular transform of the operands before U1.S — a reusable typed property shared with DeltaFormer's correction family — so it is an axis, not an external ordinary op.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": ["Whether the triangular transform is admitted as its own descriptor or decomposed into primitive typed ops; the decode path's rank-one k-cache update must be proven equal to the parallel transform."],
+  "evidence_citations": [
+    "fla/ops/path_attn/naive.py:60-76 — chunkwise T_mat construction (forward substitution), A_local, q', k', H_mat definitions.",
+    "fla/ops/path_attn/naive.py:81-95 — cross-chunk A_ij with progressive q correction; final logits add g_cumsum difference; softmax @ v.",
+    "fla/layers/path_attn.py:117-124 — external short conv on w, l2_norm on w.",
+    "fla/layers/path_attn.py:150-158 — decode rank_one_update of past_k: k -= beta*(k.w)w."
+  ]
+}

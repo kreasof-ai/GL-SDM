@@ -1,0 +1,38 @@
+{
+  "id": "arch-044",
+  "architecture": "Mamba-2 / SSD",
+  "source_repo": "mamba",
+  "source_revision": "e9594ce1c732d97440f0332fdc43170a2294dbfa",
+  "source_files": [
+    "mamba_ssm/modules/ssd_minimal.py",
+    "mamba_ssm/ops/triton/ssd_combined.py"
+  ],
+  "equation_summary": "Mamba-2/SSD is a semiseparable (chunked) state-space model. Discretized with X*dt and A*dt: within a chunk, the diagonal blocks give Y_diag = (C B^T ∘ L) X where L=exp(segsum(A)) is the intra-chunk decay mask; off-diagonal blocks factor as a boundary state recurrence. State per chunk: states = sum_l B_l * exp(A_cumsum[-1]-A_cumsum_l) * X_l; then the cross-chunk SSM recurrence new_states = einsum(decay_chunk, states) carries state across chunk boundaries with decay_chunk=exp(segsum(A_chunk_ends)); output Y_off = C @ states * exp(A_cumsum). The cross-chunk carry (boundary state) is the defining feature of the semiseparable form.",
+  "state_shape": "boundary/chunk state [B,H,dstate,dhead] (p,n) carried across chunks",
+  "read_timing": "after-update",
+  "gate_scope": "data-dependent (A per-token/per-head decay; B,C per-token), coefficients input-precomputable",
+  "normalization": "none",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM ledger call graph `E[projection/short conv/dt] ; B[K2 semiseparable transition with boundary state] ; E[skip/output gate/cache]` — projection/conv/dt external; the semiseparable boundary-state scan is the blocked region.",
+    "CONFIRM ledger blocker `Cross-chunk carry; no block-mask equivalence` — the source explicitly carries state across chunk boundaries (ssd_minimal.py:62-69) and warns the chunked semiseparable form cannot be replaced by a block-diagonal mask.",
+    "CONFIRM task hypothesis: this is axis A8 (semiseparable / low-rank off-diagonal transition). The cross-chunk boundary state carry (ssd_minimal.py:66-69) is the A8 read/write-coupling property; coefficients (A,B,C,dt) are input-precomputable.",
+    "NOTE: the intra-chunk diagonal block (Y_diag) is computed exactly; a 'block-mask' attention-equivalent rewrite would drop the boundary state and is explicitly rejected by the blocker."
+  ],
+  "direction": "axis",
+  "axis": "A8 read/write coupling (semiseparable boundary-state transition, input-precomputable coefficients)",
+  "axis_clients": ["arch-044", "arch-045", "arch-053"],
+  "direction_justification": "Mamba-2/SSD is a semiseparable transition whose off-diagonal blocks are exactly a low-rank boundary-state recurrence with cross-chunk carry — a closed typed A8 property shared with Mamba-3 and Samba's Mamba layers, not expressible as canonical fixed-decay K2 or a block mask.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Exact dstate/dhead boundary-state ABI and chunk-size closure for arbitrary partial chunks in the fused ssd_combined path; only the minimal reference is transcribed here."
+  ],
+  "evidence_citations": [
+    "mamba_ssm/modules/ssd_minimal.py:54-55 — Y_diag intra-chunk with L=exp(segsum(A)) decay mask",
+    "mamba_ssm/modules/ssd_minimal.py:59-60 — chunk boundary states = sum B * exp(A_cumsum[-1]-A_cumsum) * X",
+    "mamba_ssm/modules/ssd_minimal.py:62-69 — cross-chunk SSM recurrence new_states=einsum(decay_chunk, states) carries state across chunk boundaries",
+    "mamba_ssm/modules/ssd_minimal.py:73-77 — Y_off = C @ states * exp(A_cumsum); Y=Y_diag+Y_off"
+  ]
+}

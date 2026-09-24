@@ -1,0 +1,33 @@
+{
+  "id": "arch-005",
+  "architecture": "NSA",
+  "source_repo": "fla",
+  "source_revision": "fla@864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": ["fla/ops/nsa/naive.py", "fla/ops/nsa/parallel.py"],
+  "equation_summary": "Three K1 branches merged by per-token-per-head gates: (1) compressed branch = softmax attention over mean-pooled block K/V visible once block end (c+1)*bs-1 <= t; (2) selected branch = softmax attention over gathered tokens from top-k selected blocks (indices expanded block*bs+arange(bs), masked i_i > i_q or -1 padding); (3) sliding-window branch = local causal softmax attention. Output o = g_slc*o_slc + g_cmp*o_cmp + g_swa*o_swa (addcmul). Top-k selection scores blocks by group-mean softmax probs with forced selection of first/current/previous blocks.",
+  "state_shape": "external KV cache; compressed block K/V derived by external mean pooling",
+  "read_timing": "n-a",
+  "gate_scope": "data-dependent per-token-per-head branch gates (g_cmp/g_slc/g_swa)",
+  "normalization": "softmax per branch",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM E[compress/index/branch merge] ; (U1.S[compressed] || U1.S[local] || U1.S[selected routes]) matches naive_nsa: mean-pool compression, top-k block selection, sliding window, gated addcmul merge.",
+    "CONFIRM B[exact branch equations], B[indexed_K1_schedule], B[route-and-compression cost] are all required: the selected branch is a gathered indexed-K1 traversal, and the route (top-k + forced blocks) and compression pooling are external.",
+    "CORRECT: the ledger graph says '||' (parallel branches) but the source merge is a *gated weighted sum* (addcmul with g_slc/g_cmp/g_swa), not an unweighted typed merge; the merge operator must be recorded as E[weighted merge] with gate operands."
+  ],
+  "direction": "axis",
+  "axis": "A2 indexed softmax traversal / route ABI (shared with 006/007/071/072)",
+  "axis_clients": ["arch-005", "arch-006", "arch-007", "arch-071", "arch-072"],
+  "direction_justification": "All three branches are U1.S equations, but the selected branch requires the reusable indexed-K1 schedule/route ABI axis, and the exact branch equations plus weighted merge must be discharged before a full row claim.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": ["Whether the forced-block selection (first/current/previous) and -1 padding semantics are part of the reusable route ABI or NSA-specific E[route] logic."],
+  "evidence_citations": [
+    "fla/ops/nsa/naive.py:378 — k_cmp, v_cmp = mean_pooling(k), mean_pooling(v) (external compression).",
+    "fla/ops/nsa/naive.py:400-404 — o = o_slc*g_slc; o = addcmul(o, o_cmp, g_cmp); o = addcmul(o, o_swa, g_swa): gated weighted branch merge.",
+    "fla/ops/nsa/naive.py:103-120 — selected branch: block indices expanded to token indices, gathered k/v, masked (i_i > i_q or i_i < 0), softmax over gathered set.",
+    "fla/ops/nsa/naive.py:267-276 — topk scoring: group-mean of softmax probs, forced selection of block 0, current and previous block.",
+    "fla/ops/nsa/naive.py:171-176 — compressed branch visibility (c+1)*block_size-1 <= t, nan_to_num softmax."
+  ]
+}

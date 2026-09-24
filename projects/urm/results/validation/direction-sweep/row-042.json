@@ -1,0 +1,38 @@
+{
+  "id": "arch-042",
+  "architecture": "RWKV-7",
+  "source_repo": "fla",
+  "source_revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": [
+    "fla/ops/rwkv7/fused_recurrent.py",
+    "fla/ops/rwkv7/RWKV7(Goose).md"
+  ],
+  "equation_summary": "RWKV-7 state S in [V,K] (code stores b_h as [BK,BV]=[K,V]). Per step: S_t = S_{t-1}*Diag(exp(w_t)) + S_{t-1}*a_t*b_t^T + v_t*k_t^T (doc RWKV7(Goose).md:70). In the kernel (fused_recurrent.py:99-100,115-116): b_h = exp(w)[:,None]*b_h + b_b[:,None]*sum(b_act_a[:,None]*b_h,0)[None,:]; b_h += b_k[:,None]*b_v[None,:], with b_act_a=-kk, b_b=kk*a. Output o_t = sum_K(b_h * r_t*scale) read AFTER update (fused_recurrent.py:101,117). This is a diagonal (Diag(exp w)) + rank-one (a b^T) transition, i.e. DPLR, plus an additive rank-one write v k^T.",
+  "state_shape": "[B,H,K,V] matrix state (V x K conceptually), plus rank-one factors a,b",
+  "read_timing": "after-update",
+  "gate_scope": "channel (per-channel diagonal decay exp(w)) plus data-dependent rank-one a*b^T",
+  "normalization": "none",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM ledger call graph `E[time/value mixing/factor generation] ; B[K2 diagonal+rank-one transition] ; E[output gate]` — factor generation (a,b,kk) external; the diagonal+rank-one DPLR transition is the blocked region.",
+    "CONFIRM ledger blocker `Rank/chunk closure and source read order` — the rank-one S*a*b^T term must be closed under chunking (rank growth bounded) and the kernel reads AFTER update (fused_recurrent.py:117), matching after-update K2 read order; this must be preserved.",
+    "CONFIRM task hypothesis: this is axis A8 (low-rank/read-write coupling). The transition is diagonal + rank-one (DPLR), a closed typed property; the source explicitly routes to fused_recurrent_dplr_delta_rule (fused_recurrent.py:229).",
+    "NOTE: the rank-one factors here are data-dependent (a=-kk, b=kk*a from the frontend), so A8 must record that coefficients are input-precomputable (state-independent) — they depend only on current-token operands, not on the state."
+  ],
+  "direction": "axis",
+  "axis": "A8 read/write coupling (low-rank D+LR^T transition, input-precomputable coefficients)",
+  "axis_clients": ["arch-031", "arch-032", "arch-042"],
+  "direction_justification": "RWKV-7's mixer is a diagonal + rank-one (DPLR) matrix transition with an additive rank-one write and after-update read — a closed, typed, multi-client low-rank transition property (A8) shared with the generalized-delta IPLR/DPLR rows (031/032).",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Exact rank-growth bound under chunked closure and whether the a,b,kk factor frontend can be hoisted as a typed operand transform without a model-specific branch."
+  ],
+  "evidence_citations": [
+    "fla/ops/rwkv7/RWKV7(Goose).md:70 — S_t = S_{t-1} D_t + S_{t-1} a_t b_t^T + v_t k_t^T (diagonal+rank-one+additive)",
+    "fla/ops/rwkv7/RWKV7(Goose).md:74 — o_t = S_t r_t (after-update read)",
+    "fla/ops/rwkv7/fused_recurrent.py:99-100 — kernel: b_h = exp(w)*b_h + b_b*sum(b_act_a*b_h); b_h += b_k⊗b_v",
+    "fla/ops/rwkv7/fused_recurrent.py:229 — routes to fused_recurrent_dplr_delta_rule, confirming DPLR"
+  ]
+}

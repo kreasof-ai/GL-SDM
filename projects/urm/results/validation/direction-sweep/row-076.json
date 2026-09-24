@@ -1,0 +1,41 @@
+{
+  "id": "arch-076",
+  "architecture": "H3",
+  "source_repo": "h3",
+  "source_revision": "5c4d06b5795405170387c80998b58d76179a8a1a",
+  "source_files": [
+    "src/models/ssm/h3.py",
+    "src/ops/fftconv.py"
+  ],
+  "equation_summary": "y = ( K̄ * ( (K̄_shift * k) ⊙ v ) ) ⊙-contracted with q, concretely: k' = irfft(rfft(ssm_k_kernel)·rfft(k))[:L] + D_k·k (first causal FFT conv, shift SSM kernel); kv = k' ⊙ v (pointwise multiply over the head_dim outer-product layout); y = irfft(rfft(kv)·rfft(ssm_kernel))[:L] + D·kv (second causal FFT conv, S4D kernel); y = Σ_{d1} y ⊙ q (mul_sum contraction over the query head dim), then output_linear. Decode/step mode replaces the FFT convs with the SSMs' recurrent step on states (state_k, state). All convolutions are causal linear convs computed via rfft of size L_kernel + L.",
+  "state_shape": "SSM state pair (state_k for shift kernel, state for S4D kernel) per batch×head — used only in inference step mode; training path is stateless FFT",
+  "read_timing": "n-a",
+  "gate_scope": "none (pointwise multiplies and q-contraction are data-dependent but are external ops, not state gates)",
+  "normalization": "none",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM `E[projections] ; E[causal FFT-conv_1] ; E[multiply] ; E[causal FFT-conv_2] ; E[gate/output]`: h3.py:106-164 is exactly q/k/v projections → FFT conv of k with the shift kernel (+D_k residual) → pointwise multiply kv = k⊙v → FFT conv with the S4D kernel (+D residual) → multiply/contract with q → output_linear; the FFTs are external ordinary ops.",
+    "CONFIRM 'Source head layouts, step/cache and FFT cost': head_dim outer-product layout (b d1 d2 h l, h3.py:143-155), step() recurrence with (state_k, state) caches (h3.py:187-206), and the L_kernel + L FFT sizing are all recorded requirements; the state-continuation path (h3.py:166-176) writes forward_state for both kernels.",
+    "CONFIRM 'A U2 state-space rewrite is blocked until exact realization and cheaper schedule are proved': the SSM kernels are generated from HiPPO/S4D parameterizations (SSKernel) and the FFT path is the semantics; a compact K2 realization of the two-SSM-plus-multiply chain is not established anywhere in the source.",
+    "CONFIRM direction note: as external FFT ops this row does NOT count as native three-kernel mixer coverage (it binds no U1/U2/U3 call)."
+  ],
+  "direction": "composition-now",
+  "axis": null,
+  "axis_clients": [],
+  "direction_justification": "The mixer is composed entirely of external ordinary operators (projections, causal FFT convolutions, pointwise multiplies, q-contraction); no URM kernel call is needed — the graph is expressible today with FFT as an external op, and any U2 state-space rewrite is separately blocked.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "use_fast_fftconv=True swaps in the fused CUDA fftconv_func with different layout handling (h3.py:128-162); parity between the reference FFT path and the fused kernel must be recorded.",
+    "The step-mode recurrence equivalence to the FFT conv (S4D/shift discretization, _setup_step) belongs to the U2-rewrite proof, which the ledger keeps blocked.",
+    "Odd-length padding (L_og % 2) with use_fast_fftconv is a shape-envelope detail for the external module."
+  ],
+  "evidence_citations": [
+    "src/models/ssm/h3.py:119-138 — first causal FFT conv: k' = irfft(rfft(ssm_k_kernel)·rfft(k), n=L_kernel+L)[:L] + D_k·k",
+    "src/models/ssm/h3.py:140-155 — kv = k'⊙v multiply; second FFT conv with ssm_kernel + D residual; q-contraction via mul_sum / y*q",
+    "src/models/ssm/h3.py:166-176 — inference state continuation: forward_state writes for both SSM kernels",
+    "src/models/ssm/h3.py:187-206 — step(): recurrent step on (state_k, state) replacing the FFT convs",
+    "src/models/ssm/h3.py:60-66 — SSKernel (shift mode) and S4D kernel construction; D skip parameters"
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "id": "arch-030",
+  "architecture": "Momentum DeltaNet",
+  "source_repo": "fla",
+  "source_revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": [
+    "fla/ops/momentum_delta_rule/naive.py",
+    "fla/layers/momentum_deltanet.py"
+  ],
+  "equation_summary": "Two coupled matrix states S and M, each [K,V] (naive.py:46-65): w_t = -(v_t - p_t^T S_{t-1}) (prediction read off the memory state with separate key p); M_t = mu_t * M_{t-1} + (eta_t * k_t) ⊗ w_t (momentum state, scalar decay mu); S_t = alpha_t * S_{t-1} - beta_t * M_t (memory updated by the freshly-written momentum — the coupling); o_t = (scale*q_t)^T S_t, read after both updates. alpha, mu, beta are per-head scalars (exp of log params); eta scales k. Initial S and M are separate operands and the final state is the stacked pair (naive.py:37-43,69).",
+  "state_shape": "two coupled [B,H,K,V] matrices (S memory + M momentum)",
+  "read_timing": "after-update",
+  "gate_scope": "head",
+  "normalization": "none",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM call graph E[Q/K/p/alpha and optional norms] ; B[K2 coupled memory+momentum states] ; E[output]: the mixer genuinely carries two states with S_t depending on the just-updated M_t (naive.py:59-60) — a coupled-state descriptor, not a single K2 state.",
+    "CONFIRM 'no one-matrix alias': S and M have independent decay (alpha vs mu) and independent initial/final state (naive.py:23-24,37-43,69 stacks [S,M]); eliminating M changes the law.",
+    "CONFIRM blockers: both states and default source modes preserved; note the chunk reference (naive.py:126-197) needs log-cumsum-exp gamma masks combining alpha/mu/beta — the coupled-state VJP envelope is nontrivial and correctly blocked."
+  ],
+  "direction": "axis",
+  "axis": "A8 coupled multi-state transition (memory state S fed by momentum state M within one token step)",
+  "axis_clients": ["arch-030", "arch-039"],
+  "direction_justification": "The defining property is a closed typed coupling of two matrix states with per-state scalar decays — reusable (e.g. Titans-style memory+momentum, row 039) but outside the single-state U2 contract, so it is an axis.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Whether the descriptor should treat M as a first-class state bundle member with its own initial/final state and cotangent (source does: final_state = stack([S,M])) — and how cross-state VJP flows are represented.",
+    "Whether eta (k-scaling on the momentum write) is a per-head scalar everywhere or has channel variants in other modes."
+  ],
+  "evidence_citations": [
+    "fla/ops/momentum_delta_rule/naive.py:58-62 - w = -(v - p^T S); M = mu*M + (eta*k)⊗w; S = alpha*S - beta*M; o = q^T S: coupled two-state update, read after both",
+    "fla/ops/momentum_delta_rule/naive.py:23-24,37-43 - separate initial_S / initial_M operands, both [B,H,DK,DV]",
+    "fla/ops/momentum_delta_rule/naive.py:69 - final state is torch.stack([S,M]) — a two-member state bundle",
+    "fla/ops/momentum_delta_rule/naive.py:52-54 - mu, beta, alpha are per-head scalars via exp of log-space parameters"
+  ]
+}

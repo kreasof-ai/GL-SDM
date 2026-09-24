@@ -1,0 +1,34 @@
+{
+  "id": "arch-016",
+  "architecture": "Lightning Attention",
+  "source_repo": "fla",
+  "source_revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": ["fla/ops/lightning_attn/chunk.py", "fla/ops/lightning_attn/fused_recurrent.py", "fla/ops/simple_gla/naive.py"],
+  "equation_summary": "Lightning attention delegates entirely to the simple-GLA op with a STATIC per-head decay log-gate g_gamma[h] = -(8/H)(1 - layer_idx/num_layers)*h (a constant vector over time). The mixer law is S_t = exp(g_gamma[h]) * S_{t-1} + k_t^T v_t, o_t = (q_t*scale) S_t (after-update read). The decay depends only on (layer_idx, num_layers, head index), so it is a fixed head-scalar gate, NOT a data-dependent gate.",
+  "state_shape": "[B,H,K,V] matrix",
+  "read_timing": "after-update",
+  "gate_scope": "head (static per-head scalar decay, computed externally from layer index)",
+  "normalization": "none",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM decay schedule is external E[projections/layer-index decay]: g_gamma is built from layer_idx/num_layers outside the mixer and passed in as a fixed per-head vector",
+    "CONFIRM the mixer is U2.A with a per-head decay gate (head scope), via delegation to simple_gla",
+    "CORRECT gate scope is head (per-head scalar g_gamma), not channel: g_gamma has shape [H] and multiplies the whole [K,V] state of head h",
+    "CONFIRM blockers: exact decay schedule, state continuation, B[K2_graph_execution]"
+  ],
+  "direction": "composition-k2-gated",
+  "axis": null,
+  "axis_clients": ["arch-016", "arch-017", "arch-018"],
+  "direction_justification": "Lightning attention is exactly U2.A with a static head-scalar decay gate; the only external input is the layer-index decay schedule, so it composes once K2 graph execution exists.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "The decay is a fixed per-head constant over time; confirm the K2 descriptor admits a time-invariant head gate without forcing a per-token gate tensor."
+  ],
+  "evidence_citations": [
+    "fla/ops/lightning_attn/chunk.py:73-84 — g_gamma = -(8/H)(1-layer_idx/num_layers)*range(H); return chunk_simple_gla(..., g_gamma=g_gamma): external static per-head decay, delegates to simple_gla",
+    "fla/ops/lightning_attn/fused_recurrent.py:74-86 — same g_gamma construction; delegates to fused_recurrent_simple_gla",
+    "fla/ops/simple_gla/naive.py:83-91 — S = S*gate + k^T v; o = q*S (after-update read) is the underlying law Lightning inherits"
+  ]
+}

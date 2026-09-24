@@ -1,0 +1,34 @@
+{
+  "id": "arch-018",
+  "architecture": "Simple GLA",
+  "source_repo": "fla",
+  "source_revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": ["fla/ops/simple_gla/naive.py", "fla/layers/simple_gla.py"],
+  "equation_summary": "Simple GLA keeps a matrix state S[B,H,K,V] with a per-HEAD, per-token data-dependent gate: gk = logsigmoid(gk_proj(x)) / gate_logit_normalizer has shape [B,T,H], and S_t = exp(gk_t[h]) * S_{t-1} + k_t^T v_t, o_t = (q_t*scale) S_t (after-update read). The gate is a scalar per head per timestep (head scope), produced by an external projection of the hidden states.",
+  "state_shape": "[B,H,K,V] matrix",
+  "read_timing": "after-update",
+  "gate_scope": "head (data-dependent per-head scalar gate, time-varying)",
+  "normalization": "none",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM E[QKV/head gate]: gk_proj outputs num_heads scalars, so the gate is head-scalar, matching the ledger's 'head gate'/'head decay'",
+    "CONFIRM the update is exactly U2.A with a head-scalar decay gate: S = S*exp(g) + k^T v; o = q*S",
+    "CORRECT the gate is data-dependent (logsigmoid of a learned projection of x_t), i.e. time-varying, unlike the static Lightning/RetNet decay; it still fits the head gate scope of U2.A because the gate is supplied as an operand",
+    "CONFIRM blockers: gate VJP and low-precision chunk path, B[K2_graph_execution]"
+  ],
+  "direction": "composition-k2-gated",
+  "axis": null,
+  "axis_clients": ["arch-018", "arch-016", "arch-017"],
+  "direction_justification": "Simple GLA is exactly U2.A with a head-scalar decay gate supplied as a data-dependent operand; the gate's data-dependence is external to the mixer law, so it composes once K2 graph execution exists.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Whether the K2 head-gate descriptor requires the gate tensor to be materialized per-token (it is here) or admits a broadcast scalar; the source always materializes [B,T,H]."
+  ],
+  "evidence_citations": [
+    "fla/ops/simple_gla/naive.py:83-91 — S = S*gate.unsqueeze(-1,-1) + k^T v; o = (q*S).sum: after-update read, gate broadcast over [K,V]",
+    "fla/layers/simple_gla.py:145 — gk_proj = Linear(hidden_size, num_heads): gate is per-head scalar",
+    "fla/layers/simple_gla.py:236 — gk = logsigmoid(gk)/gate_logit_normalizer: data-dependent per-token head gate"
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "id": "arch-007",
+  "architecture": "DSA",
+  "source_repo": "fla",
+  "source_revision": "fla@864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": ["fla/ops/dsa/naive.py"],
+  "equation_summary": "Lightning indexer scores every causal key: I[t,s] = sum_j w_idx[t,j] * act(scale * q_idx[t,j] . k_idx[s]) (MQA-style shared index key; optional monotone activation such as relu; weights per head). Top-k causal keys per query are kept, invisible slots padded -1, selection shared across all query heads. Main attention is then softmax(scale q.k) v over the gathered selected tokens only.",
+  "state_shape": "external KV cache; indexer projections (q_idx/k_idx/w_idx) external",
+  "read_timing": "n-a",
+  "gate_scope": "data-dependent per-token top-k selection via indexer",
+  "normalization": "softmax over selected tokens",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM E[indexer/objective/top-k token routes] ; U1.S[selected tokens] ; E[output] matches naive_dsa: indexer scoring, causal top-k selection with -1 padding, then attention over gathered tokens.",
+    "CONFIRM B[token route ABI/selection gradient] and B[indexed_K1_schedule] are required: the indexer (weighted multi-head score + activation + topk) is an external route objective whose gradient path and ABI must be pinned, and selected-token attention is an indexed K1 traversal."
+  ],
+  "direction": "axis",
+  "axis": "A2 indexed softmax traversal / route ABI (shared with 005/006/071/072)",
+  "axis_clients": ["arch-005", "arch-006", "arch-007", "arch-071", "arch-072"],
+  "direction_justification": "The main mixer is exactly U1.S[R] over top-k selected tokens; only the reusable indexed-K1 schedule axis plus a closed token-route ABI (indexer objective, -1 padding, selection gradient) are missing.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": ["Whether the indexer's optional activation and per-head weighting belong to a reusable route descriptor or remain DSA-specific E[route]."],
+  "evidence_citations": [
+    "fla/ops/dsa/naive.py:69-81 — indexer: score = einsum(q_idx,k_idx)*scale, optional activation, head-weighted sum, causal -inf mask, topk, -1 padding.",
+    "fla/ops/dsa/naive.py:30 — I[t,s] = sum_j w_idx[t,j] * act(scale * q_idx[t,j] . k_idx[s]) docstring.",
+    "fla/ops/dsa/naive.py:113-115 — selection shared across all query heads; attention over selected keys only."
+  ]
+}

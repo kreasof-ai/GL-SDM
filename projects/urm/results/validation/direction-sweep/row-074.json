@@ -1,0 +1,44 @@
+{
+  "id": "arch-074",
+  "architecture": "HLA (higher-order linear attention)",
+  "source_repo": "hla_higher_order",
+  "source_revision": "484fef2bb40d4ed58f7656e545cf5ef64c40c962",
+  "source_files": [
+    "HLA.pdf",
+    "README.md"
+  ],
+  "equation_summary": "Masked second-order unnormalized HLA (default operator, paper Eq. 3.3 + Algorithm 1): per-head prefix summaries S_t = Σ_{i≤t} k_i k_iᵀ [d×d], C_t = Σ_{i≤t} q_i v_iᵀ [d×dv], m_t = Σ q_i [d], plus the two strict-causality correction summaries G_t = Σ_{i≤t} k_i k_iᵀ C_{i−1} [d×dv] and h_t = Σ_{i≤t} k_i (k_iᵀ m_{i−1}) [d]; output o_t = q_tᵀ(S_t C_t − G_t). This realizes EXACTLY o = ((L⊙QKᵀ)(L⊙QKᵀ)ᵀ ⊙ L)_{t,:} V — i.e. the inner linear-attention pass z_j = S_jᵀ q_j = Σ_{i≤j} k_i(k_i·q_j) feeds as keys into the outer pass o_t = Σ_{j≤t} q_j(q_j·z_j)ᵀ...equivalently z,s1 = U2.A(q,k,k;s1) then y,s2 = U2.A(q,z,v;s2) with the strict-past correction (−G_t) making the outer domain strictly causal. Optional normalization divides by q_tᵀ(S_t m_t − h_t) + ε; optional decay γ and ridge λI are variants.",
+  "state_shape": "per-head bundle of four matrices/vectors: S [d,d], C [d,dv], G [d,dv], m [d], h [d] (five tensors); O(d² + d·dv) per head, shareable S under multi-query K/V",
+  "read_timing": "after-update",
+  "gate_scope": "none in the default masked unnormalized case (γ decay and λI ridge are explicitly optional variants)",
+  "normalization": "none by default (unnormalized numerator); optional linear normalization by the masked denominator q_tᵀ(S_t m_t − h_t) + ε",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM the Nest combinator shape `z,s1=U2.A(q,k,k;s1) ; y,s2=U2.A(q,z,v;s2)`: the paper's own factorization (Section 3, 'K(q_t,q_i) = q_tᵀ S_t q_i' with data-adaptive metric S_t = Σ k_i k_iᵀ; the inner pass over (q,k,k) yields z_j = (L⊙QKᵀ)_{j,:}... then o = (W Wᵀ ⊙ L) V with W = L⊙QKᵀ) is exactly two dependent additive-linear-attention calls where the inner output feeds the outer keys.",
+    "CONFIRM 'Exact masked second-order UNNORMALIZED causal case only': Theorem 3.1 and Algorithm 1 pin the default unnormalized output o_t = q_tᵀ(S_t C_t − G_t) with the (G,h) extended summaries required for strict causality; the normalized variant (Eq. 3.4, +ε), decay γ (Eq. 4.1 decayed concatenation), ridge λI (Algorithm 1 line 7, explicitly NOT the exact masked bilinear form), third-order (Section 7), and asymmetric AHLA (Section 6, AAᵀ replaced by AA) are all separate equations matching the ledger's 'higher/asymmetric/decayed variants are separate blocked equations'.",
+    "CONFIRM 'both cache states and VJPs': the state is the two-call bundle (S,C,m) + (G,h) — both calls' states must be carried for continuation; the paper gives the chunk-parallel associative scan (monoid (S,C,m,G,h) with segment concat) reproducing the serial recurrence exactly, but the VJP through the nested pair is not derived in the source and remains part of the blocked proof.",
+    "MISSING-BLOCKER (shared, implicit): like every U2 row, each U2.A call requires B[K2_graph_execution]; the ledger row omits it but the notation section states it applies to every U2 row, so this is recorded as a row-level omission, not a ledger error."
+  ],
+  "direction": "combinator",
+  "axis": null,
+  "axis_clients": [],
+  "direction_justification": "HLA is the flagship higher-order nesting Nest(F,G) — the inner K2 call's output z feeds the outer K2 call's keys, with the strict-causality correction (−G_t) arising from the nesting — a family-generic typed graph structure admitted as IR structure, not a provider branch; first plan is two unfused U2.A calls plus the correction summaries.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "The pinned source is the paper/website only — there is NO upstream reference implementation in this repo; the independent NumPy/Torch references must be written from Theorem 3.1 / Algorithm 1 before 'reference-executable'.",
+    "The exact typed form of the strict-causality correction (−G_t, −q_tᵀh_t terms) inside a Nest(F,G) IR node: is it a third fused operand of the outer call or a separate typed merge edge?",
+    "VJP of the nested pair (both states' final cotangents) and the chunk-parallel scan's operator (⊕ with G,h cross-terms) must be proved before any fused/native claim.",
+    "Multi-query sharing of S (O(d²) once per layer) is a physical-layout note that belongs in the plan, not the descriptor."
+  ],
+  "evidence_citations": [
+    "HLA.pdf §3 (text line 185-188) — unnormalized second-order output o_t = q_tᵀ S_t C_t; prefix summaries S,C,m",
+    "HLA.pdf §3.1 / Theorem 3.1 (text lines 579-712) — masked identity: num^mask = qᵀ(S C − G), den^mask = qᵀ(S m − h); G,h extended summaries; o_t = q_tᵀ(S_t C_t − G_t) (Eq. 3.3)",
+    "HLA.pdf Eq. 3.4 (text lines 682-684) — optional normalization with +ε",
+    "HLA.pdf Algorithm 1 (text lines 1046-1097) — masked second-order scan: inclusive state updates, G_t ← γG_{t−1} + ΔS_t C_{t−1}, default unnormalized output u·C − qᵀG, optional normalize branch",
+    "HLA.pdf §6 (text lines 1162-1194) — AHLA asymmetric variant is a separate definition; §7 third-order extension",
+    "HLA.pdf text lines 64-67,86-88 — 'The unnormalized HLA is the default operator'; decayed and normalized variants explicitly optional",
+    "HLA.pdf text lines 1124-1129 — 'by default, the implementation returns the unnormalized output'; ridge λI 'does not correspond to the exact masked bilinear form'"
+  ]
+}

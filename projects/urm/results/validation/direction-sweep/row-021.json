@@ -1,0 +1,33 @@
+{
+  "id": "arch-021",
+  "architecture": "ReBased",
+  "source_repo": "fla",
+  "source_revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": ["fla/ops/rebased/naive.py", "fla/layers/rebased.py"],
+  "equation_summary": "ReBased applies a squared-dot polynomial feature map: the parallel kernel uses attn = (q.k)^2 (causal-masked), o = attn@v, z = attn.sum(-1), output o/(z + eps). The layer applies an external RebasedFeatureMap (with optional gamma/beta/normalize) to q,k and then runs chunk_linear_attn(normalize=True, scale=1) or parallel_rebased(use_normalize=True). There is no decay (G=I); the mixer is normalized linear attention with a polynomial feature map.",
+  "state_shape": "[B,H,K_feat,V] matrix (expanded feature-dim state); plus a denominator cumulative state",
+  "read_timing": "after-update",
+  "gate_scope": "none",
+  "normalization": "denominator-state with explicit epsilon division",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM E[QKV/squared-dot feature map]: RebasedFeatureMap / attn^2 is the squared-dot polynomial feature, applied externally before the linear-attention call",
+    "CONFIRM numerator || denominator U2.A with external epsilon division (use_normalize=True path)",
+    "CONFIRM blockers: prove exact polynomial feature and epsilon policy; cost expanded state"
+  ],
+  "direction": "composition-k2-gated",
+  "axis": null,
+  "axis_clients": ["arch-021", "arch-015", "arch-020"],
+  "direction_justification": "ReBased is U2.A numerator plus U2.A denominator with an external squared-dot polynomial feature map and epsilon division, identical in structure to Based; only the feature map differs.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "The exact RebasedFeatureMap (gamma/beta/normalize flags) must be transcribed for parity; the naive kernel only shows the plain attn^2 form."
+  ],
+  "evidence_citations": [
+    "fla/ops/rebased/naive.py:21-27 — attn = (qk)^2 masked tril; o = attn@v; z = attn.sum(-1); o/(z+1e-6): squared-dot kernel with denominator normalization",
+    "fla/layers/rebased.py:59 — RebasedFeatureMap(feature_dim, use_gamma, use_beta, normalize); line 86 — feature_map applied to q,k externally",
+    "fla/layers/rebased.py:95-111 — chunk/fused_chunk use chunk_linear_attn(normalize=True); parallel uses parallel_rebased(use_normalize=True)"
+  ]
+}

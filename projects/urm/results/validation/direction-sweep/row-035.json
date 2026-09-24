@@ -1,0 +1,38 @@
+{
+  "id": "arch-035",
+  "architecture": "PKDA (preconditioned KDA)",
+  "source_repo": "fla",
+  "source_revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": [
+    "fla/ops/precond_kda/naive.py",
+    "fla/layers/precond_kda.py"
+  ],
+  "equation_summary": "Per token (naive.py:57-71): evolving diagonal metric A in R^K: A <- exp(g_atk_t) * A + beta_atk_t * k_t^2; nonlinear preconditioner M = exp(-log(x)*s) with s = (log(A+eps)-center)/(1+|log(A+eps)-center|); k_precond = k_t * M; then a channel-decayed delta: S <- S * exp(g_t) with g_t in R^K per-channel log decay; S <- S + (beta_t * k_precond) ⊗ (v_t - k_t^T S_decayed); o_t = (scale*q_t)^T S. This is KDA (028) whose write key is modulated by the ATK nonlinear metric — memory plus evolving metric, with retrieval still using the raw k. Separate initial S and A; both returned as final state (naive.py:47-53,73-75).",
+  "state_shape": "[B,H,K,V] matrix S plus [B,H,K] diagonal metric A",
+  "read_timing": "after-update",
+  "gate_scope": "channel",
+  "normalization": "none",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM call graph E[QKV/KDA gates/ATK parameters] ; B[K2 channel-decayed delta+evolving metric] ; E[output]: inner law is exactly KDA's channel-decayed delta (naive.py:69-71) with the write key replaced by k*M(A) from the ATK recurrence (naive.py:61-67).",
+    "CONFIRM 'Metric and channel gates kept distinct; no PGDN name alias': PKDA's S-decay g is per-K-CHANNEL (naive.py:15,69) where PGDN's is per-head scalar, and PKDA retrieval uses k while the write uses k_precond — distinct row, distinct gates.",
+    "CONFIRM state-dependent coefficient blocker: M is a nonlinear function of running A, so the transition is not affine; metric VJP must flow through log/squash/exp (naive.py:63-66)."
+  ],
+  "direction": "external-only",
+  "axis": null,
+  "axis_clients": [],
+  "direction_justification": "PKDA combines KDA with the same architecture-specific nonlinear ATK preconditioner as PGDN; the nonlinear state-dependent write coefficient does not transfer beyond this two-member family and cannot share the closed linear-delta law, so it stays external.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "source-model-qualified"],
+  "open_questions": [
+    "Whether the shared ATK preconditioner across PGDN/PKDA ever justifies a closed two-client descriptor (diagonal metric + monotone squash on write key) — would need a two-client admission record and measured regime; currently kept external.",
+    "Whether the KDA inner law with k_precond write / k retrieval asymmetry has any other (even hypothetical) client."
+  ],
+  "evidence_citations": [
+    "fla/ops/precond_kda/naive.py:61 - ATK metric recurrence A <- exp(g_atk) A + beta_atk * k^2",
+    "fla/ops/precond_kda/naive.py:63-67 - nonlinear squash M(A) and k_precond = k*M — state-dependent write coefficient",
+    "fla/ops/precond_kda/naive.py:69-71 - channel-decayed delta on S with retrieval by raw k and write by beta*k_precond, read after update",
+    "fla/ops/precond_kda/naive.py:47-53,73-75 - separate initial/final state for S and A"
+  ]
+}

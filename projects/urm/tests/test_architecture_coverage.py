@@ -168,15 +168,15 @@ def test_named_register_is_complete_and_source_pinned_or_explicitly_blocked():
             assert comparison is None
             assert row["kernel_upstream_blocker"]["reason"]
             assert row["kernel_upstream_blocker"]["required_action"]
-    # 17 architectures keep a live prototype through the graph path (the 15
-    # schema-v2 recipes); the remaining 59 are pending graph migration.
+    # 19 architectures keep a live prototype through the graph path (the 17
+    # schema-v2 recipes); the remaining 57 are pending graph migration.
     assert (
         sum(row.get("prototype_status") == "kernel_prototype_only" for row in rows)
-        == 17
+        == 19
     )
     assert (
         sum(row.get("prototype_status") == "pending_graph_migration" for row in rows)
-        == 59
+        == 57
     )
     assert sum(row.get("native_urm_profile") is not None for row in rows) == 4
     recipe_ids = {

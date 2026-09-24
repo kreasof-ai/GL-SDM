@@ -1,0 +1,34 @@
+{
+  "id": "arch-022",
+  "architecture": "LightNet",
+  "source_repo": "fla",
+  "source_revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": ["fla/layers/lightnet.py", "fla/ops/gla/naive.py"],
+  "equation_summary": "LightNet is a GLA channel-decay mixer with value-first state layout and a normalized-key frontend. The keys are normalized via a log-cumsum-exp over time: z_t = logcumsumexp(k), k_t' = exp(k_t - z_t), g_t = z_{t-1} - z_t; this (k', g) pair feeds chunk_gla / fused_recurrent_gla with state_v_first=True. The state law is the GLA channel-diagonal decay h_t = diag(exp(g_t)) h_{t-1} + k_t'^T v_t, o_t = q_t h_t (after-update read). The log-cumsum-exp state z is carried as an additional ffn_state for decode continuation.",
+  "state_shape": "[B,H,K,V] matrix (value-first layout); plus a [B,H,K] log-cumsum-exp (z) continuation state",
+  "read_timing": "after-update",
+  "gate_scope": "channel (per-key-channel diagonal gate g, derived externally from key log-cumsum-exp)",
+  "normalization": "key normalization via external log-cumsum-exp (k normalized by running log-sum-exp)",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM E[projections/short conv/key normalization/gates]: q/k/v projections, optional short convs, and the log-cumsum-exp key normalization + gate construction are all external frontend",
+    "CONFIRM U2.A(channel decay): the mixer call is literally chunk_gla/fused_recurrent_gla with channel-diagonal g",
+    "CONFIRM E[gated output]: rms_norm_swish_gate_linear with a low-rank g_proj is the external output gate",
+    "CONFIRM blockers: all frontend states (recurrent + ffn_state z + conv states) and B[channel-decay native envelope]"
+  ],
+  "direction": "composition-k2-gated",
+  "axis": null,
+  "axis_clients": ["arch-022", "arch-019", "arch-024"],
+  "direction_justification": "LightNet's mixer is exactly the GLA channel-decay U2.A; the key normalization and gate derivation are external frontend, so it composes once the channel-decay envelope and K2 binder exist.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "The decode path continues the log-cumsum-exp from a cached z (ffn_state); the state bundle must include both the GLA recurrent state and the z scalar state for continuation."
+  ],
+  "evidence_citations": [
+    "fla/layers/lightnet.py:176-193 — z = logcumsumexp(k); k = exp(k - z); g = z_prev - z (with nan_to_num): external key normalization and channel-gate derivation",
+    "fla/layers/lightnet.py:196-217 — fused_recurrent_gla / chunk_gla called with gk=g, state_v_first=True: the mixer is GLA channel-decay U2.A",
+    "fla/layers/lightnet.py:226,230-237 — ffn_state=z[:,-1:] cached for continuation; rms_norm_swish_gate_linear external output gate"
+  ]
+}

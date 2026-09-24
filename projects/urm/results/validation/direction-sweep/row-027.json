@@ -1,0 +1,38 @@
+{
+  "id": "arch-027",
+  "architecture": "GDN2 (Gated DeltaNet 2)",
+  "source_repo": "fla",
+  "source_revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": [
+    "fla/ops/gdn2/naive.py",
+    "fla/layers/gdn2.py"
+  ],
+  "equation_summary": "Per token (naive.py:62-78): h <- h * exp(g_t) with g_t in R^K channel-wise log-decay along the KEY axis; erase = (b_t * k_t)^T h (gated read with channel-wise erase gate b in R^K); v_new = w_t * v_t - erase with channel-wise write gate w in R^V; h <- h + k_t v_new^T; o_t = (scale*q_t)^T h. Header comment (naive.py:10-17) gives the closed form S_t = (I - k_t (b_t*k_t)^T) Diag(exp(g_t)) S_{t-1} + k_t (w_t*v_t)^T and notes collapsing b=w=scalar beta recovers KDA. Distinct erase gate (K-axis) and write gate (V-axis) plus channel decay — NOT expressible as the canonical single-beta delta.",
+  "state_shape": "[B,H,K,V] matrix",
+  "read_timing": "after-update",
+  "gate_scope": "channel",
+  "normalization": "none",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM call graph E[QKV/erase/write/decay gates] ; B[K2 distinct erase-write transition] ; E[norm/output]: the mixer takes b:[B,T,H,K] erase and w:[B,T,H,V] write as separate operands (naive.py:41-42), genuinely distinct factors.",
+    "CONFIRM blocker wording: 'no scalar-beta delta equivalence by naming' is correct — the transition (I - k(b*k)^T)Diag(exp(g)) has separate K-axis erase modulation b and V-axis write modulation w plus K-channel decay; only the degenerate b=w=beta scalar collapse equals the scalar-beta delta (naive.py:17).",
+    "MISSING-BLOCKER none severe, but note chunk reference (naive.py:150-200) materializes per-(i,j,K) decay tensors — any descriptor must record K-axis channel-decay cumsum semantics and both factor VJPs."
+  ],
+  "direction": "axis",
+  "axis": "A8 distinct erase/write transition factors (K-axis erase gate b, V-axis write gate w, plus K-channel decay) — generalizes the low-rank/diagonal-plus-rank-1 transition family",
+  "axis_clients": ["arch-027", "arch-031", "arch-032", "arch-037"],
+  "direction_justification": "GDN2 differs from closed U2.D by a closed typed property — distinct per-channel erase and write factors on the rank-1 update with channel decay — reusable across the delta family, so it is an axis, not a one-off.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Whether b and w must both be full per-channel tensors or whether low-rank/scalar special cases deserve named descriptor fields (source allows any [K] and [V] tensors).",
+    "Whether the KDA-collapse boundary (b=w=beta scalar) should be a legal coercion in the descriptor or kept structurally distinct."
+  ],
+  "evidence_citations": [
+    "fla/ops/gdn2/naive.py:10-17 - closed-form update S_t = (I - k(b*k)^T) Diag(exp(g)) S + k (w*v)^T; b=w=beta scalar collapse recovers KDA",
+    "fla/ops/gdn2/naive.py:71-78 - per-token: channel decay on K axis, erase read at (b*k), write (w*v - erase), rank-1 commit, read after update",
+    "fla/ops/gdn2/naive.py:41-43 - operand shapes g:[B,T,H,K], b:[B,T,H,K], w:[B,T,H,V] — channel-wise gates",
+    "fla/ops/gdn2/naive.py:199-200 - chunk inter-chunk state: S <- Diag(exp(g_last)) S + k_tail^T v_new, same transition"
+  ]
+}

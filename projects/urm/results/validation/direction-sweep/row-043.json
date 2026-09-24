@@ -1,0 +1,37 @@
+{
+  "id": "arch-043",
+  "architecture": "Mamba-1",
+  "source_repo": "mamba",
+  "source_revision": "e9594ce1c732d97440f0332fdc43170a2294dbfa",
+  "source_files": [
+    "mamba_ssm/ops/selective_scan_interface.py"
+  ],
+  "equation_summary": "Mamba-1 selective scan keeps a per-channel SSM state x in [B,D,N]. The recurrence (selective_scan_ref, interface.py:162-175) is x_i = deltaA_i * x_{i-1} + deltaB_u_i, where deltaA_i = exp(delta_i * A) with delta_i the per-timestep input-dependent step size and A a [D,N] parameter; deltaB_u_i = delta_i * B_i * u_i (input-modulated input). Output y_i = C_i . x_i (plus D*u skip and optional z gate). The KEY point: deltaA_i is a DIAGONAL transition (scalar per channel, exp of delta*A), but delta_i (and B_i,C_i) are DATA-DEPENDENT (selective) — they vary per token as functions of the input.",
+  "state_shape": "per-channel SSM state x [B,D,N] (N=dstate)",
+  "read_timing": "after-update",
+  "gate_scope": "data-dependent (selective): delta_i, B_i, C_i all vary per token; transition deltaA_i=exp(delta_i*A) is diagonal but data-modulated",
+  "normalization": "none",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM ledger call graph `E[projection/short conv/activation] ; B[K2 diagonal selective SSM] ; E[skip/output gate/cache]` — projection/conv external; the diagonal selective SSM scan is the blocked region.",
+    "CONFIRM ledger blocker `Input-precomputable coefficients, scan/step equivalence` — delta,B,C are produced by the external projection frontend and are input-precomputable (they depend on the input token, NOT on the recurrent state x), so the coefficient is data-dependent on the input but NOT state-dependent.",
+    "ANSWER to task question: the recurrence is a diagonal transition, but the SELECTIVE (input-dependent) delta/B/C make it data-dependent on the input token. It is NOT state-dependent (A10 is stochastic routes — not applicable). The correct characterization: the coefficients are input-precomputable, so this is the A8 read/write-coupling axis case of 'input-precomputable versus state-dependent coefficients'. It is NOT plain fixed-decay K2 because the decay deltaA_i=exp(delta_i*A) varies per token (a per-token diagonal gate scope), distinct from a fixed decay.",
+    "MISSING-BLOCKER nuance: the ledger should make explicit that the per-token diagonal gate (deltaA_i varies per token) is a gate-scope/read-timing descriptor difference from canonical fixed-G K2, even though the coefficients are input-precomputable."
+  ],
+  "direction": "axis",
+  "axis": "A8 read/write coupling (input-precomputable coefficients) + per-token diagonal gate scope descriptor",
+  "axis_clients": ["arch-043", "arch-044", "arch-053"],
+  "direction_justification": "Mamba-1 is a diagonal-transition SSM whose coefficients (delta,B,C) are input-precomputable but vary per token, so it is a per-token diagonal gate + input-precomputable-coefficient case of A8 rather than the canonical fixed-decay K2; the scan/step equivalence and gate descriptor must be recorded before any K2 substitution.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Whether the per-token diagonal gate deltaA_i=exp(delta_i*A) with input-precomputable delta can be folded into the K2 gate-scope field as 'per-token diagonal', or requires a separate descriptor; the reference CUDA kernel (selective_scan_cuda) is not transcribed here."
+  ],
+  "evidence_citations": [
+    "mamba_ssm/ops/selective_scan_interface.py:162 — deltaA = exp(einsum('bdl,dn->bdln', delta, A)) diagonal transition from per-token delta",
+    "mamba_ssm/ops/selective_scan_interface.py:164-170 — deltaB_u = delta*B*u (input-modulated), B per-token (is_variable_B)",
+    "mamba_ssm/ops/selective_scan_interface.py:174-175 — x = deltaA_i*x + deltaB_u_i; y = C_i . x (after-update read)",
+    "mamba_ssm/ops/selective_scan_interface.py:61 — last_state=x[:,:,-1,1::2] final state exposed for cache"
+  ]
+}

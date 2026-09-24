@@ -1,0 +1,35 @@
+{
+  "id": "arch-061",
+  "architecture": "GRU",
+  "source_repo": "xma",
+  "source_revision": "384ed0a7bd82ced1f40609603dd541cac5416844",
+  "source_files": [
+    "xma/layers/gru/torch_implementation.py"
+  ],
+  "equation_summary": "GRU. Per step s: f = sigmoid(h_{s-1} @ Wf + xf_s); r = sigmoid(h_{s-1} @ Wr + xr_s); z = tanh((h_{s-1} * r) @ W + x_s); h_s = f * h_{s-1} + (1 - f) * z. There is an explicit forget gate f and reset gate r with a fixed gate order (f,r computed from h_prev, then candidate z uses h_prev*r, then interpolation). All weights shared across steps. y_s = h_s. This is a closed NONLINEAR gated vector transition (sigmoid/tanh), not an affine scan.",
+  "state_shape": "vector h [B,N,H]",
+  "read_timing": "after-update",
+  "gate_scope": "data-dependent nonlinear gates (f=sigmoid forget, r=sigmoid reset), but applied via fixed shared weights",
+  "normalization": "none",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM ledger call graph `E[reset/update/candidate projections] ; B[K2 closed GRU gate transition] ; E[output/cache]` — gate projections external; the closed GRU gate transition is the blocked region.",
+    "CONFIRM ledger blocker `Exact gate order and recurrent VJP; no RNN-name branch` — the source has an exact gate order (torch_implementation.py:54-62): f,r from h_prev, then z=tanh((h_prev*r)@W+x), then h=f*h_prev+(1-f)*z; this order and the recurrent VJP must be preserved and is not interchangeable with a plain RNN.",
+    "CONFIRM task hypothesis: this is external-only. The sigmoid/tanh gates make the transition NONLINEAR (the gate f multiplies h_prev, and the interpolation is data-dependent through sigmoid), so it does NOT map to affine K2. No affine-scan substitution is legal."
+  ],
+  "direction": "external-only",
+  "axis": null,
+  "axis_clients": [],
+  "direction_justification": "The GRU recurrence is a closed nonlinear gated vector transition (sigmoid forget/reset, tanh candidate, data-dependent interpolation) that does not map to the affine K2 law and yields no reusable descriptor for other families, so it stays an external comparator.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Packed/varlen (cu_seqlens) is NotImplementedError in the torch reference (torch_implementation.py:32); packed-length handling cannot be closed from this reference alone."
+  ],
+  "evidence_citations": [
+    "xma/layers/gru/torch_implementation.py:54-58 — f=sigmoid(h_prev@Wf+xf), r=sigmoid(h_prev@Wr+xr) gate order",
+    "xma/layers/gru/torch_implementation.py:60-62 — z=tanh((h_prev*r)@W+x); h=f*h_prev+(1-f)*z (nonlinear gated interpolation)",
+    "xma/layers/gru/torch_implementation.py:32 — cu_seqlens (packed lengths) raise NotImplementedError"
+  ]
+}

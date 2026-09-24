@@ -317,6 +317,20 @@ def test_every_graph_recipe_runs_forward_and_backward_through_the_graph_path(
             "log_decay": leaf(1, 16, 1, dtype=torch.bfloat16),
             "memory": torch.randn(1, slots, value_dim, dtype=torch.bfloat16),
         }
+    elif recipe_name in {"deltanet", "gla"}:
+        # K2 linear-delta state recipes: operands bind by the declared roles.
+        B, H, T, K, V = 1, 2, 6, 4, 3
+        channel_decay = recipe_name == "gla"
+        available = {
+            "query": leaf(B, H, T, K),
+            "key": leaf(B, H, T, K),
+            "value": leaf(B, H, T, V),
+            "beta": leaf(B, H, T),
+            "log_decay": (
+                -torch.rand(B, H, T, K) if channel_decay else -torch.rand(B, H, T)
+            ),
+            "initial_state": leaf(B, H, K, V),
+        }
     else:
         available = {
             "query": leaf(1, 8, 2, 8),

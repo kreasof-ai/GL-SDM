@@ -63,6 +63,7 @@ from urm.compiler.rewrite.engine import (
 from urm.ir.program import (
     CollectiveExchange,
     Gather,
+    LinearDeltaState,
     LogicalDomain,
     Matmul,
     OrderedRecurrence,
@@ -479,15 +480,21 @@ def _weighted_reduce_anchor_kind(op: WeightedReduce) -> AnchorKind:
     never a recipe name.
     """
     spec = op.spec
+    # Attention computes scores inline from query/key; a routed reduction
+    # consumes precomputed route indices/weights via a gather. The query/key
+    # roles are the authority when present; the legacy positional form falls
+    # back to the first two input names.
+    roles = dict(op.roles)
+    if roles:
+        has_qk = "query" in roles and "key" in roles
+    else:
+        has_qk = "query" in op.inputs and "key" in op.inputs
     is_attention = (
         spec.normalization is ScoreNormalization.SOFTMAX
         and spec.selection is SelectionKind.DENSE
         and spec.query_domain is LogicalDomain.SEQUENCE
         and spec.source_domain is LogicalDomain.SEQUENCE
-        # Attention computes scores inline from query/key; a routed reduction
-        # consumes precomputed route indices/weights via a gather.
-        and "query" in op.inputs
-        and "key" in op.inputs
+        and has_qk
     )
     return AnchorKind.ATTENTION if is_attention else AnchorKind.ROUTED_REDUCTION
 
@@ -1517,6 +1524,8 @@ class UrmCompiler:
         if isinstance(op, Gather):
             return AnchorKind.ROUTED_REDUCTION, ()
         if isinstance(op, OrderedRecurrence):
+            return AnchorKind.RECURRENT_SCAN, ()
+        if isinstance(op, LinearDeltaState):
             return AnchorKind.RECURRENT_SCAN, ()
         if isinstance(op, SparseRouteGeneration):
             return AnchorKind.SPARSE_ROUTE_SELECTION, ()

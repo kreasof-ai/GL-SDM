@@ -1,0 +1,40 @@
+{
+  "id": "arch-038",
+  "architecture": "MesaNet",
+  "source_repo": "fla",
+  "source_revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+  "source_files": [
+    "fla/ops/mesa_net/naive.py",
+    "fla/ops/mesa_net/chunk_cg_solver_fwd.py",
+    "fla/layers/mesa_net.py"
+  ],
+  "equation_summary": "Two covariance states per token (naive.py:22-23,59-62): h_kk <- exp(g_t) h_kk + (beta_t k_t) ⊗ k_t and h_kv <- exp(g_t) h_kv + (beta_t k_t) ⊗ v_t, with per-head scalar log decay g. The read is a REGULARIZED PER-TOKEN SOLVE: x_t = argmin ||h_kk_t x - q_t||^2 + ||lamb .* x||^2 with per-head-channel regularizer lamb, approximated by ~30 conjugate-gradient iterations (naive.py:26-39, max_CG_iteration=30, eps 1e-5) initialized from q/(diag(h_kk)+lamb); then o_t = x_t^T h_kv_t. Layer: q/k L2-normed, beta=sigmoid, g=logsigmoid, lamb = softplus(lambda_params)+0.25 lower bound (layers/mesa_net.py:101-106,167-172). Both states updated BEFORE the solve, so the read is after-update but through a nonlinear solve, not a contraction.",
+  "state_shape": "two [B,H,D,D] matrices (h_kk covariance + h_kv cross-covariance)",
+  "read_timing": "after-update",
+  "gate_scope": "head",
+  "normalization": "none",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM call graph E[Q/K normalization/regularizer] ; B[K2 two covariance states+regularized per-token solve] ; E[output]: the mixer genuinely carries two states and replaces the linear read with a regularized per-token CG solve (naive.py:26-40) — the blocked semantics are exactly as named.",
+    "CONFIRM 'Solver tolerance/iterations, implicit VJP and nonzero-state gradients': the solve is iterative (30 CG steps, 1e-5 epsilon floors at naive.py:33,37) with no exact-gradient guarantee, so an implicit-VJP descriptor and tolerance policy are required; both states accept nonzero init (naive.py:53-54).",
+    "CONFIRM read timing nuance for the ledger: both covariance states are updated with the current token BEFORE the solve (naive.py:59-64), i.e. the solve sees h_kk/h_kv including the current write — after-update read through a nonlinear operator."
+  ],
+  "direction": "external-only",
+  "axis": null,
+  "axis_clients": [],
+  "direction_justification": "The per-token regularized nonlinear inner solve (CG over the running covariance) is an architecture-specific read that cannot share the closed linear-delta law and would impose a solver tolerance/iteration contract no other mixer needs — keep as external comparator.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "source-model-qualified"],
+  "open_questions": [
+    "Whether the CG iteration count (30), 1e-5 epsilon floors, and warm-start q/(diag(h_kk)+lamb) are part of the semantic descriptor or a numerical-policy field — they change the output.",
+    "Whether an implicit-function VJP through the fixed point is even well-defined at 30 truncated iterations, or whether unrolled-solve gradients are the only honest reference."
+  ],
+  "evidence_citations": [
+    "fla/ops/mesa_net/naive.py:22-23 - dual states h_kk and h_kv, both decayed by exp(g) and written with (beta*k) outer products",
+    "fla/ops/mesa_net/naive.py:26-40 - per-token regularized solve via CG: init x=q/(diag(h_kk)+lamb), 30 iterations with 1e-5 floors, read o = x^T h_kv",
+    "fla/ops/mesa_net/naive.py:59-64 - both states updated with the current token before the solve (after-update read)",
+    "fla/ops/mesa_net/naive.py:66-67 - exact reference: torch.linalg.solve(h_kk + diag(lamb), q) then contract with h_kv — the solve IS the read",
+    "fla/layers/mesa_net.py:101-106,167-172 - lamb regularizer via softplus + 0.25 lower bound, beta=sigmoid, g=logsigmoid, q/k L2-norm: all external"
+  ]
+}

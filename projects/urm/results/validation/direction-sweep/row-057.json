@@ -1,0 +1,35 @@
+{
+  "id": "arch-057",
+  "architecture": "Pattention / TokenFormer",
+  "source_repo": "pattention",
+  "source_revision": "4d56c73f407635e62f6df16b97dc897b4477129e",
+  "source_files": ["megatron/model/tokenformer.py"],
+  "equation_summary": "Pattention treats learned PARAMETER tokens as the attention source domain. key/value are nn.Parameter tensors [param_token_num, key/value_dim]; query is the input. attn_weight = query @ key^T * scale, then a NONLINEAR NORMALIZER over the parameter domain (default 'softmax' = exp then L1-normalize scaled by param count; variants gelu_l2_norm and l2_norm_gelu), then output = attn_weight @ value. Used to replace QKV projections, the output projection AND the MLP — i.e. attention over parameters substitutes for linear layers/MoE.",
+  "state_shape": "no sequence state; source domain is param_token_num learned parameter tokens [P,Dk]/[P,Dv]",
+  "read_timing": "n-a",
+  "gate_scope": "none",
+  "normalization": "modified softmax (exp / L1-norm * count) or gelu_l2_norm / l2_norm_gelu over the parameter domain",
+  "ledger_call_graph_ok": true,
+  "ledger_blockers_ok": true,
+  "ledger_verdicts": [
+    "CONFIRM ledger graph 'E[construct/reparameterize parameter tokens]; U1.S(parameter domain, source scale); E[GELU/L2/output/model replacement]' matches Pattention.forward",
+    "CONFIRM blockers B[K1 parameter-domain ABI], parameter-token gradients, complete replaced layers, and 'no claim that one attention contraction equals MLP or MoE' are all required",
+    "CORRECT the reducer is not vanilla softmax: the default path is exp+L1-normalize*count and the source explicitly supports gelu_l2_norm / l2_norm_gelu — the 'source normalization' is a parameter-domain nonlinear normalizer that must be carried as a descriptor field, not assumed to be standard softmax"
+  ],
+  "direction": "composition-now",
+  "axis": "K1 parameter-domain ABI (non-sequence source domain) + parameter-domain normalizer variants",
+  "axis_clients": ["arch-057"],
+  "direction_justification": "The mixer is attention over a fixed parameter-token source domain; the contraction itself is U1.S-shaped, but it requires a parameter-domain ABI and the source's nonlinear normalizer as a semantic field, and parameter-token gradients, so it is composition gated on the parameter-domain ABI blocker.",
+  "evidence_now": ["represented"],
+  "evidence_later": ["reference-executable", "native-qualified", "performance-qualified", "source-model-qualified"],
+  "open_questions": [
+    "Which norm_activation_type is canonical for the ledger claim (softmax vs gelu_l2_norm) — the source defaults must be fixed per config",
+    "Parameter-token gradient flow (these are nn.Parameter, gradients w.r.t. key/value tokens) and the MoE router_index path (line 107-111) are not fully exercised by this single file"
+  ],
+  "evidence_citations": [
+    "megatron/model/tokenformer.py:77-83 — key_param_tokens/value_param_tokens are nn.Parameter [param_token_num, dim]",
+    "megatron/model/tokenformer.py:125-131 — attn_weight = query@key^T*scale; nonlinear_norm_func; output = attn_weight@value over parameter domain",
+    "megatron/model/tokenformer.py:85-101 — softmax(exp/L1*count), gelu_l2_norm, l2_norm_gelu normalizer variants",
+    "megatron/model/tokenformer.py:304-311,568-575 — Pattention replaces output projection and the MLP (model replacement claim)"
+  ]
+}
