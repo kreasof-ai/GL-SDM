@@ -6,17 +6,22 @@ establish named architecture coverage. The goal is shared typed semantics and
 reusable lowerings, not a universal mega-kernel. See the
 [source audit](../planning/unification-audit.md).
 
-## Implemented
+## Current executable boundary
 
-`compiler/pipeline.py` (`compile_graph`) provides executable, serialized contracts for:
+The v2 graph catalog currently has 14 K1 attention fragments and one K3
+route-to-state fragment. `compile_graph` executes the K1 softmax fragment and the
+native K3 route/state fragment through `BoundGraphPlan`. It can select a K2
+`OrderedRecurrence` anchor, but that operation has no graph executor yet. The
+separate NumPy K2 oracles and native K2 functions do not establish graph-path K2
+coverage. See the [backend unification audit](../planning/backend-unification.md)
+for the current binding and semantic gaps.
 
-- shared and grouped Q/K/V heads in K1 and K2, plus scalar/head/channel gate
-  broadcasting (part of A1);
-- separate matrix and diagonal state layouts, ordered rank-R updates, and
-  factored left/right state transitions (bounded A8 support);
-- stable softmax attention and a query/key denominator for additive linear
-  state (part of A13);
-- ordered token updates and explicit within-token collision rejection for K3.
+The available lower-level implementations explore grouped heads and gate
+broadcasting (part of A1), matrix and diagonal state and ranked updates (part of
+A8), and normalized reductions (part of A13). These are candidates for typed
+graph regions, not completed axes or named architecture qualification. K3's
+current graph fragment implements ordered token updates and within-token
+collision rejection on its narrow native envelope.
 
 Timescale banks and weighted multi-state combination (A5), coordinated
 multi-head/expert routing (A3), general score reductions, complex state, and
@@ -64,10 +69,17 @@ physical kernels to preserve performance.
 
 1. Descriptor, shape/effect validation, serialization and structured declines.
 2. Independent reference and differential/adjoint tests across state boundaries.
-3. One named architecture fixture and a synthetic boundary case demonstrating
-   reuse without an architecture-specific condition in the kernel.
+3. Two structurally independent client graphs: two unrelated named recipes, or
+   one named recipe plus a nontrivial synthetic composition with another axis.
+   Reusing the same equation under a renamed recipe or a different batch size
+   does not justify a new core backend branch. No architecture-name condition
+   may select the branch.
 4. Capability matching and an executable compiler plan.
 5. Native, adapter and end-to-end parity evidence on applicable workloads.
+
+An axis can enter the typed IR and references before it has a native branch.
+Keep a single-architecture native implementation in its recipe/comparator
+package until it passes the backend [branch admission rule](../planning/backend-unification.md#admission-rule-for-a-backend-branch).
 
 Start with A1/A5 and ordinary composition, then A3/A8/A11. Graph and stochastic
 extensions do not block the initial three vertical slices, but remain explicit
