@@ -14,7 +14,7 @@ Contract notes:
 
 - This is the qualified GPU implementation of the fused row-scale routed
   reduction. The plain v1 reduction lives in
-  :mod:`urm.backends.triton.k1.routed_reduce`; this backend is selected
+  :mod:`urm.backends.providers.k1.routed_reduce`; this backend is selected
   only when the planner requests the typed ``FINAL_SCALE_CONVERT`` visitor.
 - Forward equivalence is proven against explicit references in tests.
 - Backward covers ALL inputs - weights, values AND row_scale. The row-scale

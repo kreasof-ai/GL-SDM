@@ -15,7 +15,7 @@ from benchmarks.comparators.sdm.upstream import (
     probe_sdm_support,
 )
 from benchmarks.comparators.sdm.reference import torch_product_key_highest_address
-from urm.backends.triton.k3.route_launcher import (
+from urm.backends.providers.k3.triton_route_launcher import (
     CertifiedSparseRouteScores,
     TritonSparseRouteBackend,
 )

@@ -17,7 +17,7 @@ from benchmarks.comparators.sdm.upstream import (
     MODE_TRAINING,
     UrmSparseDeltaMemoryAdapter,
 )
-from urm.backends.triton.k3.state_launcher import (
+from urm.backends.providers.k3.triton_state_launcher import (
     CertifiedSparseStateRoutes,
     SparseState,
 )

@@ -268,7 +268,7 @@ def legal_schedules(problem: ScheduleProblem) -> list[SchedulePoint]:
 def heuristic_schedule(problem: ScheduleProblem) -> SchedulePoint:
     """The current production heuristic, as a comparable schedule point.
 
-    Mirrors ``backends.triton.softmax.routed_scale_epilogue._forward_launch``: BLOCK_D is
+    Mirrors ``backends.providers.k1.row_scale._forward_launch``: BLOCK_D is
     the next power of two of VALUE_DIM clamped to [32, 256], warps follow the
     query-count rule, and grads use per-query decomposition with segmented D.
     """

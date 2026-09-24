@@ -1,7 +1,7 @@
 """Differentiable PyTorch reference for the K2 linear-delta state law.
 
 This is the Torch tier of the same typed request/result ABI as the NumPy
-oracle (:mod:`urm.backends.reference.numpy.k2`) and the native Triton
+oracle (:mod:`urm.backends.providers.k2.numpy`) and the native Triton
 schedules: NumPy supplies the independent high-precision equation, Torch the
 transparent differentiable reference. Both implement the canonical law in
 docs/kernels/linear-delta.md — decay precedes retrieval, the canonical read is

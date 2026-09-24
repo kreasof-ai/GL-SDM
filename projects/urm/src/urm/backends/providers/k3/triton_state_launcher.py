@@ -215,7 +215,7 @@ class CertifiedSparseStateRoutes:
         write_output: object | None = None,
     ) -> CertifiedSparseStateRoutes:
         """Bridge only trusted URM route-kernel results without GPU value scans."""
-        from urm.backends.triton.k3.route_launcher import NativeSparseRouteOutput
+        from urm.backends.providers.k3.triton_route_launcher import NativeSparseRouteOutput
 
         if not isinstance(read_output, NativeSparseRouteOutput):
             raise TypeError("read routes are not certified native route output")
@@ -507,7 +507,7 @@ class TritonSparseStateMixerBackend:
         if state.memory.device != prepared.routes.read_indices.device:
             raise ValueError("state and routes must share one CUDA device")
         self._validate_out(out, state, prepared)
-        from urm.backends.triton.k3.state import (
+        from urm.backends.providers.k3.triton_state import (
             sparse_state_read,
             sparse_state_update,
         )

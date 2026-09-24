@@ -25,12 +25,12 @@ if not SUPPORT.supported:
         allow_module_level=True,
     )
 
-from urm.backends.triton.k3.state_launcher import (
+from urm.backends.providers.k3.triton_state_launcher import (
     CertifiedSparseStateRoutes,
     SparseState,
     TritonSparseStateMixerBackend,
 )
-from urm.backends.reference.torch.k3 import torch_sparse_state_mixer
+from urm.backends.providers.k3.torch import torch_sparse_state_mixer
 from urm.ir.program import (
     DType,
     SparseReadTiming,

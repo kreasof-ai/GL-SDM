@@ -152,7 +152,7 @@ def guarded(name, *args, **kwargs):
     return real_import(name, *args, **kwargs)
 builtins.__import__ = guarded
 import urm.ir.k3
-import urm.backends.triton.k3.state_launcher
+import urm.backends.providers.k3.triton_state_launcher
 import urm.ir.program
 """
     completed = subprocess.run(

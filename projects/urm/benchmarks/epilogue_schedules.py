@@ -1,7 +1,7 @@
 """Schedule-parameterized launches backed by the production backend.
 
 This module is a thin adapter over
-``src/urm/backends/triton/softmax/routed_scale_epilogue.py``. It exists so the
+``src/urm/backends/providers/k1/row_scale.py``. It exists so the
 benchmark grid can address kernels by :class:`SchedulePoint`; the kernels
 themselves live only in the production source tree, so a measured schedule
 can never disagree with what the compiled backend actually executes.
@@ -13,14 +13,14 @@ from collections.abc import Mapping
 
 import torch
 
-from urm.backends.triton.k1.row_scale import (
+from urm.backends.providers.k1.row_scale import (
     RoutedEpilogueLaunchConfig,
     execute_plan_step,
 )
-from urm.backends.triton.k1.row_scale import (
+from urm.backends.providers.k1.row_scale import (
     launch_backward as _production_backward,
 )
-from urm.backends.triton.k1.row_scale import (
+from urm.backends.providers.k1.row_scale import (
     launch_forward as _production_forward,
 )
 
@@ -80,7 +80,7 @@ def backward_launch(point, indices, weights, values, row_scale, grad_output):
 
 def compile_feedback_for(handle) -> dict[str, int | None]:
     """Best-effort register/shared-memory metadata from a compiled kernel."""
-    from urm.backends.triton.k1.row_scale import (
+    from urm.backends.providers.k1.row_scale import (
         _extract_resource_usage,
     )
 

@@ -4,7 +4,7 @@
 compiled graph (a :class:`~urm.compiler.pipeline.CompilationResult` carrying
 the typed program plus the per-step plan) and executes the plan steps in graph
 order. Each step names a typed operation and its selected anchor; the anchor
-maps to exactly one :class:`~urm.backends.provider.Provider` in the dispatch
+maps to exactly one :class:`~urm.backends.providers.Provider` in the dispatch
 table, which accepts or declines the closed request and then executes it.
 
 The runtime owns no equation logic: operands are bound by *role* (never by
@@ -18,22 +18,24 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from urm.backends.provider import ProviderFamily, ProviderRequest
-from urm.backends.providers import (
+from urm.backends.providers import ProviderFamily, ProviderRequest
+from urm.backends.providers.k1 import (
     K1NativeTritonProvider,
+    K1NumpyProvider,
     K1SdpaLibraryProvider,
     K1TorchReferenceProvider,
+)
+from urm.backends.providers.k2 import (
     K2NativeDiagonalProvider,
     K2NativeMatrixProvider,
+    K2NumpyProvider,
     K2TorchReferenceProvider,
+)
+from urm.backends.providers.k3 import (
     K3NativeTritonProvider,
+    K3NumpyProvider,
     K3RouteNativeTritonProvider,
     K3TorchReferenceProvider,
-)
-from urm.backends.reference.numpy.providers import (
-    K1NumpyProvider,
-    K2NumpyProvider,
-    K3NumpyProvider,
 )
 from urm.compiler.pipeline import CompilationResult
 from urm.ir.program import (

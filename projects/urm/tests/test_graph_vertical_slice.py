@@ -79,7 +79,7 @@ def test_json_authority_causal_toggle_changes_ir_and_output():
 
 def test_reference_parity_against_float64_numpy_oracle():
     torch, q, k, v = _tensors()
-    from urm.backends.reference.numpy.k1_attention import attention
+    from urm.backends.providers.k1.numpy import attention
 
     out = compile_graph(
         normalize_graph_document(_mha_document()), target="reference"
@@ -190,8 +190,8 @@ def test_k3_state_mixer_matches_independent_reference():
         pytest.skip("native K3 requires CUDA")
     import dataclasses
 
-    from urm.backends.reference.torch.k3 import torch_sparse_state_mixer
-    from urm.backends.triton.k3.state_launcher import (
+    from urm.backends.providers.k3.torch import torch_sparse_state_mixer
+    from urm.backends.providers.k3.triton_state_launcher import (
         CertifiedSparseStateRoutes,
         SparseState,
         TritonSparseStateMixerBackend,

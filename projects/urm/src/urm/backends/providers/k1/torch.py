@@ -1,8 +1,8 @@
 """Differentiable PyTorch reference for the K1 softmax-attention equation.
 
 This is the Torch tier of the same K1 contract as the NumPy oracle
-(:mod:`urm.backends.reference.numpy.k1_attention`) and the native Triton
-schedule (:mod:`urm.backends.triton.k1.online`). The equation is carried by the
+(:mod:`urm.backends.providers.k1.numpy`) and the native Triton
+schedule (:mod:`urm.backends.providers.k1.triton`). The equation is carried by the
 closed :class:`~urm.ir.program.K1Descriptor`: score scale law, causal masking,
 grouped head sharing and the all-masked-row-zero policy. Runtime code owns no
 part of this equation; it only binds role operands and invokes a provider.

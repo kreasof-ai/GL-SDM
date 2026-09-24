@@ -4,7 +4,7 @@ This is the native generator for the K2 matrix-state class - the single largest
 recurrence group in the catalog. One reusable kernel covers the whole class; the
 compiler selects the decay granularity, update rule, and read timing from the
 semantic spec, never from an architecture name. The equation per token mirrors
-the NumPy canonical core :func:`urm.backends.reference.numpy.k2.recurrent`::
+the NumPy canonical core :func:`urm.backends.providers.k2.numpy.recurrent`::
 
     Z_t    = decay(G_t) * M_{t-1}        (or Z_t = left_t @ M_{t-1}, factored)
     h_t    = retr_t^T Z_t                (retrieval; delta rule only)
@@ -807,7 +807,7 @@ def execute_matrix_state_recurrence(
     ``(output, final_state, final_normalizer)`` with the denominator state
     ``[B,H,K]``.
 
-    Canonical-core options (mirroring ``urm.backends.reference.numpy.k2.recurrent``):
+    Canonical-core options (mirroring ``urm.backends.providers.k2.numpy.recurrent``):
 
     - ``retrieval_keys`` (``[B,T,H,K]``): a separate retrieval key for the delta
       rule (comba dual-key); the write outer product still uses ``key``.

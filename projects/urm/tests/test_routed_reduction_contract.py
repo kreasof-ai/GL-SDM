@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from urm.backends.triton.k1.routed_launcher import triton_signature_status
+from urm.backends.providers.k1.routed_launcher import triton_signature_status
 from urm.ir.types import (
     DeviceType,
     RoutedReductionRegistry,

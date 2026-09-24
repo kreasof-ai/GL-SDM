@@ -521,7 +521,7 @@ def make_sparse_state_mixer_selector(
         native_probe = support_probe
         if native_probe is None:
             try:
-                from urm.backends.triton.k3.state_launcher import (
+                from urm.backends.providers.k3.triton_state_launcher import (
                     TritonSparseStateMixerBackend,
                 )
 
@@ -657,7 +657,7 @@ def make_sparse_route_selector(
         probe = support_probe
         if probe is None:
             try:
-                from urm.backends.triton.k3.route_launcher import TritonSparseRouteBackend
+                from urm.backends.providers.k3.triton_route_launcher import TritonSparseRouteBackend
 
                 probe = TritonSparseRouteBackend.support_status
             except Exception as error:  # noqa: BLE001
