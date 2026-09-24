@@ -14,28 +14,28 @@ from pathlib import Path
 
 import pytest
 
-from urm.compiler import search as search_module
-from urm.compiler.diagnostics import CompilerError, DiagnosticCode
-from urm.compiler.kernel_plan import (
+from urm.compiler.schedule import search as search_module
+from urm.compiler.common.diagnostics import CompilerError, DiagnosticCode
+from urm.compiler.select.model import (
     build_schedule_model,
     decode_schedule_point,
     exhaustive_schedule_sweep,
     plan_kinds_for_candidate,
     schedule_point_to_assignment,
 )
-from urm.compiler.planner import (
+from urm.compiler.pipeline import (
     BASE_CANDIDATE_ID,
     CompilationIntent,
     ScheduleParams,
     UrmCompiler,
 )
-from urm.compiler.schedule_space import PlanKind, SchedulePoint
-from urm.compiler.search import (
+from urm.compiler.schedule.space import PlanKind, SchedulePoint
+from urm.compiler.schedule.search import (
     CompilationSearch,
     CompileProbeResult,
     CompileStatus,
 )
-from urm.compiler.semantic import (
+from urm.ir.program import (
     SemanticProgram,
     row_scaled_routed_reduction_program,
 )
@@ -191,7 +191,7 @@ def test_hints_change_launch_configuration_in_executable_plan(hints) -> None:
 def test_no_z3_heuristic_path_passes_the_same_verifier(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("urm.compiler.solver.z3_available", lambda: False)
+    monkeypatch.setattr("urm.compiler.solve.z3.z3_available", lambda: False)
     result = UrmCompiler().compile(_program(), intent=CompilationIntent.TRAINING)
     decision = result.schedule_decision
     assert decision is not None
@@ -206,8 +206,8 @@ def test_no_z3_heuristic_path_passes_the_same_verifier(
 def test_unverified_assignment_never_reaches_lowering_or_probe(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from urm.compiler.search import CompileContext
-    from urm.compiler.verification import VerificationFailure, VerificationReport
+    from urm.compiler.schedule.search import CompileContext
+    from urm.compiler.verify.plan import VerificationFailure, VerificationReport
 
     probe_calls: list[CompileContext] = []
 
@@ -373,7 +373,7 @@ def test_search_component_runs_standalone() -> None:
 
 
 def test_launch_config_covers_every_solver_selectable_dimension() -> None:
-    from urm.compiler.search import launch_config_of
+    from urm.compiler.schedule.search import launch_config_of
 
     point = SchedulePoint(
         plan="fused",
@@ -414,7 +414,7 @@ def test_compile_probe_receives_actual_specialization_context() -> None:
 
 
 def test_injected_resource_results_survive_decision_and_serialization() -> None:
-    from urm.compiler.search import KernelResourceUsage
+    from urm.compiler.schedule.search import KernelResourceUsage
 
     def probe(_ctx) -> CompileProbeResult:
         return CompileProbeResult(
@@ -454,7 +454,7 @@ def test_injected_resource_results_survive_decision_and_serialization() -> None:
 
 
 def test_per_route_full_row_is_absent_from_model_and_reference_legal_sets() -> None:
-    from urm.compiler.schedule_space import (
+    from urm.compiler.schedule.space import (
         ScheduleProblem,
         is_legal,
         legal_schedules,
@@ -488,7 +488,7 @@ def test_per_route_full_row_is_absent_from_model_and_reference_legal_sets() -> N
 
 
 def test_model_and_reference_legality_compares_exact_point_sets() -> None:
-    from urm.compiler.schedule_space import (
+    from urm.compiler.schedule.space import (
         ScheduleProblem,
         legal_schedules,
     )

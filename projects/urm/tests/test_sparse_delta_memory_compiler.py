@@ -7,8 +7,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from urm.compiler.diagnostics import CompilerError, DiagnosticCode
-from urm.compiler.execution import (
+from urm.compiler.common.diagnostics import CompilerError, DiagnosticCode
+from urm.compiler.select.anchors import (
     SDM_EXTERNAL_ANCHOR_NAME,
     TRUSTED_ANCHORS,
     AnchorKind,
@@ -16,8 +16,8 @@ from urm.compiler.execution import (
     ExecutionAnchor,
     make_sdm_selector,
 )
-from urm.compiler.planner import CompilationIntent, ScheduleParams, UrmCompiler
-from urm.compiler.semantic import (
+from urm.compiler.pipeline import CompilationIntent, ScheduleParams, UrmCompiler
+from urm.ir.program import (
     DType,
     MergePolicy,
     SDMExecutionMode,

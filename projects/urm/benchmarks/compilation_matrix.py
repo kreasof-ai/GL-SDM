@@ -45,7 +45,7 @@ def selection_for(spec) -> str:
 
 
 def domain_for(spec):
-    from urm.compiler.semantic import LogicalDomain
+    from urm.ir.program import LogicalDomain
     from urm.ir import Domain
 
     return {
@@ -70,7 +70,7 @@ def build_program(spec):
 
     Returns (program | None, architecture_params dict, decline_reason | None).
     """
-    from urm.compiler.semantic import (
+    from urm.ir.program import (
         DType,
         ScoreNormalization,
         SelectionKind,
@@ -94,7 +94,7 @@ def build_program(spec):
     }
 
     if spec.name == "sparse_delta_memory":
-        from urm.compiler.semantic import (
+        from urm.ir.program import (
             SDMExecutionMode,
             SparseStateExecutionMode,
             sparse_delta_memory_program,
@@ -210,9 +210,9 @@ def main() -> None:
 
     from provenance import provenance
 
-    from urm.compiler.diagnostics import CompilerError
-    from urm.compiler.planner import CompilationIntent, UrmCompiler
-    from urm.presets import CATALOG as ALL_PRESETS
+    from urm.compiler.common.diagnostics import CompilerError
+    from urm.compiler.pipeline import CompilationIntent, UrmCompiler
+    from tests.fixtures.specs import CATALOG as ALL_PRESETS
 
     probe_mode = args.probe
     probe = None
@@ -233,7 +233,7 @@ def main() -> None:
             raise RuntimeError(
                 "Probe mode 'required' failed: CUDA is unavailable on this host"
             )
-        from urm.backends.triton.softmax.routed_scale_epilogue import (
+        from urm.compiler.schedule.probes.triton_k1 import (
             make_triton_compile_probe,
         )
 
@@ -245,7 +245,7 @@ def main() -> None:
             import triton  # noqa: F401
 
             if torch.cuda.is_available():
-                from urm.backends.triton.softmax.routed_scale_epilogue import (
+                from urm.backends.triton.k1.row_scale import (
                     make_triton_compile_probe,
                 )
 

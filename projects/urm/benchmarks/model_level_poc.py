@@ -44,8 +44,8 @@ class RecipeMixerGLA:
         torch = _torch()
         import torch.nn as nn
 
-        from urm.compiler.unified_mixer import MixerBackend, MixerIntent, compile_mixer
-        from urm.frontend.mixer_recipes import named_mixer_recipe
+        from urm.compiler.pipeline import MixerBackend, MixerIntent, compile_mixer
+        from urm.frontend.recipes import named_mixer_recipe
 
         class _M(nn.Module):
             def __init__(self):
@@ -86,7 +86,7 @@ def main() -> None:
         raise RuntimeError("model-level PoC requires CUDA")
     import torch.nn as nn
 
-    from urm.pretraining import PretrainingConfig
+    from train.loop import PretrainingConfig
 
     # Frozen 100M config (from pretraining_step.toml), reduced steps for the PoC.
     config = PretrainingConfig(
@@ -96,7 +96,7 @@ def main() -> None:
     )
 
     # Build the model with the GLA recipe mixer swapped in.
-    from urm.pretraining import URMDecoderLM, MLP
+    from train.loop import URMDecoderLM, MLP
 
     class GLABlock(nn.Module):
         def __init__(self, config):

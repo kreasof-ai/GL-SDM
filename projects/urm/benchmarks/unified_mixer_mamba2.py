@@ -18,8 +18,8 @@ from mamba_ssm.ops.triton.ssd_combined import mamba_chunk_scan_combined
 
 from measurement import quantile
 from provenance import provenance, write_artifact
-from urm.compiler.unified_mixer import MixerBackend, MixerIntent, compile_mixer
-from urm.frontend.mixer_recipes import named_mixer_recipe
+from urm.compiler.pipeline import MixerBackend, MixerIntent, compile_mixer
+from urm.frontend.recipes import named_mixer_recipe
 
 EXPECTED_MAMBA_REVISION = "e9594ce1c732d97440f0332fdc43170a2294dbfa"
 SHAPE = {"batch": 1, "sequence": 256, "heads": 4, "head_dim": 16, "groups": 1, "state_dim": 64}

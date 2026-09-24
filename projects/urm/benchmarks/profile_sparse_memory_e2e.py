@@ -12,7 +12,7 @@ from provenance import provenance, utc_now, write_artifact
 
 
 def main() -> None:
-    from urm.adapters.sparse_delta_memory import probe_sdm_support
+    from benchmarks.comparators.sdm.upstream import probe_sdm_support
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--case", default="long_nonpower_bf16")

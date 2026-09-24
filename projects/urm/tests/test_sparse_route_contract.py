@@ -6,15 +6,15 @@ from types import SimpleNamespace
 
 import pytest
 
-from urm.compiler.diagnostics import CompilerError, DiagnosticCode
-from urm.compiler.execution import (
+from urm.compiler.common.diagnostics import CompilerError, DiagnosticCode
+from urm.compiler.select.anchors import (
     NATIVE_SPARSE_ROUTE_ANCHOR_NAME,
     TRUSTED_ANCHORS,
     AnchorRegistry,
     make_sparse_route_selector,
 )
-from urm.compiler.planner import ScheduleParams, UrmCompiler
-from urm.compiler.semantic import (
+from urm.compiler.pipeline import ScheduleParams, UrmCompiler
+from urm.ir.program import (
     DType,
     SparseAddressCanonicalization,
     SparseRouteGeneration,

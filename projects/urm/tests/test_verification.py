@@ -7,7 +7,7 @@ broken models that a buggy translation or solver bug could emit.
 
 from __future__ import annotations
 
-from urm.compiler.constraints import (
+from urm.compiler.solve.constraints import (
     BoolVar,
     ConstraintCategory,
     ConstraintModel,
@@ -16,15 +16,15 @@ from urm.compiler.constraints import (
     IntVar,
     Origin,
 )
-from urm.compiler.execution import TRUSTED_ANCHORS
-from urm.compiler.kernel_plan import verify_schedule_assignment
-from urm.compiler.planner import (
+from urm.compiler.select.anchors import TRUSTED_ANCHORS
+from urm.compiler.select.model import verify_schedule_assignment
+from urm.compiler.pipeline import (
     CompilationIntent,
     ScheduleParams,
     UrmCompiler,
 )
-from urm.compiler.semantic import row_scaled_routed_reduction_program
-from urm.compiler.verification import (
+from urm.ir.program import row_scaled_routed_reduction_program
+from urm.compiler.verify.plan import (
     AnchorFacts,
     AssignmentFacts,
     ModelVerifier,
@@ -36,7 +36,7 @@ FUSED_ID = "rewrite:fold_row_scale_into_routed_reduction_epilogue@apply_row_scal
 
 def _schedule_assignment():
     """Build a model and derive an assignment WITHOUT any solver."""
-    from urm.compiler.kernel_plan import exhaustive_schedule_sweep
+    from urm.compiler.select.model import exhaustive_schedule_sweep
 
     compiler = UrmCompiler()
     program = row_scaled_routed_reduction_program(
@@ -140,7 +140,7 @@ def test_shared_memory_ceiling_is_enforced() -> None:
 
 
 def test_communication_conservation_requires_exactly_one_return() -> None:
-    from urm.compiler.verification import RouteEdgeFacts
+    from urm.compiler.verify.plan import RouteEdgeFacts
 
     routes = (
         RouteEdgeFacts(query_id=0, peer_id=1, ordinal=0, requires_return=True),
@@ -166,7 +166,7 @@ def test_communication_conservation_requires_exactly_one_return() -> None:
 
 
 def test_placement_ownership_and_capacity_checked_without_solver() -> None:
-    from urm.compiler.verification import PlacementItemFacts
+    from urm.compiler.verify.plan import PlacementItemFacts
 
     model = ConstraintModel(name="place")
     for name in ("x", "owner_e0", "owner_e1"):
@@ -204,9 +204,9 @@ def test_placement_ownership_and_capacity_checked_without_solver() -> None:
 
 
 def test_nogood_added_for_verification_failures_and_respected() -> None:
-    from urm.compiler.diagnostics import Severity
-    from urm.compiler.kernel_plan import exhaustive_schedule_sweep
-    from urm.compiler.verification import (
+    from urm.compiler.common.diagnostics import Severity
+    from urm.compiler.select.model import exhaustive_schedule_sweep
+    from urm.compiler.verify.plan import (
         VerificationFailure,
         add_nogood_for_failures,
     )

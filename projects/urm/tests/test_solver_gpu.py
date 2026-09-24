@@ -21,12 +21,12 @@ if not torch.cuda.is_available():
         "CUDA required for solver-guided GPU integration", allow_module_level=True
     )
 
-from urm.compiler.constraints import Assignment
-from urm.compiler.kernel_plan import decode_schedule_point, verify_schedule_assignment
-from urm.compiler.planner import CompilationIntent, ScheduleParams, UrmCompiler
-from urm.compiler.schedule_space import PlanKind, SchedulePoint
-from urm.compiler.semantic import DType, row_scaled_routed_reduction_program
-from urm.compiler.solver import OptimizationPass, z3_available
+from urm.compiler.solve.constraints import Assignment
+from urm.compiler.select.model import decode_schedule_point, verify_schedule_assignment
+from urm.compiler.pipeline import CompilationIntent, ScheduleParams, UrmCompiler
+from urm.compiler.schedule.space import PlanKind, SchedulePoint
+from urm.ir.program import DType, row_scaled_routed_reduction_program
+from urm.compiler.solve.z3 import OptimizationPass, z3_available
 
 pytestmark = pytest.mark.skipif(
     not z3_available(), reason="z3-solver optional extra not installed"
@@ -98,7 +98,7 @@ def test_deterministic_training_is_structurally_rejected() -> None:
         CompilationIntent.TRAINING,
         schedule_params=ScheduleParams(deterministic=True),
     )
-    from urm.compiler.solver import FeasibilityPass
+    from urm.compiler.solve.z3 import FeasibilityPass
 
     result = FeasibilityPass().run(model)
     assert result.status.value == "unsat"

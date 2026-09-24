@@ -4,16 +4,16 @@ This module builds the typed semantic program, runs the compiler pipeline, and
 validates that the resulting executable plan selects the native Sparse Memory
 anchor with the expected schedule. It performs no GPU work and imports no
 optional backend: binding the plan to an executable backend is the runtime's
-responsibility (see :mod:`urm.runtime.sparse_memory`).
+responsibility (see :mod:`urm.runtime.bind`).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from urm.compiler.execution import NATIVE_SPARSE_MEMORY_ANCHOR_NAME
-from urm.compiler.planner import CompilationIntent, CompilationResult, UrmCompiler
-from urm.compiler.semantic import (
+from urm.compiler.select.anchors import NATIVE_SPARSE_MEMORY_ANCHOR_NAME
+from urm.compiler.pipeline import CompilationIntent, CompilationResult, UrmCompiler
+from urm.ir.program import (
     SDMExecutionMode,
     SparseMemoryMixerSpec,
     sparse_delta_memory_program,

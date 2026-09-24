@@ -20,7 +20,7 @@ def test_public_canonical_types_keep_identity():
     import urm
     from urm.frontend import MixerSpec
     from urm.ir import MixerSpec as IrSpec
-    from urm.oracles import execute
+    from urm.backends.reference.numpy import execute
     from urm.runtime import BackendRegistry
 
     assert urm.MixerSpec is IrSpec is MixerSpec
@@ -48,7 +48,7 @@ def test_numpy_backend_catalog_does_not_load_experimental_kernels():
             "-B",
             "-c",
             (
-                "import sys; import urm.backends; import urm.compiler.planner; "
+                "import sys; import urm.backends; import urm.compiler.pipeline; "
                 "assert 'torch' not in sys.modules; "
                 "assert 'triton' not in sys.modules; "
                 "assert 'tilelang' not in sys.modules; "
@@ -79,7 +79,7 @@ def test_importing_urm_and_numpy_backend_stays_dependency_light():
             "-B",
             "-c",
             (
-                "import sys; import urm; from urm.backends.numpy.softmax import NumpyBackend; "
+                "import sys; import urm; from urm.backends.reference.numpy.k1 import NumpyBackend; "
                 "assert NumpyBackend; "
                 "assert 'torch' not in sys.modules; "
                 "assert 'triton' not in sys.modules; "
@@ -105,9 +105,9 @@ def test_k1_k2_k3_ir_family_modules_own_their_contracts():
     import importlib
 
     family_modules = {
-        "urm.ir.softmax": "softmax",
-        "urm.ir.recurrence": "recurrence",
-        "urm.ir.sparse_state": "sparse_state",
+        "urm.ir.k1": "softmax",
+        "urm.ir.k2": "recurrence",
+        "urm.ir.k3": "sparse_state",
     }
     for module_name, family in family_modules.items():
         module = importlib.import_module(module_name)
@@ -142,7 +142,7 @@ def test_ir_family_modules_do_not_import_optional_backends():
             "-c",
             (
                 "import sys; "
-                "import urm.ir.softmax, urm.ir.recurrence, urm.ir.sparse_state; "
+                "import urm.ir.k1, urm.ir.k2, urm.ir.k3; "
                 "assert 'torch' not in sys.modules; "
                 "assert 'triton' not in sys.modules; "
                 "assert 'tilelang' not in sys.modules"

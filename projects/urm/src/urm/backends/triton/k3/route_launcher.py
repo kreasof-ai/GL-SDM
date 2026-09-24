@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib.util
 from dataclasses import dataclass, field
 
-from urm.compiler.semantic import DType, SparseRouteSelectionSpec
+from urm.ir.program import DType, SparseRouteSelectionSpec
 
 NATIVE_SPARSE_ROUTE_NAME = "urm_native_sparse_route_selection_v0"
 _SCORE_CERTIFICATE = object()
@@ -137,7 +137,7 @@ class TritonSparseRouteBackend:
                 f"{NATIVE_SPARSE_ROUTE_NAME} declined [unsupported_hardware]: "
                 "v0 requires SM80 or newer"
             )
-        from urm.backends.triton.sparse_state.route_selection import (
+        from urm.backends.triton.k3.route import (
             sparse_route_selection,
         )
 

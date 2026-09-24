@@ -2,7 +2,7 @@
 
 Each test runs a covered K1 attention-variant recipe through the URM-native
 (Triton) execution path and compares the output to the float64 canonical core
-(:func:`urm.oracles.composition.execute_canonical`) on the recipe's operands.
+(:func:`urm.backends.reference.numpy.graph.execute_canonical`) on the recipe's operands.
 The canonical core runs in float64 and the native kernels in float32, so the
 tolerance is float32 precision (~1e-4, asserted on the relative error).
 
@@ -20,11 +20,11 @@ import pytest
 torch = pytest.importorskip("torch")
 pytest.importorskip("triton")
 
-from urm.compiler.execution import NATIVE_K1_ONLINE_SOFTMAX_ANCHOR_NAME
-from urm.compiler.unified_mixer import CompiledMixerPlan
-from urm.frontend.mixer_recipes import named_mixer_recipe
-from urm.ir.mixer import MixerBackend, MixerIntent
-from urm.oracles.composition import execute_canonical
+from urm.compiler.select.anchors import NATIVE_K1_ONLINE_SOFTMAX_ANCHOR_NAME
+from urm.compiler.pipeline import CompiledMixerPlan
+from urm.frontend.recipes import named_mixer_recipe
+from urm.ir.graph import MixerBackend, MixerIntent
+from urm.backends.reference.numpy.graph import execute_canonical
 
 # fp32 native kernels vs the fp64 canonical core: allow fp32 precision.
 ATOL = 1e-4

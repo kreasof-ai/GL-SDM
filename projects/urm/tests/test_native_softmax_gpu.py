@@ -7,9 +7,9 @@ import pytest
 torch = pytest.importorskip("torch")
 pytest.importorskip("triton")
 
-from urm.backends.triton.softmax.online import execute_online_softmax
-from urm.compiler.unified_mixer import MixerBackend, compile_mixer
-from urm.frontend.mixer_recipes import softmax_attention_spec
+from urm.backends.triton.k1.online import execute_online_softmax
+from urm.compiler.pipeline import MixerBackend, compile_mixer
+from urm.frontend.recipes import softmax_attention_spec
 
 
 def _dtype_cases():
@@ -223,7 +223,7 @@ def test_native_k1_gradient_strides_never_exceed_allocation():
     [B, H, Q, K], so the maximum reachable offset must stay within the logical
     gradient allocation even though the kernel loops over the broadcast shape.
     """
-    from urm.backends.triton.softmax.online import _gradient_strides_4d
+    from urm.backends.triton.k1.online import _gradient_strides_4d
 
     broadcast_target = (2, 4, 3, 5)  # [B, H, Q, K]
     for shape in (

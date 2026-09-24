@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://urm.dev/schema/kernel-recipe.schema.json",
+  "title": "URM kernel recipe",
+  "description": "A versioned, declarative mapping from a named kernel fragment to a typed URM mixer semantic spec. A kernel recipe declares a component/equation mapping (a fragment), not a complete model graph. It refers only to registered typed operations and parameter transforms; it cannot hide Python callbacks or use an architecture name as an execution switch.",
+  "type": "object",
+  "required": ["schema_version", "name", "kind", "component_scope", "spec"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Recipe document schema version. Loaders must reject other versions."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable recipe name (the registry key)."
+    },
+    "kind": {
+      "type": "string",
+      "const": "kernel_fragment",
+      "description": "Declares that this document is a kernel fragment, not a complete model graph."
+    },
+    "architecture_ids": {
+      "type": "array",
+      "items": {"type": "string"},
+      "default": [],
+      "description": "Source architectures this fragment appears in. Provenance only; never an execution switch."
+    },
+    "component_scope": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Which part of a model this fragment covers (e.g. 'attention_core', 'ssm_core')."
+    },
+    "required_external_stages": {
+      "type": "array",
+      "items": {"type": "string"},
+      "default": [],
+      "description": "Typed model-graph stages that must be supplied externally for a complete model (projections, route generation, cache management, MLPs)."
+    },
+    "spec": {
+      "type": "object",
+      "description": "The typed UnifiedMixerSpec for the equation; keys are the spec field names and enum values are their serialized strings.",
+      "required": ["name", "family"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "family": {
+          "type": "string",
+          "enum": ["K1_softmax_reduction", "K2_state_recurrence", "K3_sparse_delta_state"]
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

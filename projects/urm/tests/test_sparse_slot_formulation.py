@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from urm.oracles.sparse_slot import chunked, recurrent, recurrent_vjp
+from urm.backends.reference.numpy.k3 import chunked, recurrent, recurrent_vjp
 
 
 def sample(seed=3):

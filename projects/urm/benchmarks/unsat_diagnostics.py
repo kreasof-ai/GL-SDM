@@ -21,8 +21,8 @@ def main() -> None:
 
     from provenance import provenance, utc_now, write_artifact
 
-    from urm.compiler.solver import FeasibilityPass
-    from urm.compiler.unsat_catalog import REPRESENTATIVE_UNSAT_CASES, describe_unsat
+    from urm.compiler.solve.z3 import FeasibilityPass
+    from tests.fixtures.unsat_catalog import REPRESENTATIVE_UNSAT_CASES, describe_unsat
 
     records: list[dict[str, object]] = []
     for case in REPRESENTATIVE_UNSAT_CASES:
@@ -61,7 +61,7 @@ def _catalog_model_hash() -> str:
     import hashlib
     import json as _json
 
-    from urm.compiler.unsat_catalog import REPRESENTATIVE_UNSAT_CASES
+    from tests.fixtures.unsat_catalog import REPRESENTATIVE_UNSAT_CASES
 
     summaries = [case.build().to_summary() for case in REPRESENTATIVE_UNSAT_CASES]
     canonical = _json.dumps(summaries, sort_keys=True, separators=(",", ":"))

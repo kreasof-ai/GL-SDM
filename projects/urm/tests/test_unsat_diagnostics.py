@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from urm.compiler.solver import FeasibilityPass, FeasibilityStatus, z3_available
-from urm.compiler.unsat_catalog import (
+from urm.compiler.solve.z3 import FeasibilityPass, FeasibilityStatus, z3_available
+from tests.fixtures.unsat_catalog import (
     REPRESENTATIVE_UNSAT_CASES,
     describe_unsat,
 )

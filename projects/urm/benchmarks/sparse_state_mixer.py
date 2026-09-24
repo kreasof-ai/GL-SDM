@@ -220,18 +220,18 @@ def _globalize(indices, slots, torch):
 
 
 def _make_case(case, torch):
-    from urm.adapters.sparse_delta_memory import (
+    from benchmarks.comparators.sdm.upstream import (
         MODE_INFERENCE,
         MODE_READ_ONLY,
         MODE_TRAINING,
         UrmSparseDeltaMemoryAdapter,
     )
-    from urm.backends.triton.sparse_state.backend import (
+    from urm.backends.triton.k3.state_launcher import (
         CertifiedSparseStateRoutes,
         SparseState,
         TritonSparseStateMixerBackend,
     )
-    from urm.compiler.semantic import (
+    from urm.ir.program import (
         DType,
         SparseReadTiming,
         SparseStateExecutionMode,
@@ -355,8 +355,8 @@ def _max_abs(actual, expected) -> float:
 def _correctness(bundle) -> dict[str, object]:
     import torch
 
-    from urm.backends.pytorch.sparse_state import torch_sparse_state_mixer
-    from urm.sparse_state_mixer import numpy_sparse_state_mixer
+    from urm.backends.reference.torch.k3 import torch_sparse_state_mixer
+    from urm.ir.k3 import numpy_sparse_state_mixer
 
     case = bundle["case"]
     prepared = bundle["prepared"]
@@ -442,8 +442,8 @@ def _correctness(bundle) -> dict[str, object]:
 def _backward_correctness(bundle) -> dict[str, object]:
     import torch
 
-    from urm.backends.triton.sparse_state.backend import CertifiedSparseStateRoutes, SparseState
-    from urm.backends.pytorch.sparse_state import torch_sparse_state_mixer
+    from urm.backends.triton.k3.state_launcher import CertifiedSparseStateRoutes, SparseState
+    from urm.backends.reference.torch.k3 import torch_sparse_state_mixer
 
     case, prepared = bundle["case"], bundle["prepared"]
     if str(case["operation"]) != "training":
@@ -624,7 +624,7 @@ def _forward_workloads(bundle):
 def _backward_workloads(bundle):
     import torch
 
-    from urm.backends.triton.sparse_state.backend import CertifiedSparseStateRoutes, SparseState
+    from urm.backends.triton.k3.state_launcher import CertifiedSparseStateRoutes, SparseState
 
     prepared, memory = bundle["prepared"], bundle["memory"]
     tensors = (
@@ -1236,7 +1236,7 @@ def main() -> None:
     import torch
     from provenance import provenance, utc_now, write_artifact
 
-    from urm.adapters.sparse_delta_memory import probe_sdm_support
+    from benchmarks.comparators.sdm.upstream import probe_sdm_support
 
     support = probe_sdm_support()
     if not support.supported:

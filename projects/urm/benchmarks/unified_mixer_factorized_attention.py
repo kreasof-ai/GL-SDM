@@ -15,8 +15,8 @@ import torch
 
 from measurement import quantile
 from provenance import provenance, write_artifact
-from urm.compiler.unified_mixer import MixerBackend, MixerIntent, compile_mixer
-from urm.frontend.mixer_recipes import named_mixer_recipe
+from urm.compiler.pipeline import MixerBackend, MixerIntent, compile_mixer
+from urm.frontend.recipes import named_mixer_recipe
 
 
 def _identity(module_name: str, expected_revision: str):
@@ -268,7 +268,7 @@ def _run_tucker(pairs, warmup):
 
 
 def _run_longformer(pairs, warmup):
-    from urm.adapters.longformer import (
+    from benchmarks.comparators.longformer import (
         longformer_attention_adapter,
         longformer_source_identity,
     )
@@ -336,7 +336,7 @@ def _run_longformer(pairs, warmup):
 
 
 def _run_kata(pairs, warmup):
-    from urm.adapters.kata import kata_attention_adapter, kata_source_identity
+    from benchmarks.comparators.kata import kata_attention_adapter, kata_source_identity
 
     source = importlib.import_module("kata.parallel_kata_attn")
     identity = kata_source_identity()

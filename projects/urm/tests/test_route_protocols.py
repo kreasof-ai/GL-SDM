@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import pytest
 
-from urm.compiler.placement import DeviceMesh, PlacementBinding, PlacementMap
-from urm.compiler.route_protocols import (
+from urm.compiler.placement.plan import DeviceMesh, PlacementBinding, PlacementMap
+from urm.compiler.placement.routes import (
     RouteEdge,
     RouteProtocol,
     plan_by_protocol,

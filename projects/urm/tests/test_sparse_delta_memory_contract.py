@@ -8,7 +8,7 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from urm.adapters.sparse_delta_memory import (
+from benchmarks.comparators.sdm.upstream import (
     EXPECTED_SDM_COMMIT,
     MODE_INFERENCE,
     MODE_READ_ONLY,

@@ -16,12 +16,12 @@ from lingua.sparse_delta_memory.layer import SparseDeltaMemory, SparseDeltaMemor
 from measurement import bootstrap_ci, quantile
 from provenance import provenance, write_artifact
 
-from urm.compiler.unified_mixer import (
+from urm.compiler.pipeline import (
     MixerBackend,
     MixerIntent,
     compile_mixer,
 )
-from urm.frontend.mixer_recipes import sparse_delta_spec
+from urm.frontend.recipes import sparse_delta_spec
 
 EXPECTED_SDM_REVISION = "183e7df809131b80ad4393741029d0f20fc3640b"
 DTYPES = (torch.float32, torch.bfloat16)
@@ -945,7 +945,7 @@ def run(pairs: int, warmup: int, output: Path) -> None:
             # constraint). The session is opened once per timed unit so the
             # persistent memory threads across the step; the callable ignores the
             # passed inputs.
-            from urm.runtime.decode import SparseStateDecodeSession
+            from urm.runtime.state import SparseStateDecodeSession
 
             def decode_compiled(inputs, _case=case):
                 session = SparseStateDecodeSession(

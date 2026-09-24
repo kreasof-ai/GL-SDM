@@ -38,8 +38,8 @@ def _load(path: Path) -> dict | None:
 
 def measure_native_coverage() -> dict[str, object]:
     """Compile every named recipe natively; return the coverage breakdown."""
-    from urm.compiler.unified_mixer import MixerBackend, compile_mixer
-    from urm.frontend.mixer_recipes import MIXER_RECIPE_NAMES, named_mixer_recipe
+    from urm.compiler.pipeline import MixerBackend, compile_mixer
+    from urm.frontend.recipes import MIXER_RECIPE_NAMES, named_mixer_recipe
 
     native: dict[str, list[str]] = {}
     declined: list[str] = []

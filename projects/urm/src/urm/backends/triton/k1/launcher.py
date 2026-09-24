@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from urm.backends.interface import BackendCapability, BackendRequest
-from urm.ir.mixer import UnifiedMixerSpec
+from urm.ir.graph import UnifiedMixerSpec
 
 
 class TritonOnlineSoftmaxBackend:
@@ -58,7 +58,7 @@ class TritonOnlineSoftmaxBackend:
         if operands:
             raise TypeError(f"unexpected K1 operands: {', '.join(sorted(operands))}")
 
-        from urm.backends.triton.softmax.online import execute_online_softmax
+        from urm.backends.triton.k1.online import execute_online_softmax
 
         key_dim = query.shape[-1]
         return execute_online_softmax(

@@ -48,8 +48,8 @@ from fla.ops.gsa import chunk_gsa
 
 from measurement import quantile
 from provenance import provenance, write_artifact
-from urm.compiler.unified_mixer import MixerBackend, MixerIntent, compile_mixer
-from urm.frontend.mixer_recipes import named_mixer_recipe
+from urm.compiler.pipeline import MixerBackend, MixerIntent, compile_mixer
+from urm.frontend.recipes import named_mixer_recipe
 
 EXPECTED_FLA_REVISION = "864a87f6ce5be8828bef81eb22baafd41937cdf2"
 EXPECTED_FLASH_ATTN_REVISION = "1bda8f9290cd48d030f1516f0e680cd464ef3554"

@@ -16,7 +16,7 @@ from urm.ir import (
     SparseAttentionSpec,
     SparseIndexerKind,
 )
-from urm.presets import (
+from tests.fixtures.specs import (
     CATALOG,
     DEEPSEEK_SPARSE_ATTENTION,
     DEEPSEEK_V3_MOE,

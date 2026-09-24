@@ -14,8 +14,8 @@ import torch
 import torch.nn.functional as F
 
 from provenance import provenance, write_artifact
-from urm.compiler.unified_mixer import MixerBackend, MixerIntent, compile_mixer
-from urm.frontend.mixer_recipes import named_mixer_recipe
+from urm.compiler.pipeline import MixerBackend, MixerIntent, compile_mixer
+from urm.frontend.recipes import named_mixer_recipe
 
 EXPECTED_REVISION = "28bb3de8afbe7c0b00115e0fbff36afc9ad49c11"
 RECIPE = "atma_gated_delta_decode_core"

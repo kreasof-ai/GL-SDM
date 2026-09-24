@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from urm.compiler.semantic import SparseReadTiming
+from urm.ir.program import SparseReadTiming
 
 
 def torch_sparse_state_mixer(

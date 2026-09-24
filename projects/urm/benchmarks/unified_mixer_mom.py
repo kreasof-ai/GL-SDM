@@ -17,9 +17,9 @@ from fla.ops.gated_delta_rule import chunk_gated_delta_rule
 
 from measurement import quantile
 from provenance import provenance, write_artifact
-from urm.adapters.gated_delta_rule import fla_version
-from urm.compiler.unified_mixer import MixerBackend, MixerIntent, compile_mixer
-from urm.frontend.mixer_recipes import named_mixer_recipe
+from benchmarks.comparators.fla_gated_delta import fla_version
+from urm.compiler.pipeline import MixerBackend, MixerIntent, compile_mixer
+from urm.frontend.recipes import named_mixer_recipe
 
 EXPECTED_FLA_REVISION = "864a87f6ce5be8828bef81eb22baafd41937cdf2"
 BATCH, SEQUENCE, HEADS, KEY_DIM, VALUE_DIM = 2, 64, 2, 32, 16

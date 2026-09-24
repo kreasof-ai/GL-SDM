@@ -21,16 +21,16 @@ if not torch.cuda.is_available():
         "CUDA required for compiler->kernel launch integration", allow_module_level=True
     )
 
-from urm.backends.triton.softmax.routed_scale_epilogue import (
+from urm.backends.triton.k1.row_scale import (
     RoutedEpilogueLaunchConfig,
     execute_plan_step,
-    make_triton_compile_probe,
     routed_reduce_row_scale,
 )
-from urm.compiler.planner import CompilationIntent, ScheduleParams, UrmCompiler
-from urm.compiler.search import CompileStatus
-from urm.compiler.semantic import DType, row_scaled_routed_reduction_program
-from urm.compiler.solver import z3_available
+from urm.compiler.schedule.probes.triton_k1 import make_triton_compile_probe
+from urm.compiler.pipeline import CompilationIntent, ScheduleParams, UrmCompiler
+from urm.compiler.schedule.search import CompileStatus
+from urm.ir.program import DType, row_scaled_routed_reduction_program
+from urm.compiler.solve.z3 import z3_available
 
 pytestmark = pytest.mark.skipif(
     not z3_available(), reason="z3-solver optional extra not installed"
@@ -196,8 +196,8 @@ def test_all_backward_decompositions_match_eager_reference(
 
 
 def test_base_schedules_probe_base_anchor() -> None:
-    from urm.compiler.schedule_space import SchedulePoint
-    from urm.compiler.search import CompileContext
+    from urm.compiler.schedule.space import SchedulePoint
+    from urm.compiler.schedule.search import CompileContext
 
     probe = make_triton_compile_probe(
         queries=4, route_width=2, sources=8, value_dim=32, dtype_name="bfloat16"
@@ -276,7 +276,7 @@ def test_valid_explicit_fused_override_gpu_training_with_probe() -> None:
 
 def test_probe_failure_recovers_via_exact_nogood_gpu() -> None:
     """A simulated probe failure on GPU adds exact nogood and recovers."""
-    from urm.compiler.search import CompileProbeResult
+    from urm.compiler.schedule.search import CompileProbeResult
 
     real_probe = make_triton_compile_probe()
     call_count = 0

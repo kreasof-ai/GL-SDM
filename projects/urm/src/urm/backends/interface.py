@@ -49,18 +49,8 @@ class BackendImplementation(Protocol):
     def execute(self, request: BackendRequest, **operands: Any) -> Any: ...
 
 
-@dataclass(frozen=True, slots=True)
-class ExecutionPlan:
-    requested_backend: str | None
-    selected_backend: str
-    request: BackendRequest
-    attempted_backends: tuple[str, ...]
-    fallback_used: bool
-
-
 __all__ = [
     "BackendCapability",
     "BackendImplementation",
     "BackendRequest",
-    "ExecutionPlan",
 ]

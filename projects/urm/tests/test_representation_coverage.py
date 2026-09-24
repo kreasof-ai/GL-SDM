@@ -20,8 +20,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "benchmarks"))
 
 import representation_coverage as rc  # noqa: E402
-from urm.frontend.mixer_recipes import MIXER_RECIPE_NAMES, named_mixer_recipe  # noqa: E402
-from urm.oracles.composition import UnderspecifiedComposition, execute_canonical  # noqa: E402
+from urm.frontend.recipes import MIXER_RECIPE_NAMES, named_mixer_recipe  # noqa: E402
+from urm.backends.reference.numpy.graph import UnderspecifiedComposition, execute_canonical  # noqa: E402
 
 # Recipes verified to lower into a canonical core and match their independent
 # equation. Regenerate via `python benchmarks/representation_coverage.py`.
@@ -159,7 +159,7 @@ def test_former_collision_group_is_distinguished_and_covered(name):
     """The IR extension makes each former collision-group equation distinguishable
     (a distinct recurrence_operator) and coverable by its canonical executor."""
     spec = named_mixer_recipe(name).spec
-    from urm.ir.mixer import RecurrenceOperator
+    from urm.ir.graph import RecurrenceOperator
 
     assert spec.recurrence_operator is not RecurrenceOperator.PLAIN
     row = rc.measure_recipe(name)

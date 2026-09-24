@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from urm.compiler.diagnostics import DiagnosticCode
+from urm.compiler.common.diagnostics import DiagnosticCode
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

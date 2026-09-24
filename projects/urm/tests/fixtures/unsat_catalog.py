@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from urm.compiler.constraints import (
+from urm.compiler.solve.constraints import (
     AllowedSet,
     BoolVar,
     ConstraintCategory,
@@ -24,8 +24,8 @@ from urm.compiler.constraints import (
     capacity_bound,
     make_exactly_one,
 )
-from urm.compiler.diagnostics import DiagnosticCode, Severity
-from urm.compiler.schedule_space import SUPPORTED_BLOCKS
+from urm.compiler.common.diagnostics import DiagnosticCode, Severity
+from urm.compiler.schedule.space import SUPPORTED_BLOCKS
 
 
 @dataclass(frozen=True, slots=True)

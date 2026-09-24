@@ -115,7 +115,7 @@ def main():
     from pretraining_step import load_frozen_config
     from provenance import provenance, utc_now, write_artifact
 
-    from urm.pretraining import SparseMemoryMixer
+    from train.loop import SparseMemoryMixer
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=["eager", "compile_fullgraph"], required=True)

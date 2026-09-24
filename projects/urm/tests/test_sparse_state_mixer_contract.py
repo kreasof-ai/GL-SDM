@@ -8,8 +8,8 @@ from dataclasses import replace
 
 import pytest
 
-from urm.compiler.diagnostics import CompilerError, DiagnosticCode
-from urm.compiler.execution import (
+from urm.compiler.common.diagnostics import CompilerError, DiagnosticCode
+from urm.compiler.select.anchors import (
     NATIVE_SPARSE_STATE_MIXER_ANCHOR_NAME,
     SDM_SPARSE_STATE_FALLBACK_ANCHOR_NAME,
     TRUSTED_ANCHORS,
@@ -17,8 +17,8 @@ from urm.compiler.execution import (
     AnchorRegistry,
     make_sparse_state_mixer_selector,
 )
-from urm.compiler.planner import CompilationIntent, ScheduleParams, UrmCompiler
-from urm.compiler.semantic import (
+from urm.compiler.pipeline import CompilationIntent, ScheduleParams, UrmCompiler
+from urm.ir.program import (
     DType,
     MergePolicy,
     SparseReadTiming,
@@ -29,7 +29,7 @@ from urm.compiler.semantic import (
     SparseStateOperation,
     sparse_state_mixer_program,
 )
-from urm.sparse_state_mixer import FROZEN_V0_ENVELOPE, sparse_state_spec_status
+from urm.ir.k3 import FROZEN_V0_ENVELOPE, sparse_state_spec_status
 
 
 def _spec(**changes) -> SparseStateMixerSpec:
@@ -143,9 +143,9 @@ def guarded(name, *args, **kwargs):
         raise AssertionError('torch import attempted')
     return real_import(name, *args, **kwargs)
 builtins.__import__ = guarded
-import urm.sparse_state_mixer
-import urm.backends.triton.sparse_state.backend
-import urm.compiler.semantic
+import urm.ir.k3
+import urm.backends.triton.k3.state_launcher
+import urm.ir.program
 """
     completed = subprocess.run(
         [sys.executable, "-c", code], capture_output=True, text=True, check=False

@@ -18,7 +18,7 @@ launch count, analytical runtime, then a deterministic stable-ordering
 tie-break). Timeouts and candidate limits are explicit; serialization is by
 model summary, never raw solver dumps.
 
-Solver models are untrusted until :mod:`urm.compiler.verification` accepts
+Solver models are untrusted until :mod:`urm.compiler.verify.plan` accepts
 them.
 """
 
@@ -28,7 +28,7 @@ import time
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from urm.compiler.constraints import (
+from urm.compiler.solve.constraints import (
     AllowedSet,
     Assignment,
     AtMostOne,
@@ -44,7 +44,7 @@ from urm.compiler.constraints import (
     LessEqual,
     Nogood,
 )
-from urm.compiler.diagnostics import (
+from urm.compiler.common.diagnostics import (
     CompilerError,
     Diagnostic,
     DiagnosticCode,

@@ -16,19 +16,24 @@ frontend specification → semantic IR → verified rewrites → planning
 
 | Location | Responsibility |
 |---|---|
-| `src/urm/frontend/` | Declarative model specification (`MixerSpec`) |
-| `src/urm/compiler/` | Semantic IR, effects, rewrites, legality, planning and verification |
-| `src/urm/runtime/` | Backend protocols, explicit runtime registry, and executable plan binding |
-| `src/urm/backends/`, `src/urm/adapters/` | Native implementations and external-library boundaries |
-| `src/urm/oracles/` | NumPy correctness references, including sparse-slot algebra and VJP |
-| `tests/`, `benchmarks/` | Contract regressions and maintained acceptance harnesses |
+| `src/urm/frontend/` | Declarative model specification (`MixerSpec`) and the versioned JSON recipe loader |
+| `src/urm/ir/` | Typed semantic IR: family ops (`k1`/`k2`/`k3`), graph, effects, program, and tensor types |
+| `src/urm/compiler/` | Compiler passes in `normalize/`, `rewrite/`, `partition/`, `select/`, `placement/`, `schedule/`, `lower/`, `verify/`, `cost/`, `solve/`, plus shared diagnostics in `common/` and the orchestration `pipeline.py` |
+| `src/urm/runtime/` | Plan binding, operand validation, state sessions, and the semantic-family backend registry |
+| `src/urm/backends/` | Pure capability contracts (`interface.py`), independent NumPy/PyTorch reference backends (`reference/`), and native Triton K1/K2/K3 kernels (`triton/`) |
+| `recipes/` | Versioned JSON kernel fragments (`kernels/`), complete model graphs (`architectures/`), and their schemas (`schema/`) |
+| `architectures/` | Model-specific components that a typed reusable operation cannot represent |
+| `train/`, `inference/` | Training and serving applications consuming the public frontend/runtime APIs |
+| `tests/`, `benchmarks/` | Contract regressions and maintained acceptance harnesses; `benchmarks/comparators/` holds the pinned upstream comparators |
 | `results/` | Retained acceptance evidence and provenance consumed by regressions |
 
 `urm.ir` is the canonical IR module; the former `urm.backend` and `urm.reference`
 wildcard compatibility shims were removed. Import `BackendRegistry` from
-`urm.runtime` and the NumPy oracle (`execute`, `merge_writes`) from `urm.oracles`.
-Existing semantic IR and executable binders retain their public paths. The
-distribution name `urm-kernel-lab` is retained for installation compatibility.
+`urm.runtime` and the NumPy reference (`execute`, `merge_writes`) from
+`urm.backends.reference.numpy`. The upstream comparators moved from the retired
+`benchmarks.comparators` package to `benchmarks/comparators/`; the NumPy reference equations
+moved from the retired `urm.backends.reference.numpy` package to `urm.backends.reference.numpy`.
+The distribution name `urm-kernel-lab` is retained for installation compatibility.
 Production selection uses the validated sparse-state mixer backend.
 
 ## Implementation scope

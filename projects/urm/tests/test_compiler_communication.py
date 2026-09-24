@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import pytest
 
-from urm.compiler.cost import exchange_cost
-from urm.compiler.placement import (
+from urm.compiler.cost.model import exchange_cost
+from urm.compiler.placement.plan import (
     DeviceMesh,
     ExchangeStep,
     PlacementBinding,
@@ -19,7 +19,7 @@ from urm.compiler.placement import (
     PlanStep,
     RouteLeg,
 )
-from urm.compiler.planner import plan_route_distribution
+from urm.compiler.pipeline import plan_route_distribution
 
 
 def _placement(mesh_shape, value_owners, query_owners) -> PlacementMap:

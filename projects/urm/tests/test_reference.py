@@ -2,13 +2,13 @@ import numpy as np
 import pytest
 
 from urm.ir import CollisionPolicy
-from urm.presets import (
+from tests.fixtures.specs import (
     BLOCK_SPARSE_ATTENTION,
     DENSE_ATTENTION,
     LINEAR_RECURRENT_MIXER,
     TOP2_MOE,
 )
-from urm.oracles import execute, merge_writes
+from urm.backends.reference.numpy import execute, merge_writes
 
 
 def test_dense_softmax_reduce_matches_manual_result() -> None:

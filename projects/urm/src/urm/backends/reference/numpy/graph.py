@@ -1,7 +1,7 @@
 """Spec-driven canonical NumPy execution: the declarative-composition path.
 
 This module is the representation-coverage boundary. A
-:class:`~urm.ir.mixer.UnifiedMixerSpec` is a declarative composition of reusable
+:class:`~urm.ir.graph.UnifiedMixerSpec` is a declarative composition of reusable
 operations - normalization, routing, state, decay, read/write timing - and this
 module executes that composition through the single canonical NumPy path for its
 core (K1/K2/K3). Every architecture whose spec lowers to the same canonical form
@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from urm.ir.mixer import (
+from urm.ir.graph import (
     DecayGranularity,
     FeatureMap,
     K1Operation,
@@ -34,7 +34,7 @@ from urm.ir.mixer import (
     UnifiedMixerSpec,
 )
 
-from . import matrix_state, softmax_attention, sparse_slot
+from . import k1_attention, k2, k3
 
 
 class UnderspecifiedComposition(ValueError):
@@ -186,7 +186,7 @@ def _k1_reduction(query, key, value, spec, mask=None, bias=None):
     """One canonical K1 normalized reduction over a BTHD rank-4 batch."""
     outputs = []
     for b in range(query.shape[0]):
-        out = softmax_attention.attention(
+        out = k1_attention.attention(
             query[b].transpose(1, 0, 2),
             key[b].transpose(1, 0, 2),
             value[b].transpose(1, 0, 2),
@@ -234,7 +234,7 @@ def _execute_k1(spec: UnifiedMixerSpec, **operands):
             kb = key[b].transpose(1, 0, 2)
             vb = value[b].transpose(1, 0, 2)
             rb = secondary[b].transpose(1, 0, 2)
-            probs = softmax_attention.attention_probs(
+            probs = k1_attention.attention_probs(
                 qb, kb, vb, scale=spec.attention_scale, causal=spec.causal
             )
             group = qb.shape[0] // kb.shape[0]
@@ -442,7 +442,7 @@ def _diagonal_recurrent(x, input_gate, read_gate, log_decay, step_size,
 
 def _execute_k2_operator(spec: UnifiedMixerSpec, **operands):
     """Execute a distinct (non-plain) K2 recurrence operator via its canonical path."""
-    from . import nonlinear_recurrence as nl
+    from . import k2_operators as nl
 
     op = spec.recurrence_operator
     if op is RecurrenceOperator.TANH_RNN:
@@ -713,7 +713,7 @@ def _execute_k2(spec: UnifiedMixerSpec, **operands):
                 uk_col = np.asarray(update_keys[b, :, :, qh], dtype=np.float64)
                 uv_col = np.asarray(update_values[b, :, :, vh], dtype=np.float64)
                 rb_col = np.asarray(beta[b, :, :, vh], dtype=np.float64)
-            out, m = matrix_state.recurrent(
+            out, m = k2.recurrent(
                 m0,
                 kf[b, :, qh],
                 qf[b, :, qh],
@@ -766,7 +766,7 @@ def _execute_k3(spec: UnifiedMixerSpec, **operands):
             w[t, write_indices[b, t]] = write_weights[b, t]
             q[t, read_indices[b, t]] = read_weights[b, t]
             selected[t, write_indices[b, t]] = True
-        out, m = sparse_slot.recurrent(
+        out, m = k3.recurrent(
             memory[b], w, q, values[b],
             beta[b].reshape(sequence), log_decay[b].reshape(sequence), selected,
         )

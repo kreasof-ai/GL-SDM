@@ -17,9 +17,9 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from urm.compiler.diagnostics import DiagnosticCode
-from urm.compiler.effects import ORDERED_STATE, PURE, EffectSignature
-from urm.compiler.locality import Locality, LocalityConstraint
+from urm.compiler.common.diagnostics import DiagnosticCode
+from urm.ir.effects import ORDERED_STATE, PURE, EffectSignature
+from urm.compiler.placement.locality import Locality, LocalityConstraint
 
 
 class AnchorKind(StrEnum):
@@ -115,7 +115,7 @@ class ExecutionAnchor:
                 raise ValueError(
                     f"schedulable anchor {self.name!r} must declare nonempty supported_plan_kinds"
                 )
-            from urm.compiler.schedule_space import (
+            from urm.compiler.schedule.space import (
                 GradValuesDecomposition,
                 GradValuesSchedule,
                 PlanKind,
@@ -305,6 +305,35 @@ class AnchorRegistry:
 
 SDM_EXTERNAL_ANCHOR_NAME = "facebook_sparse_delta_memory_183e7df_external_adapter"
 NATIVE_SPARSE_MEMORY_ANCHOR_NAME = "urm_native_sparse_memory_e2e_v0"
+
+# Injectable capability probe for the pinned SDM upstream checkout. The compiler
+# core never imports the comparator package; the consumer that provisions the SDM
+# checkout installs the probe via ``set_sdm_support_probe``. When unset, the SDM
+# selectors decline with DEPENDENCY_MISSING rather than importing a comparator.
+_SDM_SUPPORT_PROBE: Callable[[], object] | None = None
+
+
+def set_sdm_support_probe(probe: Callable[[], object] | None) -> None:
+    """Install (or clear) the pinned-SDM support probe used by the SDM selectors."""
+    global _SDM_SUPPORT_PROBE
+    _SDM_SUPPORT_PROBE = probe
+
+
+def _default_sdm_support_probe() -> object:
+    if _SDM_SUPPORT_PROBE is None:
+        return _SdmProbeUnavailable(
+            "missing_dependency",
+            "no SDM support probe is installed; the consumer must provision the "
+            "pinned checkout and call set_sdm_support_probe",
+        )
+    return _SDM_SUPPORT_PROBE()
+
+
+@dataclass(frozen=True, slots=True)
+class _SdmProbeUnavailable:
+    code: str
+    reason: str
+    supported: bool = False
 SDM_SPARSE_STATE_FALLBACK_ANCHOR_NAME = (
     "facebook_sparse_delta_memory_183e7df_precomputed_route_adapter"
 )
@@ -847,7 +876,7 @@ def make_sdm_selector(
     def _select(request: AnchorRequest) -> AnchorDecision | None:
         if request.kind is not AnchorKind.SPARSE_DELTA_MEMORY:
             return None
-        from urm.compiler.semantic import (
+        from urm.ir.program import (
             MergePolicy,
             ScoreNormalization,
             SparseAddressingKind,
@@ -884,20 +913,7 @@ def make_sdm_selector(
                     "SDM semantics do not match the frozen upstream contract",
                 ),
             )
-        probe = support_probe
-        if probe is None:
-            try:
-                from urm.adapters.sparse_delta_memory import probe_sdm_support
-
-                probe = probe_sdm_support
-            except Exception as error:  # noqa: BLE001 - optional runtime must decline
-                return AnchorDecision(
-                    anchor=None,
-                    decline=Decline(
-                        DiagnosticCode.DEPENDENCY_MISSING,
-                        f"original SDM adapter dependencies unavailable: {error!r}",
-                    ),
-                )
+        probe = support_probe if support_probe is not None else _default_sdm_support_probe
         support = probe()
         if not support.supported:
             code = {
@@ -928,14 +944,14 @@ def make_native_sparse_memory_selector(
         preferred = (request.schedule_params or {}).get("anchor_override")
         if preferred == SDM_EXTERNAL_ANCHOR_NAME:
             return None
-        from urm.compiler.semantic import SparseMemoryAccess
+        from urm.ir.program import SparseMemoryAccess
 
         if not isinstance(request.semantic_op, SparseMemoryAccess):
             return None
         probe = support_probe
         if probe is None:
             try:
-                from urm.backends.triton.sparse_state.memory import TritonSparseMemoryBackend
+                from urm.backends.triton.k3.memory import TritonSparseMemoryBackend
 
                 probe = TritonSparseMemoryBackend.support_status
             except Exception as error:  # noqa: BLE001
@@ -979,7 +995,7 @@ def make_sparse_state_mixer_selector(
     def _select(request: AnchorRequest) -> AnchorDecision | None:
         if request.kind is not AnchorKind.SPARSE_STATE_MIXER:
             return None
-        from urm.compiler.semantic import SparseStateMixerAccess, UnifiedMixerAccess
+        from urm.ir.program import SparseStateMixerAccess, UnifiedMixerAccess
 
         if isinstance(request.semantic_op, UnifiedMixerAccess):
             return None
@@ -995,7 +1011,7 @@ def make_sparse_state_mixer_selector(
         native_probe = support_probe
         if native_probe is None:
             try:
-                from urm.backends.triton.sparse_state.backend import (
+                from urm.backends.triton.k3.state_launcher import (
                     TritonSparseStateMixerBackend,
                 )
 
@@ -1032,7 +1048,7 @@ def make_sparse_state_mixer_selector(
                     native_status.reason or native_status.code,
                 ),
             )
-        from urm.compiler.semantic import SparseReadTiming, SparseStateOperation
+        from urm.ir.program import SparseReadTiming, SparseStateOperation
 
         square_root = int(spec.slots_per_partition**0.5)
         fallback_semantics = (
@@ -1049,20 +1065,11 @@ def make_sparse_state_mixer_selector(
             and (spec.mode.value != "training" or spec.sequence >= 16)
         )
         if fallback_semantics:
-            upstream_probe = fallback_support_probe
-            if upstream_probe is None:
-                try:
-                    from urm.adapters.sparse_delta_memory import probe_sdm_support
-
-                    upstream_probe = probe_sdm_support
-                except Exception as error:  # noqa: BLE001
-                    return AnchorDecision(
-                        anchor=None,
-                        decline=Decline(
-                            DiagnosticCode.DEPENDENCY_MISSING,
-                            f"pinned SDM fallback dependencies unavailable: {error!r}",
-                        ),
-                    )
+            upstream_probe = (
+                fallback_support_probe
+                if fallback_support_probe is not None
+                else _default_sdm_support_probe
+            )
             upstream_status = upstream_probe()
             if upstream_status.supported:
                 return AnchorDecision(anchor=fallback_anchor, decline=None)
@@ -1115,7 +1122,7 @@ def make_sparse_route_selector(
     def _select(request: AnchorRequest) -> AnchorDecision | None:
         if request.kind is not AnchorKind.SPARSE_ROUTE_SELECTION:
             return None
-        from urm.compiler.semantic import SparseRouteGeneration
+        from urm.ir.program import SparseRouteGeneration
 
         if not isinstance(request.semantic_op, SparseRouteGeneration):
             return AnchorDecision(
@@ -1137,7 +1144,7 @@ def make_sparse_route_selector(
         probe = support_probe
         if probe is None:
             try:
-                from urm.backends.triton.sparse_state.route_backend import TritonSparseRouteBackend
+                from urm.backends.triton.k3.route_launcher import TritonSparseRouteBackend
 
                 probe = TritonSparseRouteBackend.support_status
             except Exception as error:  # noqa: BLE001

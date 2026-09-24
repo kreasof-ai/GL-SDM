@@ -238,18 +238,18 @@ def _route_scores(case, width, *, seed, torch):
 
 def _make_bundle(case, torch):
     bundle_started = time.perf_counter_ns()
-    from urm.adapters.sparse_delta_memory import (
+    from benchmarks.comparators.sdm.upstream import (
         MODE_INFERENCE,
         MODE_READ_ONLY,
         MODE_TRAINING,
         UrmSparseDeltaMemoryAdapter,
     )
-    from urm.backends.triton.sparse_state.backend import (
+    from urm.backends.triton.k3.state_launcher import (
         CertifiedSparseStateRoutes,
         SparseState,
     )
-    from urm.runtime.sparse_memory import compile_sparse_memory_plan
-    from urm.compiler.semantic import (
+    from urm.runtime.bind import compile_sparse_memory_plan
+    from urm.ir.program import (
         DType,
         SDMExecutionMode,
         SparseMemoryMixerSpec,
@@ -483,8 +483,8 @@ def _make_bundle(case, torch):
 
 
 def _calls(bundle, torch):
-    from urm.adapters.sparse_delta_memory_reference import torch_product_key
-    from urm.backends.pytorch.sparse_state import torch_sparse_state_mixer
+    from benchmarks.comparators.sdm.reference import torch_product_key
+    from urm.backends.reference.torch.k3 import torch_sparse_state_mixer
 
     spec = bundle["spec"]
     read_only = spec.operation.value == "read_only"
@@ -779,9 +779,9 @@ def _backward_memory(bundle, path, torch):
 
 
 def _training_graph_setup(bundle, path, torch):
-    from urm.adapters.sparse_delta_memory_reference import torch_product_key
-    from urm.backends.triton.sparse_state.backend import CertifiedSparseStateRoutes
-    from urm.backends.pytorch.sparse_state import torch_sparse_state_mixer
+    from benchmarks.comparators.sdm.reference import torch_product_key
+    from urm.backends.triton.k3.state_launcher import CertifiedSparseStateRoutes
+    from urm.backends.reference.torch.k3 import torch_sparse_state_mixer
 
     spec = bundle["spec"]
     base = (
@@ -1054,7 +1054,7 @@ def _route_backward_setup(bundle, path, torch):
 
 
 def _state_backward_setup(bundle, path, torch):
-    from urm.backends.triton.sparse_state.backend import (
+    from urm.backends.triton.k3.state_launcher import (
         CertifiedSparseStateRoutes,
         SparseState,
     )
@@ -1332,7 +1332,7 @@ def _single_process(args):
     import torch
     from provenance import provenance, utc_now, write_artifact
 
-    from urm.adapters.sparse_delta_memory import probe_sdm_support
+    from benchmarks.comparators.sdm.upstream import probe_sdm_support
 
     support = probe_sdm_support()
     if not support.supported:

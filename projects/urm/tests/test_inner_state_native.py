@@ -23,9 +23,9 @@ if not torch.cuda.is_available():
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "benchmarks"))
 
 from representation_coverage import _rng_operands  # noqa: E402
-from urm.frontend.mixer_recipes import named_mixer_recipe  # noqa: E402
-from urm.oracles import nonlinear_recurrence as canonical  # noqa: E402
-from urm.backends.triton.recurrence import inner_state as native  # noqa: E402
+from urm.frontend.recipes import named_mixer_recipe  # noqa: E402
+from urm.backends.reference.numpy import nonlinear_recurrence as canonical  # noqa: E402
+from urm.backends.triton.k2 import inner_state as native  # noqa: E402
 
 ATOL = 1e-4
 RTOL = 1e-4

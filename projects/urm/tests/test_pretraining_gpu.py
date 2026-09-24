@@ -9,8 +9,8 @@ pytest.importorskip("triton")
 if not torch.cuda.is_available():
     pytest.skip("CUDA is required", allow_module_level=True)
 
-from urm.adapters.sparse_delta_memory import probe_sdm_support
-from urm.pretraining import FP32AdamW, PretrainingConfig, URMDecoderLM
+from benchmarks.comparators.sdm.upstream import probe_sdm_support
+from train.loop import FP32AdamW, PretrainingConfig, URMDecoderLM
 
 
 def _config() -> PretrainingConfig:

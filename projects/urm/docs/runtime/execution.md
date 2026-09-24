@@ -5,24 +5,24 @@ is normative.
 
 ## Pipeline and ownership
 
-1. `frontend/spec.py` owns model-facing declarations; `compiler/semantic.py` owns
+1. `frontend/spec.py` owns model-facing declarations; `ir/program.py` owns
    typed semantic operations over logical domains and explicit state effects.
-2. `compiler/rewrite.py` owns registered transformations, their preconditions,
+2. `compiler/rewrite/engine.py` owns registered transformations, their preconditions,
    numerical envelope, backward obligations and saved-state policy.
-3. `compiler/planner.py` owns legality, candidate selection and executable plans.
+3. `compiler/pipeline.py` owns legality, candidate selection and executable plans.
    Existing constraint, solver and schedule modules remain compiler facilities;
    bounded schedule selection is distinct from architecture-discovery experiments.
-4. `compiler/execution.py` selects legal anchors; `runtime/` binds the serialized
+4. `compiler/select/anchors.py` selects legal anchors; `runtime/` binds the serialized
    plan to an executable backend. The serialized plan must drive execution. Do not
    add a competing dispatcher. The compiler holds no GPU execution bodies.
-5. `runtime/registry.py` retains the existing low-level backend protocol. Backend
+5. `runtime/__init__.py` retains the existing low-level backend protocol. Backend
    implementations and external adapters own physical layouts and library APIs.
 6. Provider compilation, binary loading and hardware caching belong behind the
    execution boundary. A future Tensor adapter must not redefine mixer semantics.
 
 `urm.ir` is the canonical IR module. The former `urm.backend` and `urm.reference`
 wildcard compatibility shims were removed; import `BackendRegistry` from
-`urm.runtime` and the NumPy oracle (`execute`, `merge_writes`) from `urm.oracles`.
+`urm.runtime` and the NumPy oracle (`execute`, `merge_writes`) from `urm.backends.reference.numpy`.
 The existing compiler classes and binder APIs remain in place.
 
 ## Initial lowering families

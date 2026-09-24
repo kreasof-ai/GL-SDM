@@ -103,7 +103,7 @@ state commit and a chunk-boundary commit are different numerical contracts.
 Declare storage, accumulation and commit policy separately; changing chunk size
 must not silently change an advertised semantic guarantee.
 
-`urm.oracles.sparse_slot` contains independent recurrence, chunked solve and
+`urm.backends.reference.numpy.k3` contains independent recurrence, chunked solve and
 analytical reverse recurrence implementations. Tests compare multiple chunk sizes,
 partial chunks, repeated slots, strong decay, selected zero-weight slots, and
 finite differences for memory, write/read weights, values, beta and decay.

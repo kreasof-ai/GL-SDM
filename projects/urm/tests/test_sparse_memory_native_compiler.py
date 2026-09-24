@@ -6,8 +6,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from urm.compiler.diagnostics import CompilerError, DiagnosticCode
-from urm.compiler.execution import (
+from urm.compiler.common.diagnostics import CompilerError, DiagnosticCode
+from urm.compiler.select.anchors import (
     NATIVE_SPARSE_MEMORY_ANCHOR_NAME,
     SDM_EXTERNAL_ANCHOR_NAME,
     TRUSTED_ANCHORS,
@@ -15,8 +15,8 @@ from urm.compiler.execution import (
     make_native_sparse_memory_selector,
     make_sdm_selector,
 )
-from urm.compiler.planner import ScheduleParams, UrmCompiler
-from urm.compiler.semantic import (
+from urm.compiler.pipeline import ScheduleParams, UrmCompiler
+from urm.ir.program import (
     DType,
     SparseReadTiming,
     SparseStateOperation,

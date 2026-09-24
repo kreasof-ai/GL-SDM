@@ -1,5 +1,5 @@
 """Native Triton kernels for the distinguished K2 nonlinear recurrences must
-match their NumPy canonical executors (``urm.oracles.nonlinear_recurrence``)
+match their NumPy canonical executors (``urm.backends.reference.numpy.k2_operators``)
 directly, in fp32.
 
 Each test builds the recipe operands with ``_rng_operands`` (the RECURRENCE
@@ -30,9 +30,9 @@ sys.path.insert(0, str(PROJECT_ROOT / "benchmarks"))
 
 import representation_coverage as rc  # noqa: E402
 
-from urm.frontend.mixer_recipes import named_mixer_recipe  # noqa: E402
-from urm.oracles import nonlinear_recurrence as nl  # noqa: E402
-from urm.backends.triton.recurrence import nonlinear as native  # noqa: E402
+from urm.frontend.recipes import named_mixer_recipe  # noqa: E402
+from urm.backends.reference.numpy import nonlinear_recurrence as nl  # noqa: E402
+from urm.backends.triton.k2 import nonlinear as native  # noqa: E402
 
 
 def _cuda_operands(operand_dict):

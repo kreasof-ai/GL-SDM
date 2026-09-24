@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "name": "samba",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.samba",
+    "notes": "Samba interleaves Mamba-style SSM layers with sliding-window attention layers. The pinned attention comparison lives in the comparator; the full hybrid layer composition is NOT yet represented here."
+  },
+  "layers": [
+    {
+      "id": "samba_attention_core",
+      "operation": "samba_attention_core",
+      "params": {
+        "scope": "fragment_only",
+        "note": "This is the K1 sliding-window attention fragment only. It does not by itself constitute full Samba coverage."
+      }
+    }
+  ],
+  "coverage": {
+    "level": "kernel_fragment",
+    "validated": false,
+    "notes": "samba_attention_core remains a K1 fragment. Full Samba requires the complete interleaved SSM+attention layer graph with its state/cache branches, recorded as ordered layers referencing typed operations, before any source-architecture coverage claim is made."
+  }
+}

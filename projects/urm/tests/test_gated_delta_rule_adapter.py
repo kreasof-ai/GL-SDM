@@ -17,11 +17,11 @@ if not torch.cuda.is_available():
 
 import torch.nn.functional as F
 
-from urm.adapters.gated_delta_reference import (
+from benchmarks.comparators.fla_gated_delta_reference import (
     eager_gated_delta_rule,
     oracle_gated_delta_rule,
 )
-from urm.adapters.gated_delta_rule import (
+from benchmarks.comparators.fla_gated_delta import (
     GatedDeltaRuleSpec,
     UrmGatedDeltaRuleAdapter,
     fla_version,

@@ -11,9 +11,9 @@ import numpy as np
 import torch
 
 from provenance import provenance, utc_now, write_artifact
-from urm.adapters.sparse_transformer import fixed_mode_mask, load_dense_attention
-from urm.compiler.unified_mixer import MixerBackend, MixerIntent, compile_mixer
-from urm.frontend.mixer_recipes import named_mixer_recipe
+from benchmarks.comparators.sparse_transformer import fixed_mode_mask, load_dense_attention
+from urm.compiler.pipeline import MixerBackend, MixerIntent, compile_mixer
+from urm.frontend.recipes import named_mixer_recipe
 
 
 SOURCE_MODES = {

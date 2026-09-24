@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from urm.compiler.unified_mixer import (
+from urm.compiler.pipeline import (
     DecayGranularity,
     FeatureMap,
     MixerBackend,
@@ -22,7 +22,7 @@ from urm.compiler.unified_mixer import (
     compile_frontend_mixer,
     compile_mixer,
 )
-from urm.frontend.mixer_recipes import (
+from urm.frontend.recipes import (
     MIXER_RECIPE_NAMES,
     delta_rule_spec,
     diagonal_ssm_spec,
@@ -104,7 +104,7 @@ def test_backend_selection_is_explicit_and_family_checked():
 
 
 def test_atma_gated_delta_decode_is_a_pinned_forward_only_k2_anchor():
-    from urm.compiler.diagnostics import CompilerError
+    from urm.compiler.common.diagnostics import CompilerError
 
     recipe = named_mixer_recipe("atma_gated_delta_decode_core")
     plan = compile_mixer(
@@ -488,8 +488,8 @@ def test_missing_route_mask_diagnostic_does_not_require_torch():
     code = (
         "import sys\n"
         "sys.modules['torch'] = None\n"  # importing torch now raises ImportError
-        "from urm.compiler.unified_mixer import MixerBackend, compile_mixer\n"
-        "from urm.frontend.mixer_recipes import named_mixer_recipe\n"
+        "from urm.compiler.pipeline import MixerBackend, compile_mixer\n"
+        "from urm.frontend.recipes import named_mixer_recipe\n"
         "plan = compile_mixer(\n"
         "    named_mixer_recipe('sparse_attention_core'), backend=MixerBackend.NATIVE\n"
         ")\n"
@@ -513,7 +513,7 @@ def test_missing_route_mask_diagnostic_does_not_require_torch():
 
 
 def test_atma_decode_dimension_contract_matches_both_pinned_value_tiles():
-    from urm.compiler.unified_mixer import (
+    from urm.compiler.pipeline import (
         _atma_decode_value_block,
         _validate_atma_decode_dimensions,
     )
@@ -555,7 +555,7 @@ def test_atma_pinned_decode_executes_both_unmasked_value_tile_branches():
     if not torch.cuda.is_available():
         pytest.skip("ATMA gated-delta decode requires CUDA")
     pytest.importorskip("triton")
-    from urm.adapters.atma_gated_delta import atma_gated_delta_decode_step
+    from benchmarks.comparators.atma_gated_delta import atma_gated_delta_decode_step
 
     atma_gated_delta_decode_step()
     torch.manual_seed(1002)
@@ -781,7 +781,7 @@ def test_named_recipes_expose_kernel_scope_and_unfinished_layer_stages():
 
 
 def test_existing_frontend_specs_lower_or_decline_explicitly():
-    from urm.presets import (
+    from tests.fixtures.specs import (
         DENSE_ATTENTION,
         GATED_DELTANET,
         GL_SDM_TRANSACTION,
@@ -1340,7 +1340,7 @@ def test_titans_linear_memory_core_matches_pinned_upstream_outputs_state_and_gra
     if not torch.cuda.is_available():
         pytest.skip("CUDA required for the pinned FLA Titans comparison")
     source = pytest.importorskip("fla.ops.titans.naive")
-    from urm.adapters.gated_delta_rule import fla_version
+    from benchmarks.comparators.fla_gated_delta import fla_version
 
     if (
         fla_version().get("source_revision")
@@ -1457,7 +1457,7 @@ def test_ttt_linear_core_matches_pinned_upstream_outputs_states_and_gradients():
         pytest.skip("CUDA required for the pinned FLA TTT-Linear comparison")
     source = pytest.importorskip("fla.ops.ttt.chunk")
     equation_source = pytest.importorskip("fla.ops.ttt.naive")
-    from urm.adapters.gated_delta_rule import fla_version
+    from benchmarks.comparators.fla_gated_delta import fla_version
 
     if (
         fla_version().get("source_revision")
@@ -1633,12 +1633,12 @@ def test_xma_nonlinear_recurrences_match_pinned_equations_and_triton_gradients(
         pytest.skip("CUDA required for the pinned XMA recurrent comparison")
     xma = pytest.importorskip("xma")
     from xma import KernelBackend
-    from urm.compiler.unified_mixer import (
+    from urm.compiler.pipeline import (
         MixerBackend,
         MixerIntent,
         compile_mixer,
     )
-    from urm.frontend.mixer_recipes import named_mixer_recipe
+    from urm.frontend.recipes import named_mixer_recipe
 
     source_root = __import__("pathlib").Path(xma.__file__).resolve().parents[1]
     revision = (
@@ -1797,12 +1797,12 @@ def test_atma_polar_k1_kernels_match_materialized_reference_and_gradients(recipe
         pytest.skip("CUDA required for pinned ATMA Polar comparison")
     source = pytest.importorskip("kernel.polar_triton")
     atma = __import__("model.blocks", fromlist=["polar_reduce"])
-    from urm.compiler.unified_mixer import (
+    from urm.compiler.pipeline import (
         MixerBackend,
         MixerIntent,
         compile_mixer,
     )
-    from urm.frontend.mixer_recipes import named_mixer_recipe
+    from urm.frontend.recipes import named_mixer_recipe
 
     source_root = __import__("pathlib").Path(source.__file__).resolve().parents[1]
     revision = (
@@ -2120,7 +2120,7 @@ def test_dsa_attention_core_matches_pinned_upstream_with_precomputed_routes():
     if not torch.cuda.is_available():
         pytest.skip("CUDA required for pinned DSA attention comparison")
     source = pytest.importorskip("fla.ops.dsa.naive")
-    from urm.adapters.gated_delta_rule import fla_version
+    from benchmarks.comparators.fla_gated_delta import fla_version
 
     if (
         fla_version().get("source_revision")
@@ -2201,7 +2201,7 @@ def test_nsa_selected_attention_core_matches_pinned_upstream_routes():
     if not torch.cuda.is_available():
         pytest.skip("CUDA required for pinned NSA comparison")
     source = pytest.importorskip("fla.ops.nsa.parallel")
-    from urm.adapters.gated_delta_rule import fla_version
+    from benchmarks.comparators.fla_gated_delta import fla_version
 
     if (
         fla_version().get("source_revision")
@@ -2300,7 +2300,7 @@ def test_fox_attention_core_matches_pinned_upstream_outputs_and_gradients():
     if not torch.cuda.is_available():
         pytest.skip("CUDA required for pinned FoX attention comparison")
     source = pytest.importorskip("fla.ops.forgetting_attn.parallel")
-    from urm.adapters.gated_delta_rule import fla_version
+    from benchmarks.comparators.fla_gated_delta import fla_version
 
     if (
         fla_version().get("source_revision")
@@ -2388,7 +2388,7 @@ def test_parallax_attention_core_matches_pinned_upstream_outputs_and_gradients()
     if not torch.cuda.is_available():
         pytest.skip("CUDA required for pinned Parallax attention comparison")
     source = pytest.importorskip("fla.ops.parallax.parallel")
-    from urm.adapters.gated_delta_rule import fla_version
+    from benchmarks.comparators.fla_gated_delta import fla_version
 
     if (
         fla_version().get("source_revision")
@@ -2473,7 +2473,7 @@ def test_wall_attention_core_matches_pinned_upstream_outputs_and_gradients(monke
         pytest.skip("CUDA required for pinned Wall attention comparison")
     monkeypatch.setenv("TRITON_F32_DEFAULT", "ieee")
     source = pytest.importorskip("fla.ops.wall_attn.parallel")
-    from urm.adapters.gated_delta_rule import fla_version
+    from benchmarks.comparators.fla_gated_delta import fla_version
 
     if (
         fla_version().get("source_revision")
@@ -2604,7 +2604,7 @@ def test_moba_selected_attention_core_matches_pinned_upstream_outputs_and_gradie
     if not torch.cuda.is_available():
         pytest.skip("CUDA required for pinned MoBA attention comparison")
     source = pytest.importorskip("fla.ops.moba.parallel")
-    from urm.adapters.gated_delta_rule import fla_version
+    from benchmarks.comparators.fla_gated_delta import fla_version
 
     if (
         fla_version().get("source_revision")
@@ -2698,7 +2698,7 @@ def test_bdh_attention_core_matches_pinned_upstream_outputs_and_gradients():
     from pathlib import Path
     import subprocess
 
-    from urm.adapters.bdh import EXPECTED_BDH_REVISION, bdh_source_identity
+    from benchmarks.comparators.bdh import EXPECTED_BDH_REVISION, bdh_source_identity
 
     identity = bdh_source_identity()
     source_root = Path(source.__file__).resolve().parent
@@ -2785,7 +2785,7 @@ def test_mom_selected_memory_core_matches_pinned_fla_outputs_state_and_gradients
     if not torch.cuda.is_available():
         pytest.skip("CUDA required for pinned MoM per-memory comparison")
     source = pytest.importorskip("fla.ops.gated_delta_rule")
-    from urm.adapters.gated_delta_rule import fla_version
+    from benchmarks.comparators.fla_gated_delta import fla_version
 
     if (
         fla_version().get("source_revision")
@@ -2910,7 +2910,7 @@ def test_cat_attention_core_matches_pinned_fla_flex_attention_outputs_and_gradie
     if not torch.cuda.is_available():
         pytest.skip("CUDA required for pinned CAT attention comparison")
     source = pytest.importorskip("fla.models.cat.modeling_cat")
-    from urm.adapters.gated_delta_rule import fla_version
+    from benchmarks.comparators.fla_gated_delta import fla_version
 
     if (
         fla_version().get("source_revision")
@@ -3008,7 +3008,7 @@ def test_tda_attention_core_matches_pinned_triton_outputs_and_gradients():
     if not torch.cuda.is_available():
         pytest.skip("CUDA required for the pinned TDA comparison")
     source = pytest.importorskip("triton_threshold_attention")
-    from urm.adapters.tda import tda_source_identity
+    from benchmarks.comparators.tda import tda_source_identity
 
     if tda_source_identity()["revision"] != "cd8ddc9d5b43a1dcf86f9cfda302edb5cc108da2":
         pytest.skip("the exact pinned TDA source checkout is unavailable")
@@ -3302,7 +3302,7 @@ def test_tucker_attention_core_matches_pinned_triton_outputs_and_gradients():
     if not torch.cuda.is_available():
         pytest.skip("CUDA required for the pinned Tucker Attention comparison")
     source = pytest.importorskip("src.attn.triton.tucker_attn")
-    from urm.adapters.tucker import tucker_source_identity
+    from benchmarks.comparators.tucker import tucker_source_identity
 
     if (
         tucker_source_identity()["revision"]
@@ -3379,7 +3379,7 @@ def test_longformer_attention_core_matches_pinned_sliding_chunks_outputs_and_gra
     torch = _torch()
     if not torch.cuda.is_available():
         pytest.skip("CUDA required for the pinned Longformer comparison")
-    from urm.adapters.longformer import (
+    from benchmarks.comparators.longformer import (
         longformer_attention_adapter,
         longformer_source_identity,
     )
@@ -3449,7 +3449,7 @@ def test_kata_attention_core_matches_pinned_triton_outputs_and_gradients():
     if not torch.cuda.is_available():
         pytest.skip("CUDA required for the pinned KATA comparison")
     source = pytest.importorskip("kata.parallel_kata_attn")
-    from urm.adapters.kata import kata_source_identity
+    from benchmarks.comparators.kata import kata_source_identity
 
     identity = kata_source_identity()
     assert identity["revision"] == "f93fe75750be6400a0068749794985d70666926d"
@@ -3746,7 +3746,7 @@ def test_samba_attention_core_matches_pinned_nope_attention_outputs_and_gradient
     torch = _torch()
     if not torch.cuda.is_available():
         pytest.skip("CUDA required for the pinned Samba comparison")
-    from urm.adapters.samba import load_samba_attention, samba_source_root
+    from benchmarks.comparators.samba import load_samba_attention, samba_source_root
 
     source_root = samba_source_root()
     if source_root is None:
@@ -4020,7 +4020,7 @@ def test_hla_second_order_core_matches_pinned_paper_equation_and_gradients():
 def test_sparse_transformer_dense_source_mask_modes_match_k1(mode, context):
     torch = _torch()
     tensorflow = pytest.importorskip("tensorflow")
-    from urm.adapters.sparse_transformer import fixed_mode_mask, load_dense_attention
+    from benchmarks.comparators.sparse_transformer import fixed_mode_mask, load_dense_attention
 
     if not Path("/tmp/urm-comparator-pins/sparse_transformer/attention.py").is_file():
         pytest.skip("the pinned sparse-attention checkout is unavailable")
@@ -4114,7 +4114,7 @@ def test_path_attention_core_matches_pinned_upstream_outputs_and_gradients():
     if not torch.cuda.is_available():
         pytest.skip("CUDA required for the pinned PaTH attention comparison")
     source = pytest.importorskip("fla.ops.path_attn.parallel")
-    from urm.adapters.gated_delta_rule import fla_version
+    from benchmarks.comparators.fla_gated_delta import fla_version
 
     if (
         fla_version().get("source_revision")
@@ -4295,7 +4295,7 @@ def test_k2_fla_library_anchor_matches_reference_when_installed(dtype_name):
     torch = _torch()
     if not torch.cuda.is_available():
         pytest.skip("FLA gated-delta anchor requires CUDA")
-    from urm.adapters.gated_delta_rule import fla_version
+    from benchmarks.comparators.fla_gated_delta import fla_version
 
     identity = fla_version()
     if identity.get("version_compatible") is not True:
@@ -4323,7 +4323,7 @@ def test_k2_fla_library_anchor_matches_reference_when_installed(dtype_name):
         log_decay=log_decay,
         initial_state=initial,
     )
-    from urm.compiler.unified_mixer import _execute_matrix_recurrence
+    from urm.compiler.pipeline import _execute_matrix_recurrence
 
     reference = _execute_matrix_recurrence(spec, torch, **dict(operands))
     reference_loss = (
@@ -4357,11 +4357,11 @@ def test_k2_fla_library_anchor_matches_reference_when_installed(dtype_name):
 @pytest.mark.parametrize("normalized", [False, True])
 def test_k2_fla_linear_attention_matches_reference_and_backward(normalized):
     torch = _torch()
-    from urm.compiler.unified_mixer import _execute_matrix_recurrence
+    from urm.compiler.pipeline import _execute_matrix_recurrence
 
     if not torch.cuda.is_available():
         pytest.skip("FLA linear-attention anchor requires CUDA")
-    from urm.adapters.gated_delta_rule import fla_version
+    from benchmarks.comparators.fla_gated_delta import fla_version
 
     if fla_version().get("version_compatible") is not True:
         pytest.skip("the exact FLA library comparator is unavailable")
@@ -4445,7 +4445,7 @@ def test_fla_linear_low_precision_backward_rejects_odd_dimensions(odd_axis):
     "recipe_name,supported", [("simple_gla", False), ("gla", True)]
 )
 def test_k2_fla_gated_additive_training_dtype_contract(recipe_name, supported):
-    from urm.compiler.diagnostics import CompilerError
+    from urm.compiler.common.diagnostics import CompilerError
 
     if supported:
         plan = compile_mixer(
@@ -4472,7 +4472,7 @@ def test_k2_fla_gated_additive_chunk_prefill_matches_reference_and_backward(
     torch = _torch()
     if not torch.cuda.is_available():
         pytest.skip("FLA gated-additive chunk anchors require CUDA")
-    from urm.adapters.gated_delta_rule import fla_version
+    from benchmarks.comparators.fla_gated_delta import fla_version
 
     if fla_version().get("version_compatible") is not True:
         pytest.skip("the exact FLA comparator pin is unavailable")
@@ -4509,7 +4509,7 @@ def test_k2_fla_gated_additive_chunk_prefill_matches_reference_and_backward(
         "log_decay": log_decay,
         "initial_state": initial_state,
     }
-    from urm.compiler.unified_mixer import _execute_matrix_recurrence
+    from urm.compiler.pipeline import _execute_matrix_recurrence
 
     reference = _execute_matrix_recurrence(spec, torch, **dict(operands))
     reference_loss = (
@@ -4540,7 +4540,7 @@ def test_k2_fla_gated_additive_recurrent_decode_matches_reference(
     torch = _torch()
     if not torch.cuda.is_available():
         pytest.skip("FLA gated-additive anchors require CUDA")
-    from urm.adapters.gated_delta_rule import fla_version
+    from benchmarks.comparators.fla_gated_delta import fla_version
 
     if fla_version().get("version_compatible") is not True:
         pytest.skip("the exact FLA comparator pin is unavailable")
@@ -4577,11 +4577,11 @@ def test_k2_fla_gated_additive_recurrent_decode_matches_reference(
 
 def test_k2_fla_delta_rule_matches_reference_and_backward():
     torch = _torch()
-    from urm.compiler.unified_mixer import _execute_matrix_recurrence
+    from urm.compiler.pipeline import _execute_matrix_recurrence
 
     if not torch.cuda.is_available():
         pytest.skip("FLA delta-rule anchor requires CUDA")
-    from urm.adapters.gated_delta_rule import fla_version
+    from benchmarks.comparators.fla_gated_delta import fla_version
 
     if fla_version().get("version_compatible") is not True:
         pytest.skip("the exact FLA library comparator is unavailable")
@@ -4630,11 +4630,11 @@ def test_k2_fla_delta_rule_matches_reference_and_backward():
 
 def test_k2_fla_delta_rule_selects_forward_only_one_token_decode():
     torch = _torch()
-    from urm.compiler.unified_mixer import _execute_matrix_recurrence
+    from urm.compiler.pipeline import _execute_matrix_recurrence
 
     if not torch.cuda.is_available():
         pytest.skip("FLA delta-rule anchor requires CUDA")
-    from urm.adapters.gated_delta_rule import fla_version
+    from benchmarks.comparators.fla_gated_delta import fla_version
 
     if fla_version().get("version_compatible") is not True:
         pytest.skip("the exact FLA library comparator is unavailable")
@@ -4672,7 +4672,7 @@ def test_k2_fla_library_selects_forward_only_decode_for_one_token():
     torch = _torch()
     if not torch.cuda.is_available():
         pytest.skip("FLA gated-delta anchor requires CUDA")
-    from urm.adapters.gated_delta_rule import fla_version
+    from benchmarks.comparators.fla_gated_delta import fla_version
 
     if fla_version().get("version_compatible") is not True:
         pytest.skip("the exact FLA gated-delta comparator is unavailable")
@@ -4790,10 +4790,10 @@ def test_native_matrix_state_recurrence_matches_reference(
     if not torch.cuda.is_available():
         pytest.skip("native matrix-state recurrence requires CUDA")
     pytest.importorskip("triton")
-    from urm.backends.triton.recurrence.matrix_state import (
+    from urm.backends.triton.k2.matrix import (
         execute_matrix_state_recurrence,
     )
-    from urm.compiler.unified_mixer import _execute_matrix_recurrence
+    from urm.compiler.pipeline import _execute_matrix_recurrence
 
     torch.manual_seed(17)
     batch, sequence, heads, key_dim, value_dim = 2, 6, 3, 8, 5
@@ -4883,7 +4883,7 @@ def test_native_matrix_state_dispatch_matches_reference(recipe_name):
     if not torch.cuda.is_available():
         pytest.skip("native matrix-state recurrence requires CUDA")
     pytest.importorskip("triton")
-    from urm.compiler.unified_mixer import (
+    from urm.compiler.pipeline import (
         MixerBackend,
         _native_matrix_state_supported,
         compile_mixer,
@@ -4934,7 +4934,7 @@ def test_native_matrix_state_declines_underdetermined_recipes(recipe_name):
     """
     torch = _torch()
     pytest.importorskip("triton")
-    from urm.compiler.unified_mixer import (
+    from urm.compiler.pipeline import (
         MixerBackend,
         _native_matrix_state_supported,
         compile_mixer,
@@ -4954,7 +4954,7 @@ def test_native_matrix_state_declines_underdetermined_recipes(recipe_name):
 
 
 def _native_k2_operators():
-    from urm.compiler.unified_mixer import _NATIVE_K2_OPERATORS
+    from urm.compiler.pipeline import _NATIVE_K2_OPERATORS
 
     return _NATIVE_K2_OPERATORS
 
@@ -4971,7 +4971,7 @@ def test_held_out_differential_attention_composes_natively():
     if not torch.cuda.is_available():
         pytest.skip("native K1 requires CUDA")
     pytest.importorskip("triton")
-    from urm.compiler.unified_mixer import MixerBackend, compile_mixer
+    from urm.compiler.pipeline import MixerBackend, compile_mixer
 
     spec = named_mixer_recipe("differential_attention_core").spec
     torch.manual_seed(0)
@@ -5015,7 +5015,7 @@ def test_held_out_gated_delta_with_forgetting_composes_natively():
     if not torch.cuda.is_available():
         pytest.skip("native matrix-state recurrence requires CUDA")
     pytest.importorskip("triton")
-    from urm.compiler.unified_mixer import MixerBackend, compile_mixer
+    from urm.compiler.pipeline import MixerBackend, compile_mixer
 
     spec = named_mixer_recipe("gated_delta_net").spec
     plan = compile_mixer(spec, backend=MixerBackend.NATIVE, intent="training", dtype="float32")
@@ -5235,7 +5235,7 @@ def test_log_linear_core_matches_pinned_upstream_outputs_state_and_gradients():
     if not torch.cuda.is_available():
         pytest.skip("CUDA required for the pinned LogLinear source comparison")
     source = pytest.importorskip("fla.ops.log_linear_attn")
-    from urm.adapters.gated_delta_rule import fla_version
+    from benchmarks.comparators.fla_gated_delta import fla_version
 
     if (
         fla_version().get("source_revision")
@@ -5350,7 +5350,7 @@ def test_kda_core_matches_pinned_upstream_and_library_anchor():
     if not torch.cuda.is_available():
         pytest.skip("CUDA required for the pinned FLA KDA source comparison")
     source = pytest.importorskip("fla.ops.kda")
-    from urm.adapters.gated_delta_rule import fla_version
+    from benchmarks.comparators.fla_gated_delta import fla_version
 
     if (
         fla_version().get("source_revision")
@@ -5430,7 +5430,7 @@ def test_gated_delta_product_core_matches_pinned_upstream_and_library_anchor():
     if not torch.cuda.is_available():
         pytest.skip("CUDA required for the pinned FLA Gated DeltaProduct comparison")
     source = pytest.importorskip("fla.ops.gated_delta_product")
-    from urm.adapters.gated_delta_rule import fla_version
+    from benchmarks.comparators.fla_gated_delta import fla_version
 
     if (
         fla_version().get("source_revision")
@@ -5559,7 +5559,7 @@ def test_rwkv4_memory_core_matches_pinned_upstream_and_library_anchor():
     if not torch.cuda.is_available():
         pytest.skip("CUDA required for pinned RWKV-4 comparison")
     source = pytest.importorskip("fla.ops.rwkv4")
-    from urm.adapters.gated_delta_rule import fla_version
+    from benchmarks.comparators.fla_gated_delta import fla_version
 
     if (
         fla_version().get("source_revision")
@@ -5627,7 +5627,7 @@ def test_rwkv6_memory_core_matches_pinned_upstream_outputs_and_gradients():
     if not torch.cuda.is_available():
         pytest.skip("CUDA required for pinned RWKV-6 comparison")
     source = pytest.importorskip("fla.ops.rwkv6")
-    from urm.adapters.gated_delta_rule import fla_version
+    from benchmarks.comparators.fla_gated_delta import fla_version
 
     if (
         fla_version().get("source_revision")
@@ -5715,7 +5715,7 @@ def test_momentum_delta_core_matches_pinned_upstream_outputs_states_and_gradient
     if not torch.cuda.is_available():
         pytest.skip("CUDA required for the pinned Momentum DeltaNet comparison")
     source = pytest.importorskip("fla.ops.momentum_delta_rule.chunk")
-    from urm.adapters.gated_delta_rule import fla_version
+    from benchmarks.comparators.fla_gated_delta import fla_version
 
     if (
         fla_version().get("source_revision")
@@ -5835,7 +5835,7 @@ def test_gated_oja_core_matches_pinned_upstream_outputs_states_and_gradients():
     if not torch.cuda.is_available():
         pytest.skip("CUDA required for the pinned gated Oja comparison")
     source = pytest.importorskip("fla.ops.gated_oja_rule")
-    from urm.adapters.gated_delta_rule import fla_version
+    from benchmarks.comparators.fla_gated_delta import fla_version
 
     if (
         fla_version().get("source_revision")
@@ -5955,7 +5955,7 @@ def test_comba_core_matches_pinned_upstream_outputs_states_and_gradients():
     if not torch.cuda.is_available():
         pytest.skip("CUDA required for the pinned COMBA comparison")
     source = pytest.importorskip("fla.ops.comba")
-    from urm.adapters.gated_delta_rule import fla_version
+    from benchmarks.comparators.fla_gated_delta import fla_version
 
     if (
         fla_version().get("source_revision")
@@ -6073,7 +6073,7 @@ def test_pgdn_core_matches_pinned_upstream_outputs_states_and_gradients():
     if not torch.cuda.is_available():
         pytest.skip("CUDA required for the pinned PGDN comparison")
     source = pytest.importorskip("fla.ops.precond_gated_delta_rule.chunk")
-    from urm.adapters.gated_delta_rule import fla_version
+    from benchmarks.comparators.fla_gated_delta import fla_version
 
     if (
         fla_version().get("source_revision")
@@ -6216,7 +6216,7 @@ def test_pkda_core_matches_pinned_upstream_outputs_states_and_gradients():
     if not torch.cuda.is_available():
         pytest.skip("CUDA required for the pinned PKDA comparison")
     source = pytest.importorskip("fla.ops.precond_kda.chunk")
-    from urm.adapters.gated_delta_rule import fla_version
+    from benchmarks.comparators.fla_gated_delta import fla_version
 
     if (
         fla_version().get("source_revision")
@@ -6355,7 +6355,7 @@ def test_deltaformer_attention_core_matches_pinned_upstream_outputs_and_gradient
     if not torch.cuda.is_available():
         pytest.skip("CUDA required for the pinned DeltaFormer comparison")
     source = pytest.importorskip("fla.ops.deltaformer")
-    from urm.adapters.gated_delta_rule import fla_version
+    from benchmarks.comparators.fla_gated_delta import fla_version
 
     if (
         fla_version().get("source_revision")
@@ -6426,7 +6426,7 @@ def test_rodimus_gla_core_matches_pinned_upstream_outputs_states_and_gradients()
     if not torch.cuda.is_available():
         pytest.skip("CUDA required for the pinned Rodimus GLA comparison")
     source = pytest.importorskip("fla.ops.gla")
-    from urm.adapters.gated_delta_rule import fla_version
+    from benchmarks.comparators.fla_gated_delta import fla_version
 
     if (
         fla_version().get("source_revision")
@@ -6548,7 +6548,7 @@ def test_mesa_net_core_matches_pinned_upstream_outputs_states_and_gradients():
     if not torch.cuda.is_available():
         pytest.skip("CUDA required for pinned MesaNet comparison")
     source = pytest.importorskip("fla.ops.mesa_net.chunk")
-    from urm.adapters.gated_delta_rule import fla_version
+    from benchmarks.comparators.fla_gated_delta import fla_version
 
     if (
         fla_version().get("source_revision")
@@ -6863,7 +6863,7 @@ def test_slot_attention_cores_match_pinned_upstream_outputs_states_and_gradients
     source = pytest.importorskip(
         "fla.ops.abc.chunk" if recipe_name == "abc_core" else "fla.ops.gsa.chunk"
     )
-    from urm.adapters.gated_delta_rule import fla_version
+    from benchmarks.comparators.fla_gated_delta import fla_version
 
     if (
         fla_version().get("source_revision")
@@ -7099,7 +7099,7 @@ def test_generalized_delta_transition_cores_match_pinned_upstream(
     if not torch.cuda.is_available():
         pytest.skip("CUDA required for pinned generalized-delta comparison")
     source = pytest.importorskip(source_module)
-    from urm.adapters.gated_delta_rule import fla_version
+    from benchmarks.comparators.fla_gated_delta import fla_version
 
     if (
         fla_version().get("source_revision")
@@ -7371,8 +7371,8 @@ def test_k3_native_overlapping_routes_match_reference_vjp(dtype_name, read_timin
         pytest.skip("native K3 requires CUDA")
 
     spec = sparse_delta_spec(read_timing=read_timing)
-    from urm.backends.triton.sparse_state.backend import TritonSparseStateMixerBackend
-    from urm.compiler.semantic import (
+    from urm.backends.triton.k3.state_launcher import TritonSparseStateMixerBackend
+    from urm.ir.program import (
         DType,
         SparseReadTiming,
         SparseStateExecutionMode,
@@ -7516,8 +7516,8 @@ def test_k3_native_anchor_executes_when_cuda_contract_is_supported(dtype_name):
     torch = _torch()
     if not torch.cuda.is_available():
         pytest.skip("native K3 requires CUDA")
-    from urm.backends.triton.sparse_state.backend import TritonSparseStateMixerBackend
-    from urm.compiler.semantic import (
+    from urm.backends.triton.k3.state_launcher import TritonSparseStateMixerBackend
+    from urm.ir.program import (
         DType,
         SparseReadTiming,
         SparseStateExecutionMode,

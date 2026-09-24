@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from urm.compiler.placement_solver import (
+from urm.compiler.placement.solver import (
     PlacementEdge,
     PlacementItem,
     PlacementProblem,
@@ -16,8 +16,8 @@ from urm.compiler.placement_solver import (
     placement_metrics,
     round_robin_placement,
 )
-from urm.compiler.solver import OptimizationPass, z3_available
-from urm.compiler.verification import (
+from urm.compiler.solve.z3 import OptimizationPass, z3_available
+from urm.compiler.verify.plan import (
     AssignmentFacts,
     ModelVerifier,
     PlacementItemFacts,

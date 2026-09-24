@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import numpy.typing as npt
 
-from ...ir import MixerSpec, MutationKind, RoutingKind
-from ...oracles.routed import ReferenceResult, execute
+from ....ir import MixerSpec, MutationKind, RoutingKind
+from .k1_routed import ReferenceResult, execute
 
 
 class NumpyBackend:

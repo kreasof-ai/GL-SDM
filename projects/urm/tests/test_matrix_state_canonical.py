@@ -1,9 +1,9 @@
 """Native K2 matrix-state kernel vs. the NumPy canonical core.
 
 Each test runs the fused Triton kernel
-(:func:`urm.backends.triton.recurrence.matrix_state.execute_matrix_state_recurrence`)
+(:func:`urm.backends.triton.k2.matrix.execute_matrix_state_recurrence`)
 over a short sequence and compares it directly to the NumPy canonical core
-:func:`urm.oracles.matrix_state.recurrent`, in fp32. The kernel must mirror the
+:func:`urm.backends.reference.numpy.k2.recurrent`, in fp32. The kernel must mirror the
 canonical core's math (fp32 accumulation) to ~1e-4 for every covered option:
 delta/additive, dual-gate, retrieval keys, normalizer, feature maps, multi-rank,
 and the factored left transition.
@@ -22,8 +22,8 @@ if not torch.cuda.is_available():
         "CUDA required for native matrix-state validation", allow_module_level=True
     )
 
-from urm.oracles import matrix_state  # noqa: E402
-from urm.backends.triton.recurrence.matrix_state import (  # noqa: E402
+from urm.backends.reference.numpy import matrix_state  # noqa: E402
+from urm.backends.triton.k2.matrix import (  # noqa: E402
     execute_matrix_state_recurrence,
 )
 
@@ -243,8 +243,8 @@ def test_normalizer_delta_head_decay_matches_canonical():
         scale=1.0, decay_granularity="head", is_delta=True, read_before=False,
         normalizer=True, epsilon=1e-6, feature_map="elu_plus_one",
     )
-    from urm.oracles.composition import _feature_map
-    from urm.ir.mixer import FeatureMap
+    from urm.backends.reference.numpy.graph import _feature_map
+    from urm.ir.graph import FeatureMap
     kf = _feature_map(data["keys"], FeatureMap.ELU_PLUS_ONE)
     qf = _feature_map(data["queries"], FeatureMap.ELU_PLUS_ONE)
     ref_out, ref_final, ref_norm = _canonical(
@@ -267,8 +267,8 @@ def test_normalizer_additive_no_decay_matches_canonical():
         scale=1.0, decay_granularity="none", is_delta=False, read_before=False,
         normalizer=True, epsilon=1e-6, feature_map="elu_plus_one",
     )
-    from urm.oracles.composition import _feature_map
-    from urm.ir.mixer import FeatureMap
+    from urm.backends.reference.numpy.graph import _feature_map
+    from urm.ir.graph import FeatureMap
     kf = _feature_map(data["keys"], FeatureMap.ELU_PLUS_ONE)
     qf = _feature_map(data["queries"], FeatureMap.ELU_PLUS_ONE)
     zeros = np.zeros((data["keys"].shape[0], data["keys"].shape[1], data["keys"].shape[2]))
@@ -295,8 +295,8 @@ def test_feature_map_matches_canonical(feature_map):
         feature_map=feature_map,
     )
     # The canonical core receives the feature-mapped query/key.
-    from urm.oracles.composition import _feature_map
-    from urm.ir.mixer import FeatureMap
+    from urm.backends.reference.numpy.graph import _feature_map
+    from urm.ir.graph import FeatureMap
     kind = FeatureMap(feature_map)
     kf = _feature_map(data["keys"], kind)
     qf = _feature_map(data["queries"], kind)
@@ -379,8 +379,8 @@ def test_polynomial_basis_via_pre_expansion_matches_canonical():
     # pre-expands the operands (matching the canonical core), so the kernel sees
     # the expanded width. Validate the additive + normalizer path on the
     # pre-expanded based_taylor2 features.
-    from urm.oracles.composition import _polynomial_features
-    from urm.ir.mixer import PolynomialBasis
+    from urm.backends.reference.numpy.graph import _polynomial_features
+    from urm.ir.graph import PolynomialBasis
     data = _sample(seed=9, k=6, v=4)
     key_dim = data["keys"].shape[-1]
     poly_scale = key_dim ** -0.5

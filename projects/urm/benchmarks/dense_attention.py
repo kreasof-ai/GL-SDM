@@ -52,8 +52,8 @@ from pathlib import Path
 import torch
 from torch.nn.attention import SDPBackend, sdpa_kernel
 
-from urm.adapters import UrmDenseCausalAttentionAdapter
-from urm.adapters.dense_attention import flash_attn_version
+from benchmarks.comparators.flash_attention import UrmDenseCausalAttentionAdapter
+from benchmarks.comparators.flash_attention import flash_attn_version
 
 # Oracle and math-backend attention materialize an S x S score matrix in fp32.
 ORACLE_MEMORY_BUDGET_BYTES = 8 * 1024**3

@@ -1,7 +1,7 @@
 """Differentiable backwards for the distinguished K2 recurrence operators.
 
-Each native executor in :mod:`urm.backends.triton.recurrence.nonlinear` and
-:mod:`urm.backends.triton.recurrence.inner_state` is a forward-only Triton
+Each native executor in :mod:`urm.backends.triton.k2.nonlinear` and
+:mod:`urm.backends.triton.k2.inner_state` is a forward-only Triton
 kernel. This module wraps those kernels in :class:`torch.autograd.Function`
 objects whose ``backward`` recomputes the exact per-token recurrence in
 differentiable PyTorch (matching the canonical NumPy core and the Triton kernel
@@ -32,7 +32,7 @@ def _grads(recomputed, inputs, grad_output):
 class _TanhRnn(torch.autograd.Function):
     @staticmethod
     def forward(ctx, query, weight, initial_state):
-        from urm.backends.triton.recurrence.nonlinear import execute_tanh_rnn
+        from urm.backends.triton.k2.nonlinear import execute_tanh_rnn
 
         output, final = execute_tanh_rnn(
             query=query, weight=weight, initial_state=initial_state
@@ -66,7 +66,7 @@ class _GatedRnn(torch.autograd.Function):
     @staticmethod
     def forward(ctx, query, weight, forget_input, forget_weight, reset_input,
                 reset_weight, initial_state):
-        from urm.backends.triton.recurrence.nonlinear import execute_gated_rnn
+        from urm.backends.triton.k2.nonlinear import execute_gated_rnn
 
         output, final = execute_gated_rnn(
             query=query, weight=weight, forget_input=forget_input,
@@ -120,7 +120,7 @@ def _gated_rnn_backwardable(query, weight, forget_input, forget_weight,
 class _MultiplicativeRnn(torch.autograd.Function):
     @staticmethod
     def forward(ctx, query, key, value, weight, forget_input, initial_state):
-        from urm.backends.triton.recurrence.nonlinear import (
+        from urm.backends.triton.k2.nonlinear import (
             execute_multiplicative_rnn,
         )
 
@@ -168,7 +168,7 @@ def _multiplicative_rnn_backwardable(query, key, value, weight, forget_input,
 class _Rwkv4(torch.autograd.Function):
     @staticmethod
     def forward(ctx, w, u, key, value, state_input):
-        from urm.backends.triton.recurrence.nonlinear import (
+        from urm.backends.triton.k2.nonlinear import (
             execute_rwkv4_scalar_state,
         )
 
@@ -222,7 +222,7 @@ def _rwkv4_backwardable(w, u, key, value, state_input):
 class _Rwkv6(torch.autograd.Function):
     @staticmethod
     def forward(ctx, query, key, value, log_decay, bonus, initial_state):
-        from urm.backends.triton.recurrence.nonlinear import (
+        from urm.backends.triton.k2.nonlinear import (
             execute_rwkv6_bonus_corrected,
         )
 
@@ -284,7 +284,7 @@ def _rwkv6_backwardable(query, key, value, log_decay, bonus, initial_state):
 class _Mamba2(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, dt, A, B, C, initial_states):
-        from urm.backends.triton.recurrence.nonlinear import (
+        from urm.backends.triton.k2.nonlinear import (
             execute_mamba2_structured_ssm,
         )
 
@@ -346,7 +346,7 @@ def _mamba2_backwardable(x, dt, A, B, C, initial_states):
 class _GatedOja(torch.autograd.Function):
     @staticmethod
     def forward(ctx, query, key, value, gate, beta, initial_state, scale):
-        from urm.backends.triton.recurrence.inner_state import execute_gated_oja
+        from urm.backends.triton.k2.inner_state import execute_gated_oja
 
         has_initial = initial_state is not None
         output, final = execute_gated_oja(
@@ -404,7 +404,7 @@ def _gated_oja_backwardable(query, key, value, gate, beta, initial_state, scale)
 class _RegularizedSolve(torch.autograd.Function):
     @staticmethod
     def forward(ctx, query, key, value, log_decay, beta, lamb):
-        from urm.backends.triton.recurrence.inner_state import (
+        from urm.backends.triton.k2.inner_state import (
             execute_regularized_solve,
         )
 
@@ -454,7 +454,7 @@ def _regularized_solve_backwardable(query, key, value, log_decay, beta, lamb):
 class _SlotAttentionTwoStage(torch.autograd.Function):
     @staticmethod
     def forward(ctx, query, key, value, slot_weights, log_decay, group_size):
-        from urm.backends.triton.recurrence.inner_state import (
+        from urm.backends.triton.k2.inner_state import (
             execute_slot_attention_two_stage,
         )
 
@@ -527,7 +527,7 @@ class _TrapezoidalSsm(torch.autograd.Function):
     @staticmethod
     def forward(ctx, query, key, value, adt, dt, trap, query_bias, key_bias,
                 angles):
-        from urm.backends.triton.recurrence.nonlinear import (
+        from urm.backends.triton.k2.nonlinear import (
             execute_trapezoidal_ssm,
         )
 
@@ -628,7 +628,7 @@ class _LayernormInnerState(torch.autograd.Function):
     @staticmethod
     def forward(ctx, query, key, value, w, b, eta, initial_state,
                 initial_state_bias, chunk_size, eps):
-        from urm.backends.triton.recurrence.inner_state import (
+        from urm.backends.triton.k2.inner_state import (
             execute_layernorm_inner_state,
         )
 
@@ -757,7 +757,7 @@ class _MomentumInnerState(torch.autograd.Function):
     @staticmethod
     def forward(ctx, query, key, value, w, b, theta, alpha, eta, initial_state,
                 chunk_size, eps):
-        from urm.backends.triton.recurrence.inner_state import (
+        from urm.backends.triton.k2.inner_state import (
             execute_momentum_inner_state,
         )
 
@@ -863,7 +863,7 @@ class _MomentumDelta(torch.autograd.Function):
     @staticmethod
     def forward(ctx, query, key, value, p, log_alpha, log_mu, beta, eta,
                 initial_state, initial_momentum, scale):
-        from urm.backends.triton.recurrence.inner_state import execute_momentum_delta
+        from urm.backends.triton.k2.inner_state import execute_momentum_delta
 
         output, final = execute_momentum_delta(
             query=query, key=key, value=value, p=p, log_alpha=log_alpha,

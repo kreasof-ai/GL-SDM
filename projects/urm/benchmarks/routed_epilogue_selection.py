@@ -73,19 +73,21 @@ def main() -> None:
     )
     from provenance import provenance, utc_now, write_artifact
 
-    from urm.backends.triton.softmax.routed_scale_epilogue import (
+    from urm.backends.triton.k1.row_scale import (
         RoutedEpilogueLaunchConfig,
+    )
+    from urm.compiler.schedule.probes.triton_k1 import (
         _extract_resource_usage,
         make_triton_compile_probe,
     )
-    from urm.compiler.kernel_plan import (
+    from urm.compiler.select.model import (
         decode_schedule_point,
         exhaustive_schedule_sweep,
         schedule_point_to_assignment,
         verify_schedule_assignment,
     )
-    from urm.compiler.planner import CompilationIntent, ScheduleParams, UrmCompiler
-    from urm.compiler.schedule_space import (
+    from urm.compiler.pipeline import CompilationIntent, ScheduleParams, UrmCompiler
+    from urm.compiler.schedule.space import (
         SUPPORTED_BLOCKS,
         SUPPORTED_STAGES,
         SUPPORTED_WARPS,
@@ -94,8 +96,8 @@ def main() -> None:
         heuristic_schedule,
         legal_schedules,
     )
-    from urm.compiler.semantic import DType, row_scaled_routed_reduction_program
-    from urm.compiler.solver import FeasibilityPass, OptimizationPass, z3_version
+    from urm.ir.program import DType, row_scaled_routed_reduction_program
+    from urm.compiler.solve.z3 import FeasibilityPass, OptimizationPass, z3_version
 
     intent = CompilationIntent.TRAINING
     program = row_scaled_routed_reduction_program(
@@ -567,7 +569,7 @@ def compile_feedback_record(
     model, assignment, *, reason: str | None
 ) -> dict[str, object]:
     """Record compile feedback for THIS failed assignment (exact nogood)."""
-    from urm.compiler.kernel_plan import apply_compile_feedback
+    from urm.compiler.select.model import apply_compile_feedback
 
     return apply_compile_feedback(
         model,
@@ -579,7 +581,7 @@ def compile_feedback_record(
 
 
 def model_to_problem(model):
-    from urm.compiler.schedule_space import ScheduleProblem
+    from urm.compiler.schedule.space import ScheduleProblem
 
     meta = model.metadata
     return ScheduleProblem(

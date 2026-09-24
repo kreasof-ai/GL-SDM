@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Union
 
-from urm.compiler.diagnostics import Severity
+from urm.compiler.common.diagnostics import Severity
 
 
 @dataclass(frozen=True, slots=True)

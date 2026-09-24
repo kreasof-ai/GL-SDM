@@ -18,8 +18,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from urm.compiler.diagnostics import DiagnosticCode, DiagnosticsCollector
-from urm.compiler.effects import (
+from urm.compiler.common.diagnostics import DiagnosticCode, DiagnosticsCollector
+from urm.ir.effects import (
     ATOMIC_ACCUMULATE,
     COLLECTIVE,
     COMMIT,
@@ -29,7 +29,7 @@ from urm.compiler.effects import (
     STATE_READ_EFFECT,
     EffectSignature,
 )
-from urm.ir.mixer import MixerKernelFamily, UnifiedMixerSpec
+from urm.ir.graph import MixerKernelFamily, UnifiedMixerSpec
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

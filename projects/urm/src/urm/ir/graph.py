@@ -808,6 +808,20 @@ class UnifiedMixerSpec:
             for key, value in asdict(self).items()
         }
 
+    @classmethod
+    def from_dict(cls, payload: dict[str, object]) -> UnifiedMixerSpec:
+        """Deserialize a mapping produced by :meth:`to_dict` back into a spec.
+
+        Enum-valued fields are coerced from their serialized string values by
+        :meth:`__post_init__`; unknown keys are rejected so a recipe document
+        cannot silently smuggle unsupported semantics past the typed boundary.
+        """
+        valid = {f for f in cls.__dataclass_fields__}
+        unknown = set(payload) - valid
+        if unknown:
+            raise ValueError(f"unknown mixer spec fields: {sorted(unknown)}")
+        return cls(**payload)  # type: ignore[arg-type]
+
     def semantic_signature(self) -> tuple[tuple[str, object], ...]:
         """Canonical equation identity, excluding frontend recipe metadata."""
         return tuple(

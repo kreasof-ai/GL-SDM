@@ -25,8 +25,8 @@ def main() -> None:
 
     import torch
 
-    from urm.pretraining import FP32AdamW, URMDecoderLM
-    from urm.sparse_state_profile import EVENTS
+    from train.loop import FP32AdamW, URMDecoderLM
+    from benchmarks.profiling.state_stage import EVENTS
 
     payload, config = load_frozen_config(diagnostic=args.diagnostic)
     torch.manual_seed(811)

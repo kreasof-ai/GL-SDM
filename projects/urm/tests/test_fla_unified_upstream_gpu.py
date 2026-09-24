@@ -38,7 +38,7 @@ def test_compiled_fla_gated_additive_matches_direct_pinned_upstream(recipe_name)
             "set PYTHONPATH to the coverage-register FLA checkout "
             f"{EXPECTED_FLA_REVISION}; loaded revision is {revision!r}"
         )
-    from urm.adapters.gated_delta_rule import fla_version
+    from benchmarks.comparators.fla_gated_delta import fla_version
 
     identity = fla_version()
     assert identity["revision_compatible"] is True
@@ -46,12 +46,12 @@ def test_compiled_fla_gated_additive_matches_direct_pinned_upstream(recipe_name)
 
     from fla.ops.gla import chunk_gla
     from fla.ops.simple_gla import chunk_simple_gla
-    from urm.compiler.unified_mixer import (
+    from urm.compiler.pipeline import (
         MixerBackend,
         MixerIntent,
         compile_mixer,
     )
-    from urm.frontend.mixer_recipes import named_mixer_recipe
+    from urm.frontend.recipes import named_mixer_recipe
 
     torch.manual_seed(44018 if recipe_name == "simple_gla" else 44019)
     query = torch.randn(1, 24, 2, 16, device="cuda", dtype=torch.float32)

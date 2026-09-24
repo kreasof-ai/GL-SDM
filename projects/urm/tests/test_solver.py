@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from urm.compiler.constraints import (
+from urm.compiler.solve.constraints import (
     BoolVar,
     ConstraintCategory,
     ConstraintModel,
@@ -23,9 +23,9 @@ from urm.compiler.constraints import (
     Origin,
     make_nogood,
 )
-from urm.compiler.diagnostics import CompilerError, DiagnosticCode
-from urm.compiler.schedule_space import exhaustive_optimum
-from urm.compiler.solver import (
+from urm.compiler.common.diagnostics import CompilerError, DiagnosticCode
+from urm.compiler.schedule.space import exhaustive_optimum
+from urm.compiler.solve.z3 import (
     FeasibilityPass,
     FeasibilityStatus,
     OptimizationPass,
@@ -144,7 +144,7 @@ def test_optimization_is_lexicographic_and_deterministic() -> None:
 
 
 def test_solver_agrees_with_exhaustive_sweep_on_tiny_problem() -> None:
-    from urm.compiler.constraints import Divisibility
+    from urm.compiler.solve.constraints import Divisibility
 
     model = ConstraintModel(name="agree")
     model.add_variable(IntVar("x", 0, 12))
@@ -184,7 +184,7 @@ def test_nogood_excludes_rejected_assignment() -> None:
 
 
 def test_solver_absent_raises_structured_diagnostic(monkeypatch) -> None:
-    import urm.compiler.solver as solver_module
+    import urm.compiler.solve.z3 as solver_module
 
     monkeypatch.setattr(solver_module, "z3", None)
     with pytest.raises(CompilerError) as excinfo:

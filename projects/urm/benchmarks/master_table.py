@@ -43,7 +43,7 @@ from typing import Any
 
 import numpy as np
 
-from urm.frontend.mixer_recipes import named_mixer_recipe
+from urm.frontend.recipes import named_mixer_recipe
 
 from representation_coverage import _rng_operands
 
@@ -275,7 +275,7 @@ def build_recipe_mixer(config, recipe_name: str, backend: str, dtype: str | None
     torch = _torch()
     import torch.nn as nn
 
-    from urm.compiler.unified_mixer import MixerBackend, MixerIntent, compile_mixer
+    from urm.compiler.pipeline import MixerBackend, MixerIntent, compile_mixer
 
     if dtype is None:
         dtype = _mixer_dtype(recipe_name, backend)
@@ -1192,7 +1192,7 @@ def measure_recipe_master(recipe_name: str) -> dict[str, Any]:
     toward the compute/bandwidth-bound targets.
     """
     torch = _torch()
-    from urm.pretraining import PretrainingConfig
+    from train.loop import PretrainingConfig
 
     config = PretrainingConfig(**MODEL)
     peaks = _peaks()
@@ -1349,7 +1349,7 @@ def _kl(native_logits, upstream_logits) -> float:
 def _probe_recipe(recipe_name: str) -> dict[str, Any]:
     """Try to build the native + upstream mixer and run one fwd+bwd. Diagnostic."""
     torch = _torch()
-    from urm.pretraining import PretrainingConfig
+    from train.loop import PretrainingConfig
 
     config = PretrainingConfig(**{k: v for k, v in MODEL.items()})
     result: dict[str, Any] = {"recipe": recipe_name}
@@ -1432,7 +1432,7 @@ def _cudagraph_callable(model, toks):
 def measure_inference(recipe_name: str, n_params: int) -> dict[str, Any]:
     """Prefill/decode MFU/MBU/throughput + peak mem + KL, native vs upstream."""
     torch = _torch()
-    from urm.pretraining import PretrainingConfig
+    from train.loop import PretrainingConfig
 
     peaks = _peaks()
     out: dict[str, Any] = {}

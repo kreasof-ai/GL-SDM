@@ -16,8 +16,8 @@ import torch
 
 from measurement import quantile
 from provenance import provenance, write_artifact
-from urm.compiler.unified_mixer import MixerBackend, MixerIntent, compile_mixer
-from urm.frontend.mixer_recipes import named_mixer_recipe
+from urm.compiler.pipeline import MixerBackend, MixerIntent, compile_mixer
+from urm.frontend.recipes import named_mixer_recipe
 
 EXPECTED_REVISION = "50224e387211f15ac6a3b2685730b9a0c850f145"
 BATCH, SEQUENCE, HEADS, DIM = 1, 64, 2, 16

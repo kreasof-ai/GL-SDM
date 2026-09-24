@@ -48,8 +48,8 @@ from measurement import (
     quantile,
 )
 from provenance import provenance, write_artifact
-from urm.compiler.unified_mixer import MixerBackend, MixerIntent, compile_mixer
-from urm.frontend.mixer_recipes import named_mixer_recipe
+from urm.compiler.pipeline import MixerBackend, MixerIntent, compile_mixer
+from urm.frontend.recipes import named_mixer_recipe
 
 EXPECTED_FLA_REVISION = "864a87f6ce5be8828bef81eb22baafd41937cdf2"
 # Frozen production-matrix budget for k2-gated-delta-recurrence.
@@ -373,7 +373,7 @@ def _run_case(case, dtype_name, dtype, pairs, warmup, block):
     # native decode uses execute_matrix_state_decode_step; the upstream decode
     # uses the exact sequential fused_recurrent operator on a one-token step.
     # Both thread a persistent state across steps (reset per timed unit).
-    from urm.backends.triton.recurrence.matrix_state import (
+    from urm.backends.triton.k2.matrix import (
         execute_matrix_state_decode_step,
     )
 

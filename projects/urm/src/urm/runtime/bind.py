@@ -1,6 +1,6 @@
 """Runtime binding of compiled Sparse Memory plans to their native backend.
 
-The compiler produces a validated :class:`~urm.compiler.sparse_memory_plan.SparseMemoryPlan`;
+The compiler produces a validated :class:`~urm.compiler.partition.k3.SparseMemoryPlan`;
 this module owns the executable binding: it constructs the native GPU backend,
 checks the serialized schedule against the backend's actual launch schedule,
 and exposes the bound executable. Importing the GPU backend is deferred until a
@@ -11,9 +11,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from urm.compiler.planner import CompilationResult, UrmCompiler
-from urm.compiler.semantic import SparseMemoryMixerSpec
-from urm.compiler.sparse_memory_plan import plan_sparse_memory
+from urm.compiler.pipeline import CompilationResult, UrmCompiler
+from urm.ir.program import SparseMemoryMixerSpec
+from urm.compiler.partition.k3 import plan_sparse_memory
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,7 +70,7 @@ def compile_sparse_memory_plan(
     """Compile, verify, and bind the exact native Sparse Memory schedule."""
     plan = plan_sparse_memory(spec, compiler=compiler)
 
-    from urm.backends.triton.sparse_state.memory import TritonSparseMemoryBackend
+    from urm.backends.triton.k3.memory import TritonSparseMemoryBackend
 
     backend = TritonSparseMemoryBackend(spec)
     read_schedule = backend.read_backend.launch_schedule()

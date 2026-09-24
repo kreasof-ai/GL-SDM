@@ -13,7 +13,7 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from urm.adapters.gated_delta_rule import (
+from benchmarks.comparators.fla_gated_delta import (
     EXPECTED_FLA_VERSION,
     GatedDeltaRuleSpec,
     UrmGatedDeltaRuleAdapter,
@@ -62,12 +62,12 @@ def test_incompatible_installed_version_is_rejected_not_relabeled() -> None:
             "installed_version": "0.9.9",
             "version_compatible": False,
         }
-        import urm.adapters.gated_delta_rule as module
+        import benchmarks.comparators.fla_gated_delta as module
 
         module.fla_version = lambda: fla_version_cache  # type: ignore[assignment]
         reason = adapter.support_status(_FakeSpec())  # type: ignore[arg-type]
     finally:
-        import urm.adapters.gated_delta_rule as module
+        import benchmarks.comparators.fla_gated_delta as module
 
         module.fla_version = original  # type: ignore[assignment]
 

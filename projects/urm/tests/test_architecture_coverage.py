@@ -4,8 +4,8 @@ import json
 import re
 from pathlib import Path
 
-from urm.compiler.execution import TRUSTED_ANCHORS
-from urm.frontend.mixer_recipes import MIXER_RECIPE_NAMES, named_mixer_recipe
+from urm.compiler.select.anchors import TRUSTED_ANCHORS
+from urm.frontend.recipes import MIXER_RECIPE_NAMES, named_mixer_recipe
 
 ROOT = Path(__file__).resolve().parents[1]
 

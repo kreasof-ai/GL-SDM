@@ -9,7 +9,7 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from urm.pretraining import (
+from train.loop import (
     FP32AdamW,
     PretrainingConfig,
     model_memory_ledger,
@@ -82,7 +82,7 @@ def test_model_benchmark_has_no_direct_native_backend_shortcut() -> None:
     benchmark = (root / "benchmarks" / "pretraining_step.py").read_text(
         encoding="utf-8"
     )
-    model = (root / "src" / "urm" / "pretraining.py").read_text(encoding="utf-8")
+    model = (root / "train" / "loop.py").read_text(encoding="utf-8")
     assert "TritonSparseMemoryBackend" not in benchmark
     assert "TritonSparseMemoryBackend" not in model
     assert "compile_sparse_memory_plan(spec)" in model

@@ -1,6 +1,6 @@
 """Execution-capability backend selection with visible declines and fallbacks.
 
-This registry is distinct from :class:`urm.runtime.registry.BackendRegistry`,
+This registry is distinct from :class:`urm.runtime.BackendRegistry`,
 which selects a backend by *semantic-family* support over a frontend
 ``MixerSpec``. This one selects a backend by *execution capability* - whether
 an implementation honors a concrete operation, semantic contract, device,
@@ -15,8 +15,8 @@ from collections.abc import Iterable
 from urm.backends.interface import (
     BackendImplementation,
     BackendRequest,
-    ExecutionPlan,
 )
+from urm.compiler.lower.plan import ExecutionPlan
 
 
 class BackendDeclined(ValueError):

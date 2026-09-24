@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, replace
+from pathlib import Path
 
-from urm.ir.mixer import (
+from urm.ir.graph import (
     DecayGranularity,
     FeatureMap,
     K1Operation,
@@ -1090,3 +1092,200 @@ def named_mixer_recipe(name: str) -> MixerRecipe:
         raise ValueError(
             f"no unified mixer recipe for {name!r}; available recipes: {supported}"
         ) from error
+
+
+# ======================================================================
+# Versioned JSON recipe loader (kernel fragments and complete model graphs).
+# ======================================================================
+
+
+KERNEL_SCHEMA_VERSION = 1
+KERNEL_FRAGMENT = "kernel_fragment"
+COMPLETE_MODEL_GRAPH = "complete_model_graph"
+
+
+class RecipeError(ValueError):
+    """Raised when a recipe document fails schema or semantic validation."""
+
+
+def load_kernel_recipe_document(document: dict) -> MixerRecipe:
+    """Validate and load one kernel-fragment recipe document.
+
+    The document must declare ``kind: kernel_fragment`` and the supported
+    ``schema_version``. The typed spec is reconstructed via
+    :meth:`UnifiedMixerSpec.from_dict`, which rejects unknown fields.
+    """
+    if not isinstance(document, dict):
+        raise RecipeError("recipe document must be a JSON object")
+    version = document.get("schema_version")
+    if version != KERNEL_SCHEMA_VERSION:
+        raise RecipeError(f"unsupported recipe schema_version: {version!r}")
+    kind = document.get("kind")
+    if kind != KERNEL_FRAGMENT:
+        raise RecipeError(
+            f"kernel recipe must declare kind={KERNEL_FRAGMENT!r}, got {kind!r}"
+        )
+    name = document.get("name")
+    if not isinstance(name, str) or not name.strip():
+        raise RecipeError("kernel recipe requires a non-empty name")
+    scope = document.get("component_scope")
+    if not isinstance(scope, str) or not scope.strip():
+        raise RecipeError(f"kernel recipe {name!r} requires a component_scope")
+    spec_payload = document.get("spec")
+    if not isinstance(spec_payload, dict):
+        raise RecipeError(f"kernel recipe {name!r} requires a typed spec object")
+    try:
+        spec = UnifiedMixerSpec.from_dict(spec_payload)
+    except (TypeError, ValueError) as error:
+        raise RecipeError(f"kernel recipe {name!r} has an invalid spec: {error}") from error
+    architecture_ids = document.get("architecture_ids", [])
+    external = document.get("required_external_stages", [])
+    if not all(isinstance(a, str) for a in architecture_ids):
+        raise RecipeError(f"kernel recipe {name!r} architecture_ids must be strings")
+    if not all(isinstance(s, str) for s in external):
+        raise RecipeError(
+            f"kernel recipe {name!r} required_external_stages must be strings"
+        )
+    return MixerRecipe(
+        architecture_ids=tuple(architecture_ids),
+        spec=spec,
+        component_scope=scope,
+        required_external_stages=tuple(external),
+    )
+
+
+def load_kernel_recipe_file(path: str | Path) -> MixerRecipe:
+    """Load a kernel-fragment recipe from a JSON file."""
+    text = Path(path).read_text(encoding="utf-8")
+    try:
+        document = json.loads(text)
+    except json.JSONDecodeError as error:
+        raise RecipeError(f"invalid JSON in {path}: {error}") from error
+    return load_kernel_recipe_document(document)
+
+
+def load_kernel_recipe_dir(directory: str | Path) -> dict[str, MixerRecipe]:
+    """Load every ``*.json`` kernel recipe in a directory, keyed by name."""
+    root = Path(directory)
+    recipes: dict[str, MixerRecipe] = {}
+    for path in sorted(root.glob("*.json")):
+        recipe = load_kernel_recipe_file(path)
+        if recipe.spec.name in recipes:
+            raise RecipeError(f"duplicate kernel recipe name: {recipe.spec.name}")
+        recipes[recipe.spec.name] = recipe
+    return recipes
+
+
+@dataclass(frozen=True, slots=True)
+class ArchitectureLayer:
+    """One ordered layer in a complete model graph."""
+
+    id: str
+    operation: str
+    external_component: str | None
+    params: tuple[tuple[str, object], ...]
+    state: tuple[tuple[str, object], ...]
+    cache: tuple[tuple[str, object], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ArchitectureRecipe:
+    """A validated complete-model-graph recipe document."""
+
+    name: str
+    layers: tuple[ArchitectureLayer, ...]
+    coverage_level: str
+    coverage_validated: bool
+    source_comparator: str | None
+
+
+def load_architecture_recipe_document(document: dict) -> ArchitectureRecipe:
+    """Validate and load one complete-model-graph recipe document.
+
+    The document must declare ``kind: complete_model_graph`` and a non-empty
+    ordered layer graph. Each layer references a registered typed operation or
+    kernel-fragment recipe by name, plus any external architecture-specific
+    component. The coverage level is recorded, not asserted: this loader does
+    not grant source-architecture coverage.
+    """
+    if not isinstance(document, dict):
+        raise RecipeError("architecture recipe document must be a JSON object")
+    version = document.get("schema_version")
+    if version != KERNEL_SCHEMA_VERSION:
+        raise RecipeError(f"unsupported recipe schema_version: {version!r}")
+    if document.get("kind") != COMPLETE_MODEL_GRAPH:
+        raise RecipeError(
+            f"architecture recipe must declare kind={COMPLETE_MODEL_GRAPH!r}"
+        )
+    name = document.get("name")
+    if not isinstance(name, str) or not name.strip():
+        raise RecipeError("architecture recipe requires a non-empty name")
+    raw_layers = document.get("layers")
+    if not isinstance(raw_layers, list) or not raw_layers:
+        raise RecipeError(f"architecture recipe {name!r} requires a non-empty layer graph")
+    layers: list[ArchitectureLayer] = []
+    seen: set[str] = set()
+    for raw in raw_layers:
+        if not isinstance(raw, dict):
+            raise RecipeError(f"architecture recipe {name!r} layers must be objects")
+        layer_id = raw.get("id")
+        operation = raw.get("operation")
+        if not isinstance(layer_id, str) or not layer_id.strip():
+            raise RecipeError(f"architecture recipe {name!r} layer requires an id")
+        if layer_id in seen:
+            raise RecipeError(f"duplicate layer id {layer_id!r} in {name!r}")
+        seen.add(layer_id)
+        if not isinstance(operation, str) or not operation.strip():
+            raise RecipeError(f"layer {layer_id!r} requires an operation name")
+        layers.append(
+            ArchitectureLayer(
+                id=layer_id,
+                operation=operation,
+                external_component=raw.get("external_component"),
+                params=tuple(sorted((raw.get("params") or {}).items())),
+                state=tuple(sorted((raw.get("state") or {}).items())),
+                cache=tuple(sorted((raw.get("cache") or {}).items())),
+            )
+        )
+    coverage = document.get("coverage") or {}
+    source = document.get("source") or {}
+    return ArchitectureRecipe(
+        name=name,
+        layers=tuple(layers),
+        coverage_level=str(coverage.get("level", "kernel_fragment")),
+        coverage_validated=bool(coverage.get("validated", False)),
+        source_comparator=source.get("comparator"),
+    )
+
+
+def load_architecture_recipe_file(path: str | Path) -> ArchitectureRecipe:
+    """Load a complete-model-graph recipe from a JSON file."""
+    text = Path(path).read_text(encoding="utf-8")
+    try:
+        document = json.loads(text)
+    except json.JSONDecodeError as error:
+        raise RecipeError(f"invalid JSON in {path}: {error}") from error
+    return load_architecture_recipe_document(document)
+
+
+__all__ = [
+    "COMPLETE_MODEL_GRAPH",
+    "KERNEL_FRAGMENT",
+    "KERNEL_SCHEMA_VERSION",
+    "ArchitectureLayer",
+    "ArchitectureRecipe",
+    "MIXER_RECIPE_NAMES",
+    "MixerRecipe",
+    "RecipeError",
+    "delta_rule_spec",
+    "diagonal_ssm_spec",
+    "linear_attention_spec",
+    "load_architecture_recipe_document",
+    "load_architecture_recipe_file",
+    "load_kernel_recipe_dir",
+    "load_kernel_recipe_document",
+    "load_kernel_recipe_file",
+    "named_mixer_recipe",
+    "softmax_attention_spec",
+    "sparse_delta_spec",
+]

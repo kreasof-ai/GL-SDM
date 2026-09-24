@@ -15,14 +15,14 @@ transition ``G_t``, scalar write strength ``beta_t``, and correction choice
 family also covers diagonal SSM layouts, factored/low-rank transitions, static
 and input-conditioned decay, normalized (denominator-state) variants, and the
 pinned in-place slot-table decode step. The shared, backend independent spec
-lives in :mod:`urm.ir.mixer`; this module owns the K2-specific semantic
+lives in :mod:`urm.ir.graph`; this module owns the K2-specific semantic
 contract and its validation boundary.
 
 Ownership
 ---------
 - Contract: `docs/kernels/linear-delta.md`
-- Native implementation: `urm.backends.triton.recurrence.diagonal_recurrence`
-  (diagonal SSM) and `urm.backends.triton.recurrence.hla`; the in-place
+- Native implementation: `urm.backends.triton.k2.diagonal`
+  (diagonal SSM) and `urm.backends.triton.k2.second_order`; the in-place
   slot-table decode step is bound through the ATMA gated-delta adapter.
 - Reference/oracle: the reference matrix/diagonal recurrence executors in the
   compiler.
@@ -37,7 +37,7 @@ Ownership
 
 from __future__ import annotations
 
-from urm.ir.mixer import MixerKernelFamily, RecurrentLayout, UnifiedMixerSpec
+from urm.ir.graph import MixerKernelFamily, RecurrentLayout, UnifiedMixerSpec
 
 
 def is_recurrence_family(spec: UnifiedMixerSpec) -> bool:

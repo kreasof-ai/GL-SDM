@@ -6,16 +6,16 @@ import importlib.util
 from contextlib import nullcontext
 from dataclasses import dataclass, field
 
-from urm.backends.triton.sparse_state.route_backend import (
+from urm.backends.triton.k3.route_launcher import (
     CertifiedSparseRouteScores,
     TritonSparseRouteBackend,
 )
-from urm.backends.triton.sparse_state.backend import (
+from urm.backends.triton.k3.state_launcher import (
     CertifiedSparseStateRoutes,
     SparseState,
     TritonSparseStateMixerBackend,
 )
-from urm.compiler.semantic import (
+from urm.ir.program import (
     DType,
     MergePolicy,
     ScoreNormalization,
@@ -29,7 +29,7 @@ from urm.compiler.semantic import (
     SparseStatePolicy,
     SparseUpdateRule,
 )
-from urm.sparse_state_mixer import SparseStateSupportStatus, sparse_state_spec_status
+from urm.ir.k3 import SparseStateSupportStatus, sparse_state_spec_status
 
 NATIVE_SPARSE_MEMORY_NAME = "urm_native_sparse_memory_e2e_v0"
 _PIPELINE_CERTIFICATE = object()
@@ -255,7 +255,7 @@ class TritonSparseMemoryBackend:
         prepared.require_intact()
         import torch
 
-        from urm.sparse_state_profile import state_stage
+        from urm.backends.triton.k3.state import _state_stage
 
         with (
             torch.autograd.profiler.record_function(
@@ -279,7 +279,7 @@ class TritonSparseMemoryBackend:
             beta=prepared.beta,
             log_decay=prepared.log_decay,
         )
-        with state_stage("forward") if self.profile_ranges else nullcontext():
+        with _state_stage("forward") if self.profile_ranges else nullcontext():
             readings, state = self.state_backend.execute(state, state_inputs)
         return SparseMemoryResult(
             readings,

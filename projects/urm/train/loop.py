@@ -11,8 +11,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from urm.runtime.sparse_memory import compile_sparse_memory_plan
-from urm.compiler.semantic import DType, SDMExecutionMode, SparseMemoryMixerSpec
+from urm.runtime.bind import compile_sparse_memory_plan
+from urm.ir.program import DType, SDMExecutionMode, SparseMemoryMixerSpec
 
 MixerBackend = Literal["upstream_sdm", "urm_native", "sdpa"]
 
@@ -333,7 +333,7 @@ class SparseMemoryMixer(nn.Module):
             if backend == "urm_native":
                 object.__setattr__(self, "_executor", compile_sparse_memory_plan(spec))
             else:
-                from urm.adapters.sparse_delta_memory import (
+                from benchmarks.comparators.sdm.upstream import (
                     MODE_TRAINING,
                     UrmSparseDeltaMemoryAdapter,
                 )
@@ -349,7 +349,7 @@ class SparseMemoryMixer(nn.Module):
                     dtype=torch.bfloat16,
                 )
                 object.__setattr__(self, "_executor", adapter)
-                from urm.adapters.compiled_sparse_delta_memory import (
+                from benchmarks.comparators.sdm.compiled import (
                     register_upstream_adapter,
                 )
 
@@ -411,7 +411,7 @@ class SparseMemoryMixer(nn.Module):
         )
 
     def forward(self, x):
-        from urm.backends.triton.sparse_state.backend import SparseState
+        from urm.backends.triton.k3.state_launcher import SparseState
 
         b, t, _ = x.shape
         with self._profile("pretraining::sparse_memory::learned_projections"):
@@ -452,7 +452,7 @@ class SparseMemoryMixer(nn.Module):
             read_addresses = read_addresses + offsets
             with self._profile("pretraining::sparse_memory::upstream_state"):
                 if torch.compiler.is_compiling():
-                    from urm.adapters.compiled_sparse_delta_memory import (
+                    from benchmarks.comparators.sdm.compiled import (
                         compiled_upstream_sdm_update,
                     )
 
@@ -560,9 +560,15 @@ class URMDecoderLM(nn.Module):
             mixer.profile_ranges = enabled
             if mixer.backend_name == "urm_native":
                 mixer._executor.backend.profile_ranges = enabled
-                from urm.backends.triton.sparse_state import mixer as state_kernels
+                from urm.backends.triton.k3 import state as state_kernels
 
                 state_kernels.PROFILE_RANGES = enabled
+                if enabled:
+                    from benchmarks.profiling.state_stage import state_stage
+
+                    state_kernels.set_state_profiler(state_stage)
+                else:
+                    state_kernels.set_state_profiler(None)
 
     @staticmethod
     def _initialize(module) -> None:

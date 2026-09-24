@@ -23,9 +23,9 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Protocol
 
-from urm.compiler.constraints import Assignment, ConstraintModel
-from urm.compiler.diagnostics import CompilerError, Diagnostic, DiagnosticCode
-from urm.compiler.schedule_space import SchedulePoint
+from urm.compiler.solve.constraints import Assignment, ConstraintModel
+from urm.compiler.common.diagnostics import CompilerError, Diagnostic, DiagnosticCode
+from urm.compiler.schedule.space import SchedulePoint
 
 
 class CompileStatus(StrEnum):
@@ -224,7 +224,7 @@ def launch_config_of(point: SchedulePoint) -> dict[str, str | int]:
 
 
 def nogood_count(model: ConstraintModel) -> int:
-    from urm.compiler.constraints import Nogood
+    from urm.compiler.solve.constraints import Nogood
 
     return sum(1 for constraint in model.constraints if isinstance(constraint, Nogood))
 
@@ -259,7 +259,7 @@ class CompilationSearch:
         self,
     ) -> tuple[Assignment, tuple[int, ...], dict[str, float | int | str], str]:
         """Best next assignment: Z3 optimum when available, else heuristic."""
-        from urm.compiler.solver import (
+        from urm.compiler.solve.z3 import (
             FeasibilityStatus,
             OptimizationPass,
             SolverLimits,
@@ -280,7 +280,7 @@ class CompilationSearch:
                     "solver_guided",
                 )
 
-        from urm.compiler.kernel_plan import exhaustive_schedule_sweep
+        from urm.compiler.select.model import exhaustive_schedule_sweep
 
         _legal, ranked, _total = exhaustive_schedule_sweep(self.model)
         stats: dict[str, float | int | str] = {
@@ -303,7 +303,7 @@ class CompilationSearch:
         existing = nogood_count(self.model)
         if existing >= self.max_nogoods:
             return None, None
-        from urm.compiler.constraints import make_nogood
+        from urm.compiler.solve.constraints import make_nogood
 
         forbidden = {name: assignment[name] for name in sorted(assignment)}
         name = f"nogood_{origin_kind}_{existing + 1}"
@@ -321,13 +321,13 @@ class CompilationSearch:
     def _verify(self, assignment: Assignment):
         if self._verifier is not None:
             return self._verifier(self.model, assignment)
-        from urm.compiler.kernel_plan import verify_schedule_assignment
+        from urm.compiler.select.model import verify_schedule_assignment
 
         return verify_schedule_assignment(self.model, assignment)
 
 
     def run(self) -> ScheduleDecision:
-        from urm.compiler.kernel_plan import decode_schedule_point
+        from urm.compiler.select.model import decode_schedule_point
 
         attempts: list[ScheduleAttempt] = []
         rejected = 0

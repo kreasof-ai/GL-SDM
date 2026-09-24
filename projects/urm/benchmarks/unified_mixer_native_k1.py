@@ -27,8 +27,8 @@ from unified_mixer_flash import (
     _time_one,
     _forward_backward,
 )
-from urm.compiler.unified_mixer import MixerBackend, MixerIntent, compile_mixer
-from urm.frontend.mixer_recipes import named_mixer_recipe
+from urm.compiler.pipeline import MixerBackend, MixerIntent, compile_mixer
+from urm.frontend.recipes import named_mixer_recipe
 
 
 EXPECTED_FLASH_REVISION = "1bda8f9290cd48d030f1516f0e680cd464ef3554"
@@ -324,7 +324,7 @@ def run(pairs: int, warmup: int, output_path: Path, only: str | None = None) -> 
             "kernel_source_sha256": _kernel_source_hashes(source),
         },
         "urm_native_implementation": {
-            "module": "urm.backends.triton.softmax.online",
+            "module": "urm.backends.triton.k1.online",
             "source_path": str(native_source),
             "source_sha256": hashlib.sha256(native_source.read_bytes()).hexdigest(),
         },

@@ -6,7 +6,7 @@ invariants; [execution contracts](../runtime/execution.md) define the runtime bo
 ## Frontend and semantic IR
 
 Model authors declare routing, reductions, state transitions and communication.
-`frontend/spec.py` owns `MixerSpec`; `compiler/semantic.py` owns typed operations.
+`frontend/spec.py` owns `MixerSpec`; `ir/program.py` owns typed operations.
 Architecture names belong in presets and external adapters. Kernels accept typed
 operands and semantic parameters, not architecture names as correctness rules.
 
@@ -33,9 +33,9 @@ semantics or prove numerical equivalence.
 
 ## Execution boundary
 
-`compiler/execution.py` owns anchor capability matching. `runtime/` binds selected
+`compiler/select/anchors.py` owns anchor capability matching. `runtime/` binds selected
 plans to executable backends; the compiler holds no GPU execution bodies. Serialized
-schedules drive actual launches. `runtime/registry.py` holds the backend protocol,
+schedules drive actual launches. `runtime/__init__.py` holds the backend protocol,
 not a competing compiler.
 
 External libraries are execution options, not semantic definitions. Physical

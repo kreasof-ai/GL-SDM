@@ -21,7 +21,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from enum import StrEnum
 
-from urm.compiler.constraints import (
+from urm.compiler.solve.constraints import (
     Assignment,
     BoolVar,
     ConstraintModel,

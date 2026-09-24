@@ -48,7 +48,7 @@ from pathlib import Path
 import torch
 import torch.nn.functional as F
 
-from urm.adapters.gated_delta_rule import UrmGatedDeltaRuleAdapter, fla_version
+from benchmarks.comparators.fla_gated_delta import UrmGatedDeltaRuleAdapter, fla_version
 
 # Reference implementations are O(T) Python loops; this budget bounds their
 # runtime. Larger cases stay in the matrix for optimized paths while reference
@@ -76,7 +76,7 @@ MBU_NOTE = (
 # Levels 1 and 2 live in src/urm/adapters/gated_delta_reference.py so the
 # benchmark, the adapter tests, and any future tooling share one definition.
 # ---------------------------------------------------------------------------
-from urm.adapters.gated_delta_reference import (
+from benchmarks.comparators.fla_gated_delta_reference import (
     eager_gated_delta_rule,
     oracle_gated_delta_rule,
 )

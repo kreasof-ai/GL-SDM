@@ -10,21 +10,19 @@ SDM-style page ops / collectives / generated kernels).
 
 ```text
 architecture/NAS specification
-  -> semantic routing and state IR          (compiler/semantic.py)
-  -> verified algebraic reparameterization  (compiler/rewrite.py)
-  -> immutable candidate enumeration        (compiler/planner.py)
-  -> backend-independent constraint IR      (compiler/constraints.py)
-  -> optional Z3 feasibility/optimization   (compiler/solver.py)
-  -> independent imperative verification    (compiler/verification.py)
-  -> placement, sharding, communication     (compiler/placement.py,
-                                             compiler/route_protocols.py,
-                                             planner.py)
-  -> trusted execution anchors + visitors   (compiler/execution.py)
+  -> semantic routing and state IR          (ir/program.py, ir/k1|k2|k3.py)
+  -> verified algebraic reparameterization  (compiler/rewrite/)
+  -> immutable candidate enumeration        (compiler/pipeline.py, compiler/select/)
+  -> backend-independent constraint IR      (compiler/solve/constraints.py)
+  -> optional Z3 feasibility/optimization   (compiler/solve/z3.py)
+  -> independent imperative verification    (compiler/verify/)
+  -> placement, sharding, communication     (compiler/placement/)
+  -> trusted execution anchors + visitors   (compiler/select/anchors.py)
   -> FA / FLA / grouped GEMM / scan / SDM /
-     collectives / generated kernels        (urm/adapters, urm/backends)
+     collectives / generated kernels        (benchmarks/comparators, urm/backends)
 ```
 
-The normative kernel-generation pipeline lives in
+The normative kernel-generation pipeline lives 
 [docs/compiler/kernel-generation.md](kernel-generation.md).
 
 Performance is an acceptance requirement of individual lowerings; it is not
@@ -44,7 +42,7 @@ such and retained; a semantic that cannot be expressed at all is a URM failure.
    memory access, a kernel dispatch, or an explicit exchange is a placement
    decision (`placement.py`), never a property of the semantic expression.
 4. **State mutation, collision policy, ordering, and version/commit behavior
-   are explicit effects.** `effects.py` classifies them; ordered scans and
+   are explicit effects.** `ir/effects.py` classifies them; ordered scans and
    transactional commits are movement barriers; nothing mutates implicitly.
 5. **Reparameterization only through registered, verified rewrite rules.**
    Each rule declares preconditions, equivalence class, numerical envelope,
@@ -87,12 +85,12 @@ such and retained; a semantic that cannot be expressed at all is a URM failure.
     only when a separate revision/runtime/semantic probe proves the exact
     overlap; its physical address translation remains outside semantic IR.
     `SparseRouteGeneration` is an independent pure operation. Its typed score
-    composition, selection, canonicalization, and normalization choices remain
+    composition, selection, canonicalization, and normalization choices rema
     architecture parameters; block sizes and warps remain schedule parameters.
     The native composite Sparse Memory anchor serializes both exact schedules
     and an explicit route materialization boundary rather than hiding an
     upstream API or an untyped fused callback.
-    `runtime.sparse_memory.compile_sparse_memory_plan()` is the sole executable
+    `runtime.bind.compile_sparse_memory_plan()` is the sole executable
     binder for that composite: it verifies the compiler-selected anchor and
     serialized launch configuration against the runtime launchers before dispatch. The
     model-level benchmark consumes this plan rather than constructing a backend
@@ -106,9 +104,9 @@ such and retained; a semantic that cannot be expressed at all is a URM failure.
     candidate and rejected alternatives.
 13. **Solver models are untrusted.** Every Z3 model passes an independent,
     solver-free verifier before any plan or kernel is generated from it.
-14. **Solver expressions never leak.** Z3 lives behind `compiler/solver.py`
-    behind the backend-independent constraint vocabulary in
-    `compiler/constraints.py`; semantic IR, execution IR, serialized
+14. **Solver expressions never leak.** Z3 lives behind `compiler/solve/z3.py`
+    behind the backend-independent constraint vocabulary 
+    `compiler/solve/constraints.py`; semantic IR, execution IR, serialized
     architecture specifications, and public adapter APIs contain no solver
     objects.
 15. **Push and pull communication protocols are never conflated.**

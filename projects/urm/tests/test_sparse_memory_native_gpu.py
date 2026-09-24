@@ -9,19 +9,19 @@ pytest.importorskip("triton")
 if not torch.cuda.is_available():
     pytest.skip("CUDA is required", allow_module_level=True)
 
-from urm.adapters.sparse_delta_memory import (
+from benchmarks.comparators.sdm.upstream import (
     MODE_INFERENCE,
     MODE_TRAINING,
     UrmSparseDeltaMemoryAdapter,
     probe_sdm_support,
 )
-from urm.adapters.sparse_delta_memory_reference import torch_product_key
-from urm.backends.triton.sparse_state.memory import TritonSparseMemoryBackend
-from urm.backends.triton.sparse_state.route_backend import CertifiedSparseRouteScores
-from urm.backends.triton.sparse_state.backend import SparseState
-from urm.backends.pytorch.sparse_state import torch_sparse_state_mixer
-from urm.runtime.sparse_memory import compile_sparse_memory_plan
-from urm.compiler.semantic import (
+from benchmarks.comparators.sdm.reference import torch_product_key
+from urm.backends.triton.k3.memory import TritonSparseMemoryBackend
+from urm.backends.triton.k3.route_launcher import CertifiedSparseRouteScores
+from urm.backends.triton.k3.state_launcher import SparseState
+from urm.backends.reference.torch.k3 import torch_sparse_state_mixer
+from urm.runtime.bind import compile_sparse_memory_plan
+from urm.ir.program import (
     DType,
     SDMExecutionMode,
     SparseMemoryMixerSpec,

@@ -127,8 +127,8 @@ Z3 proves that **symbolic side conditions are satisfiable**, and nothing else.
 ### Integration closure: anchor-owned schedule truthfulness
 
 Stages 2 through 11 run INSIDE `UrmCompiler.compile()` for every program with
-routed-reduction work, orchestrated by `compiler/planner.py` and
-`compiler/search.py` (`CompilationSearch` -> serializable `ScheduleDecision`):
+routed-reduction work, orchestrated by `compiler/pipeline.py` and
+`compiler/schedule/search.py` (`CompilationSearch` -> serializable `ScheduleDecision`):
 
 - **Anchor-first lowering identity and override consumption:** Effective candidate
   and anchor identity are resolved before schedule search begins. Compatible explicit

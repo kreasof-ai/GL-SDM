@@ -66,7 +66,7 @@ INSTANCES = [
 
 
 def build_instance(spec: dict):
-    from urm.compiler.placement_solver import (
+    from urm.compiler.placement.solver import (
         PlacementEdge,
         PlacementItem,
         PlacementProblem,
@@ -101,7 +101,7 @@ def main() -> None:
 
     from provenance import provenance, utc_now, write_artifact
 
-    from urm.compiler.placement_solver import (
+    from urm.compiler.placement.solver import (
         build_placement_model,
         decode_placement,
         exhaustive_placement_optimum,
@@ -110,8 +110,8 @@ def main() -> None:
         placement_metrics,
         round_robin_placement,
     )
-    from urm.compiler.solver import OptimizationPass
-    from urm.compiler.verification import (
+    from urm.compiler.solve.z3 import OptimizationPass
+    from urm.compiler.verify.plan import (
         AssignmentFacts,
         ModelVerifier,
         PlacementItemFacts,
@@ -245,7 +245,7 @@ def main() -> None:
 
 
 def _baseline_record(owners, problem):
-    from urm.compiler.placement_solver import feasible_owners, placement_metrics
+    from urm.compiler.placement.solver import feasible_owners, placement_metrics
 
     return {
         "owners": {k: int(v) for k, v in owners.items()},
@@ -257,7 +257,7 @@ def _baseline_record(owners, problem):
 def _model_hash() -> str:
     import hashlib
 
-    from urm.compiler.placement_solver import build_placement_model
+    from urm.compiler.placement.solver import build_placement_model
 
     summaries = [
         build_placement_model(build_instance(spec)).to_summary() for spec in INSTANCES

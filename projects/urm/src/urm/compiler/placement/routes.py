@@ -23,8 +23,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from urm.compiler.diagnostics import DiagnosticCode
-from urm.compiler.placement import ExchangeStep, PlacementMap, PlanStep, RouteLeg
+from urm.compiler.common.diagnostics import DiagnosticCode
+from urm.compiler.placement.plan import ExchangeStep, PlacementMap, PlanStep, RouteLeg
 
 
 class RouteProtocol(StrEnum):

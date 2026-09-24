@@ -8,23 +8,23 @@ query row over its visible keys::
     Y = P V
 
 The family also covers the typed K1 variants expressed through
-:class:`~urm.ir.mixer.K1Operation` (differential, thresholded, projected,
+:class:`~urm.ir.graph.K1Operation` (differential, thresholded, projected,
 local-window, positive-feature, selected-read, block-routed, positional, gated,
 depth, path/delta transforms, and the polar family). The shared, backend
-independent spec lives in :mod:`urm.ir.mixer`; this module owns the K1-specific
+independent spec lives in :mod:`urm.ir.graph`; this module owns the K1-specific
 semantic contract and its validation boundary.
 
 Ownership
 ---------
 - Contract: `docs/kernels/softmax-attention.md`
-- Native implementation: `urm.backends.triton.softmax.online` (tiled online
+- Native implementation: `urm.backends.triton.k1.online` (tiled online
   softmax with recomputed backward) behind
-  `urm.backends.triton.softmax.online_backend.TritonOnlineSoftmaxBackend`;
+  `urm.backends.triton.k1.launcher.TritonOnlineSoftmaxBackend`;
   fused row-scale routed reduction in
-  `urm.backends.triton.softmax.routed_scale_epilogue`; plain routed reduction in
-  `urm.backends.triton.softmax.routed_reduce`.
+  `urm.backends.triton.k1.row_scale`; plain routed reduction in
+  `urm.backends.triton.k1.routed_reduce`.
 - Reference/oracle: the reference executor in the compiler and the NumPy oracle
-  `urm.oracles.routed`.
+  `urm.backends.reference.numpy.k1`.
 - Limitations: native K1 requires CUDA and BTHD rank-4 layout, key/value widths
   up to 128, and float32 additive-mask gradients. Cache ownership, decode
   positions, dropout, sparse traversal efficiency, larger dimensions, and
@@ -37,7 +37,7 @@ Ownership
 
 from __future__ import annotations
 
-from urm.ir.mixer import K1Operation, MixerKernelFamily, UnifiedMixerSpec
+from urm.ir.graph import K1Operation, MixerKernelFamily, UnifiedMixerSpec
 
 K1_OPERATIONS: frozenset[K1Operation] = frozenset(K1Operation)
 

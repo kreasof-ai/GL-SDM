@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).parents[1] / "benchmarks"))
 from pretraining_projection import project_state_replacement
 from pretraining_step import _compare_correctness, _one_step, load_frozen_config
 
-from urm.pretraining import FP32AdamW
+from train.loop import FP32AdamW
 
 
 class ToyModel(torch.nn.Module):

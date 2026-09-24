@@ -2,9 +2,9 @@
 
 This is the durable contract behind the unified generator. For each named
 architecture recipe it attempts to lower the declarative
-:class:`~urm.ir.mixer.UnifiedMixerSpec` into the canonical NumPy execution path
+:class:`~urm.ir.graph.UnifiedMixerSpec` into the canonical NumPy execution path
 for its core (K1 normalized routed reduction, K2 matrix-state recurrence, K3
-ordered sparse state) via :func:`urm.oracles.composition.execute_canonical`. A
+ordered sparse state) via :func:`urm.backends.reference.numpy.graph.execute_canonical`. A
 recipe that lowers is then verified against its independent architecture
 equation (the compiler's reference executor) in float64: outputs and final state
 must agree.
@@ -25,9 +25,9 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from urm.frontend.mixer_recipes import MIXER_RECIPE_NAMES, named_mixer_recipe
-from urm.ir.mixer import MixerKernelFamily
-from urm.oracles.composition import UnderspecifiedComposition, execute_canonical
+from urm.frontend.recipes import MIXER_RECIPE_NAMES, named_mixer_recipe
+from urm.ir.graph import MixerKernelFamily
+from urm.backends.reference.numpy.graph import UnderspecifiedComposition, execute_canonical
 
 
 @dataclass
@@ -45,7 +45,7 @@ def _rng_operands(spec, seed=0):
     """Build small finite NumPy operands for a canonically representable spec."""
     rng = np.random.default_rng(seed)
     if spec.family is MixerKernelFamily.SOFTMAX:
-        from urm.ir.mixer import K1Operation
+        from urm.ir.graph import K1Operation
 
         b, t, h, k, v = 1, 5, 2, 4, 4
         if spec.k1_operation is K1Operation.DIFFERENTIAL:
@@ -117,7 +117,7 @@ def _rng_operands(spec, seed=0):
             ops["attention_mask"] = mask
         return ops
     if spec.family is MixerKernelFamily.RECURRENCE:
-        from urm.ir.mixer import RecurrenceOperator, RecurrentLayout
+        from urm.ir.graph import RecurrenceOperator, RecurrentLayout
 
         # Distinct recurrence operators (IR-distinguished equations).
         op = spec.recurrence_operator
@@ -306,7 +306,7 @@ def _rng_operands(spec, seed=0):
             "key": rng.normal(size=(b, t, h, k)),
             "value": rng.normal(size=(b, t, h, v)),
         }
-        from urm.ir.mixer import DecayGranularity, StateUpdateRule
+        from urm.ir.graph import DecayGranularity, StateUpdateRule
 
         if spec.gdn2_ssm:
             # Dual-gate delta: erase/write gates replace beta.
@@ -358,7 +358,7 @@ def _reference_execute(spec, operands):
     """Run the compiler's independent architecture reference equation (torch)."""
     import torch
 
-    from urm.compiler.unified_mixer import MixerBackend, MixerIntent, compile_mixer
+    from urm.compiler.pipeline import MixerBackend, MixerIntent, compile_mixer
 
     recipe = named_mixer_recipe(spec.name)
     plan = compile_mixer(

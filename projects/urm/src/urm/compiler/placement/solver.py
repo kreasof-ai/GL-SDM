@@ -21,7 +21,7 @@ from __future__ import annotations
 import itertools
 from dataclasses import dataclass
 
-from urm.compiler.constraints import (
+from urm.compiler.solve.constraints import (
     Assignment,
     BoolVar,
     ConstraintCategory,

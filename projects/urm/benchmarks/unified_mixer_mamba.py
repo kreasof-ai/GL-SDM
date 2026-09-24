@@ -17,7 +17,7 @@ from mamba_ssm.ops.selective_scan_interface import selective_scan_fn
 
 from measurement import quantile
 from provenance import provenance, write_artifact
-from urm.compiler.unified_mixer import (
+from urm.compiler.pipeline import (
     MixerBackend,
     MixerIntent,
     compile_mixer,

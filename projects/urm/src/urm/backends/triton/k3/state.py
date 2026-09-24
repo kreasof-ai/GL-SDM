@@ -11,7 +11,27 @@ import torch
 import triton
 import triton.language as tl
 
+from contextlib import nullcontext
+from typing import Any, Callable, ContextManager
+
 PROFILE_RANGES = False
+
+# Injectable profiling hook. The backend never imports a profiler; a consumer
+# (e.g. benchmarks/profiling) installs one via ``set_state_profiler``. The hook
+# maps a phase name to a context manager; the default is a no-op.
+_STATE_PROFILER: Callable[[str], ContextManager[Any]] | None = None
+
+
+def set_state_profiler(profiler: Callable[[str], ContextManager[Any]] | None) -> None:
+    """Install (or clear) the state-stage profiler hook used under PROFILE_RANGES."""
+    global _STATE_PROFILER
+    _STATE_PROFILER = profiler
+
+
+def _state_stage(phase: str) -> ContextManager[Any]:
+    if _STATE_PROFILER is None:
+        return nullcontext()
+    return _STATE_PROFILER(phase)
 
 
 @triton.jit
@@ -378,7 +398,7 @@ def _sparse_state_update_backward_kernel(
 
 
 def _launch_parameters(value_dim: int) -> tuple[int, int]:
-    from urm.sparse_state_mixer import sparse_state_launch_parameters
+    from urm.ir.k3 import sparse_state_launch_parameters
 
     return sparse_state_launch_parameters(value_dim)
 
@@ -653,9 +673,7 @@ class _SparseStateUpdate(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_readings, grad_final_memory):
         if PROFILE_RANGES:
-            from urm.sparse_state_profile import state_stage
-
-            with state_stage("backward"):
+            with _state_stage("backward"):
                 return _SparseStateUpdate._backward(
                     ctx, grad_readings, grad_final_memory
                 )

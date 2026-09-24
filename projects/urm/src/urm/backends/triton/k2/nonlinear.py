@@ -1,7 +1,7 @@
 """Native Triton kernels for the distinguished K2 nonlinear recurrence operators.
 
 Each kernel mirrors its NumPy canonical executor in
-``urm.oracles.nonlinear_recurrence`` exactly: the same per-token math with fp32
+``urm.backends.reference.numpy.k2_operators`` exactly: the same per-token math with fp32
 accumulation. One program owns one (batch, head/channel) pair and scans the
 sequence sequentially. Forward-only native execution (no backward).
 

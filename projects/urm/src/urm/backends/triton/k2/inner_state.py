@@ -2,7 +2,7 @@
 
 These are URM's own native execution paths for the recurrence equations the
 ``recurrence_operator`` IR field distinguishes, mirroring the float64 NumPy
-canonical executors in ``urm/oracles/nonlinear_recurrence.py`` exactly (the same
+canonical executors in ``urm/backends/reference/numpy/k2_operators.py`` exactly (the same
 per-token math, fp32 accumulation). Forward-only; no backward is implemented.
 
 Approach per operator:

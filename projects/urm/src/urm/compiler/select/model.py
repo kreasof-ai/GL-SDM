@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
-from urm.compiler.constraints import (
+from urm.compiler.solve.constraints import (
     AllowedSet,
     Assignment,
     BoolVar,
@@ -43,8 +43,8 @@ from urm.compiler.constraints import (
     Origin,
     make_nogood,
 )
-from urm.compiler.cost import DEFAULT_HBM_GBPS
-from urm.compiler.schedule_space import (
+from urm.compiler.cost.model import DEFAULT_HBM_GBPS
+from urm.compiler.schedule.space import (
     SUPPORTED_BLOCKS,
     SUPPORTED_STAGES,
     SUPPORTED_WARPS,
@@ -206,15 +206,15 @@ def build_schedule_model(
     configurable domains derive directly from the resolved execution anchor
     capabilities.
     """
-    from urm.compiler.diagnostics import CompilerError, Diagnostic, DiagnosticCode
-    from urm.compiler.execution import TRUSTED_ANCHORS
-    from urm.compiler.planner import CompilationIntent
-    from urm.compiler.schedule_space import (
+    from urm.compiler.common.diagnostics import CompilerError, Diagnostic, DiagnosticCode
+    from urm.compiler.select.anchors import TRUSTED_ANCHORS
+    from urm.compiler.pipeline import CompilationIntent
+    from urm.compiler.schedule.space import (
         GradValuesDecomposition,
         GradValuesSchedule,
         PlanKind,
     )
-    from urm.compiler.semantic import WeightedReduce
+    from urm.ir.program import WeightedReduce
 
     if anchor is None:
         rule = getattr(candidate, "rule", None)
@@ -1176,7 +1176,7 @@ def schedule_point_to_assignment(
 
 def exhaustive_schedule_sweep(model: ConstraintModel):
     """(legal assignments, ranked best) over the decoded point space."""
-    from urm.compiler.schedule_space import rank_lexicographic
+    from urm.compiler.schedule.space import rank_lexicographic
 
     lifted = list(schedule_point_assignments(model))
     total = len(lifted)
@@ -1187,9 +1187,9 @@ def exhaustive_schedule_sweep(model: ConstraintModel):
 
 def verify_schedule_assignment(model: ConstraintModel, assignment: Assignment):
     """Independent verification wired to anchor/device facts from metadata."""
-    from urm.compiler.execution import TRUSTED_ANCHORS
-    from urm.compiler.planner import CompilationIntent
-    from urm.compiler.verification import (
+    from urm.compiler.select.anchors import TRUSTED_ANCHORS
+    from urm.compiler.pipeline import CompilationIntent
+    from urm.compiler.verify.plan import (
         AnchorFacts,
         AssignmentFacts,
         ModelVerifier,

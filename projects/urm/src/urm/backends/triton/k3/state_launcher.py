@@ -5,13 +5,13 @@ from __future__ import annotations
 import importlib.util
 from dataclasses import dataclass, field
 
-from urm.compiler.semantic import (
+from urm.ir.program import (
     DType,
     SparseReadTiming,
     SparseStateMixerSpec,
     SparseStateOperation,
 )
-from urm.sparse_state_mixer import (
+from urm.ir.k3 import (
     FROZEN_V0_ENVELOPE,
     NATIVE_SPARSE_STATE_MIXER_NAME,
     SparseStateSupportStatus,
@@ -215,7 +215,7 @@ class CertifiedSparseStateRoutes:
         write_output: object | None = None,
     ) -> CertifiedSparseStateRoutes:
         """Bridge only trusted URM route-kernel results without GPU value scans."""
-        from urm.backends.triton.sparse_state.route_backend import NativeSparseRouteOutput
+        from urm.backends.triton.k3.route_launcher import NativeSparseRouteOutput
 
         if not isinstance(read_output, NativeSparseRouteOutput):
             raise TypeError("read routes are not certified native route output")
@@ -507,7 +507,7 @@ class TritonSparseStateMixerBackend:
         if state.memory.device != prepared.routes.read_indices.device:
             raise ValueError("state and routes must share one CUDA device")
         self._validate_out(out, state, prepared)
-        from urm.backends.triton.sparse_state.mixer import (
+        from urm.backends.triton.k3.state import (
             sparse_state_read,
             sparse_state_update,
         )

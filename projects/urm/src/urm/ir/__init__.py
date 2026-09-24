@@ -3,12 +3,14 @@
 The three semantic families each have a canonical IR home that owns its
 contract and validation boundary:
 
-- :mod:`urm.ir.softmax` - K1 normalized routed reduction
-- :mod:`urm.ir.recurrence` - K2 structured recurrence
-- :mod:`urm.ir.sparse_state` - K3 ordered sparse-state operations
+- :mod:`urm.ir.k1` - K1 normalized routed reduction
+- :mod:`urm.ir.k2` - K2 structured recurrence
+- :mod:`urm.ir.k3` - K3 ordered sparse-state operations
 
-The shared, backend independent :class:`UnifiedMixerSpec` and its enums live in
-:mod:`urm.ir.mixer`.
+The shared, backend-independent :class:`UnifiedMixerSpec` and its family enums
+live in :mod:`urm.ir.graph`; the explicit effect system lives in
+:mod:`urm.ir.effects`. The declarative frontend spec (``MixerSpec`` and its
+enums) is re-exported here for convenience.
 """
 
 from urm.frontend.spec import (
@@ -36,8 +38,7 @@ from urm.frontend.spec import (
     SparseIndexerKind,
     StateLayout,
 )
-from . import recurrence, softmax, sparse_state
-from .mixer import (
+from .graph import (
     DecayGranularity,
     FeatureMap,
     K1Operation,
@@ -94,7 +95,17 @@ __all__ = [
     "StateTransition",
     "StateUpdateRule",
     "UnifiedMixerSpec",
-    "recurrence",
-    "softmax",
-    "sparse_state",
+    "k1",
+    "k2",
+    "k3",
 ]
+
+
+def __getattr__(name: str):
+    # Lazy submodule access breaks the import cycle between the family
+    # validation modules (k1/k2/k3) and the program/graph IR they reference.
+    if name in {"k1", "k2", "k3"}:
+        import importlib
+
+        return importlib.import_module(f"{__name__}.{name}")
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

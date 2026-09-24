@@ -1,7 +1,7 @@
 """Float64 canonical K2 matrix-state delta recurrence for one partition.
 
 This is the dense-address specialization of the K3 sparse-slot oracle
-(:mod:`urm.oracles.sparse_slot`): the sparse write/read slot vectors become dense
+(:mod:`urm.backends.reference.numpy.k3`): the sparse write/read slot vectors become dense
 key/query vectors over the key dimension, and the per-slot decay becomes a
 per-head scalar or per-key-channel diagonal. For one independent partition
 (state ``M`` of shape ``[K, V]``), with scalar write strength ``beta_t`` and a
@@ -182,7 +182,7 @@ def recurrent_vjp(memory, keys, queries, values, beta, log_decay,
 
     After-update reads. Gradients are returned for memory, keys, queries, values,
     beta, and log_decay. Head-granularity decay (scalar per token). The adjoint
-    mirrors :func:`urm.oracles.sparse_slot.recurrent_vjp` with dense keys.
+    mirrors :func:`urm.backends.reference.numpy.k3.recurrent_vjp` with dense keys.
     """
     m, k, q, v, b, g = _inputs(memory, keys, queries, values, beta, log_decay)
     if g.ndim != 1:

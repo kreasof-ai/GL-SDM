@@ -1,6 +1,6 @@
 """Canonical specs used by tests and benchmark adapters."""
 
-from .frontend.spec import (
+from urm.frontend.spec import (
     BalanceStrategy,
     CapacityPolicy,
     CollisionPolicy,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from urm.compiler.cost import (
+from urm.compiler.cost.model import (
     CostEstimate,
     DeviceLimits,
     combine,
@@ -12,9 +12,9 @@ from urm.compiler.cost import (
     routed_reduction_cost,
     row_scale_transform_cost,
 )
-from urm.compiler.diagnostics import CompilerError, DiagnosticCode
-from urm.compiler.effects import EffectClass, EffectKind
-from urm.compiler.execution import (
+from urm.compiler.common.diagnostics import CompilerError, DiagnosticCode
+from urm.ir.effects import EffectClass, EffectKind
+from urm.compiler.select.anchors import (
     AnchorKind,
     AnchorRequest,
     VisitorDescriptor,
@@ -22,27 +22,27 @@ from urm.compiler.execution import (
     default_registry,
     make_selector,
 )
-from urm.compiler.locality import Locality, LocalityConstraint, movement_allowed
-from urm.compiler.placement import (
+from urm.compiler.placement.locality import Locality, LocalityConstraint, movement_allowed
+from urm.compiler.placement.plan import (
     DeviceMesh,
     PlacementBinding,
     PlacementMap,
     RouteLeg,
 )
-from urm.compiler.planner import (
+from urm.compiler.pipeline import (
     ExecutablePlan,
     ScheduleParams,
     UrmCompiler,
     plan_route_distribution,
 )
-from urm.compiler.rewrite import (
+from urm.compiler.rewrite.engine import (
     DELAY_ROW_SCALE_THROUGH_GEMM,
     FOLD_ROW_SCALE_EPILOGUE,
     EquivalenceClass,
     RewriteEngine,
     SavedStatePolicy,
 )
-from urm.compiler.semantic import (
+from urm.ir.program import (
     CollectiveExchange,
     DType,
     LogicalDomain,
@@ -175,7 +175,7 @@ def test_ordered_recurrence_is_a_movement_barrier() -> None:
         name="scan", inputs=("x",), outputs=("y",), algorithm="gated_delta_rule"
     )
     crossed = set(scan.effect.all_classes)
-    from urm.compiler.effects import BARRIERS
+    from urm.ir.effects import BARRIERS
 
     assert crossed & BARRIERS
 
@@ -503,7 +503,7 @@ def test_capacity_policy_drop_is_explicit() -> None:
 
 
 def test_transactional_routes_preserve_commit_boundaries() -> None:
-    from urm.compiler.semantic import StateUpdate
+    from urm.ir.program import StateUpdate
 
     program = SemanticProgram.build(
         name="tx_routes",

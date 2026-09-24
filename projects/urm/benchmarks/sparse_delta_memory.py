@@ -330,7 +330,7 @@ def _paired_measure(
 
 
 def _make_case(case: dict[str, object], torch):
-    from urm.adapters.sparse_delta_memory import (
+    from benchmarks.comparators.sdm.upstream import (
         MODE_INFERENCE,
         MODE_READ_ONLY,
         MODE_TRAINING,
@@ -404,8 +404,8 @@ def _make_case(case: dict[str, object], torch):
 
 
 def _correctness(case, adapter, trace, initial, values, beta, log_decay, torch):
-    from urm.adapters.sparse_delta_memory import SDMState
-    from urm.adapters.sparse_delta_memory_reference import (
+    from benchmarks.comparators.sdm.upstream import SDMState
+    from benchmarks.comparators.sdm.reference import (
         oracle_sparse_read,
         oracle_write_read,
         torch_sparse_read,
@@ -491,7 +491,7 @@ def _correctness(case, adapter, trace, initial, values, beta, log_decay, torch):
         "cache_length_after": adapted_state.sequence_length,
     }
     if int(case["slots"]) <= 4096 and int(case["sequence"]) <= 64:
-        from urm.adapters.sparse_delta_memory_reference import oracle_write_read
+        from benchmarks.comparators.sdm.reference import oracle_write_read
 
         oracle_out, oracle_state = oracle_write_read(
             initial.float().cpu().numpy(),
@@ -530,7 +530,7 @@ def _correctness(case, adapter, trace, initial, values, beta, log_decay, torch):
 
 
 def _benchmark_case(case, *, samples: int, warmup: int, torch):
-    from urm.adapters.sparse_delta_memory import SDMState
+    from benchmarks.comparators.sdm.upstream import SDMState
 
     prep_start = time.perf_counter()
     adapter, trace, initial, values, beta, log_decay = _make_case(case, torch)
@@ -699,7 +699,7 @@ def _require_end_to_end_backward(report: dict[str, object], dtype_name: str) -> 
 
 
 def _backward_correctness(torch) -> dict[str, object]:
-    from urm.adapters.sparse_delta_memory_reference import (
+    from benchmarks.comparators.sdm.reference import (
         deterministic_tie_free_product_key_scores,
         end_to_end_differential_backward_report,
     )
@@ -843,7 +843,7 @@ def main() -> None:
 
     from provenance import provenance, utc_now, write_artifact
 
-    from urm.adapters.sparse_delta_memory import probe_sdm_support
+    from benchmarks.comparators.sdm.upstream import probe_sdm_support
 
     support = probe_sdm_support()
     if not support.supported:
@@ -858,7 +858,7 @@ def main() -> None:
     read_adapter, read_trace, read_memory, *_ = _make_case(cold_read_case, torch)
     torch.cuda.synchronize()
     first_address_ms = (time.perf_counter() - first_start) * 1000
-    from urm.adapters.sparse_delta_memory import SDMState
+    from benchmarks.comparators.sdm.upstream import SDMState
 
     first_read_start = time.perf_counter()
     read_adapter.read(SDMState(read_memory), read_trace)

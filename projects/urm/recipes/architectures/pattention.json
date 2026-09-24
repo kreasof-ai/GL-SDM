@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "name": "pattention",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators",
+    "notes": "PAttention constructs parameter tokens, reparameterizes them, and arranges them in the model. The softmax contraction is only a K1 fragment; the parameter-token construction, parameter gradients, and model arrangement are external to it."
+  },
+  "layers": [
+    {
+      "id": "pattention_core",
+      "operation": "pattention_core",
+      "params": {
+        "scope": "fragment_only",
+        "note": "K1 softmax-contraction fragment only. Does not include parameter-token construction/reparameterization or parameter gradients."
+      }
+    }
+  ],
+  "coverage": {
+    "level": "kernel_fragment",
+    "validated": false,
+    "notes": "pattention_core remains a K1 fragment. Full PAttention requires the parameter-token construction/reparameterization, parameter gradients, and model arrangement as typed graph nodes or explicit architectures/ components before any source-architecture coverage claim."
+  }
+}

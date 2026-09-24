@@ -3,9 +3,9 @@ import pytest
 
 from urm.backends import NumpyBackend
 from urm.backends.interface import BackendCapability, BackendRequest
-from urm.backends.registry import BackendDeclined, CapabilityRegistry
+from urm.compiler.select.registry import BackendDeclined, CapabilityRegistry
 from urm.runtime import BackendRegistry
-from urm.presets import (
+from tests.fixtures.specs import (
     DEEPSEEK_V3_MOE,
     DENSE_ATTENTION,
     LINEAR_RECURRENT_MIXER,

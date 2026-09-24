@@ -11,17 +11,17 @@ from dataclasses import dataclass
 
 import torch
 
-from urm.adapters.sparse_delta_memory import (
+from benchmarks.comparators.sdm.upstream import (
     MODE_INFERENCE,
     MODE_READ_ONLY,
     MODE_TRAINING,
     UrmSparseDeltaMemoryAdapter,
 )
-from urm.backends.triton.sparse_state.backend import (
+from urm.backends.triton.k3.state_launcher import (
     CertifiedSparseStateRoutes,
     SparseState,
 )
-from urm.compiler.semantic import (
+from urm.ir.program import (
     DType,
     SparseReadTiming,
     SparseStateExecutionMode,

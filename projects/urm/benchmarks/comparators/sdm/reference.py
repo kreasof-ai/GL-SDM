@@ -296,7 +296,7 @@ def differential_backward_report(
                 grad_final_memory=grad_final_memory,
             )
         elif path == "urm_adapter":
-            from urm.adapters.sparse_delta_memory import SDMState
+            from benchmarks.comparators.sdm.upstream import SDMState
 
             readings, final_state = adapter.execute(
                 SDMState(leaves[0] + 0),
@@ -485,7 +485,7 @@ def end_to_end_differential_backward_report(
                 grad_final_memory=grad_final_memory,
             )
         elif path == "urm_adapter":
-            from urm.adapters.sparse_delta_memory import SDMState
+            from benchmarks.comparators.sdm.upstream import SDMState
 
             trace = adapter.generate_trace(leaves[0], leaves[1])
             write_indices = trace.write_indices

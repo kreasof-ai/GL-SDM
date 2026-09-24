@@ -1,4 +1,10 @@
-"""Unified Routed Mixer compiler frontend and compatibility exports."""
+"""URM: semantic-to-execution compiler for routed sequence models.
+
+Public surface: the typed frontend spec, the shared semantic IR, and the
+routed-reduction tensor contract. Compilation and plan binding live under
+:mod:`urm.compiler` and :mod:`urm.runtime`; backends live under
+:mod:`urm.backends`.
+"""
 
 from .frontend.spec import (
     BalanceStrategy,
@@ -26,8 +32,8 @@ from .frontend.spec import (
     SparseIndexerKind,
     StateLayout,
 )
-from .oracles.routed import ReferenceResult, execute, merge_writes
-from .routed_reduction import (
+from .backends.reference.numpy import ReferenceResult, execute, merge_writes
+from .ir.types import (
     DeviceType,
     RoutedReductionRegistry,
     RoutedReductionResult,
@@ -37,7 +43,7 @@ from .routed_reduction import (
     TensorLayout,
     TensorMetadata,
 )
-from .runtime.registry import Backend, BackendRegistry, BackendResult
+from .runtime import Backend, BackendRegistry, BackendResult
 
 __all__ = [
     "Backend",

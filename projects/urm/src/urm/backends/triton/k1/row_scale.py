@@ -14,7 +14,7 @@ Contract notes:
 
 - This is the qualified GPU implementation of the fused row-scale routed
   reduction. The plain v1 reduction lives in
-  :mod:`urm.backends.triton.softmax.routed_reduce`; this backend is selected
+  :mod:`urm.backends.triton.k1.routed_reduce`; this backend is selected
   only when the planner requests the typed ``FINAL_SCALE_CONVERT`` visitor.
 - Forward equivalence is proven against explicit references in tests.
 - Backward covers ALL inputs - weights, values AND row_scale. The row-scale
@@ -28,11 +28,13 @@ the launchers below - the compiler's solver may only select fields that
 visibly reach the Triton launch. ``benchmarks/epilogue_schedules.py`` calls
 these exact implementations; there is no second set of kernels.
 
-Layering note: this backend reads the compiler's *schedule-space descriptions*
-(``urm.compiler.schedule_space`` constants/enums and ``urm.compiler.search``
-probe types) when validating a launch config or building a compile probe. The
-compiler never imports this module; execution stays behind the backend
-boundary.
+Layering note: this backend reads the compiler's *schedule-space vocabulary*
+(``urm.compiler.schedule.space`` constants/enums and the ``SchedulePoint``
+descriptor) only to validate a launch config it is handed. The exact compile
+probe and resource collection live on the compiler side in
+:mod:`urm.compiler.schedule.probes.triton_k1`, which imports this backend's
+launchers (never the reverse). The backend imports no compiler search or plan
+type; execution stays behind the backend boundary.
 """
 
 from __future__ import annotations
@@ -46,8 +48,7 @@ import triton
 import triton.language as tl
 
 if TYPE_CHECKING:
-    from urm.compiler.schedule_space import SchedulePoint
-    from urm.compiler.search import CompileProbe, CompileProbeResult
+    from urm.compiler.schedule.space import SchedulePoint
 
 ROUTED_REDUCTION_ROW_SCALE_EPILOGUE_VERSION = 2
 
@@ -68,7 +69,7 @@ class RoutedEpilogueLaunchConfig:
     grad_values_schedule: str = "segmented"
 
     def __post_init__(self) -> None:
-        from urm.compiler.schedule_space import (
+        from urm.compiler.schedule.space import (
             SUPPORTED_BLOCKS,
             SUPPORTED_STAGES,
             SUPPORTED_WARPS,
@@ -638,7 +639,7 @@ def routed_reduce_row_scale(
 
     ``config=None`` keeps the historical internal heuristic (unchanged
     tuning); an explicit :class:`RoutedEpilogueLaunchConfig` - e.g. lowered
-    from a verified :class:`~urm.compiler.search.ScheduleDecision` - drives
+    from a verified :class:`~urm.compiler.schedule.search.ScheduleDecision` - drives
     every launch parameter visibly.
     """
     if torch.is_grad_enabled() and (
@@ -703,160 +704,6 @@ def routed_reduce_row_scale_metadata(
     return payload
 
 
-def _extract_resource_usage(kernel_name: str, handle: object):
-    from urm.compiler.search import KernelResourceUsage
-
-    if handle is None:
-        return KernelResourceUsage(
-            kernel_name=kernel_name,
-            unavailable_reason="compiled_handle_unavailable",
-        )
-    regs = getattr(handle, "n_regs", None)
-    spills = getattr(handle, "n_spills", None)
-    shared = None
-    if hasattr(handle, "metadata") and hasattr(handle.metadata, "shared"):
-        try:
-            shared = int(handle.metadata.shared)
-        except (TypeError, ValueError):
-            shared = None
-    unavailable = None
-    if regs is None and shared is None:
-        unavailable = "triton_handle_exposed_no_resource_metadata"
-    return KernelResourceUsage(
-        kernel_name=kernel_name,
-        registers_per_thread=int(regs) if regs is not None else None,
-        shared_mem_bytes=shared,
-        spill_bytes=int(spills) if spills is not None else None,
-        unavailable_reason=unavailable,
-    )
-
-
-def make_triton_compile_probe(
-    *,
-    queries: int = 4,
-    route_width: int = 2,
-    sources: int = 8,
-    value_dim: int = 64,
-    dtype_name: str = "float32",
-) -> CompileProbe:
-    """Real GPU compile probe over the EXACT target specialization.
-
-    Probes compile + launch the production kernels for the requested anchor,
-    exact specialization parameters (operand dtypes, route width, value
-    dimension, launch configuration: BLOCK_D, num_warps, num_stages,
-    decomposition, traversal), exercising forward and backward when intent is
-    training.
-
-    Note on runtime extents: Q (queries) and S (sources) are runtime tensor
-    dimensions, not compile-time Triton specialization constants. Using
-    bounded representative extents for Q and S avoids excessive probe latency
-    while still compiling and running the identical specialized kernels.
-    Register/shared-memory facts flow back from the compiled handles.
-    """
-    if not torch.cuda.is_available():  # pragma: no cover - guarded by callers
-        raise RuntimeError("make_triton_compile_probe requires CUDA")
-    device = torch.device("cuda")
-
-    def probe(context) -> CompileProbeResult:
-        from urm.compiler.search import CompileProbeResult
-
-        try:
-            point = context.schedule_point
-            effective_anchor = context.anchor_name
-            eff_queries = min(context.queries, 4) if context.queries > 0 else 4
-            eff_sources = max(min(context.sources, 8), context.route_width)
-            eff_route_width = context.route_width
-            eff_value_dim = context.value_dim
-            eff_dtype_name = context.dtype
-            is_training = context.intent == "training"
-
-            dtype = getattr(torch, eff_dtype_name)
-            generator = torch.Generator(device=device).manual_seed(11)
-            indices = torch.randint(
-                0,
-                eff_sources,
-                (eff_queries, eff_route_width),
-                device=device,
-                generator=generator,
-            )
-            weights = torch.randn(
-                (eff_queries, eff_route_width), device=device, dtype=dtype
-            )
-            values = torch.randn(
-                (eff_sources, eff_value_dim), device=device, dtype=dtype
-            )
-
-            if effective_anchor == "routed_reduction_row_scale_epilogue_v0":
-                row_scale = torch.randn((eff_queries,), device=device, dtype=dtype)
-                config = RoutedEpilogueLaunchConfig.from_point(point)
-                output, fwd_info = launch_forward(
-                    config, indices, weights, values, row_scale
-                )
-                torch.cuda.synchronize()
-                fwd_res = _extract_resource_usage(fwd_info.kernel, fwd_info.handle)
-                resources = {"forward": fwd_res}
-
-                if is_training:
-                    grad_output = torch.randn(
-                        (eff_queries, eff_value_dim), device=device, dtype=dtype
-                    )
-                    (_gw, _gv, _gs), bwd_info = launch_backward(
-                        config, indices, weights, values, row_scale, grad_output
-                    )
-                    torch.cuda.synchronize()
-                    for name, handle in bwd_info.extra_handles:
-                        kres = _extract_resource_usage(name, handle)
-                        if "weights" in name:
-                            tag = "grad_weights"
-                        elif "values" in name:
-                            tag = "grad_values"
-                        elif "scale" in name or "row" in name:
-                            tag = "grad_row_scale"
-                        else:
-                            tag = name
-                        resources[tag] = kres
-
-                del output
-
-                known_regs = [
-                    k.registers_per_thread
-                    for k in resources.values()
-                    if k.registers_per_thread is not None
-                ]
-                max_regs = max(known_regs) if known_regs else None
-
-                known_shared = [
-                    k.shared_mem_bytes
-                    for k in resources.values()
-                    if k.shared_mem_bytes is not None
-                ]
-                max_shared = max(known_shared) if known_shared else None
-
-                return CompileProbeResult(
-                    ok=True,
-                    registers_per_thread=max_regs,
-                    shared_mem_bytes=max_shared,
-                    kernel_resources=resources,
-                )
-
-            if effective_anchor == "routed_reduction_v1":
-                from urm.backends.triton.softmax.routed_reduce import routed_reduce
-
-                output = routed_reduce(indices, weights, values)
-                torch.cuda.synchronize()
-                del output
-                return CompileProbeResult(ok=True)
-
-            return CompileProbeResult(
-                ok=False,
-                reason=f"unsupported probe anchor {effective_anchor!r}",
-            )
-        except Exception as error:  # noqa: BLE001 - probe failures ARE results
-            return CompileProbeResult(ok=False, reason=str(error)[:200])
-
-    return probe
-
-
 __all__ = [
     "ROUTED_REDUCTION_ROW_SCALE_EPILOGUE_VERSION",
     "RoutedEpilogueLaunchConfig",
@@ -864,7 +711,6 @@ __all__ = [
     "execute_plan_step",
     "launch_backward",
     "launch_forward",
-    "make_triton_compile_probe",
     "routed_reduce_row_scale",
     "routed_reduce_row_scale_metadata",
 ]

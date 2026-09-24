@@ -20,7 +20,7 @@ if not torch.cuda.is_available():
 
 
 def _compose_matrix_state_decode(T=8, B=3, H=4, K=32, V=32, dtype=torch.float32):
-    from urm.backends.triton.recurrence.matrix_state import (
+    from urm.backends.triton.k2.matrix import (
         execute_matrix_state_decode_step,
         execute_matrix_state_recurrence,
     )
@@ -61,7 +61,7 @@ def test_matrix_state_decode_step_matches_sequential():
 
 
 def test_diagonal_decode_step_matches_sequential():
-    from urm.backends.triton.recurrence.diagonal_recurrence import (
+    from urm.backends.triton.k2.diagonal import (
         execute_diagonal_decode_step,
         execute_diagonal_recurrence,
     )
@@ -92,7 +92,7 @@ def test_diagonal_decode_step_matches_sequential():
 
 
 def test_k1_decode_matches_full_history():
-    from urm.backends.triton.softmax.online import (
+    from urm.backends.triton.k1.online import (
         execute_online_softmax,
         execute_online_softmax_decode,
     )
@@ -113,9 +113,9 @@ def test_k1_decode_matches_full_history():
 
 def test_open_decode_session_dispatch():
     """The plan exposes a decode session for the native K2/K3 families."""
-    from urm.compiler.unified_mixer import MixerBackend, MixerIntent, compile_mixer
-    from urm.frontend.mixer_recipes import named_mixer_recipe
-    from urm.runtime.decode import MatrixStateDecodeSession
+    from urm.compiler.pipeline import MixerBackend, MixerIntent, compile_mixer
+    from urm.frontend.recipes import named_mixer_recipe
+    from urm.runtime.state import MatrixStateDecodeSession
 
     plan = compile_mixer(
         named_mixer_recipe("gated_delta_net"),

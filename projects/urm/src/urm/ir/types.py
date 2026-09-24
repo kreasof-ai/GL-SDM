@@ -167,12 +167,7 @@ class SupportStatus:
             )
 
 
-@dataclass(frozen=True, slots=True)
-class RoutedReductionResult:
-    output: object
-    indices: object
-    weights: object
-    metadata: dict[str, object]
+from urm.runtime.result import RoutedReductionResult
 
 
 class RoutedReductionBackend(Protocol):

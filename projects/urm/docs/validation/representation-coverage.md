@@ -42,7 +42,7 @@ compiler output, not prose.
 
 - **The K2 matrix-state native-generation gap is closed for the plain class.**
   A general native matrix-state kernel
-  (`urm/backends/triton/recurrence/matrix_state.py`, anchor
+  (`urm/backends/triton/k2/matrix.py`, anchor
   `urm_native_matrix_state_recurrence_v1`) covers the plain delta/additive
   recurrence across decay granularities (head/key-channel) and read timings,
   selected from semantic fields. It matches the reference oracle to fp32

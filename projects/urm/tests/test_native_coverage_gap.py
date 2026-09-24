@@ -31,13 +31,13 @@ sys.path.insert(0, str(PROJECT_ROOT / "benchmarks"))
 
 import representation_coverage as rc  # noqa: E402
 
-from urm.compiler.unified_mixer import (  # noqa: E402
+from urm.compiler.pipeline import (  # noqa: E402
     MixerBackend,
     MixerIntent,
     compile_mixer,
 )
-from urm.frontend.mixer_recipes import named_mixer_recipe  # noqa: E402
-from urm.oracles.composition import execute_canonical  # noqa: E402
+from urm.frontend.recipes import named_mixer_recipe  # noqa: E402
+from urm.backends.reference.numpy.graph import execute_canonical  # noqa: E402
 
 # fp32 native kernels vs the fp64 canonical core. The kernels accumulate in
 # fp32, so the agreement target is fp32 precision; the relative criterion is the

@@ -26,7 +26,7 @@ FINEWEB_SHA256 = "6bb7ce7bcac8e11463433767ec3402311c7527c3d8d766e7d65ef86dc4546b
 
 
 def load_frozen_config(*, diagnostic: bool = False):
-    from urm.pretraining import PretrainingConfig
+    from train.loop import PretrainingConfig
 
     payload = tomllib.loads(CONFIG_PATH.read_text(encoding="utf-8"))
     if payload["schema_version"] != 1 or payload["freeze_status"] != "pre_measurement":
@@ -148,7 +148,7 @@ def _one_step(
     capture_internal_gradients: bool = False,
     state_snapshots=None,
 ):
-    from urm.pretraining import gradient_norms
+    from train.loop import gradient_norms
 
     execution = model
     model = getattr(model, "_orig_mod", model)
@@ -269,7 +269,7 @@ def _child(args) -> None:
     module_import_started = time.perf_counter_ns()
     from provenance import provenance, utc_now, write_artifact
 
-    from urm.pretraining import (
+    from train.loop import (
         FP32AdamW,
         URMDecoderLM,
         model_memory_ledger,
@@ -293,7 +293,7 @@ def _child(args) -> None:
     upstream_support = None
     if args.backend == "upstream_sdm":
         dependency_started = time.perf_counter_ns()
-        from urm.adapters.sparse_delta_memory import probe_sdm_support
+        from benchmarks.comparators.sdm.upstream import probe_sdm_support
 
         upstream_support = probe_sdm_support()
         backend_dependency_import_build_ms = (
@@ -808,7 +808,7 @@ def _confirmation(args) -> None:
     import torch
     from provenance import provenance, utc_now, write_artifact
 
-    from urm.adapters.sparse_delta_memory import probe_sdm_support
+    from benchmarks.comparators.sdm.upstream import probe_sdm_support
 
     payload, _config = load_frozen_config(diagnostic=args.diagnostic)
     modes = payload["execution"]["modes"]

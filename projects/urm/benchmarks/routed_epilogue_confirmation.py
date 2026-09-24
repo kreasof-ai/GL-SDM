@@ -166,7 +166,7 @@ def run_single_confirmation(
     )
     from provenance import provenance, utc_now, write_artifact
 
-    from urm.compiler.kernel_plan import SchedulePoint
+    from urm.compiler.select.model import SchedulePoint
 
     if not torch.cuda.is_available():
         raise SystemExit("CUDA required: confirmation benchmark measures GPU schedules")

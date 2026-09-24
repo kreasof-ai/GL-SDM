@@ -9,17 +9,17 @@ pytest.importorskip("triton")
 if not torch.cuda.is_available():
     pytest.skip("CUDA is required", allow_module_level=True)
 
-from urm.adapters.sparse_delta_memory import (
+from benchmarks.comparators.sdm.upstream import (
     MODE_INFERENCE,
     UrmSparseDeltaMemoryAdapter,
     probe_sdm_support,
 )
-from urm.adapters.sparse_delta_memory_reference import torch_product_key_highest_address
-from urm.backends.triton.sparse_state.route_backend import (
+from benchmarks.comparators.sdm.reference import torch_product_key_highest_address
+from urm.backends.triton.k3.route_launcher import (
     CertifiedSparseRouteScores,
     TritonSparseRouteBackend,
 )
-from urm.compiler.semantic import DType, SparseRouteSelectionSpec
+from urm.ir.program import DType, SparseRouteSelectionSpec
 
 TOLERANCES = {
     torch.float32: {"atol": 2e-5, "rtol": 2e-5},

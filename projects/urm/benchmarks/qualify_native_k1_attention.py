@@ -45,8 +45,8 @@ from measurement import (
     quantile,
 )
 from provenance import provenance, write_artifact
-from urm.compiler.unified_mixer import MixerBackend, MixerIntent, compile_mixer
-from urm.frontend.mixer_recipes import named_mixer_recipe
+from urm.compiler.pipeline import MixerBackend, MixerIntent, compile_mixer
+from urm.frontend.recipes import named_mixer_recipe
 
 SLOWDOWN_BUDGET_FRACTION = 0.10
 # Frozen production-matrix tolerances (benchmarks/production-matrix.json):
@@ -337,7 +337,7 @@ def _run_case(case, dtype_name, dtype, pairs, warmup, block):
     # for a single query at the latest position all S keys are visible). Both
     # callables close over their operands; the KV cache is read-only, so no
     # state threading is needed.
-    from urm.backends.triton.softmax.online import execute_online_softmax_decode
+    from urm.backends.triton.k1.online import execute_online_softmax_decode
 
     decode_operands = _inputs(
         _stable_seed(case["id"], dtype_name, "decode"),

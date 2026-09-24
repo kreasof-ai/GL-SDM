@@ -8,8 +8,8 @@ from time import perf_counter
 
 import numpy as np
 
-from urm.presets import DENSE_ATTENTION, GL_SDM_TRANSACTION, TOP2_MOE
-from urm.oracles import execute
+from tests.fixtures.specs import DENSE_ATTENTION, GL_SDM_TRANSACTION, TOP2_MOE
+from urm.backends.reference.numpy import execute
 
 
 def parse_args() -> argparse.Namespace:
