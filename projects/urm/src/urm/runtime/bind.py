@@ -30,6 +30,11 @@ from urm.backends.providers import (
     K3RouteNativeTritonProvider,
     K3TorchReferenceProvider,
 )
+from urm.backends.reference.numpy.providers import (
+    K1NumpyProvider,
+    K2NumpyProvider,
+    K3NumpyProvider,
+)
 from urm.compiler.pipeline import CompilationResult
 from urm.ir.program import (
     LinearDeltaState,
@@ -51,6 +56,7 @@ class PlanBindingError(RuntimeError):
 _PROVIDERS = {
     provider.name: provider
     for provider in (
+        # Reference Torch tier (compiler-selectable).
         K1TorchReferenceProvider(),
         K1SdpaLibraryProvider(),
         K1NativeTritonProvider(),
@@ -60,6 +66,10 @@ _PROVIDERS = {
         K3TorchReferenceProvider(),
         K3NativeTritonProvider(),
         K3RouteNativeTritonProvider(),
+        # Independent NumPy oracle tier (reference evidence, not compiler-selected).
+        K1NumpyProvider(),
+        K2NumpyProvider(),
+        K3NumpyProvider(),
     )
 }
 
