@@ -21,7 +21,7 @@ validation boundary.
 Ownership
 ---------
 - Contract: `docs/kernels/sparse-delta.md`
-- Native implementations: `urm.backends.triton.k3_state`
+- Native implementations: `urm.backends.triton.k3`
   (score-to-state pipeline), `urm.backends.historical.triton_k3_route_launcher`
   (route production), and `urm.backends.historical.triton_k3_state_launcher`
   (certified route-state mixer). The executable plan binding lives in

@@ -482,7 +482,7 @@ def test_preallocated_output_is_validated_before_dispatch(monkeypatch) -> None:
         torch.empty((1, 7, 3), device="cuda").transpose(1, 2),
         values,
     ]
-    import urm.backends.triton.k3_state as kernels
+    import urm.backends.triton.k3 as kernels
 
     launches = 0
 

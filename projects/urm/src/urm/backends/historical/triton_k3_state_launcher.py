@@ -507,7 +507,7 @@ class TritonSparseStateMixerBackend:
         if state.memory.device != prepared.routes.read_indices.device:
             raise ValueError("state and routes must share one CUDA device")
         self._validate_out(out, state, prepared)
-        from urm.backends.triton.k3_state import (
+        from urm.backends.triton.k3 import (
             sparse_state_read,
             sparse_state_update,
         )
