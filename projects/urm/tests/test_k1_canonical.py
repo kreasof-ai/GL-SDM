@@ -21,7 +21,7 @@ torch = pytest.importorskip("torch")
 pytest.importorskip("triton")
 
 from urm.compiler.select.anchors import NATIVE_K1_ONLINE_SOFTMAX_ANCHOR_NAME
-from urm.compiler.pipeline import CompiledMixerPlan
+from urm.compiler.mixer import CompiledMixerPlan
 from urm.frontend.recipes import named_mixer_recipe
 from urm.ir.graph import MixerBackend, MixerIntent
 from urm.backends.reference.numpy.graph import execute_canonical

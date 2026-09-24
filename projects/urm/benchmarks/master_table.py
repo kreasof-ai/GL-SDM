@@ -275,7 +275,7 @@ def build_recipe_mixer(config, recipe_name: str, backend: str, dtype: str | None
     torch = _torch()
     import torch.nn as nn
 
-    from urm.compiler.pipeline import MixerBackend, MixerIntent, compile_mixer
+    from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
 
     if dtype is None:
         dtype = _mixer_dtype(recipe_name, backend)

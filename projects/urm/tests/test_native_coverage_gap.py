@@ -31,7 +31,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "benchmarks"))
 
 import representation_coverage as rc  # noqa: E402
 
-from urm.compiler.pipeline import (  # noqa: E402
+from urm.compiler.mixer import (  # noqa: E402
     MixerBackend,
     MixerIntent,
     compile_mixer,

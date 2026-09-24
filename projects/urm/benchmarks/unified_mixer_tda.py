@@ -13,7 +13,7 @@ import torch
 from measurement import quantile
 from provenance import provenance, write_artifact
 from benchmarks.comparators.tda import tda_attention_adapter, tda_source_identity
-from urm.compiler.pipeline import MixerBackend, MixerIntent, compile_mixer
+from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
 from urm.frontend.recipes import named_mixer_recipe
 
 BATCH, SEQUENCE, HEADS, DIM = 1, 64, 2, 32

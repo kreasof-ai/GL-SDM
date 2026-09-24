@@ -12,7 +12,7 @@ __all__ = ["MixerSpec", "compile"]
 
 def __getattr__(name: str):
     if name == "compile":
-        from urm.compiler.pipeline import compile_mixer
+        from urm.compiler.mixer import compile_mixer
 
         return compile_mixer
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -2,7 +2,7 @@
 
 These executors run the pinned upstream/library implementations behind the
 external anchors. They are registered by anchor name into the core registry
-(:func:`urm.compiler.pipeline.register_external_executor`) so that the core
+(:func:`urm.compiler.mixer.register_external_executor`) so that the core
 compiler and runtime hold no comparator or upstream imports. Importing this
 module has the side effect of registering every external executor it provides;
 benchmarks import it before compiling a plan with ``backend=MixerBackend.LIBRARY``.
@@ -13,8 +13,8 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Any
 
-from urm.compiler import pipeline as _core
-from urm.compiler.pipeline import (
+from urm.compiler import mixer as _core
+from urm.compiler.mixer import (
     CompiledMixerPlan,
     MixerResult,
     register_external_executor,

@@ -19,7 +19,7 @@ from torch.nn.attention import SDPBackend, sdpa_kernel
 
 from measurement import quantile
 from provenance import provenance, write_artifact
-from urm.compiler.pipeline import MixerBackend, MixerIntent, compile_mixer
+from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
 from urm.frontend.recipes import named_mixer_recipe
 
 EXPECTED_FLASH_REVISION = "1bda8f9290cd48d030f1516f0e680cd464ef3554"

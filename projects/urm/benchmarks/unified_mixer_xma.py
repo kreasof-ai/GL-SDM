@@ -15,7 +15,7 @@ import xma
 from xma import KernelBackend
 
 from provenance import provenance, write_artifact
-from urm.compiler.pipeline import MixerBackend, MixerIntent, compile_mixer
+from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
 from urm.frontend.recipes import named_mixer_recipe
 
 EXPECTED_XMA_REVISION = "384ed0a7bd82ced1f40609603dd541cac5416844"

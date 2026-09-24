@@ -113,7 +113,7 @@ def test_k1_decode_matches_full_history():
 
 def test_open_decode_session_dispatch():
     """The plan exposes a decode session for the native K2/K3 families."""
-    from urm.compiler.pipeline import MixerBackend, MixerIntent, compile_mixer
+    from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
     from urm.frontend.recipes import named_mixer_recipe
     from urm.runtime.state import MatrixStateDecodeSession
 

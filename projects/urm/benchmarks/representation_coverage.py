@@ -358,7 +358,7 @@ def _reference_execute(spec, operands):
     """Run the compiler's independent architecture reference equation (torch)."""
     import torch
 
-    from urm.compiler.pipeline import MixerBackend, MixerIntent, compile_mixer
+    from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
 
     recipe = named_mixer_recipe(spec.name)
     plan = compile_mixer(

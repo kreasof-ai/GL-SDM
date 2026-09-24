@@ -65,7 +65,9 @@ def __getattr__(name: str):
         "compile_mixer",
         "mixer_semantic_program",
     }:
-        from urm.compiler import pipeline
+        # Transitional family-dispatch path (slated for deletion as recipes
+        # migrate to graph documents); lives outside the planner module.
+        from urm.compiler import mixer
 
-        return getattr(pipeline, name)
+        return getattr(mixer, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

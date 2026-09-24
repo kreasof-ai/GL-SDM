@@ -15,7 +15,7 @@ import torch
 
 from measurement import quantile
 from provenance import provenance, write_artifact
-from urm.compiler.pipeline import MixerBackend, MixerIntent, compile_mixer
+from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
 from urm.frontend.recipes import named_mixer_recipe
 
 EXPECTED_BDH_REVISION = "2b0d7a45b058d4309c84a10e0768d541fe18bdc2"

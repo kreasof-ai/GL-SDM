@@ -18,10 +18,12 @@ from mamba_ssm.ops.selective_scan_interface import selective_scan_fn
 from measurement import quantile
 from provenance import provenance, write_artifact
 from urm.compiler.pipeline import (
+    diagonal_ssm_spec,
+)
+from urm.compiler.mixer import (
     MixerBackend,
     MixerIntent,
     compile_mixer,
-    diagonal_ssm_spec,
 )
 
 EXPECTED_MAMBA_REVISION = "e9594ce1c732d97440f0332fdc43170a2294dbfa"

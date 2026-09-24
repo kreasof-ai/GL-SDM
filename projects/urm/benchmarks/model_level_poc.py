@@ -44,7 +44,7 @@ class RecipeMixerGLA:
         torch = _torch()
         import torch.nn as nn
 
-        from urm.compiler.pipeline import MixerBackend, MixerIntent, compile_mixer
+        from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
         from urm.frontend.recipes import named_mixer_recipe
 
         class _M(nn.Module):

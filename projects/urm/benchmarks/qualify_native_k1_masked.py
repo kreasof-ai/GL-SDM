@@ -49,7 +49,7 @@ from measurement import (
     quantile,
 )
 from provenance import provenance, write_artifact
-from urm.compiler.pipeline import MixerBackend, MixerIntent, compile_mixer
+from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
 from urm.frontend.recipes import named_mixer_recipe
 
 # Frozen production-matrix budget for k1-masked-variant: 0.15 (not 0.10).

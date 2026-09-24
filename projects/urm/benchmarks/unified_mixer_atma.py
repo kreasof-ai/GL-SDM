@@ -15,7 +15,7 @@ from kernel import polar_triton
 from model.blocks import polar_reduce
 
 from provenance import provenance, write_artifact
-from urm.compiler.pipeline import MixerBackend, MixerIntent, compile_mixer
+from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
 from urm.frontend.recipes import named_mixer_recipe
 
 EXPECTED_ATMA_REVISION = "28bb3de8afbe7c0b00115e0fbff36afc9ad49c11"

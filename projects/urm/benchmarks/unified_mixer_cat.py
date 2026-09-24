@@ -17,7 +17,7 @@ import torch
 from measurement import quantile
 from provenance import provenance, write_artifact
 from benchmarks.comparators.fla_gated_delta import fla_version
-from urm.compiler.pipeline import MixerBackend, MixerIntent, compile_mixer
+from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
 from urm.frontend.recipes import named_mixer_recipe
 
 EXPECTED_FLA_REVISION = "864a87f6ce5be8828bef81eb22baafd41937cdf2"

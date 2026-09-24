@@ -12,7 +12,7 @@ import torch
 
 from provenance import provenance, utc_now, write_artifact
 from benchmarks.comparators.sparse_transformer import fixed_mode_mask, load_dense_attention
-from urm.compiler.pipeline import MixerBackend, MixerIntent, compile_mixer
+from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
 from urm.frontend.recipes import named_mixer_recipe
 
 

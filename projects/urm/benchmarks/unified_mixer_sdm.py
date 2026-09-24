@@ -16,7 +16,7 @@ from lingua.sparse_delta_memory.layer import SparseDeltaMemory, SparseDeltaMemor
 from measurement import bootstrap_ci, quantile
 from provenance import provenance, write_artifact
 
-from urm.compiler.pipeline import (
+from urm.compiler.mixer import (
     MixerBackend,
     MixerIntent,
     compile_mixer,

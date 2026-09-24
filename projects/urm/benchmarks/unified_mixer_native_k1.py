@@ -27,7 +27,7 @@ from unified_mixer_flash import (
     _time_one,
     _forward_backward,
 )
-from urm.compiler.pipeline import MixerBackend, MixerIntent, compile_mixer
+from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
 from urm.frontend.recipes import named_mixer_recipe
 
 

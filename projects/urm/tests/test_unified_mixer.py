@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from urm.compiler.pipeline import (
+from urm.compiler.mixer import (
     DecayGranularity,
     FeatureMap,
     MixerBackend,
@@ -488,7 +488,7 @@ def test_missing_route_mask_diagnostic_does_not_require_torch():
     code = (
         "import sys\n"
         "sys.modules['torch'] = None\n"  # importing torch now raises ImportError
-        "from urm.compiler.pipeline import MixerBackend, compile_mixer\n"
+        "from urm.compiler.mixer import MixerBackend, compile_mixer\n"
         "from urm.frontend.recipes import named_mixer_recipe\n"
         "plan = compile_mixer(\n"
         "    named_mixer_recipe('sparse_attention_core'), backend=MixerBackend.NATIVE\n"
@@ -513,7 +513,7 @@ def test_missing_route_mask_diagnostic_does_not_require_torch():
 
 
 def test_atma_decode_dimension_contract_matches_both_pinned_value_tiles():
-    from urm.compiler.pipeline import (
+    from urm.compiler.mixer import (
         _atma_decode_value_block,
         _validate_atma_decode_dimensions,
     )
@@ -1633,7 +1633,7 @@ def test_xma_nonlinear_recurrences_match_pinned_equations_and_triton_gradients(
         pytest.skip("CUDA required for the pinned XMA recurrent comparison")
     xma = pytest.importorskip("xma")
     from xma import KernelBackend
-    from urm.compiler.pipeline import (
+    from urm.compiler.mixer import (
         MixerBackend,
         MixerIntent,
         compile_mixer,
@@ -1797,7 +1797,7 @@ def test_atma_polar_k1_kernels_match_materialized_reference_and_gradients(recipe
         pytest.skip("CUDA required for pinned ATMA Polar comparison")
     source = pytest.importorskip("kernel.polar_triton")
     atma = __import__("model.blocks", fromlist=["polar_reduce"])
-    from urm.compiler.pipeline import (
+    from urm.compiler.mixer import (
         MixerBackend,
         MixerIntent,
         compile_mixer,
@@ -4323,7 +4323,7 @@ def test_k2_fla_library_anchor_matches_reference_when_installed(dtype_name):
         log_decay=log_decay,
         initial_state=initial,
     )
-    from urm.compiler.pipeline import _execute_matrix_recurrence
+    from urm.compiler.mixer import _execute_matrix_recurrence
 
     reference = _execute_matrix_recurrence(spec, torch, **dict(operands))
     reference_loss = (
@@ -4357,7 +4357,7 @@ def test_k2_fla_library_anchor_matches_reference_when_installed(dtype_name):
 @pytest.mark.parametrize("normalized", [False, True])
 def test_k2_fla_linear_attention_matches_reference_and_backward(normalized):
     torch = _torch()
-    from urm.compiler.pipeline import _execute_matrix_recurrence
+    from urm.compiler.mixer import _execute_matrix_recurrence
 
     if not torch.cuda.is_available():
         pytest.skip("FLA linear-attention anchor requires CUDA")
@@ -4509,7 +4509,7 @@ def test_k2_fla_gated_additive_chunk_prefill_matches_reference_and_backward(
         "log_decay": log_decay,
         "initial_state": initial_state,
     }
-    from urm.compiler.pipeline import _execute_matrix_recurrence
+    from urm.compiler.mixer import _execute_matrix_recurrence
 
     reference = _execute_matrix_recurrence(spec, torch, **dict(operands))
     reference_loss = (
@@ -4577,7 +4577,7 @@ def test_k2_fla_gated_additive_recurrent_decode_matches_reference(
 
 def test_k2_fla_delta_rule_matches_reference_and_backward():
     torch = _torch()
-    from urm.compiler.pipeline import _execute_matrix_recurrence
+    from urm.compiler.mixer import _execute_matrix_recurrence
 
     if not torch.cuda.is_available():
         pytest.skip("FLA delta-rule anchor requires CUDA")
@@ -4630,7 +4630,7 @@ def test_k2_fla_delta_rule_matches_reference_and_backward():
 
 def test_k2_fla_delta_rule_selects_forward_only_one_token_decode():
     torch = _torch()
-    from urm.compiler.pipeline import _execute_matrix_recurrence
+    from urm.compiler.mixer import _execute_matrix_recurrence
 
     if not torch.cuda.is_available():
         pytest.skip("FLA delta-rule anchor requires CUDA")
@@ -4793,7 +4793,7 @@ def test_native_matrix_state_recurrence_matches_reference(
     from urm.backends.triton.k2.matrix import (
         execute_matrix_state_recurrence,
     )
-    from urm.compiler.pipeline import _execute_matrix_recurrence
+    from urm.compiler.mixer import _execute_matrix_recurrence
 
     torch.manual_seed(17)
     batch, sequence, heads, key_dim, value_dim = 2, 6, 3, 8, 5
@@ -4883,7 +4883,7 @@ def test_native_matrix_state_dispatch_matches_reference(recipe_name):
     if not torch.cuda.is_available():
         pytest.skip("native matrix-state recurrence requires CUDA")
     pytest.importorskip("triton")
-    from urm.compiler.pipeline import (
+    from urm.compiler.mixer import (
         MixerBackend,
         _native_matrix_state_supported,
         compile_mixer,
@@ -4934,7 +4934,7 @@ def test_native_matrix_state_declines_underdetermined_recipes(recipe_name):
     """
     torch = _torch()
     pytest.importorskip("triton")
-    from urm.compiler.pipeline import (
+    from urm.compiler.mixer import (
         MixerBackend,
         _native_matrix_state_supported,
         compile_mixer,
@@ -4954,7 +4954,7 @@ def test_native_matrix_state_declines_underdetermined_recipes(recipe_name):
 
 
 def _native_k2_operators():
-    from urm.compiler.pipeline import _NATIVE_K2_OPERATORS
+    from urm.compiler.mixer import _NATIVE_K2_OPERATORS
 
     return _NATIVE_K2_OPERATORS
 
@@ -4971,7 +4971,7 @@ def test_held_out_differential_attention_composes_natively():
     if not torch.cuda.is_available():
         pytest.skip("native K1 requires CUDA")
     pytest.importorskip("triton")
-    from urm.compiler.pipeline import MixerBackend, compile_mixer
+    from urm.compiler.mixer import MixerBackend, compile_mixer
 
     spec = named_mixer_recipe("differential_attention_core").spec
     torch.manual_seed(0)
@@ -5015,7 +5015,7 @@ def test_held_out_gated_delta_with_forgetting_composes_natively():
     if not torch.cuda.is_available():
         pytest.skip("native matrix-state recurrence requires CUDA")
     pytest.importorskip("triton")
-    from urm.compiler.pipeline import MixerBackend, compile_mixer
+    from urm.compiler.mixer import MixerBackend, compile_mixer
 
     spec = named_mixer_recipe("gated_delta_net").spec
     plan = compile_mixer(spec, backend=MixerBackend.NATIVE, intent="training", dtype="float32")
