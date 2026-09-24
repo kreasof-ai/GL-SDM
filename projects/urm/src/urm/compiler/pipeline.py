@@ -87,12 +87,15 @@ from urm.compiler.rewrite.engine import (
 from urm.ir.program import (
     CollectiveExchange,
     Gather,
+    LogicalDomain,
     Matmul,
     OrderedRecurrence,
     RouteSpec,
     Score,
+    ScoreNormalization,
     SDMExecutionMode,
     Select,
+    SelectionKind,
     SparseDeltaMemoryAccess,
     SparseRouteGeneration,
     SparseStateExecutionMode,
@@ -490,6 +493,46 @@ def _route_edges_for(
     for query_index in range(queries):
         for k in range(route_width):
             yield query_index, (query_index * route_width + k) % sources
+
+
+def _weighted_reduce_anchor_kind(op: WeightedReduce) -> AnchorKind:
+    """Semantic anchor-kind selection for a weighted reduce.
+
+    A dense, softmax-normalized, sequence-to-sequence reduce over *query/key*
+    operands IS the normalized-attention equation (scores are computed inline
+    from Q·K). A reduce over precomputed route operands (a ``gather`` product
+    plus ``weights``), a sparse/top-k selection, or a non-softmax normalization
+    is routed reduction. The kind follows the operands and route semantics —
+    never a recipe name.
+    """
+    spec = op.spec
+    is_attention = (
+        spec.normalization is ScoreNormalization.SOFTMAX
+        and spec.selection is SelectionKind.DENSE
+        and spec.query_domain is LogicalDomain.SEQUENCE
+        and spec.source_domain is LogicalDomain.SEQUENCE
+        # Attention computes scores inline from query/key; a routed reduction
+        # consumes precomputed route indices/weights via a gather.
+        and "query" in op.inputs
+        and "key" in op.inputs
+    )
+    return AnchorKind.ATTENTION if is_attention else AnchorKind.ROUTED_REDUCTION
+
+
+def _equation_contract_for(op: SemanticNode) -> str | None:
+    """Derive the equation contract a typed node computes.
+
+    The contract name identifies the *equation*, independent of which anchor
+    implements it. Anchors that declare ``semantic_contracts`` must contain this
+    contract to be selectable, so an incompatible anchor (Polar for plain
+    softmax attention) declines during selection rather than executing the wrong
+    equation. Returns ``None`` when the node has no contract constraint.
+    """
+    if isinstance(op, WeightedReduce) and (
+        _weighted_reduce_anchor_kind(op) is AnchorKind.ATTENTION
+    ):
+        return "normalized_softmax_attention_v1"
+    return None
 
 
 class UrmCompiler:
@@ -1120,6 +1163,7 @@ class UrmCompiler:
                         {"anchor_override": override} if override is not None else None
                     ),
                     semantic_op=op,
+                    equation_contract=_equation_contract_for(op),
                 )
             )
             if override is not None:
@@ -1545,7 +1589,7 @@ class UrmCompiler:
         )
 
     @staticmethod
-    def _request_for(
+    def _request_for(  # noqa: C901 - dispatch over typed ops
         op: SemanticNode,
     ) -> tuple[AnchorKind | None, tuple[VisitorDescriptor, ...]]:
         from urm.compiler.select.anchors import VisitorKind
@@ -1562,7 +1606,7 @@ class UrmCompiler:
                         locality=Locality.TILE,
                     ),
                 )
-            return AnchorKind.ROUTED_REDUCTION, visitors
+            return _weighted_reduce_anchor_kind(op), visitors
         if isinstance(op, Matmul):
             return AnchorKind.GEMM, ()
         if isinstance(op, Gather):
@@ -2874,6 +2918,59 @@ def _is_fla_gated_delta_spec(spec: UnifiedMixerSpec) -> bool:
         and spec.transition is StateTransition.POINTWISE
         and spec.read_timing is ReadTiming.AFTER_UPDATE
     )
+
+
+# Target tiers for graph compilation. The target is a compile input (a
+# capability request), never a recipe-name switch: it restricts which
+# implementations may be selected, while semantic legality (equation contract)
+# is enforced independently.
+_GRAPH_TARGETS: dict[str, frozenset[str]] = {
+    "reference": frozenset({"urm.unified.k1.softmax_reference.v1"}),
+    "library": frozenset({"torch.nn.functional.scaled_dot_product_attention"}),
+    "native": frozenset({"urm_native_k1_online_softmax_v1"}),
+}
+
+
+def compile_graph(
+    program: SemanticProgram,
+    *,
+    target: str = "reference",
+    intent: CompilationIntent = CompilationIntent.INFERENCE,
+) -> Any:
+    """Compile a typed semantic program into a bound, executable plan.
+
+    This is the graph-path entry point: the program is already normalized typed
+    IR (from :func:`urm.compiler.normalize.graph.normalize_graph_document`).
+    Anchor selection is semantic — each node's equation contract must be
+    implemented by the selected anchor — restricted to the requested target
+    tier. The returned :class:`urm.runtime.bind.BoundGraphPlan` executes the
+    serialized plan steps in graph order; execution never redispatches on a
+    recipe name or backend enum.
+    """
+    from urm.compiler.select.anchors import (
+        AnchorRegistry,
+        TRUSTED_ANCHORS,
+        make_selector,
+    )
+    from urm.runtime.bind import BoundGraphPlan
+
+    if target not in _GRAPH_TARGETS:
+        legal = ", ".join(sorted(_GRAPH_TARGETS))
+        raise ValueError(f"unknown graph compile target {target!r}; legal: {legal}")
+    allowed = _GRAPH_TARGETS[target]
+
+    # Scan only in-target anchors; the semantic legality gate (equation
+    # contract) is enforced inside make_selector, so an in-target anchor that
+    # does not implement the node's equation still declines.
+    in_target = tuple(a for a in TRUSTED_ANCHORS if a.name in allowed)
+    registry = AnchorRegistry()
+    registry.register(make_selector(in_target))
+    active = UrmCompiler(anchors=registry)
+    compilation = active.compile(program, intent=intent)
+    return BoundGraphPlan(compilation)
+
+
+
 
 
 # External-executor registry: maps a selected external/upstream anchor name to

@@ -1165,11 +1165,21 @@ def load_kernel_recipe_file(path: str | Path) -> MixerRecipe:
 
 
 def load_kernel_recipe_dir(directory: str | Path) -> dict[str, MixerRecipe]:
-    """Load every ``*.json`` kernel recipe in a directory, keyed by name."""
+    """Load every schema-v1 ``*.json`` kernel recipe in a directory, keyed by name.
+
+    Graph documents (schema_version 2) are loaded by
+    :func:`load_graph_recipe_file`; this v1 loader skips them.
+    """
     root = Path(directory)
     recipes: dict[str, MixerRecipe] = {}
     for path in sorted(root.glob("*.json")):
-        recipe = load_kernel_recipe_file(path)
+        try:
+            document = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as error:
+            raise RecipeError(f"invalid JSON in {path}: {error}") from error
+        if document.get("schema_version") == GRAPH_SCHEMA_VERSION:
+            continue  # graph document; not a v1 spec-dump
+        recipe = load_kernel_recipe_document(document)
         if recipe.spec.name in recipes:
             raise RecipeError(f"duplicate kernel recipe name: {recipe.spec.name}")
         recipes[recipe.spec.name] = recipe
@@ -1268,8 +1278,133 @@ def load_architecture_recipe_file(path: str | Path) -> ArchitectureRecipe:
     return load_architecture_recipe_document(document)
 
 
+GRAPH_SCHEMA_VERSION = 2
+
+# Closed typed-operation vocabulary for graph documents. This is the schema's
+# discriminated ``op`` set; unknown operations are rejected at load.
+GRAPH_OPERATIONS: frozenset[str] = frozenset(
+    {
+        "score",
+        "select",
+        "gather",
+        "weighted_reduce",
+        "matmul",
+        "transform",
+        "ordered_recurrence",
+        "state_read",
+        "state_update",
+    }
+)
+
+
+@dataclass(frozen=True, slots=True)
+class GraphRecipe:
+    """A validated graph document: typed nodes, edges, and declared state.
+
+    This is provenance-free semantic input to the compiler; coverage metadata is
+    carried alongside, never inside, the graph.
+    """
+
+    name: str
+    kind: str
+    component_scope: str
+    architecture_ids: tuple[str, ...]
+    required_external_stages: tuple[str, ...]
+    document: dict
+
+
+def _validate_graph_document(document: dict) -> None:
+    if not isinstance(document, dict):
+        raise RecipeError("recipe document must be a JSON object")
+    version = document.get("schema_version")
+    if version != GRAPH_SCHEMA_VERSION:
+        raise RecipeError(f"unsupported graph schema_version: {version!r}")
+    kind = document.get("kind")
+    if kind not in {KERNEL_FRAGMENT, COMPLETE_MODEL_GRAPH}:
+        raise RecipeError(
+            f"graph recipe kind must be {KERNEL_FRAGMENT!r} or "
+            f"{COMPLETE_MODEL_GRAPH!r}, got {kind!r}"
+        )
+    graph = document.get("graph")
+    if not isinstance(graph, dict):
+        raise RecipeError("graph recipe requires a 'graph' object")
+    for key in ("inputs", "nodes", "outputs"):
+        if key not in graph:
+            raise RecipeError(f"graph recipe is missing graph.{key}")
+
+    defined: set[str] = set()
+    for entry in graph["inputs"]:
+        input_name = entry.get("name")
+        if not input_name:
+            raise RecipeError("every graph input requires a name")
+        if input_name in defined:
+            raise RecipeError(f"duplicate graph input {input_name!r}")
+        defined.add(input_name)
+    for entry in graph.get("state", []):
+        state_name = entry.get("name")
+        if not state_name:
+            raise RecipeError("every state contract requires a name")
+        defined.add(state_name)
+
+    for node in graph["nodes"]:
+        node_id = node.get("id")
+        op = node.get("op")
+        if not node_id:
+            raise RecipeError("every graph node requires an id")
+        if op not in GRAPH_OPERATIONS:
+            legal = ", ".join(sorted(GRAPH_OPERATIONS))
+            raise RecipeError(f"node {node_id!r}: unknown operation {op!r}; legal: {legal}")
+        for operand in node.get("inputs", []):
+            if operand not in defined:
+                raise RecipeError(
+                    f"node {node_id!r}: dangling edge — input {operand!r} is never "
+                    "produced by a graph input, state contract, or earlier node"
+                )
+        for out in node.get("outputs", []):
+            if out in defined:
+                raise RecipeError(f"node {node_id!r}: duplicate definition of {out!r}")
+            defined.add(out)
+
+    for out in graph["outputs"]:
+        if out not in defined:
+            raise RecipeError(f"graph output {out!r} is never produced")
+
+
+def load_graph_recipe_document(document: dict) -> GraphRecipe:
+    """Validate and load one versioned graph recipe document (schema_version 2).
+
+    The document's ``graph`` section is normalized into typed IR by
+    :func:`urm.compiler.normalize.graph.normalize_graph_document`; this loader
+    enforces the closed operation vocabulary and structural legality before
+    that. Unknown operations, dangling edges, and duplicate definitions are
+    rejected here.
+    """
+    _validate_graph_document(document)
+    return GraphRecipe(
+        name=document["name"],
+        kind=document["kind"],
+        component_scope=document.get("component_scope", ""),
+        architecture_ids=tuple(document.get("architecture_ids", ())),
+        required_external_stages=tuple(document.get("required_external_stages", ())),
+        document=document,
+    )
+
+
+def load_graph_recipe_file(path: str | Path) -> GraphRecipe:
+    """Load a versioned graph recipe from a JSON file."""
+    text = Path(path).read_text(encoding="utf-8")
+    try:
+        document = json.loads(text)
+    except json.JSONDecodeError as error:
+        raise RecipeError(f"invalid JSON in {path}: {error}") from error
+    return load_graph_recipe_document(document)
+
+
 __all__ = [
     "COMPLETE_MODEL_GRAPH",
+    "GRAPH_OPERATIONS",
+    "GRAPH_SCHEMA_VERSION",
+    "GraphRecipe",
     "KERNEL_FRAGMENT",
     "KERNEL_SCHEMA_VERSION",
     "ArchitectureLayer",
@@ -1277,6 +1412,8 @@ __all__ = [
     "MIXER_RECIPE_NAMES",
     "MixerRecipe",
     "RecipeError",
+    "load_graph_recipe_document",
+    "load_graph_recipe_file",
     "delta_rule_spec",
     "diagonal_ssm_spec",
     "linear_attention_spec",

@@ -1,0 +1,251 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://urm.dev/schema/graph-recipe.schema.json",
+  "title": "URM graph recipe",
+  "description": "A versioned, declarative typed-operation graph. A recipe declares either a kernel fragment or a complete model graph (the 'kind' field states which). Every node is a registered typed operation with closed parameters; edges are explicit operand bindings. No Python callbacks, no architecture-name execution switches, no serialized UnifiedMixerSpec.",
+  "type": "object",
+  "required": ["schema_version", "name", "kind", "component_scope", "graph"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 2,
+      "description": "Recipe document schema version. Loaders must reject other versions."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "Stable recipe name (registry key). Not an execution switch."
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["kernel_fragment", "complete_model_graph"],
+      "description": "Whether this document is a reusable kernel fragment or a complete model graph."
+    },
+    "architecture_ids": {
+      "type": "array",
+      "items": {"type": "string"},
+      "default": [],
+      "description": "Provenance: source architectures this equation appears in. Never an execution switch."
+    },
+    "component_scope": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Which part of a model this fragment covers."
+    },
+    "required_external_stages": {
+      "type": "array",
+      "items": {"type": "string"},
+      "default": [],
+      "description": "Typed stages a complete model must supply externally (projections, caches, MLPs)."
+    },
+    "graph": {
+      "type": "object",
+      "required": ["inputs", "nodes", "outputs"],
+      "additionalProperties": false,
+      "properties": {
+        "inputs": {
+          "type": "array",
+          "description": "Typed graph input tensors.",
+          "items": {
+            "type": "object",
+            "required": ["name", "dtype"],
+            "additionalProperties": false,
+            "properties": {
+              "name": {"type": "string", "minLength": 1},
+              "dtype": {
+                "type": "string",
+                "enum": ["float32", "float16", "bfloat16", "int32", "int64", "bool"]
+              },
+              "shape": {
+                "type": "array",
+                "items": {"type": ["integer", "string"]},
+                "description": "Logical shape; strings name symbolic dimensions (e.g. 'T', 'H')."
+              }
+            }
+          }
+        },
+        "nodes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/node"}
+        },
+        "outputs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string"},
+          "description": "Names of tensors (node outputs) exposed as graph outputs."
+        },
+        "state": {
+          "type": "array",
+          "default": [],
+          "description": "Declared state contracts for stateful graphs.",
+          "items": {
+            "type": "object",
+            "required": ["name", "dtype", "init"],
+            "additionalProperties": false,
+            "properties": {
+              "name": {"type": "string", "minLength": 1},
+              "dtype": {"type": "string", "enum": ["float32", "float16", "bfloat16"]},
+              "init": {"type": "string", "enum": ["zeros"], "description": "Initialization contract."},
+              "persistent": {"type": "boolean", "default": false}
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "node": {
+      "type": "object",
+      "required": ["id", "op", "inputs", "outputs"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "op": {
+          "type": "string",
+          "description": "Registered typed operation.",
+          "enum": ["score", "select", "gather", "weighted_reduce", "matmul", "transform", "ordered_recurrence", "state_read", "state_update"]
+        },
+        "inputs": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Operand names: graph inputs, state names, or outputs of earlier nodes."
+        },
+        "outputs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string"}
+        },
+        "params": {
+          "type": "object",
+          "description": "Per-operation parameters; closed by the per-op conditional schema (allOf if/then), which applies additionalProperties:false per operation."
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"op": {"const": "score"}}},
+          "then": {"properties": {"params": {"$ref": "#/$defs/routeParams"}}}
+        },
+        {
+          "if": {"properties": {"op": {"const": "select"}}},
+          "then": {"properties": {"params": {"$ref": "#/$defs/routeParams"}}}
+        },
+        {
+          "if": {"properties": {"op": {"const": "gather"}}},
+          "then": {"properties": {"params": {"$ref": "#/$defs/routeParams"}}}
+        },
+        {
+          "if": {"properties": {"op": {"const": "weighted_reduce"}}},
+          "then": {"properties": {"params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["query_domain", "source_domain", "selection", "normalization"],
+            "properties": {
+              "query_domain": {"type": "string", "enum": ["sequence", "head", "expert", "parameter_block", "recurrent_state", "memory_page"]},
+              "source_domain": {"type": "string", "enum": ["sequence", "head", "expert", "parameter_block", "recurrent_state", "memory_page"]},
+              "selection": {"type": "string", "enum": ["dense", "block_sparse", "top_k", "threshold"]},
+              "normalization": {"type": "string", "enum": ["none", "softmax", "sigmoid", "l1"]},
+              "top_k": {"type": ["integer", "null"], "minimum": 1},
+              "threshold": {"type": ["number", "null"]},
+              "page_size": {"type": ["integer", "null"], "minimum": 1},
+              "capacity_policy": {"type": "string", "enum": ["dropless", "fixed_capacity", "expert_quota"], "default": "dropless"},
+              "deterministic": {"type": "boolean", "default": true},
+              "causal": {"type": "boolean", "default": false},
+              "epilogue": {
+                "type": ["object", "null"],
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {"type": "string", "enum": ["row_scale"]},
+                  "scale": {"type": "string", "description": "Operand name supplying the per-row scale."}
+                },
+                "required": ["kind", "scale"]
+              }
+            }
+          }}}
+        },
+        {
+          "if": {"properties": {"op": {"const": "matmul"}}},
+          "then": {"properties": {"params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "transpose_rhs": {"type": "boolean", "default": false}
+            }
+          }}}
+        },
+        {
+          "if": {"properties": {"op": {"const": "transform"}}},
+          "then": {"properties": {"params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind"],
+            "properties": {
+              "kind": {"type": "string", "enum": ["identity", "row_scale", "affine", "relu", "gelu", "sigmoid"]}
+            }
+          }}}
+        },
+        {
+          "if": {"properties": {"op": {"const": "ordered_recurrence"}}},
+          "then": {"properties": {"params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["transition"],
+            "properties": {
+              "transition": {
+                "type": "string",
+                "description": "Registered typed transition equation (not an architecture name).",
+                "enum": ["pointwise_decay", "diagonal_ssm", "matrix_delta", "additive", "decayed_delta"]
+              },
+              "decay_granularity": {"type": "string", "enum": ["scalar", "head", "channel"]},
+              "layout": {"type": "string", "enum": ["diagonal_ssm", "matrix_state"]},
+              "update_rule": {"type": "string", "enum": ["additive", "delta", "decayed_delta"]}
+            }
+          }}}
+        },
+        {
+          "if": {"properties": {"op": {"const": "state_read"}}},
+          "then": {"properties": {"params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "state": {"type": "string", "minLength": 1},
+              "versioned": {"type": "boolean", "default": true}
+            }
+          }}}
+        },
+        {
+          "if": {"properties": {"op": {"const": "state_update"}}},
+          "then": {"properties": {"params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["state", "policy"],
+            "properties": {
+              "state": {"type": "string", "minLength": 1},
+              "policy": {"type": "string", "enum": ["ordered", "sum", "mean", "last_write", "reject"]},
+              "commit_boundary": {"type": "boolean", "default": false}
+            }
+          }}}
+        }
+      ]
+    },
+    "routeParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["query_domain", "source_domain", "selection", "normalization"],
+      "properties": {
+        "query_domain": {"type": "string", "enum": ["sequence", "head", "expert", "parameter_block", "recurrent_state", "memory_page"]},
+        "source_domain": {"type": "string", "enum": ["sequence", "head", "expert", "parameter_block", "recurrent_state", "memory_page"]},
+        "selection": {"type": "string", "enum": ["dense", "block_sparse", "top_k", "threshold"]},
+        "normalization": {"type": "string", "enum": ["none", "softmax", "sigmoid", "l1"]},
+        "top_k": {"type": ["integer", "null"], "minimum": 1},
+        "threshold": {"type": ["number", "null"]},
+        "page_size": {"type": ["integer", "null"], "minimum": 1},
+        "capacity_policy": {"type": "string", "enum": ["dropless", "fixed_capacity", "expert_quota"], "default": "dropless"},
+        "deterministic": {"type": "boolean", "default": true},
+        "causal": {"type": "boolean", "default": false, "description": "Causal masking: a query at position t may not attend to sources > t."}
+      }
+    }
+  }
+}

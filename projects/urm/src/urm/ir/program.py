@@ -139,6 +139,7 @@ class RouteSpec:
     page_size: int | None = None
     capacity_policy: CapacityPolicy = CapacityPolicy.DROPLESS
     deterministic: bool = True
+    causal: bool = False
 
     def __post_init__(self) -> None:
         if self.selection is SelectionKind.TOP_K and not (

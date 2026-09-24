@@ -1,13 +1,42 @@
 # Remaining work — URM core refactor
 
-Status: gap analysis against `refactor-list.md` after the relocation cutover. This
-document records what the cutover did **not** complete, including one item that was
-previously misreported as done. It supersedes any summary claims of full completion.
+Status: gap analysis against `refactor-list.md` after the relocation cutover, plus
+progress on the follow-up "executor instructions." This document records what is
+done, what remains, and one item that was previously misreported.
 
-Suite state at time of writing: 933 passed, 128 skipped, 0 failed (ATMA + SDM
-provisioned at pinned revisions under `/tmp/opencode`). The items below are
-deliberately open; none is blocked on missing information except where a scoping
-decision is flagged.
+Suite state: 944 passed, 123 skipped, 0 failed (comparator sources provisioned at
+pinned revisions under `/tmp/urm-comparator-pins`).
+
+## Completed since the relocation cutover (step 1 vertical slice)
+
+- **Graph recipe schema v2** (`recipes/schema/graph-recipe.schema.json`): closed,
+  discriminated typed-operation documents (nodes/edges/state), rejecting unknown
+  fields and references.
+- **`compiler/normalize/graph.py`**: a graph document normalizes into a typed
+  `SemanticProgram`; dangling edges and unknown operations are rejected.
+- **Graph loader** (`load_graph_recipe_document/file` in `frontend/recipes.py`):
+  validates the closed op vocabulary and structure before normalization.
+- **`compiler/pipeline.compile_graph`**: compiles a typed program with semantic
+  anchor selection restricted to a target tier (reference/library/native); returns
+  a `runtime.bind.BoundGraphPlan`.
+- **Semantic legality gate**: `ExecutionAnchor.semantic_contracts` + the
+  equation-contract check in `make_selector`; Polar anchors decline plain softmax
+  MHA. A `WeightedReduce` is attention only when it is dense + softmax +
+  sequence→sequence over query/key operands; gather-fed reduces stay routed
+  reduction.
+- **`runtime/bind.BoundGraphPlan`**: plan-authority executor; walks plan steps in
+  graph order, binds operands by name, fails on missing/tampered steps.
+- **`recipes/kernels/mha.json`** migrated to a graph document. Regression gates in
+  `tests/test_graph_vertical_slice.py` prove JSON authority (causal toggle changes
+  IR and output), float64 NumPy reference parity, incompatible-anchor decline, and
+  plan-binding failure on tampering.
+
+## Remaining (in the plan's order)
+
+See the sections below. Step 1 is done for MHA only; the 73 spec-dump recipes still
+use the v1 catalog until their families are graphed (steps 3–4), and the Python
+catalog, `compile_mixer` recipe-name dispatch, and `runtime/registry.py` remain
+until the graph path covers them.
 
 ## Corrections to earlier completion claims
 

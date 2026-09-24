@@ -104,6 +104,12 @@ class ExecutionAnchor:
     supported_stages: tuple[int, ...] = ()
     supported_decompositions: tuple[str, ...] = ()
     supported_schedules: tuple[str, ...] = ()
+    semantic_contracts: frozenset[str] = frozenset()
+    """Equation contracts this anchor implements (e.g.
+    ``normalized_softmax_attention_v1``). An anchor with an empty set is
+    unconstrained; a non-empty set is matched against the typed node's equation
+    before selection, so an incompatible equation (Polar for plain softmax MHA)
+    declines rather than silently selecting."""
 
     def __post_init__(self) -> None:
         if self.schedulable:
@@ -205,6 +211,10 @@ class AnchorRequest:
     visitors: tuple[VisitorDescriptor, ...] = ()
     schedule_params: dict[str, str | int | float | bool] | None = None
     semantic_op: object | None = None
+    equation_contract: str | None = None
+    """The equation the typed node computes (e.g.
+    ``normalized_softmax_attention_v1``). Anchors declaring a non-empty
+    ``semantic_contracts`` set must contain it to be selectable."""
 
 
 AnchorSelector = Callable[[AnchorRequest], "AnchorDecision | None"]
@@ -236,6 +246,23 @@ def make_selector(
         first_refusal: Decline | None = None
         for anchor in anchors:
             if anchor.kind is not request.kind or not anchor.trusted:
+                continue
+            # Semantic legality gate: an anchor that declares the equations it
+            # implements must contain this node's equation. This is what makes a
+            # forced Polar anchor decline a plain softmax MHA node.
+            if (
+                anchor.semantic_contracts
+                and request.equation_contract is not None
+                and request.equation_contract not in anchor.semantic_contracts
+            ):
+                if first_refusal is None:
+                    first_refusal = Decline(
+                        reason_code=DiagnosticCode.ANCHOR_DECLINED,
+                        message=(
+                            f"anchor {anchor.name} does not implement equation "
+                            f"{request.equation_contract!r}"
+                        ),
+                    )
                 continue
             unmet = [
                 visitor.kind.value
@@ -409,6 +436,7 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
         name="torch.nn.functional.scaled_dot_product_attention",
         backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
         supported_visitors=frozenset(),
+        semantic_contracts=frozenset({"normalized_softmax_attention_v1"}),
     ),
     ExecutionAnchor(
         kind=AnchorKind.ATTENTION,
@@ -589,12 +617,14 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
         name=ATMA_POLAR_ANCHOR_NAME,
         backward_verified_dtypes=frozenset({"float32"}),
         supported_visitors=frozenset(),
+        semantic_contracts=frozenset({"polar_attention_v1"}),
     ),
     ExecutionAnchor(
         kind=AnchorKind.ATTENTION,
         name=ATMA_POLAR_SPARSE_ANCHOR_NAME,
         backward_verified_dtypes=frozenset({"float32"}),
         supported_visitors=frozenset(),
+        semantic_contracts=frozenset({"polar_attention_v1"}),
     ),
     ExecutionAnchor(
         kind=AnchorKind.RECURRENT_SCAN,
@@ -613,12 +643,14 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
         name="urm.unified.k1.softmax_reference.v1",
         backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
         supported_visitors=frozenset(),
+        semantic_contracts=frozenset({"normalized_softmax_attention_v1"}),
     ),
     ExecutionAnchor(
         kind=AnchorKind.ATTENTION,
         name=NATIVE_K1_ONLINE_SOFTMAX_ANCHOR_NAME,
         backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
         supported_visitors=frozenset(),
+        semantic_contracts=frozenset({"normalized_softmax_attention_v1"}),
     ),
     ExecutionAnchor(
         kind=AnchorKind.RECURRENT_SCAN,
