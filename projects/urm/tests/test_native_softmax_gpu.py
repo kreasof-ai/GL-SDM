@@ -9,7 +9,7 @@ pytest.importorskip("triton")
 
 from urm.backends.triton.k1.online import execute_online_softmax
 from urm.compiler.mixer import MixerBackend, compile_mixer
-from urm.frontend.recipes import softmax_attention_spec
+from urm.compiler.mixer import softmax_attention_spec
 
 
 def _dtype_cases():

@@ -20,7 +20,7 @@ from torch.nn.attention import SDPBackend, sdpa_kernel
 from measurement import quantile
 from provenance import provenance, write_artifact
 from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
-from urm.frontend.recipes import named_mixer_recipe
+from benchmarks.recipe_catalog import load_kernel_recipe
 
 EXPECTED_FLASH_REVISION = "1bda8f9290cd48d030f1516f0e680cd464ef3554"
 RECIPES = ("mha", "mqa", "gqa", "mla_attention_core")
@@ -245,7 +245,7 @@ def run(
         }
         plan_started = time.perf_counter()
         plan = compile_mixer(
-            named_mixer_recipe(recipe),
+            load_kernel_recipe(recipe),
             backend=MixerBackend.LIBRARY,
             intent=MixerIntent.TRAINING,
             dtype="bfloat16",

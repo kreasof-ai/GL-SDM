@@ -21,7 +21,7 @@ from urm.compiler.mixer import (
     MixerIntent,
     compile_mixer,
 )
-from urm.frontend.recipes import sparse_delta_spec
+from urm.compiler.mixer import sparse_delta_spec
 
 EXPECTED_SDM_REVISION = "183e7df809131b80ad4393741029d0f20fc3640b"
 DTYPES = (torch.float32, torch.bfloat16)

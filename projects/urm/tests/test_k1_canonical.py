@@ -22,7 +22,7 @@ pytest.importorskip("triton")
 
 from urm.compiler.select.anchors import NATIVE_K1_ONLINE_SOFTMAX_ANCHOR_NAME
 from urm.compiler.mixer import CompiledMixerPlan
-from urm.frontend.recipes import named_mixer_recipe
+from benchmarks.recipe_catalog import load_kernel_recipe
 from urm.ir.graph import MixerBackend, MixerIntent
 from urm.backends.reference.numpy.graph import execute_canonical
 
@@ -34,7 +34,7 @@ _B, _T, _H, _K, _V = 1, 5, 2, 4, 4
 
 
 def _native_plan(recipe_name: str) -> CompiledMixerPlan:
-    recipe = named_mixer_recipe(recipe_name)
+    recipe = load_kernel_recipe(recipe_name)
     return CompiledMixerPlan(
         spec=recipe.spec,
         intent=MixerIntent.INFERENCE,

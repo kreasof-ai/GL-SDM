@@ -19,7 +19,7 @@ from measurement import quantile
 from provenance import provenance, write_artifact
 from benchmarks.comparators.fla_gated_delta import fla_version
 from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
-from urm.frontend.recipes import named_mixer_recipe
+from benchmarks.recipe_catalog import load_kernel_recipe
 
 EXPECTED_FLA_REVISION = "864a87f6ce5be8828bef81eb22baafd41937cdf2"
 BATCH, SEQUENCE, HEADS, KEY_DIM, VALUE_DIM = 2, 64, 2, 32, 16
@@ -229,7 +229,7 @@ def run(pairs: int, warmup: int, output_path: Path) -> None:
     source, revision, source_hashes = _source_identity()
     operands = _inputs(seed=51051)
     plan_start = time.perf_counter()
-    recipe = named_mixer_recipe("mom_selected_memory_core")
+    recipe = load_kernel_recipe("mom_selected_memory_core")
     library_plan = compile_mixer(
         recipe,
         backend=MixerBackend.LIBRARY,

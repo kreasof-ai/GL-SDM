@@ -18,7 +18,7 @@ from measurement import quantile
 from provenance import provenance, write_artifact
 from benchmarks.comparators.fla_gated_delta import fla_version
 from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
-from urm.frontend.recipes import named_mixer_recipe
+from benchmarks.recipe_catalog import compile_named_recipe, load_kernel_recipe
 
 EXPECTED_FLA_REVISION = "864a87f6ce5be8828bef81eb22baafd41937cdf2"
 BATCH, CHUNK_SIZE, HEADS, DIM = 1, 8, 2, 16
@@ -99,7 +99,7 @@ def _direct(values: dict[str, torch.Tensor]):
 
 
 def _compiled(plan, values: dict[str, torch.Tensor]):
-    return plan.execute(**values).output
+    return plan.execute(**values)["output"]
 
 
 def _loss(output: torch.Tensor) -> torch.Tensor:
@@ -225,15 +225,11 @@ def run(pairs: int, warmup: int, output_path: Path) -> None:
     )
     operands = _inputs(seed=66066)
     build_start = time.perf_counter()
-    recipe = named_mixer_recipe("cat_attention_core")
-    library_plan = compile_mixer(
-        recipe,
-        backend=MixerBackend.LIBRARY,
-        intent=MixerIntent.TRAINING,
-        dtype="bfloat16",
+    library_plan = compile_named_recipe(
+        "cat_attention_core", target="library", intent="training"
     )
-    reference_plan = compile_mixer(
-        recipe, intent=MixerIntent.TRAINING, dtype="bfloat16"
+    reference_plan = compile_named_recipe(
+        "cat_attention_core", target="reference", intent="training"
     )
     plan_build_ms = (time.perf_counter() - build_start) * 1000
     direct = _direct

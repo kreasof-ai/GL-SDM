@@ -25,7 +25,6 @@ from urm.frontend.recipes import (
     load_kernel_recipe_document,
     load_kernel_recipe_file,
 )
-from urm.frontend.recipes import MIXER_RECIPE_NAMES, named_mixer_recipe
 
 ROOT = Path(__file__).resolve().parents[1]
 KERNELS = ROOT / "recipes" / "kernels"
@@ -40,9 +39,16 @@ def _documents() -> dict[str, dict]:
     }
 
 
-def test_every_catalog_recipe_has_a_json_document() -> None:
-    on_disk = {p.stem for p in KERNELS.glob("*.json")}
-    assert on_disk == set(MIXER_RECIPE_NAMES)
+def test_every_on_disk_document_loads_through_its_schema_loader() -> None:
+    """The JSON files are the catalog: every document must load."""
+    loaded_v1 = load_kernel_recipe_dir(KERNELS)
+    for name, doc in _documents().items():
+        if doc.get("schema_version") == 2:
+            graph = load_graph_recipe_document(doc)
+            assert graph.name == doc["name"]
+        else:
+            assert name in loaded_v1
+            assert loaded_v1[doc["name"]].spec.name == doc["name"]
 
 
 def test_every_document_validates_against_its_declared_schema() -> None:
@@ -55,13 +61,12 @@ def test_every_document_validates_against_its_declared_schema() -> None:
 
 
 def test_v1_spec_dumps_roundtrip_the_catalog_specs() -> None:
-    docs = _documents()
-    v1_names = [n for n, d in docs.items() if d.get("schema_version") != 2]
-    loaded = load_kernel_recipe_dir(KERNELS)
-    for name in v1_names:
-        assert (
-            loaded[name].spec.to_dict() == named_mixer_recipe(name).spec.to_dict()
-        ), name
+    """v1 loads are deterministic: two loads of the dir agree spec-for-spec."""
+    first = load_kernel_recipe_dir(KERNELS)
+    second = load_kernel_recipe_dir(KERNELS)
+    assert set(first) == set(second)
+    for name in first:
+        assert first[name].spec.to_dict() == second[name].spec.to_dict(), name
 
 
 def test_graph_documents_are_not_loadable_as_v1() -> None:

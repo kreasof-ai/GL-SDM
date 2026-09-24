@@ -30,7 +30,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "benchmarks"))
 
 import representation_coverage as rc  # noqa: E402
 
-from urm.frontend.recipes import named_mixer_recipe  # noqa: E402
+from benchmarks.recipe_catalog import load_kernel_recipe  # noqa: E402
 from urm.backends.reference.numpy import nonlinear_recurrence as nl  # noqa: E402
 from urm.backends.triton.k2 import nonlinear as native  # noqa: E402
 
@@ -51,7 +51,7 @@ def _cuda_operands(operand_dict):
 
 
 def _operands_for(recipe_name, seed=0):
-    spec = named_mixer_recipe(recipe_name).spec
+    spec = load_kernel_recipe(recipe_name).spec
     return rc._rng_operands(spec, seed=seed)
 
 

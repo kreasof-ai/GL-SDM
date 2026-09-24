@@ -45,7 +45,7 @@ class RecipeMixerGLA:
         import torch.nn as nn
 
         from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
-        from urm.frontend.recipes import named_mixer_recipe
+        from benchmarks.recipe_catalog import load_kernel_recipe
 
         class _M(nn.Module):
             def __init__(self):
@@ -56,7 +56,7 @@ class RecipeMixerGLA:
                 self.qkv = nn.Linear(c, 3 * h * d, bias=config.bias)
                 self.decay = nn.Linear(c, h * d, bias=config.bias)
                 self.output = nn.Linear(h * d, c, bias=config.bias)
-                recipe = named_mixer_recipe(recipe_name)
+                recipe = load_kernel_recipe(recipe_name)
                 self._plan = compile_mixer(
                     recipe, intent=MixerIntent.TRAINING,
                     backend=MixerBackend.NATIVE, dtype=dtype,

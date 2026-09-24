@@ -114,11 +114,11 @@ def test_k1_decode_matches_full_history():
 def test_open_decode_session_dispatch():
     """The plan exposes a decode session for the native K2/K3 families."""
     from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
-    from urm.frontend.recipes import named_mixer_recipe
+    from benchmarks.recipe_catalog import load_kernel_recipe
     from urm.runtime.state import MatrixStateDecodeSession
 
     plan = compile_mixer(
-        named_mixer_recipe("gated_delta_net"),
+        load_kernel_recipe("gated_delta_net"),
         backend=MixerBackend.NATIVE,
         intent=MixerIntent.INFERENCE,
         dtype="bfloat16",

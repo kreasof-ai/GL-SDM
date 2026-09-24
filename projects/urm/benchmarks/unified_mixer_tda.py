@@ -14,7 +14,7 @@ from measurement import quantile
 from provenance import provenance, write_artifact
 from benchmarks.comparators.tda import tda_attention_adapter, tda_source_identity
 from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
-from urm.frontend.recipes import named_mixer_recipe
+from benchmarks.recipe_catalog import load_kernel_recipe
 
 BATCH, SEQUENCE, HEADS, DIM = 1, 64, 2, 32
 NAMES = ("query_a", "query_b", "key_a", "key_b", "value")
@@ -155,7 +155,7 @@ def run(pairs: int, warmup: int, output_path: Path):
         raise RuntimeError("the TDA unified mixer profile requires CUDA")
     identity = tda_source_identity()
     values = _inputs(68068)
-    recipe = named_mixer_recipe("tda_attention_core")
+    recipe = load_kernel_recipe("tda_attention_core")
     build_start = time.perf_counter()
     library_plan = compile_mixer(
         recipe, backend=MixerBackend.LIBRARY, intent=MixerIntent.TRAINING,

@@ -25,7 +25,11 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from urm.frontend.recipes import MIXER_RECIPE_NAMES, named_mixer_recipe
+from benchmarks.recipe_catalog import (
+    is_graph_recipe,
+    kernel_recipe_names,
+    load_kernel_recipe,
+)
 from urm.ir.graph import MixerKernelFamily
 from urm.backends.reference.numpy.graph import UnderspecifiedComposition, execute_canonical
 
@@ -360,7 +364,7 @@ def _reference_execute(spec, operands):
 
     from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
 
-    recipe = named_mixer_recipe(spec.name)
+    recipe = load_kernel_recipe(spec.name)
     plan = compile_mixer(
         recipe, intent=MixerIntent.TRAINING, backend=MixerBackend.REFERENCE,
         dtype="float32",
@@ -381,7 +385,7 @@ def _reference_execute(spec, operands):
 
 
 def measure_recipe(name, seed=0) -> RecipeCoverage:
-    recipe = named_mixer_recipe(name)
+    recipe = load_kernel_recipe(name)
     spec = recipe.spec
     family = spec.family.name
     operands = _rng_operands(spec, seed=seed)
@@ -445,7 +449,11 @@ def measure_recipe(name, seed=0) -> RecipeCoverage:
 
 
 def measure_coverage(names=None, seed=0) -> list[RecipeCoverage]:
-    names = list(MIXER_RECIPE_NAMES) if names is None else list(names)
+    # v1 kernel fragments lower into the canonical core; v2 graph documents
+    # are measured through the graph path instead.
+    if names is None:
+        names = [n for n in kernel_recipe_names() if not is_graph_recipe(n)]
+    names = list(names)
     return [measure_recipe(name, seed=seed) for name in names]
 
 

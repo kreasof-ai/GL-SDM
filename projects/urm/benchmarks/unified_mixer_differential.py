@@ -17,7 +17,7 @@ import torch
 from measurement import quantile
 from provenance import provenance, write_artifact
 from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
-from urm.frontend.recipes import named_mixer_recipe
+from benchmarks.recipe_catalog import load_kernel_recipe
 
 EXPECTED_REVISION = "50224e387211f15ac6a3b2685730b9a0c850f145"
 BATCH, SEQUENCE, HEADS, DIM = 1, 64, 2, 16
@@ -213,7 +213,7 @@ def run(pairs: int, warmup: int, output_path: Path):
     coefficient = _lambda(layer)
     values = _inputs(67067)
     build_start = time.perf_counter()
-    recipe = named_mixer_recipe("differential_attention_core")
+    recipe = load_kernel_recipe("differential_attention_core")
     library_plan = compile_mixer(
         recipe, backend=MixerBackend.LIBRARY, intent=MixerIntent.TRAINING,
         dtype="float32",

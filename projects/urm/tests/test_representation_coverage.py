@@ -20,7 +20,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "benchmarks"))
 
 import representation_coverage as rc  # noqa: E402
-from urm.frontend.recipes import MIXER_RECIPE_NAMES, named_mixer_recipe  # noqa: E402
+from benchmarks.recipe_catalog import kernel_recipe_names, load_kernel_recipe  # noqa: E402
 from urm.backends.reference.numpy.graph import UnderspecifiedComposition, execute_canonical  # noqa: E402
 
 # Recipes verified to lower into a canonical core and match their independent
@@ -28,14 +28,10 @@ from urm.backends.reference.numpy.graph import UnderspecifiedComposition, execut
 VERIFIED = {
     "abc_core",
     "based_attention_core",
-    "cat_attention_core",
     "comba_core",
-    "conformer_attention_core",
     "delta_net",
     "deltaformer_attention_core",
     "differential_attention_core",
-    "dsa_attention_core",
-    "foveal_attention_core",
     "gated_delta_net",
     "gated_delta_product_core",
     "gated_oja_core",
@@ -43,14 +39,12 @@ VERIFIED = {
     "generalized_delta_dplr_core",
     "generalized_delta_iplr_core",
     "gla",
-    "gqa",
     "gru_core",
     "gsa_core",
     "h3_ssm_fft_core",
     "hgrn2_ssm_core",
     "hgrn_ssm_core",
     "hla_second_order_core",
-    "hopfield_attention_core",
     "hyena_fftconv_core",
     "kata_attention_core",
     "kda_core",
@@ -63,14 +57,9 @@ VERIFIED = {
     "mamba2_ssm_core",
     "mamba3_siso_core",
     "mesa_net_core",
-    "mha",
-    "mla_attention_core",
     "mom_selected_memory_core",
     "momentum_delta_core",
-    "mqa",
-    "nsa_selected_attention_core",
     "parallax_attention_core",
-    "pattention_core",
     "rebased_attention_core",
     "retention_core",
     "rnn_core",
@@ -78,13 +67,9 @@ VERIFIED = {
     "rwkv4_memory_core",
     "rwkv6_memory_core",
     "rwkv7_transition_core",
-    "samba_attention_core",
     "simple_gla",
-    "sparse_attention_core",
-    "sparse_delta_memory",
     "tda_attention_core",
     "titans_linear_memory_core",
-    "tpa_attention_core",
     "ttt_linear_core",
     "tucker_attention_core",
     "wall_attention_core",
@@ -115,7 +100,7 @@ def test_lowered_recipe_matches_independent_equation(name):
 
 def test_recipe_renaming_does_not_change_execution():
     """Two specs identical except for name must execute identically."""
-    spec = named_mixer_recipe("gated_delta_net").spec
+    spec = load_kernel_recipe("gated_delta_net").spec
     renamed = dataclasses.replace(spec, name="renamed_gated_delta_clone")
     rng = np.random.default_rng(0)
     operands = rc._rng_operands(spec, seed=0)
@@ -133,8 +118,12 @@ def test_different_equations_have_distinguishable_representations():
     share a semantic signature.
     """
     signatures = {}
-    for name in MIXER_RECIPE_NAMES:
-        spec = named_mixer_recipe(name).spec
+    for name in kernel_recipe_names():
+        from benchmarks.recipe_catalog import is_graph_recipe
+
+        if is_graph_recipe(name):
+            continue  # v2 graph documents carry typed nodes, not a v1 spec
+        spec = load_kernel_recipe(name).spec
         signatures.setdefault(spec.semantic_signature(), []).append(name)
     # Any recipes still sharing a signature must be genuine aliases (the same
     # equation), never two different equations silently sharing an execution.
@@ -158,7 +147,7 @@ def test_different_equations_have_distinguishable_representations():
 def test_former_collision_group_is_distinguished_and_covered(name):
     """The IR extension makes each former collision-group equation distinguishable
     (a distinct recurrence_operator) and coverable by its canonical executor."""
-    spec = named_mixer_recipe(name).spec
+    spec = load_kernel_recipe(name).spec
     from urm.ir.graph import RecurrenceOperator
 
     assert spec.recurrence_operator is not RecurrenceOperator.PLAIN

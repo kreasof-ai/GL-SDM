@@ -26,8 +26,7 @@ from typing import Any
 
 from urm.frontend.recipes import (
     MixerRecipe,
-    named_mixer_recipe as _named_mixer_recipe,
-    softmax_attention_spec as _softmax_attention_spec,
+    load_kernel_recipe_file as _load_kernel_recipe_file,
 )
 from urm.ir.graph import (
     DecayGranularity,
@@ -413,6 +412,85 @@ class CompiledMixerPlan:
             "K1 attention decode uses execute_online_softmax_decode directly "
             "(the KV cache is the persistent state)"
         )
+
+
+def softmax_attention_spec(
+    name: str = "softmax_attention",
+    *,
+    causal: bool = True,
+    scale: float | None = None,
+    score_bias: bool = False,
+    requires_attention_mask: bool = False,
+    operation: K1Operation = K1Operation.SOFTMAX,
+) -> UnifiedMixerSpec:
+    return UnifiedMixerSpec(
+        name=name,
+        family=MixerKernelFamily.SOFTMAX,
+        causal=causal,
+        attention_scale=scale,
+        accepts_score_bias=score_bias,
+        requires_attention_mask=requires_attention_mask,
+        k1_operation=operation,
+    )
+
+
+def linear_attention_spec(
+    name: str = "linear_attention",
+    *,
+    feature_map: FeatureMap = FeatureMap.ELU_PLUS_ONE,
+    normalized: bool = True,
+) -> UnifiedMixerSpec:
+    return UnifiedMixerSpec(
+        name=name,
+        family=MixerKernelFamily.RECURRENCE,
+        update_rule=StateUpdateRule.ADDITIVE,
+        normalizer=(StateNormalizer.QUERY_KEY if normalized else StateNormalizer.NONE),
+        feature_map=feature_map,
+    )
+
+
+def delta_rule_spec(
+    name: str = "delta_rule",
+    *,
+    decay: DecayGranularity = DecayGranularity.NONE,
+    read_timing: ReadTiming = ReadTiming.AFTER_UPDATE,
+) -> UnifiedMixerSpec:
+    return UnifiedMixerSpec(
+        name=name,
+        family=MixerKernelFamily.RECURRENCE,
+        update_rule=StateUpdateRule.DELTA,
+        decay=decay,
+        read_timing=read_timing,
+    )
+
+
+def diagonal_ssm_spec(
+    name: str = "diagonal_ssm",
+    *,
+    step_size_discretization: bool = False,
+    hgrn: bool = False,
+) -> UnifiedMixerSpec:
+    return UnifiedMixerSpec(
+        name=name,
+        family=MixerKernelFamily.RECURRENCE,
+        recurrent_layout=RecurrentLayout.DIAGONAL,
+        update_rule=StateUpdateRule.ADDITIVE,
+        decay=DecayGranularity.ELEMENTWISE,
+        step_size_discretization=step_size_discretization,
+        diagonal_hgrn=hgrn,
+    )
+
+
+def sparse_delta_spec(
+    name: str = "sparse_delta_memory",
+    *,
+    read_timing: ReadTiming = ReadTiming.AFTER_UPDATE,
+) -> UnifiedMixerSpec:
+    return UnifiedMixerSpec(
+        name=name,
+        family=MixerKernelFamily.SPARSE_DELTA,
+        read_timing=read_timing,
+    )
 
 
 def compile_mixer(
@@ -1081,14 +1159,22 @@ def compile_frontend_mixer(
     intent: MixerIntent | str = MixerIntent.INFERENCE,
     backend: MixerBackend | str = MixerBackend.REFERENCE,
     dtype: str = "float32",
+    recipes_dir: Any,
 ) -> CompiledMixerPlan:
     """Lower the existing declarative ``MixerSpec`` into a kernel recipe.
 
     Only frontend contracts with a supported kernel equation are accepted.
-    Missing gate/projection inputs remain external runtime operands; unsupported
+    Named kernel recipes are loaded from the declarative JSON catalog in
+    ``recipes_dir`` (schema-v1 documents); family-shaped specs (dense/masked
+    attention, sparse-delta memory) are synthesized directly. Missing
+    gate/projection inputs remain external runtime operands; unsupported
     routing or state semantics decline with a concrete reason.
     """
+    from pathlib import Path
+
     from urm.frontend.spec import MixerSpec
+
+    recipes_dir = Path(recipes_dir)
 
     if not isinstance(spec, MixerSpec):
         raise TypeError("compile_frontend_mixer expects urm.frontend.MixerSpec")
@@ -1121,7 +1207,13 @@ def compile_frontend_mixer(
             raise ValueError(
                 "K3 requires page_size=1, ordered collisions and in-place recurrence"
             )
-        recipe_name = "sparse_delta_memory"
+        recipe = MixerRecipe(
+            architecture_ids=(),
+            spec=sparse_delta_spec(spec.name),
+            component_scope=f"{spec.name}: ordered sparse-slot decayed delta update and weighted read",
+            required_external_stages=("product-key route score generation",),
+        )
+        return compile_mixer(recipe, intent=intent, backend=backend, dtype=dtype)
     elif spec.source_domain.value == "parameter_block":
         if spec.normalization.value != "softmax":
             raise ValueError("K1 parameter contraction currently requires softmax")
@@ -1132,16 +1224,14 @@ def compile_frontend_mixer(
         if spec.sparse_attention is not None:
             if not spec.sparse_attention.exact_main_attention:
                 raise ValueError("approximate main attention has no K1 recipe")
-            recipe = _named_mixer_recipe("sparse_attention_core")
-            recipe = replace(
-                recipe,
+            recipe = MixerRecipe(
                 architecture_ids=(),
-                spec=replace(
-                    recipe.spec,
-                    name=spec.name,
-                    requires_attention_mask=True,
-                ),
+                spec=softmax_attention_spec(spec.name, requires_attention_mask=True),
                 component_scope=(f"{spec.name}: exact masked softmax attention core"),
+                required_external_stages=(
+                    "architecture-specific indexer/selection",
+                    "sparse traversal kernel",
+                ),
             )
             return compile_mixer(recipe, intent=intent, backend=backend, dtype=dtype)
         if spec.routing.value != "dense":
@@ -1150,7 +1240,7 @@ def compile_frontend_mixer(
             )
         recipe = MixerRecipe(
             architecture_ids=(),
-            spec=_softmax_attention_spec(spec.name),
+            spec=softmax_attention_spec(spec.name),
             component_scope="dense softmax attention core from frontend MixerSpec",
             required_external_stages=("Q/K/V projections and positional transforms",),
         )
@@ -1160,7 +1250,7 @@ def compile_frontend_mixer(
             f"source domain {spec.source_domain.value!r} has no K1/K2/K3 recipe"
         )
 
-    recipe = _named_mixer_recipe(recipe_name)
+    recipe = _load_kernel_recipe_file(recipes_dir / f"{recipe_name}.json")
     recipe = replace(
         recipe,
         spec=replace(recipe.spec, name=spec.name),
@@ -6081,6 +6171,11 @@ def _compile_native_k3_binding(
 
 __all__ = [
     "CompiledMixerPlan",
+    "delta_rule_spec",
+    "diagonal_ssm_spec",
+    "linear_attention_spec",
+    "softmax_attention_spec",
+    "sparse_delta_spec",
     "DecayGranularity",
     "FeatureMap",
     "MixerBackend",

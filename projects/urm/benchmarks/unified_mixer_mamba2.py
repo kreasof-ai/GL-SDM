@@ -19,7 +19,7 @@ from mamba_ssm.ops.triton.ssd_combined import mamba_chunk_scan_combined
 from measurement import quantile
 from provenance import provenance, write_artifact
 from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
-from urm.frontend.recipes import named_mixer_recipe
+from benchmarks.recipe_catalog import load_kernel_recipe
 
 EXPECTED_MAMBA_REVISION = "e9594ce1c732d97440f0332fdc43170a2294dbfa"
 SHAPE = {"batch": 1, "sequence": 256, "heads": 4, "head_dim": 16, "groups": 1, "state_dim": 64}
@@ -211,7 +211,7 @@ def run(pairs: int, warmup: int, output_path: Path) -> None:
     }
     plan_started = time.perf_counter()
     plan = compile_mixer(
-        named_mixer_recipe("mamba2_ssm_core"),
+        load_kernel_recipe("mamba2_ssm_core"),
         backend=MixerBackend.LIBRARY,
         intent=MixerIntent.TRAINING,
         dtype="float32",

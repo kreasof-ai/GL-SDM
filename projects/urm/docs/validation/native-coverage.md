@@ -7,7 +7,7 @@ adapter does not establish that URM computes these operations natively. A
 unified generator that merely dispatches would be a thin wrapper - native
 coverage is what distinguishes a generator from a wrapper.
 
-**62 of 74 named recipes compile to a native kernel (83%).** The remaining 12 decline to
+**64 of 76 named recipes compile to a native kernel (84%).** The remaining 12 decline to
 the reference or an upstream adapter.
 
 ## Natively generated (URM computes these)
@@ -21,6 +21,7 @@ unified-generator value proposition.
 | urm_native_matrix_state_recurrence_v1 (`urm_native_matrix_state_recurrence_v1`) | `abc_core`, `based_attention_core`, `comba_core`, `delta_net`, `gated_delta_net`, `gated_delta_product_core`, `gated_oja_core`, `gdn2_core`, `generalized_delta_dplr_core`, `generalized_delta_iplr_core`, `gla`, `gru_core`, `gsa_core`, `h3_ssm_fft_core`, `hgrn2_ssm_core`, `hla_second_order_core`, `hyena_fftconv_core`, `kda_core`, `lightnet_gla_core`, `lightning_attention_core`, `linear_attention`, `m2rnn_core`, `mamba2_ssm_core`, `mamba3_siso_core`, `mesa_net_core`, `mom_selected_memory_core`, `momentum_delta_core`, `rebased_attention_core`, `retention_core`, `rnn_core`, `rodimus_gla_core`, `rwkv4_memory_core`, `rwkv6_memory_core`, `rwkv7_transition_core`, `simple_gla`, `titans_linear_memory_core`, `ttt_linear_core` | 37 |
 | K1 online softmax (`urm_native_k1_online_softmax_v1`) | `cat_attention_core`, `conformer_attention_core`, `deltaformer_attention_core`, `differential_attention_core`, `dsa_attention_core`, `foveal_attention_core`, `gqa`, `hopfield_attention_core`, `kata_attention_core`, `longformer_attention_core`, `mha`, `mla_attention_core`, `mqa`, `nsa_selected_attention_core`, `parallax_attention_core`, `pattention_core`, `samba_attention_core`, `sparse_attention_core`, `tda_attention_core`, `tpa_attention_core`, `tucker_attention_core`, `wall_attention_core` | 22 |
 | K2 diagonal recurrence (`urm_native_diagonal_recurrence_v1`) | `hgrn_ssm_core`, `mamba1_ssm_core` | 2 |
+| urm_native_sparse_route_selection_v0 (`urm_native_sparse_route_selection_v0`) | `sparse_delta_memory`, `sparse_delta_memory` | 2 |
 | K3 sparse state (`urm_native_sparse_state_mixer_v0`) | `sparse_delta_memory` | 1 |
 
 ## Dispatch/reference only (no native kernel yet)

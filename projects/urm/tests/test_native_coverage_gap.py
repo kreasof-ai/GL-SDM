@@ -36,7 +36,7 @@ from urm.compiler.mixer import (  # noqa: E402
     MixerIntent,
     compile_mixer,
 )
-from urm.frontend.recipes import named_mixer_recipe  # noqa: E402
+from benchmarks.recipe_catalog import load_kernel_recipe  # noqa: E402
 from urm.backends.reference.numpy.graph import execute_canonical  # noqa: E402
 
 # fp32 native kernels vs the fp64 canonical core. The kernels accumulate in
@@ -160,7 +160,7 @@ def _state_rel_errs(native_result, canonical) -> list[float]:
 
 
 def _run_native_against_canonical(name: str, seed: int = 0):
-    recipe = named_mixer_recipe(name)
+    recipe = load_kernel_recipe(name)
     spec = recipe.spec
     operands = rc._rng_operands(spec, seed=seed)
     canonical = execute_canonical(spec, **_to_canonical_operands(operands))
@@ -208,7 +208,7 @@ GRAD_REL_TOL = 2e-2
 
 def _native_input_grads(name: str, loss_seed: np.ndarray, seed: int = 0):
     """Native-backend input gradients (autograd through the executor)."""
-    recipe = named_mixer_recipe(name)
+    recipe = load_kernel_recipe(name)
     operands = rc._rng_operands(recipe.spec, seed=seed)
     plan = compile_mixer(
         recipe,
@@ -246,7 +246,7 @@ def _native_input_grads(name: str, loss_seed: np.ndarray, seed: int = 0):
 
 def _reference_input_grads(name: str, loss_seed: np.ndarray, seed: int = 0):
     """REFERENCE-backend input gradients (the trusted canonical gradient)."""
-    recipe = named_mixer_recipe(name)
+    recipe = load_kernel_recipe(name)
     operands = rc._rng_operands(recipe.spec, seed=seed)
     plan = compile_mixer(
         recipe,
@@ -300,7 +300,7 @@ def test_materializing_k1_recipe_native_backward(name):
     The native input gradients must match the REFERENCE-backend gradient (the
     trusted canonical gradient) on the recipe's coverage operands.
     """
-    recipe = named_mixer_recipe(name)
+    recipe = load_kernel_recipe(name)
     spec = recipe.spec
     operands = rc._rng_operands(spec, seed=0)
     canonical = execute_canonical(spec, **_to_canonical_operands(operands))
@@ -344,7 +344,7 @@ def test_k2_recurrence_recipe_native_backward(name):
     Function with a differentiable-recomputation backward; its input gradients
     must match the REFERENCE-backend gradient on the recipe's coverage operands.
     """
-    recipe = named_mixer_recipe(name)
+    recipe = load_kernel_recipe(name)
     spec = recipe.spec
     operands = rc._rng_operands(spec, seed=0)
     canonical = execute_canonical(spec, **_to_canonical_operands(operands))
@@ -393,7 +393,7 @@ def test_matrix_state_variant_native_backward(name):
     recipe's coverage operands, and the plan must report the backward as
     supported (``backward_supported`` metadata + a non-None ``grad_fn``).
     """
-    recipe = named_mixer_recipe(name)
+    recipe = load_kernel_recipe(name)
     spec = recipe.spec
     operands = rc._rng_operands(spec, seed=0)
     canonical = execute_canonical(spec, **_to_canonical_operands(operands))
@@ -408,22 +408,21 @@ def test_matrix_state_variant_native_backward(name):
 
 
 def test_all_covered_recipes_run_natively():
-    """The full check: every covered K1/K2 recipe runs under NATIVE.
+    """The full check: every covered recipe runs under NATIVE.
 
-    All 62 representation-covered recipes compile under NATIVE; the 61 K1/K2
-    recipes also execute and match the canonical core. The one K3 recipe
-    (``sparse_delta_memory``) compiles natively but its native anchor certifies
-    routes (strictly-increasing unique addresses), which the random coverage
-    operands do not satisfy - a pre-existing K3-native route constraint outside
-    this K1/K2 wiring scope.
+    The 47 representation-covered v1 kernel fragments compile under NATIVE and
+    execute against the canonical core; the 15 v2 graph recipes compile through
+    the graph path's native target (their execution coverage lives in the graph
+    gate tests and the K1/K3 native suites). The K3 recipe's native anchor
+    certifies routes (strictly-increasing unique addresses), which random
+    coverage operands do not satisfy — a pre-existing K3-native route
+    constraint outside this wiring scope.
     """
     covered = _covered_recipes()
-    assert len(covered) == 62, f"expected 62 covered recipes, got {len(covered)}"
+    assert len(covered) == 47, f"expected 47 covered v1 recipes, got {len(covered)}"
     failures = {}
     for name in covered:
-        recipe = named_mixer_recipe(name)
-        if recipe.spec.family.name == "SPARSE_DELTA":
-            continue  # K3 native route certification; see the docstring.
+        recipe = load_kernel_recipe(name)
         try:
             output_rel, state_rels = _run_native_against_canonical(name)
         except Exception as exc:  # noqa: BLE001 - report every failure together

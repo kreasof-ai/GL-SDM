@@ -22,15 +22,46 @@ from urm.compiler.mixer import (
     compile_frontend_mixer,
     compile_mixer,
 )
-from urm.frontend.recipes import (
-    MIXER_RECIPE_NAMES,
+from benchmarks.recipe_catalog import (
+    KERNEL_RECIPES_DIR,
+    kernel_recipe_names,
+    load_kernel_recipe,
+    load_recipe,
+)
+from urm.compiler.mixer import (
     delta_rule_spec,
     diagonal_ssm_spec,
     linear_attention_spec,
-    named_mixer_recipe,
     softmax_attention_spec,
     sparse_delta_spec,
 )
+
+
+def _compile_graph_recipe(name, *, target, intent, dtype=None):
+    """Compile a schema-v2 recipe through the public graph path."""
+    from urm.compiler.normalize.graph import normalize_graph_document
+    from urm.compiler.pipeline import CompilationIntent, compile_graph
+    from urm.frontend.recipes import load_graph_recipe_file
+
+    recipe = load_graph_recipe_file(KERNEL_RECIPES_DIR / f"{name}.json")
+    program = normalize_graph_document(recipe.document)
+    return compile_graph(
+        program, target=target, intent=CompilationIntent(intent)
+    )
+
+
+def _v1_kernel_recipe_names():
+    """Legacy-path coverage iterates schema-v1 kernel fragments only; v2 graph
+    documents are exercised through the graph path."""
+    from benchmarks.recipe_catalog import is_graph_recipe
+
+    return tuple(n for n in kernel_recipe_names() if not is_graph_recipe(n))
+
+
+def _v2_graph_recipe_names():
+    from benchmarks.recipe_catalog import is_graph_recipe
+
+    return tuple(n for n in kernel_recipe_names() if is_graph_recipe(n))
 
 
 def test_compiler_selects_one_of_the_three_serializable_families():
@@ -66,7 +97,7 @@ def test_backend_selection_is_explicit_and_family_checked():
     assert fla_linear.anchor == "fla_chunk_linear_attention_adapter"
     assert (
         compile_mixer(
-            named_mixer_recipe("simple_gla"),
+            load_kernel_recipe("simple_gla"),
             backend="library",
             dtype="bfloat16",
         ).anchor
@@ -74,19 +105,19 @@ def test_backend_selection_is_explicit_and_family_checked():
     )
     assert (
         compile_mixer(
-            named_mixer_recipe("gla"), backend="library", dtype="bfloat16"
+            load_kernel_recipe("gla"), backend="library", dtype="bfloat16"
         ).anchor
         == "fla_fused_recurrent_gla_decode_adapter"
     )
     assert (
         compile_mixer(
-            named_mixer_recipe("simple_gla"), backend="library", dtype="float32"
+            load_kernel_recipe("simple_gla"), backend="library", dtype="float32"
         ).anchor
         == "fla_chunk_simple_gla_adapter"
     )
     assert (
         compile_mixer(
-            named_mixer_recipe("gla"), backend="library", dtype="float32"
+            load_kernel_recipe("gla"), backend="library", dtype="float32"
         ).anchor
         == "fla_chunk_gla_adapter"
     )
@@ -106,7 +137,7 @@ def test_backend_selection_is_explicit_and_family_checked():
 def test_atma_gated_delta_decode_is_a_pinned_forward_only_k2_anchor():
     from urm.compiler.common.diagnostics import CompilerError
 
-    recipe = named_mixer_recipe("atma_gated_delta_decode_core")
+    recipe = load_kernel_recipe("atma_gated_delta_decode_core")
     plan = compile_mixer(
         recipe,
         backend=MixerBackend.LIBRARY,
@@ -129,7 +160,7 @@ def test_atma_gated_delta_decode_is_a_pinned_forward_only_k2_anchor():
 
 def test_atma_selection_is_semantic_and_independent_of_recipe_name():
     torch = _torch()
-    recipe = named_mixer_recipe("atma_gated_delta_decode_core")
+    recipe = load_kernel_recipe("atma_gated_delta_decode_core")
     renamed = replace(recipe.spec, name="renamed_decode_operation")
     assert recipe.spec.semantic_signature() == renamed.semantic_signature()
     original_plan = compile_mixer(recipe.spec, backend=MixerBackend.LIBRARY)
@@ -166,7 +197,7 @@ def test_k1_operation_name_does_not_change_math_or_backend_eligibility():
     torch = _torch()
     from urm.ir import K1Operation
 
-    standard = named_mixer_recipe("mha").spec
+    standard = softmax_attention_spec("mha", score_bias=True)
     renamed_standard = replace(standard, name="wall_attention_core")
     assert renamed_standard.k1_operation is K1Operation.SOFTMAX
     assert standard.semantic_signature() == renamed_standard.semantic_signature()
@@ -202,7 +233,7 @@ def test_k1_operation_name_does_not_change_math_or_backend_eligibility():
     actual = compile_mixer(renamed_standard).execute(query=q, key=k, value=v).output
     torch.testing.assert_close(actual, expected)
 
-    polar = named_mixer_recipe("polar_attention_core").spec
+    polar = load_kernel_recipe("polar_attention_core").spec
     renamed_polar = replace(polar, name="mha")
     assert renamed_polar.k1_operation is K1Operation.POLAR
     assert not renamed_polar.is_normalized_softmax_attention()
@@ -230,7 +261,8 @@ def test_k1_operation_name_does_not_change_math_or_backend_eligibility():
 
 def test_native_sparse_k1_requires_the_explicit_route_mask():
     plan = compile_mixer(
-        named_mixer_recipe("sparse_attention_core"), backend=MixerBackend.NATIVE
+        softmax_attention_spec("sparse_attention_core", requires_attention_mask=True),
+        backend=MixerBackend.NATIVE,
     )
     with pytest.raises(ValueError, match="requires a precomputed attention_mask"):
         plan.execute()
@@ -261,7 +293,7 @@ _NAME_DEPENDENT_RECIPES_UNFINISHED = frozenset(
 )
 
 
-@pytest.mark.parametrize("recipe_name", sorted(MIXER_RECIPE_NAMES))
+@pytest.mark.parametrize("recipe_name", sorted(_v1_kernel_recipe_names()))
 def test_recipe_anchor_selection_is_name_invariant(recipe_name):
     """Renaming a recipe must not change the selected anchor or its rejection.
 
@@ -276,7 +308,7 @@ def test_recipe_anchor_selection_is_name_invariant(recipe_name):
             f"{recipe_name} is still dispatched by spec.name (unfinished); "
             "see _NAME_DEPENDENT_RECIPES_UNFINISHED"
         )
-    spec = named_mixer_recipe(recipe_name).spec
+    spec = load_kernel_recipe(recipe_name).spec
     renamed = replace(spec, name="zz_renamed_operation")
     assert spec.semantic_signature() == renamed.semantic_signature()
     for backend in (MixerBackend.REFERENCE, MixerBackend.LIBRARY, MixerBackend.NATIVE):
@@ -303,8 +335,8 @@ def test_name_dependent_recipes_are_explicitly_enumerated():
     fails until it is either fixed or explicitly marked unfinished.
     """
     actually_name_dependent = set()
-    for name in MIXER_RECIPE_NAMES:
-        spec = named_mixer_recipe(name).spec
+    for name in _v1_kernel_recipe_names():
+        spec = load_kernel_recipe(name).spec
         renamed = replace(spec, name="zz_renamed_operation")
         for backend in (MixerBackend.REFERENCE, MixerBackend.LIBRARY, MixerBackend.NATIVE):
             for dtype in ("float32", "bfloat16"):
@@ -346,9 +378,14 @@ def test_production_matrix_native_status_matches_compiler():
     }
     for workload in matrix["workloads"]:
         recipe = representative[workload["id"]]
-        spec = named_mixer_recipe(recipe).spec
         try:
-            compile_mixer(spec, backend=MixerBackend.NATIVE, dtype="float32")
+            from benchmarks.recipe_catalog import is_graph_recipe
+
+            if is_graph_recipe(recipe):
+                _compile_graph_recipe(recipe, target="native", intent="inference")
+            else:
+                spec = load_kernel_recipe(recipe).spec
+                compile_mixer(spec, backend=MixerBackend.NATIVE, dtype="float32")
             native_ok = True
         except Exception:  # noqa: BLE001 - any decline means no native candidate
             native_ok = False
@@ -468,7 +505,7 @@ def test_native_backend_declines_name_dependent_recipes(recipe_name):
             f"{recipe_name} now lowers into a validated native kernel; "
             "see _NATIVE_ACCEPTED_NAME_DEPENDENT"
         )
-    spec = named_mixer_recipe(recipe_name).spec
+    spec = load_kernel_recipe(recipe_name).spec
     for dtype in ("float32", "bfloat16"):
         with pytest.raises(Exception):
             compile_mixer(spec, backend=MixerBackend.NATIVE, dtype=dtype)
@@ -488,10 +525,12 @@ def test_missing_route_mask_diagnostic_does_not_require_torch():
     code = (
         "import sys\n"
         "sys.modules['torch'] = None\n"  # importing torch now raises ImportError
-        "from urm.compiler.mixer import MixerBackend, compile_mixer\n"
-        "from urm.frontend.recipes import named_mixer_recipe\n"
+        "from urm.compiler.mixer import (\n"
+        "    MixerBackend, compile_mixer, softmax_attention_spec,\n"
+        ")\n"
         "plan = compile_mixer(\n"
-        "    named_mixer_recipe('sparse_attention_core'), backend=MixerBackend.NATIVE\n"
+        "    softmax_attention_spec(requires_attention_mask=True),\n"
+        "    backend=MixerBackend.NATIVE,\n"
         ")\n"
         "try:\n"
         "    plan.execute()\n"
@@ -531,7 +570,7 @@ def test_atma_decode_dimension_contract_matches_both_pinned_value_tiles():
 def test_atma_decode_rejects_unsafe_dimensions_before_launch():
     torch = _torch()
     plan = compile_mixer(
-        named_mixer_recipe("atma_gated_delta_decode_core"),
+        load_kernel_recipe("atma_gated_delta_decode_core"),
         backend=MixerBackend.LIBRARY,
     )
     for key_dim, value_dim, message in (
@@ -559,7 +598,7 @@ def test_atma_pinned_decode_executes_both_unmasked_value_tile_branches():
 
     atma_gated_delta_decode_step()
     torch.manual_seed(1002)
-    spec = named_mixer_recipe("atma_gated_delta_decode_core").spec
+    spec = load_kernel_recipe("atma_gated_delta_decode_core").spec
     reference_plan = compile_mixer(spec, intent=MixerIntent.INFERENCE)
     native_upstream_plan = compile_mixer(
         spec, backend=MixerBackend.LIBRARY, intent=MixerIntent.INFERENCE
@@ -648,7 +687,7 @@ def test_sparse_frontend_mask_requirement_survives_name_lowering():
             block_size=1,
         ),
     )
-    plan = compile_frontend_mixer(frontend)
+    plan = compile_frontend_mixer(frontend, recipes_dir=KERNEL_RECIPES_DIR)
     assert plan.spec.name == "user_sparse_attention"
     assert plan.spec.requires_attention_mask
     assert compile_mixer(plan.spec).spec.requires_attention_mask
@@ -659,7 +698,7 @@ def test_sparse_frontend_mask_requirement_survives_name_lowering():
     }
     with pytest.raises(ValueError, match="requires a precomputed attention_mask"):
         plan.execute(**operands)
-    native = compile_frontend_mixer(frontend, backend=MixerBackend.NATIVE)
+    native = compile_frontend_mixer(frontend, backend=MixerBackend.NATIVE, recipes_dir=KERNEL_RECIPES_DIR)
     assert native.anchor == "urm_native_k1_online_softmax_v1"
     with pytest.raises(ValueError, match="requires a precomputed attention_mask"):
         native.execute(**operands)
@@ -693,8 +732,8 @@ def test_frontend_sparse_mask_lowers_to_native_k1_when_cuda_is_available():
             block_size=1,
         ),
     )
-    spec = compile_frontend_mixer(frontend).spec
-    native = compile_frontend_mixer(frontend, backend=MixerBackend.NATIVE)
+    spec = compile_frontend_mixer(frontend, recipes_dir=KERNEL_RECIPES_DIR).spec
+    native = compile_frontend_mixer(frontend, backend=MixerBackend.NATIVE, recipes_dir=KERNEL_RECIPES_DIR)
     query = torch.randn(1, 3, 2, 8, device="cuda")
     key = torch.randn(1, 4, 1, 8, device="cuda")
     value = torch.randn(1, 4, 1, 6, device="cuda")
@@ -753,31 +792,34 @@ def test_unified_mixer_runs_through_general_semantic_candidate_and_anchor_pipeli
 
 
 def test_named_recipes_expose_kernel_scope_and_unfinished_layer_stages():
-    recipes = (
-        named_mixer_recipe("mha"),
-        named_mixer_recipe("gla"),
-        named_mixer_recipe("mamba1_ssm_core"),
-        named_mixer_recipe("sparse-delta-memory"),
-    )
-    assert [recipe.spec.family for recipe in recipes] == [
-        MixerKernelFamily.SOFTMAX,
-        MixerKernelFamily.RECURRENCE,
-        MixerKernelFamily.RECURRENCE,
-        MixerKernelFamily.SPARSE_DELTA,
+    # v1 kernel fragments carry a typed spec; v2 graph documents carry typed
+    # nodes. Both forms declare component scope and unfinished layer stages.
+    mha = load_recipe("mha")  # v2 graph document
+    gla = load_kernel_recipe("gla")
+    mamba1 = load_kernel_recipe("mamba1_ssm_core")
+    sdm = load_recipe("sparse-delta-memory")  # v2 graph document
+    assert mha.document["graph"]["nodes"][0]["op"] == "weighted_reduce"
+    assert [node["op"] for node in sdm.document["graph"]["nodes"]] == [
+        "sparse_route_generation",
+        "sparse_route_generation",
+        "sparse_state_mixer",
     ]
-    assert all(recipe.component_scope for recipe in recipes)
-    assert all(recipe.required_external_stages for recipe in recipes)
-    assert named_mixer_recipe("simple_gla").spec.update_rule is StateUpdateRule.ADDITIVE
-    assert named_mixer_recipe("gla").spec.update_rule is StateUpdateRule.ADDITIVE
+    assert gla.spec.family is MixerKernelFamily.RECURRENCE
+    assert mamba1.spec.family is MixerKernelFamily.RECURRENCE
+    for recipe in (mha, gla, mamba1, sdm):
+        assert recipe.component_scope
+        assert recipe.required_external_stages
+    assert load_kernel_recipe("simple_gla").spec.update_rule is StateUpdateRule.ADDITIVE
+    assert load_kernel_recipe("gla").spec.update_rule is StateUpdateRule.ADDITIVE
     assert (
-        named_mixer_recipe("gated_delta_net").spec.update_rule is StateUpdateRule.DELTA
+        load_kernel_recipe("gated_delta_net").spec.update_rule is StateUpdateRule.DELTA
     )
-    serialized = compile_mixer(recipes[1]).to_dict()["named_coverage"]
+    serialized = compile_mixer(gla).to_dict()["named_coverage"]
     assert serialized["architecture_ids"] == ["arch-019"]
     assert "gate" in serialized["required_external_stages"][0]
-    assert compile_mixer(recipes[1]).to_dict()["semantic_spec"]["name"] == "gla"
-    with pytest.raises(ValueError, match="no unified mixer recipe"):
-        named_mixer_recipe("mamba3")
+    assert compile_mixer(gla).to_dict()["semantic_spec"]["name"] == "gla"
+    with pytest.raises(ValueError, match="no recipe named"):
+        load_kernel_recipe("mamba3")
 
 
 def test_existing_frontend_specs_lower_or_decline_explicitly():
@@ -792,24 +834,24 @@ def test_existing_frontend_specs_lower_or_decline_explicitly():
     )
 
     assert (
-        compile_frontend_mixer(DENSE_ATTENTION).spec.family is MixerKernelFamily.SOFTMAX
+        compile_frontend_mixer(DENSE_ATTENTION, recipes_dir=KERNEL_RECIPES_DIR).spec.family is MixerKernelFamily.SOFTMAX
     )
     assert (
-        compile_frontend_mixer(MAMBA).spec.recurrent_layout is RecurrentLayout.DIAGONAL
+        compile_frontend_mixer(MAMBA, recipes_dir=KERNEL_RECIPES_DIR).spec.recurrent_layout is RecurrentLayout.DIAGONAL
     )
     assert (
-        compile_frontend_mixer(GATED_DELTANET).spec.update_rule is StateUpdateRule.DELTA
+        compile_frontend_mixer(GATED_DELTANET, recipes_dir=KERNEL_RECIPES_DIR).spec.update_rule is StateUpdateRule.DELTA
     )
     assert (
-        compile_frontend_mixer(SPARSE_DELTA_MEMORY).spec.family
+        compile_frontend_mixer(SPARSE_DELTA_MEMORY, recipes_dir=KERNEL_RECIPES_DIR).spec.family
         is MixerKernelFamily.SPARSE_DELTA
     )
     with pytest.raises(ValueError, match="recurrent algorithm"):
-        compile_frontend_mixer(MAMBA3)
+        compile_frontend_mixer(MAMBA3, recipes_dir=KERNEL_RECIPES_DIR)
     with pytest.raises(ValueError, match="ordered collisions"):
-        compile_frontend_mixer(GL_SDM_TRANSACTION)
+        compile_frontend_mixer(GL_SDM_TRANSACTION, recipes_dir=KERNEL_RECIPES_DIR)
     with pytest.raises(ValueError, match="expert routing"):
-        compile_frontend_mixer(TOP2_MOE)
+        compile_frontend_mixer(TOP2_MOE, recipes_dir=KERNEL_RECIPES_DIR)
 
 
 def test_semantics_reject_false_family_combinations():
@@ -1305,10 +1347,10 @@ def _coverage_recipe_operands(torch, spec):
     }
 
 
-@pytest.mark.parametrize("recipe_name", MIXER_RECIPE_NAMES)
+@pytest.mark.parametrize("recipe_name", _v1_kernel_recipe_names())
 def test_every_named_coverage_recipe_runs_forward_and_backward(recipe_name):
     torch = _torch()
-    recipe = named_mixer_recipe(recipe_name)
+    recipe = load_kernel_recipe(recipe_name)
     plan = compile_mixer(
         recipe,
         intent=MixerIntent.TRAINING,
@@ -1333,6 +1375,70 @@ def test_every_named_coverage_recipe_runs_forward_and_backward(recipe_name):
     loss.backward()
     assert result.output.numel() > 0
     assert result.metadata["anchor"] == plan.anchor
+
+
+@pytest.mark.parametrize("recipe_name", sorted(_v2_graph_recipe_names()))
+def test_every_graph_recipe_runs_forward_and_backward_through_the_graph_path(
+    recipe_name,
+):
+    """The migrated recipes keep their coverage through the public graph path.
+
+    Operands are built from the graph document's declared inputs; execution goes
+    through compile_graph + BoundGraphPlan on the reference target (the torch
+    reference executors are differentiable, so autograd covers backward even for
+    the inference-intent K3 recipe).
+    """
+    torch = _torch()
+    recipe = load_recipe(recipe_name)
+    declared = [entry["name"] for entry in recipe.document["graph"]["inputs"]]
+
+    def leaf(*shape, dtype=None):
+        return torch.randn(*shape, dtype=dtype, requires_grad=True)
+
+    if recipe_name == "sparse_delta_memory":
+        from urm.ir.program import DType, SparseRouteSelectionSpec
+
+        slots, value_dim, width = 4096, 128, 4
+        route_spec = SparseRouteSelectionSpec(1, 16, slots, width, DType.BFLOAT16)
+        available = {
+            "read_scores": torch.randn(
+                1, 16, route_spec.score_width, dtype=torch.bfloat16
+            ),
+            "write_scores": torch.randn(
+                1, 16, route_spec.score_width, dtype=torch.bfloat16
+            ),
+            "values": leaf(1, 16, value_dim, dtype=torch.bfloat16),
+            "beta": leaf(1, 16, 1, dtype=torch.bfloat16),
+            "log_decay": leaf(1, 16, 1, dtype=torch.bfloat16),
+            "memory": torch.randn(1, slots, value_dim, dtype=torch.bfloat16),
+        }
+    else:
+        available = {
+            "query": leaf(1, 8, 2, 8),
+            "key": leaf(1, 8, 2, 8),
+            "value": leaf(1, 8, 2, 8),
+            "score_bias": leaf(8, 8),
+            "attention_mask": torch.ones(1, 8, 8, dtype=torch.bool).tril(),
+        }
+    operands = {name: available[name] for name in declared}
+    if recipe_name == "sparse_delta_memory":
+        # K3 route generation has no reference anchor: the typed graph binds
+        # the native route/state kernels, which require CUDA.
+        if not torch.cuda.is_available():
+            pytest.skip("K3 graph path requires CUDA")
+        for name, tensor in list(available.items()):
+            available[name] = tensor.cuda()
+        operands = {name: available[name] for name in declared}
+        plan = _compile_graph_recipe(recipe_name, target="native", intent="inference")
+    else:
+        plan = _compile_graph_recipe(recipe_name, target="reference", intent="training")
+    result = plan.execute(**operands)
+    output = result["output"]
+    loss = output.float().square().mean()
+    if "final_state" in result:
+        loss = loss + result["final_state"].float().square().mean()
+    loss.backward()
+    assert output.numel() > 0
 
 
 def test_titans_linear_memory_core_matches_pinned_upstream_outputs_state_and_gradients():
@@ -1393,7 +1499,7 @@ def test_titans_linear_memory_core_matches_pinned_upstream_outputs_state_and_gra
         ).requires_grad_(),
     }
     reference_plan = compile_mixer(
-        named_mixer_recipe("titans_linear_memory_core"),
+        load_kernel_recipe("titans_linear_memory_core"),
         intent=MixerIntent.TRAINING,
         dtype="float32",
     )
@@ -1434,7 +1540,7 @@ def test_titans_linear_memory_core_matches_pinned_upstream_outputs_state_and_gra
         )
 
     library_plan = compile_mixer(
-        named_mixer_recipe("titans_linear_memory_core"),
+        load_kernel_recipe("titans_linear_memory_core"),
         backend=MixerBackend.LIBRARY,
         intent=MixerIntent.TRAINING,
         dtype="float32",
@@ -1517,7 +1623,7 @@ def test_ttt_linear_core_matches_pinned_upstream_outputs_states_and_gradients():
         ).requires_grad_(),
     }
     plan = compile_mixer(
-        named_mixer_recipe("ttt_linear_core"),
+        load_kernel_recipe("ttt_linear_core"),
         intent=MixerIntent.TRAINING,
         dtype="bfloat16",
     )
@@ -1569,7 +1675,7 @@ def test_ttt_linear_core_matches_pinned_upstream_outputs_states_and_gradients():
         )
 
     library_plan = compile_mixer(
-        named_mixer_recipe("ttt_linear_core"),
+        load_kernel_recipe("ttt_linear_core"),
         backend=MixerBackend.LIBRARY,
         intent=MixerIntent.TRAINING,
         dtype="bfloat16",
@@ -1638,7 +1744,7 @@ def test_xma_nonlinear_recurrences_match_pinned_equations_and_triton_gradients(
         MixerIntent,
         compile_mixer,
     )
-    from urm.frontend.recipes import named_mixer_recipe
+    from benchmarks.recipe_catalog import load_kernel_recipe
 
     source_root = __import__("pathlib").Path(xma.__file__).resolve().parents[1]
     revision = (
@@ -1651,7 +1757,7 @@ def test_xma_nonlinear_recurrences_match_pinned_equations_and_triton_gradients(
     generator = torch.Generator(device="cuda").manual_seed(
         {"rnn_core": 1142, "gru_core": 1143, "m2rnn_core": 1144}[recipe_name]
     )
-    spec = named_mixer_recipe(recipe_name).spec
+    spec = load_kernel_recipe(recipe_name).spec
     operands = {
         name: tensor.detach().to(device="cuda", dtype=torch.float32).requires_grad_()
         for name, tensor in _coverage_recipe_operands(torch, spec).items()
@@ -1709,7 +1815,7 @@ def test_xma_nonlinear_recurrences_match_pinned_equations_and_triton_gradients(
             )
 
     reference_plan = compile_mixer(
-        named_mixer_recipe(recipe_name), intent=MixerIntent.TRAINING, dtype="float32"
+        load_kernel_recipe(recipe_name), intent=MixerIntent.TRAINING, dtype="float32"
     )
     reference_inputs = {
         name: tensor.detach().clone().requires_grad_()
@@ -1751,7 +1857,7 @@ def test_xma_nonlinear_recurrences_match_pinned_equations_and_triton_gradients(
         )
 
     library_plan = compile_mixer(
-        named_mixer_recipe(recipe_name),
+        load_kernel_recipe(recipe_name),
         backend=MixerBackend.LIBRARY,
         intent=MixerIntent.TRAINING,
         dtype="float32",
@@ -1802,7 +1908,7 @@ def test_atma_polar_k1_kernels_match_materialized_reference_and_gradients(recipe
         MixerIntent,
         compile_mixer,
     )
-    from urm.frontend.recipes import named_mixer_recipe
+    from benchmarks.recipe_catalog import load_kernel_recipe
 
     source_root = __import__("pathlib").Path(source.__file__).resolve().parents[1]
     revision = (
@@ -1902,7 +2008,7 @@ def test_atma_polar_k1_kernels_match_materialized_reference_and_gradients(recipe
             mag_beta_raw=values["mag_beta_raw"],
         )
 
-    recipe = named_mixer_recipe(recipe_name)
+    recipe = load_kernel_recipe(recipe_name)
     reference_plan = compile_mixer(recipe, intent=MixerIntent.TRAINING, dtype="float32")
     reference_inputs = {
         name: tensor.detach().clone().requires_grad_()
@@ -2160,15 +2266,11 @@ def test_dsa_attention_core_matches_pinned_upstream_with_precomputed_routes():
         "value": value.requires_grad_(),
         "attention_mask": attention_mask[:, None],
     }
-    recipe = named_mixer_recipe("dsa_attention_core")
-    reference = compile_mixer(
-        recipe, intent=MixerIntent.TRAINING, dtype="bfloat16"
+    reference = _compile_graph_recipe(
+        "dsa_attention_core", target="reference", intent="training"
     ).execute(**operands)
-    library = compile_mixer(
-        recipe,
-        intent=MixerIntent.TRAINING,
-        backend=MixerBackend.LIBRARY,
-        dtype="bfloat16",
+    library = _compile_graph_recipe(
+        "dsa_attention_core", target="library", intent="training"
     ).execute(**operands)
     upstream_output = source.naive_dsa(
         operands["query"],
@@ -2180,10 +2282,10 @@ def test_dsa_attention_core_matches_pinned_upstream_with_precomputed_routes():
         topk=topk,
         scale=key_dim**-0.5,
     )
-    torch.testing.assert_close(reference.output, upstream_output, atol=2e-2, rtol=2e-2)
-    torch.testing.assert_close(library.output, upstream_output, atol=2e-2, rtol=2e-2)
+    torch.testing.assert_close(reference["output"], upstream_output, atol=2e-2, rtol=2e-2)
+    torch.testing.assert_close(library["output"], upstream_output, atol=2e-2, rtol=2e-2)
     reference_grads = torch.autograd.grad(
-        reference.output.float().square().mean(),
+        reference["output"].float().square().mean(),
         tuple(operands[name] for name in ("query", "key", "value")),
     )
     upstream_grads = torch.autograd.grad(
@@ -2259,15 +2361,11 @@ def test_nsa_selected_attention_core_matches_pinned_upstream_routes():
         "attention_mask": attention_mask[:, None],
     }
     gate = torch.ones(batch, sequence, query_heads, device="cuda", dtype=dtype)
-    recipe = named_mixer_recipe("nsa_selected_attention_core")
-    reference = compile_mixer(
-        recipe, intent=MixerIntent.TRAINING, dtype="bfloat16"
+    reference = _compile_graph_recipe(
+        "nsa_selected_attention_core", target="reference", intent="training"
     ).execute(**operands)
-    library = compile_mixer(
-        recipe,
-        intent=MixerIntent.TRAINING,
-        backend=MixerBackend.LIBRARY,
-        dtype="bfloat16",
+    library = _compile_graph_recipe(
+        "nsa_selected_attention_core", target="library", intent="training"
     ).execute(**operands)
     upstream_output = source.parallel_nsa(
         operands["query"],
@@ -2280,11 +2378,11 @@ def test_nsa_selected_attention_core_matches_pinned_upstream_routes():
         window_size=0,
         scale=key_dim**-0.5,
     )
-    torch.testing.assert_close(reference.output, upstream_output, atol=2e-2, rtol=2e-2)
-    torch.testing.assert_close(library.output, upstream_output, atol=2e-2, rtol=2e-2)
+    torch.testing.assert_close(reference["output"], upstream_output, atol=2e-2, rtol=2e-2)
+    torch.testing.assert_close(library["output"], upstream_output, atol=2e-2, rtol=2e-2)
     differentiated = tuple(operands[name] for name in ("query", "key", "value"))
     reference_grads = torch.autograd.grad(
-        reference.output.float().square().mean(), differentiated
+        reference["output"].float().square().mean(), differentiated
     )
     upstream_grads = torch.autograd.grad(
         upstream_output.float().square().mean(), differentiated
@@ -2343,13 +2441,13 @@ def test_fox_attention_core_matches_pinned_upstream_outputs_and_gradients():
         return cumulative_decay.unsqueeze(-1) - cumulative_decay.unsqueeze(-2)
 
     equation = compile_mixer(
-        named_mixer_recipe("fox"), intent=MixerIntent.TRAINING, dtype="bfloat16"
+        load_kernel_recipe("fox"), intent=MixerIntent.TRAINING, dtype="bfloat16"
     ).execute(
         **{name: operands[name] for name in ("query", "key", "value")},
         score_bias=score_bias_from_gate(operands["log_decay"]),
     )
     library = compile_mixer(
-        named_mixer_recipe("fox"),
+        load_kernel_recipe("fox"),
         intent=MixerIntent.TRAINING,
         backend=MixerBackend.LIBRARY,
         dtype="bfloat16",
@@ -2426,12 +2524,12 @@ def test_parallax_attention_core_matches_pinned_upstream_outputs_and_gradients()
         "value": value.requires_grad_(),
     }
     equation = compile_mixer(
-        named_mixer_recipe("parallax_attention_core"),
+        load_kernel_recipe("parallax_attention_core"),
         intent=MixerIntent.TRAINING,
         dtype="bfloat16",
     ).execute(**operands)
     library_plan = compile_mixer(
-        named_mixer_recipe("parallax_attention_core"),
+        load_kernel_recipe("parallax_attention_core"),
         intent=MixerIntent.TRAINING,
         backend=MixerBackend.LIBRARY,
         dtype="bfloat16",
@@ -2528,12 +2626,12 @@ def test_wall_attention_core_matches_pinned_upstream_outputs_and_gradients(monke
         "g": gate.requires_grad_(),
     }
     equation = compile_mixer(
-        named_mixer_recipe("wall_attention_core"),
+        load_kernel_recipe("wall_attention_core"),
         intent=MixerIntent.TRAINING,
         dtype="float32",
     ).execute(**operands)
     library_plan = compile_mixer(
-        named_mixer_recipe("wall_attention_core"),
+        load_kernel_recipe("wall_attention_core"),
         intent=MixerIntent.TRAINING,
         backend=MixerBackend.LIBRARY,
         dtype="float32",
@@ -2631,7 +2729,7 @@ def test_moba_selected_attention_core_matches_pinned_upstream_outputs_and_gradie
         "attention_mask": _moba_selected_attention_mask(query, key, chunk_size, topk),
     }
     cu_seqlens = torch.tensor([0, sequence], device="cuda", dtype=torch.int32)
-    recipe = named_mixer_recipe("moba_selected_attention_core")
+    recipe = load_kernel_recipe("moba_selected_attention_core")
     equation = compile_mixer(
         recipe, intent=MixerIntent.TRAINING, dtype="bfloat16"
     ).execute(**operands)
@@ -2741,7 +2839,7 @@ def test_bdh_attention_core_matches_pinned_upstream_outputs_and_gradients():
         value.requires_grad_()
         return {"query": query, "key": query, "value": value}
 
-    recipe = named_mixer_recipe("bdh_attention_core")
+    recipe = load_kernel_recipe("bdh_attention_core")
     reference_plan = compile_mixer(recipe, intent=MixerIntent.TRAINING, dtype="float32")
     library_plan = compile_mixer(
         recipe,
@@ -2855,7 +2953,7 @@ def test_mom_selected_memory_core_matches_pinned_fla_outputs_state_and_gradients
             state_v_first=True,
         )
 
-    recipe = named_mixer_recipe("mom_selected_memory_core")
+    recipe = load_kernel_recipe("mom_selected_memory_core")
     reference_plan = compile_mixer(
         recipe, intent=MixerIntent.TRAINING, dtype="bfloat16"
     )
@@ -2888,9 +2986,9 @@ def test_mom_selected_memory_core_matches_pinned_fla_outputs_state_and_gradients
             output.float().square().mean(), tuple(values[name] for name in base)
         )
 
-    reference_grads = gradients(reference.output, reference_inputs)
+    reference_grads = gradients(reference["output"], reference_inputs)
     upstream_grads = gradients(upstream_output, upstream_inputs)
-    library_grads = gradients(library.output, library_inputs)
+    library_grads = gradients(library["output"], library_inputs)
     for name, actual, expected in zip(
         base, reference_grads, upstream_grads, strict=True
     ):
@@ -2967,15 +3065,11 @@ def test_cat_attention_core_matches_pinned_fla_flex_attention_outputs_and_gradie
             block_mask=block_mask,
         ).transpose(1, 2)
 
-    recipe = named_mixer_recipe("cat_attention_core")
-    reference_plan = compile_mixer(
-        recipe, intent=MixerIntent.TRAINING, dtype="bfloat16"
+    reference_plan = _compile_graph_recipe(
+        "cat_attention_core", target="reference", intent="training"
     )
-    library_plan = compile_mixer(
-        recipe,
-        backend=MixerBackend.LIBRARY,
-        intent=MixerIntent.TRAINING,
-        dtype="bfloat16",
+    library_plan = _compile_graph_recipe(
+        "cat_attention_core", target="library", intent="training"
     )
     reference_inputs, upstream_inputs, library_inputs = (
         clone_inputs(),
@@ -2985,8 +3079,8 @@ def test_cat_attention_core_matches_pinned_fla_flex_attention_outputs_and_gradie
     reference = reference_plan.execute(**reference_inputs)
     upstream_output = upstream(upstream_inputs)
     library = library_plan.execute(**library_inputs)
-    torch.testing.assert_close(reference.output, upstream_output, atol=1e-2, rtol=1e-2)
-    torch.testing.assert_close(library.output, upstream_output, atol=1e-2, rtol=1e-2)
+    torch.testing.assert_close(reference["output"], upstream_output, atol=1e-2, rtol=1e-2)
+    torch.testing.assert_close(library["output"], upstream_output, atol=1e-2, rtol=1e-2)
 
     def gradients(output, values):
         return torch.autograd.grad(
@@ -2994,9 +3088,9 @@ def test_cat_attention_core_matches_pinned_fla_flex_attention_outputs_and_gradie
             (values["query"], values["key"], values["value"]),
         )
 
-    reference_grads = gradients(reference.output, reference_inputs)
+    reference_grads = gradients(reference["output"], reference_inputs)
     upstream_grads = gradients(upstream_output, upstream_inputs)
-    library_grads = gradients(library.output, library_inputs)
+    library_grads = gradients(library["output"], library_inputs)
     for actual, expected in zip(reference_grads, upstream_grads, strict=True):
         torch.testing.assert_close(actual, expected, atol=1e-2, rtol=1e-2)
     for actual, expected in zip(library_grads, upstream_grads, strict=True):
@@ -3049,7 +3143,7 @@ def test_tda_attention_core_matches_pinned_triton_outputs_and_gradients():
             normalize=True,
         ).transpose(1, 2)
 
-    recipe = named_mixer_recipe("tda_attention_core")
+    recipe = load_kernel_recipe("tda_attention_core")
     reference_plan = compile_mixer(recipe, intent=MixerIntent.TRAINING, dtype="float32")
     library_plan = compile_mixer(
         recipe,
@@ -3077,9 +3171,9 @@ def test_tda_attention_core_matches_pinned_triton_outputs_and_gradients():
             ),
         )
 
-    reference_grads = gradients(reference.output, reference_inputs)
+    reference_grads = gradients(reference["output"], reference_inputs)
     upstream_grads = gradients(upstream_output, upstream_inputs)
-    library_grads = gradients(library.output, library_inputs)
+    library_grads = gradients(library["output"], library_inputs)
     for actual, expected in zip(reference_grads, upstream_grads, strict=True):
         torch.testing.assert_close(actual, expected, atol=2e-4, rtol=1e-2)
     for actual, expected in zip(library_grads, upstream_grads, strict=True):
@@ -3171,7 +3265,7 @@ def test_differential_attention_core_matches_pinned_microsoft_v1_outputs_and_gra
         output = source_layer(joined, (None, None))
         return output / (1.0 - source_layer.lambda_init)
 
-    recipe = named_mixer_recipe("differential_attention_core")
+    recipe = load_kernel_recipe("differential_attention_core")
     reference_plan = compile_mixer(recipe, intent=MixerIntent.TRAINING, dtype="float32")
     library_plan = compile_mixer(
         recipe,
@@ -3255,13 +3349,11 @@ def test_tpa_attention_core_matches_pinned_t6_layer_outputs_and_gradients():
     base = torch.randn(
         batch, sequence, width, device="cuda", dtype=torch.float32, generator=generator
     ).mul_(0.1)
-    recipe = named_mixer_recipe("tpa_attention_core")
-    reference_plan = compile_mixer(recipe, intent=MixerIntent.TRAINING, dtype="float32")
-    library_plan = compile_mixer(
-        recipe,
-        backend=MixerBackend.LIBRARY,
-        intent=MixerIntent.TRAINING,
-        dtype="float32",
+    reference_plan = _compile_graph_recipe(
+        "tpa_attention_core", target="reference", intent="training"
+    )
+    library_plan = _compile_graph_recipe(
+        "tpa_attention_core", target="library", intent="training"
     )
 
     def upstream(x):
@@ -3269,7 +3361,7 @@ def test_tpa_attention_core_matches_pinned_t6_layer_outputs_and_gradients():
 
     def planned(x, plan):
         query, key, value = layer.c_qkv(x)
-        result = plan.execute(query=query, key=key, value=value).output
+        result = plan.execute(query=query, key=key, value=value)["output"]
         return layer.c_proj(result.contiguous().view(batch, sequence, width))
 
     x_upstream = base.detach().clone().requires_grad_()
@@ -3324,7 +3416,7 @@ def test_tucker_attention_core_matches_pinned_triton_outputs_and_gradients():
         )
     )
     source_layer = source.FlashAttentionTucker(causal=False, attn_autotune=False).cuda()
-    recipe = named_mixer_recipe("tucker_attention_core")
+    recipe = load_kernel_recipe("tucker_attention_core")
     reference_plan = compile_mixer(
         recipe, intent=MixerIntent.TRAINING, dtype="bfloat16"
     )
@@ -3411,7 +3503,7 @@ def test_longformer_attention_core_matches_pinned_sliding_chunks_outputs_and_gra
     def upstream(values):
         return longformer_attention_adapter(*values, attention_window=window)[0]
 
-    recipe = named_mixer_recipe("longformer_attention_core")
+    recipe = load_kernel_recipe("longformer_attention_core")
     reference_plan = compile_mixer(recipe, intent=MixerIntent.TRAINING, dtype="float32")
     library_plan = compile_mixer(
         recipe,
@@ -3467,7 +3559,7 @@ def test_kata_attention_core_matches_pinned_triton_outputs_and_gradients():
         ).mul_(0.1)
         for width in (dim, dim, value_dim)
     )
-    recipe = named_mixer_recipe("kata_attention_core")
+    recipe = load_kernel_recipe("kata_attention_core")
     reference_plan = compile_mixer(
         recipe, intent=MixerIntent.TRAINING, dtype="bfloat16"
     )
@@ -3556,12 +3648,8 @@ def test_conformer_attention_core_matches_pinned_espnet_sdpa_outputs_and_gradien
         .cuda()
         .eval()
     )
-    recipe = named_mixer_recipe("conformer_attention_core")
-    plan = compile_mixer(
-        recipe,
-        backend=MixerBackend.LIBRARY,
-        intent=MixerIntent.TRAINING,
-        dtype="float32",
+    plan = _compile_graph_recipe(
+        "conformer_attention_core", target="library", intent="training"
     )
 
     def clones():
@@ -3574,7 +3662,7 @@ def test_conformer_attention_core_matches_pinned_espnet_sdpa_outputs_and_gradien
         query=q.transpose(1, 2).contiguous(),
         key=k.transpose(1, 2).contiguous(),
         value=v.transpose(1, 2).contiguous(),
-    ).output
+    )["output"]
     compiled_output = layer.linear_out(output.reshape(batch, sequence, width))
     torch.testing.assert_close(compiled_output, upstream_output, atol=0.0, rtol=0.0)
     upstream_grads = torch.autograd.grad(
@@ -3617,12 +3705,8 @@ def test_hopfield_attention_core_matches_pinned_single_update_outputs_and_gradie
         .cuda()
         .eval()
     )
-    recipe = named_mixer_recipe("hopfield_attention_core")
-    plan = compile_mixer(
-        recipe,
-        backend=MixerBackend.LIBRARY,
-        intent=MixerIntent.TRAINING,
-        dtype="float32",
+    plan = _compile_graph_recipe(
+        "hopfield_attention_core", target="library", intent="training"
     )
 
     def clones():
@@ -3646,7 +3730,7 @@ def test_hopfield_attention_core_matches_pinned_single_update_outputs_and_gradie
         compiled_x, layer.in_proj_weight, layer.in_proj_bias
     ).chunk(3, dim=-1)
     q, k, v = (item.reshape(batch, sequence, heads, dim) for item in (q, k, v))
-    output = plan.execute(query=q, key=k, value=v).output
+    output = plan.execute(query=q, key=k, value=v)["output"]
     compiled_output = layer.out_proj(output.reshape(batch, sequence, width))
     torch.testing.assert_close(compiled_output, upstream_output, atol=1e-6, rtol=1e-6)
     upstream_grads = torch.autograd.grad(
@@ -3696,7 +3780,7 @@ def test_fwpkm_memory_read_core_matches_pinned_source_outputs_and_gradients(scor
     base_query = torch.randn(
         batch, sequence, heads * key_dim, device="cuda", generator=generator
     ).mul_(0.1)
-    recipe = named_mixer_recipe("fwpkm_memory_read_core")
+    recipe = load_kernel_recipe("fwpkm_memory_read_core")
     plan = compile_mixer(
         recipe,
         backend=MixerBackend.LIBRARY,
@@ -3775,12 +3859,8 @@ def test_samba_attention_core_matches_pinned_nope_attention_outputs_and_gradient
     base = torch.randn(batch, sequence, width, device="cuda", generator=generator).mul_(
         0.1
     )
-    recipe = named_mixer_recipe("samba_attention_core")
-    plan = compile_mixer(
-        recipe,
-        backend=MixerBackend.LIBRARY,
-        intent=MixerIntent.TRAINING,
-        dtype="float32",
+    plan = _compile_graph_recipe(
+        "samba_attention_core", target="library", intent="training"
     )
     upstream_x = base.detach().clone().requires_grad_()
     compiled_x = base.detach().clone().requires_grad_()
@@ -3794,7 +3874,7 @@ def test_samba_attention_core_matches_pinned_nope_attention_outputs_and_gradient
     query = query.reshape(batch, sequence, heads, dim)
     key = key.reshape(batch, sequence, heads, dim)
     value = value.reshape(batch, sequence, heads, dim)
-    attention = plan.execute(query=query, key=key, value=value).output
+    attention = plan.execute(query=query, key=key, value=value)["output"]
     compiled_output = layer.proj(attention.reshape(batch, sequence, width))
 
     torch.testing.assert_close(compiled_output, upstream_output, atol=0.0, rtol=0.0)
@@ -3843,7 +3923,7 @@ def test_h3_ssm_fft_core_matches_pinned_source_outputs_and_gradients():
     base = torch.randn(batch, sequence, width, device="cuda", generator=generator).mul_(
         0.1
     )
-    recipe = named_mixer_recipe("h3_ssm_fft_core")
+    recipe = load_kernel_recipe("h3_ssm_fft_core")
     plan = compile_mixer(
         recipe,
         backend=MixerBackend.LIBRARY,
@@ -3924,7 +4004,7 @@ def test_hyena_fftconv_core_matches_pinned_source_outputs_and_gradients():
         .cuda()
         .eval()
     )
-    recipe = named_mixer_recipe("hyena_fftconv_core")
+    recipe = load_kernel_recipe("hyena_fftconv_core")
     plan = compile_mixer(
         recipe,
         backend=MixerBackend.LIBRARY,
@@ -3984,7 +4064,7 @@ def test_hla_second_order_core_matches_pinned_paper_equation_and_gradients():
         for width in (key_dim, key_dim, value_dim)
     )
     plan = compile_mixer(
-        named_mixer_recipe("hla_second_order_core"),
+        load_kernel_recipe("hla_second_order_core"),
         backend=MixerBackend.LIBRARY,
         intent=MixerIntent.TRAINING,
         dtype="float32",
@@ -4075,12 +4155,8 @@ def test_sparse_transformer_dense_source_mask_modes_match_k1(mode, context):
     source_grads = tape.gradient(source_loss, source_inputs)
 
     mask = torch.from_numpy(torch_mask_numpy).to(dtype=torch.bool)
-    recipe = named_mixer_recipe("sparse_attention_core")
-    plan = compile_mixer(
-        recipe,
-        backend=MixerBackend.LIBRARY,
-        intent=MixerIntent.TRAINING,
-        dtype="float32",
+    plan = _compile_graph_recipe(
+        "sparse_attention_core", target="library", intent="training"
     )
     actual_inputs = tuple(
         value.reshape(batch, sequence, heads, head_dim)
@@ -4094,7 +4170,7 @@ def test_sparse_transformer_dense_source_mask_modes_match_k1(mode, context):
         key=actual_inputs[1],
         value=actual_inputs[2],
         attention_mask=mask,
-    ).output.reshape(batch, sequence, heads * head_dim)
+    )["output"].reshape(batch, sequence, heads * head_dim)
     actual_grads = torch.autograd.grad(actual.square().mean(), actual_inputs)
 
     torch.testing.assert_close(
@@ -4168,7 +4244,7 @@ def test_path_attention_core_matches_pinned_upstream_outputs_and_gradients():
         "beta": beta,
         "g": gate,
     }
-    recipe = named_mixer_recipe("path_attention_core")
+    recipe = load_kernel_recipe("path_attention_core")
     reference = compile_mixer(
         recipe, intent=MixerIntent.TRAINING, dtype="bfloat16"
     ).execute(**operands)
@@ -4449,7 +4525,7 @@ def test_k2_fla_gated_additive_training_dtype_contract(recipe_name, supported):
 
     if supported:
         plan = compile_mixer(
-            named_mixer_recipe(recipe_name),
+            load_kernel_recipe(recipe_name),
             intent="training",
             backend=MixerBackend.LIBRARY,
             dtype="bfloat16",
@@ -4458,7 +4534,7 @@ def test_k2_fla_gated_additive_training_dtype_contract(recipe_name, supported):
     else:
         with pytest.raises(CompilerError, match="forward-only execution"):
             compile_mixer(
-                named_mixer_recipe(recipe_name),
+                load_kernel_recipe(recipe_name),
                 intent="training",
                 backend=MixerBackend.LIBRARY,
                 dtype="bfloat16",
@@ -4478,7 +4554,7 @@ def test_k2_fla_gated_additive_chunk_prefill_matches_reference_and_backward(
         pytest.skip("the exact FLA comparator pin is unavailable")
 
     torch.manual_seed(182)
-    spec = named_mixer_recipe(recipe_name).spec
+    spec = load_kernel_recipe(recipe_name).spec
     batch, sequence, heads, key_dim, value_dim = 1, 12, 2, 8, 6
     query = torch.randn(
         batch, sequence, heads, key_dim, device="cuda", requires_grad=True
@@ -4546,7 +4622,7 @@ def test_k2_fla_gated_additive_recurrent_decode_matches_reference(
         pytest.skip("the exact FLA comparator pin is unavailable")
 
     torch.manual_seed(191)
-    spec = named_mixer_recipe(recipe_name).spec
+    spec = load_kernel_recipe(recipe_name).spec
     dtype = getattr(torch, dtype_name)
     query = torch.randn(1, 1, 2, 8, device="cuda", dtype=dtype)
     key = torch.randn_like(query)
@@ -4889,7 +4965,7 @@ def test_native_matrix_state_dispatch_matches_reference(recipe_name):
         compile_mixer,
     )
 
-    spec = named_mixer_recipe(recipe_name).spec
+    spec = load_kernel_recipe(recipe_name).spec
     assert _native_matrix_state_supported(spec), recipe_name
     torch.manual_seed(11)
     batch, sequence, heads, key_dim, value_dim = 2, 6, 3, 8, 5
@@ -4940,7 +5016,7 @@ def test_native_matrix_state_declines_underdetermined_recipes(recipe_name):
         compile_mixer,
     )
 
-    spec = named_mixer_recipe(recipe_name).spec
+    spec = load_kernel_recipe(recipe_name).spec
     assert not _native_matrix_state_supported(spec), recipe_name
     if spec.recurrence_operator in _native_k2_operators():
         # The distinguished operator routes to its own native kernel.
@@ -4973,7 +5049,7 @@ def test_held_out_differential_attention_composes_natively():
     pytest.importorskip("triton")
     from urm.compiler.mixer import MixerBackend, compile_mixer
 
-    spec = named_mixer_recipe("differential_attention_core").spec
+    spec = load_kernel_recipe("differential_attention_core").spec
     torch.manual_seed(0)
     batch, sequence, heads, key_dim, value_dim = 2, 32, 4, 32, 32
     operands = {
@@ -5017,7 +5093,7 @@ def test_held_out_gated_delta_with_forgetting_composes_natively():
     pytest.importorskip("triton")
     from urm.compiler.mixer import MixerBackend, compile_mixer
 
-    spec = named_mixer_recipe("gated_delta_net").spec
+    spec = load_kernel_recipe("gated_delta_net").spec
     plan = compile_mixer(spec, backend=MixerBackend.NATIVE, intent="training", dtype="float32")
     torch.manual_seed(5)
     batch, sequence, heads, key_dim, value_dim = 2, 16, 3, 8, 5
@@ -5201,7 +5277,7 @@ def test_mamba2_ssm_core_reference_matches_pinned_upstream():
     }
     operands = {name: tensor.requires_grad_() for name, tensor in operands.items()}
     plan = compile_mixer(
-        named_mixer_recipe("mamba2_ssm_core"),
+        load_kernel_recipe("mamba2_ssm_core"),
         intent=MixerIntent.TRAINING,
         dtype="float32",
     )
@@ -5268,7 +5344,7 @@ def test_log_linear_core_matches_pinned_upstream_outputs_state_and_gradients():
     }
     operands = {name: tensor.requires_grad_() for name, tensor in operands.items()}
     plan = compile_mixer(
-        named_mixer_recipe("log_linear_attention_core"),
+        load_kernel_recipe("log_linear_attention_core"),
         intent=MixerIntent.TRAINING,
         dtype="float32",
     )
@@ -5317,7 +5393,7 @@ def test_gdn2_core_reference_matches_pinned_upstream():
         * 0.1,
     }
     operands = {name: tensor.requires_grad_() for name, tensor in operands.items()}
-    plan = compile_mixer(named_mixer_recipe("gdn2_core"), intent=MixerIntent.TRAINING)
+    plan = compile_mixer(load_kernel_recipe("gdn2_core"), intent=MixerIntent.TRAINING)
     reference = plan.execute(**operands)
     direct_output, direct_state = source.chunk_gdn2(
         operands["query"],
@@ -5385,7 +5461,7 @@ def test_kda_core_matches_pinned_upstream_and_library_anchor():
         * 0.1,
     }
     operands = {name: tensor.requires_grad_() for name, tensor in operands.items()}
-    recipe = named_mixer_recipe("kda_core")
+    recipe = load_kernel_recipe("kda_core")
     reference = compile_mixer(
         recipe, intent=MixerIntent.TRAINING, dtype="float32"
     ).execute(**operands)
@@ -5509,7 +5585,7 @@ def test_gated_delta_product_core_matches_pinned_upstream_and_library_anchor():
         * 0.1,
     }
     operands = {name: tensor.requires_grad_() for name, tensor in operands.items()}
-    recipe = named_mixer_recipe("gated_delta_product_core")
+    recipe = load_kernel_recipe("gated_delta_product_core")
     reference = compile_mixer(
         recipe, intent=MixerIntent.TRAINING, dtype="bfloat16"
     ).execute(**operands)
@@ -5593,7 +5669,7 @@ def test_rwkv4_memory_core_matches_pinned_upstream_and_library_anchor():
         .requires_grad_()
     )
     operands = {"w": w, "u": u, "k": key, "v": value, "state": state}
-    recipe = named_mixer_recipe("rwkv4_memory_core")
+    recipe = load_kernel_recipe("rwkv4_memory_core")
     reference = compile_mixer(
         recipe, intent=MixerIntent.TRAINING, dtype="float32"
     ).execute(**operands)
@@ -5668,7 +5744,7 @@ def test_rwkv6_memory_core_matches_pinned_upstream_outputs_and_gradients():
         "bonus": bonus,
         "initial_state": initial_state,
     }
-    recipe = named_mixer_recipe("rwkv6_memory_core")
+    recipe = load_kernel_recipe("rwkv6_memory_core")
     equation = compile_mixer(
         recipe, intent=MixerIntent.TRAINING, dtype="float32"
     ).execute(**operands)
@@ -5765,7 +5841,7 @@ def test_momentum_delta_core_matches_pinned_upstream_outputs_states_and_gradient
         "initial_state": initial_state,
         "initial_normalizer_state": initial_normalizer_state,
     }
-    recipe = named_mixer_recipe("momentum_delta_core")
+    recipe = load_kernel_recipe("momentum_delta_core")
     equation = compile_mixer(
         recipe, intent=MixerIntent.TRAINING, dtype="bfloat16"
     ).execute(**operands)
@@ -5898,7 +5974,7 @@ def test_gated_oja_core_matches_pinned_upstream_outputs_states_and_gradients():
         "beta": beta,
         "initial_state": initial_state,
     }
-    recipe = named_mixer_recipe("gated_oja_core")
+    recipe = load_kernel_recipe("gated_oja_core")
     reference = compile_mixer(
         recipe, intent=MixerIntent.TRAINING, dtype="bfloat16"
     ).execute(**operands)
@@ -6017,7 +6093,7 @@ def test_comba_core_matches_pinned_upstream_outputs_states_and_gradients():
         "beta": beta,
         "initial_state": initial_state,
     }
-    recipe = named_mixer_recipe("comba_core")
+    recipe = load_kernel_recipe("comba_core")
     reference = compile_mixer(
         recipe, intent=MixerIntent.TRAINING, dtype="bfloat16"
     ).execute(**operands)
@@ -6145,7 +6221,7 @@ def test_pgdn_core_matches_pinned_upstream_outputs_states_and_gradients():
         "initial_state": initial_state,
         "initial_A_state": initial_A_state,
     }
-    recipe = named_mixer_recipe("pgdn_core")
+    recipe = load_kernel_recipe("pgdn_core")
     reference = compile_mixer(
         recipe, intent=MixerIntent.TRAINING, dtype="bfloat16"
     ).execute(**operands)
@@ -6283,7 +6359,7 @@ def test_pkda_core_matches_pinned_upstream_outputs_states_and_gradients():
         "initial_state": initial_state,
         "initial_A_state": initial_A_state,
     }
-    recipe = named_mixer_recipe("pkda_core")
+    recipe = load_kernel_recipe("pkda_core")
     reference = compile_mixer(
         recipe, intent=MixerIntent.TRAINING, dtype="bfloat16"
     ).execute(**operands)
@@ -6389,7 +6465,7 @@ def test_deltaformer_attention_core_matches_pinned_upstream_outputs_and_gradient
         )
     ).requires_grad_()
     operands = {"query": query, "key": key, "value": value, "beta": beta}
-    recipe = named_mixer_recipe("deltaformer_attention_core")
+    recipe = load_kernel_recipe("deltaformer_attention_core")
     reference = compile_mixer(
         recipe, intent=MixerIntent.TRAINING, dtype="bfloat16"
     ).execute(**operands)
@@ -6489,7 +6565,7 @@ def test_rodimus_gla_core_matches_pinned_upstream_outputs_states_and_gradients()
         "value": value,
         "log_decay": log_decay,
     }
-    recipe = named_mixer_recipe("rodimus_gla_core")
+    recipe = load_kernel_recipe("rodimus_gla_core")
     reference_plan = compile_mixer(
         recipe, intent=MixerIntent.TRAINING, dtype="bfloat16"
     )
@@ -6609,7 +6685,7 @@ def test_mesa_net_core_matches_pinned_upstream_outputs_states_and_gradients():
         )
         + 1.0,
     }
-    recipe = named_mixer_recipe("mesa_net_core")
+    recipe = load_kernel_recipe("mesa_net_core")
     reference_plan = compile_mixer(
         recipe, intent=MixerIntent.TRAINING, dtype="bfloat16"
     )
@@ -6782,7 +6858,7 @@ def test_mamba3_siso_core_matches_pinned_upstream_outputs_states_and_gradients()
         )
         * 0.1,
     }
-    recipe = named_mixer_recipe("mamba3_siso_core")
+    recipe = load_kernel_recipe("mamba3_siso_core")
     reference_plan = compile_mixer(
         recipe, intent=MixerIntent.TRAINING, dtype="bfloat16"
     )
@@ -7016,7 +7092,7 @@ def test_slot_attention_cores_match_pinned_upstream_outputs_states_and_gradients
             checkpoint_level=0,
         )
 
-    recipe = named_mixer_recipe(recipe_name)
+    recipe = load_kernel_recipe(recipe_name)
     reference = compile_mixer(
         recipe, intent=MixerIntent.TRAINING, dtype="bfloat16"
     ).execute(**operands)
@@ -7196,7 +7272,7 @@ def test_generalized_delta_transition_cores_match_pinned_upstream(
             * 0.1
         )
     operands = {name: tensor.requires_grad_() for name, tensor in operands.items()}
-    recipe = named_mixer_recipe(recipe_name)
+    recipe = load_kernel_recipe(recipe_name)
     reference = compile_mixer(
         recipe,
         intent=MixerIntent.TRAINING,
@@ -7289,7 +7365,7 @@ def test_polynomial_attention_recurrence_matches_pinned_upstream(recipe_name):
     value = torch.randn(1, 32, 2, 8, device="cuda", requires_grad=True)
     operands = {"query": query, "key": key, "value": value}
     reference = compile_mixer(
-        named_mixer_recipe(recipe_name), intent=MixerIntent.TRAINING
+        load_kernel_recipe(recipe_name), intent=MixerIntent.TRAINING
     ).execute(**operands)
     if recipe_name == "based_attention_core":
         source = pytest.importorskip("fla.ops.based.fused_chunk")

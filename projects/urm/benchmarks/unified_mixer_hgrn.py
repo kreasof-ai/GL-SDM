@@ -18,7 +18,7 @@ from fla.ops.hgrn import fused_recurrent_hgrn
 from measurement import quantile
 from provenance import provenance, write_artifact
 from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
-from urm.frontend.recipes import named_mixer_recipe
+from benchmarks.recipe_catalog import load_kernel_recipe
 
 EXPECTED_FLA_REVISION = "864a87f6ce5be8828bef81eb22baafd41937cdf2"
 BATCH = 1
@@ -206,7 +206,7 @@ def run(pairs: int, warmup: int, output_path: Path) -> None:
     }
     plan_started = time.perf_counter()
     plan = compile_mixer(
-        named_mixer_recipe("hgrn_ssm_core"),
+        load_kernel_recipe("hgrn_ssm_core"),
         backend=MixerBackend.LIBRARY,
         intent=MixerIntent.TRAINING,
         dtype="float32",

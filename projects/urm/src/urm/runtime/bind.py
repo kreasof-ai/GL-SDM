@@ -72,11 +72,20 @@ def _execute_k1_attention_node(
         q = query.transpose(1, 2)
         k = key.transpose(1, 2)
         v = value.transpose(1, 2)
+
+        def _head_major(mask):
+            # B,T,T -> B,1,T,T; B,H,T,T passes through; T,T -> 1,1,T,T.
+            if mask.dim() == 2:
+                return mask.view(1, 1, *mask.shape)
+            if mask.dim() == 3:
+                return mask.unsqueeze(1)
+            return mask
+
         attn_mask = None
         if attention_mask is not None:
-            attn_mask = attention_mask.unsqueeze(1)
+            attn_mask = _head_major(attention_mask)
         if score_bias is not None:
-            bias = score_bias if score_bias.dim() == 4 else score_bias.unsqueeze(0)
+            bias = _head_major(score_bias)
             attn_mask = bias if attn_mask is None else attn_mask & bias
         out = torch.nn.functional.scaled_dot_product_attention(
             q, k, v, attn_mask=attn_mask, is_causal=causal and attn_mask is None, scale=scale
@@ -101,7 +110,12 @@ def _execute_k1_attention_node(
             )
             scores = scores.masked_fill(~mask, float("-inf"))
         if attention_mask is not None:
-            scores = scores.masked_fill(~attention_mask.unsqueeze(1), float("-inf"))
+            mask = attention_mask
+            if mask.dim() == 2:
+                mask = mask.view(1, 1, *mask.shape)
+            elif mask.dim() == 3:
+                mask = mask.unsqueeze(1)
+            scores = scores.masked_fill(~mask, float("-inf"))
         probs = torch.softmax(scores, dim=-1)
         probs = torch.nan_to_num(probs, nan=0.0)
         return torch.matmul(probs, v).transpose(1, 2).to(value.dtype)

@@ -39,13 +39,43 @@ def _load(path: Path) -> dict | None:
 def measure_native_coverage() -> dict[str, object]:
     """Compile every named recipe natively; return the coverage breakdown."""
     from urm.compiler.mixer import MixerBackend, compile_mixer
-    from urm.frontend.recipes import MIXER_RECIPE_NAMES, named_mixer_recipe
+    from benchmarks.recipe_catalog import (
+        KERNEL_RECIPES_DIR,
+        is_graph_recipe,
+        kernel_recipe_names,
+        load_kernel_recipe,
+    )
 
     native: dict[str, list[str]] = {}
     declined: list[str] = []
-    for name in sorted(MIXER_RECIPE_NAMES):
+    for name in sorted(kernel_recipe_names()):
+        if is_graph_recipe(name):
+            # v2 graph documents compile through the graph path; the native
+            # target binds URM-owned native anchors per node.
+            from urm.compiler.normalize.graph import normalize_graph_document
+            from urm.compiler.pipeline import compile_graph
+            from urm.frontend.recipes import load_graph_recipe_file
+
+            try:
+                program = normalize_graph_document(
+                    load_graph_recipe_file(
+                        KERNEL_RECIPES_DIR / f"{name}.json"
+                    ).document
+                )
+                plan = compile_graph(program, target="native")
+            except Exception:  # noqa: BLE001 - any decline means no native kernel
+                declined.append(name)
+                continue
+            anchors = [
+                step.anchor
+                for step in plan.compilation.plan.steps
+                if step.anchor is not None
+            ]
+            for anchor in anchors or ("graph:none",):
+                native.setdefault(anchor, []).append(name)
+            continue
         try:
-            spec = named_mixer_recipe(name).spec
+            spec = load_kernel_recipe(name).spec
         except Exception:  # noqa: BLE001 - recipe construction failure = not compilable
             declined.append(name)
             continue

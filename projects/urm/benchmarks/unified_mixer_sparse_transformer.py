@@ -13,7 +13,7 @@ import torch
 from provenance import provenance, utc_now, write_artifact
 from benchmarks.comparators.sparse_transformer import fixed_mode_mask, load_dense_attention
 from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
-from urm.frontend.recipes import named_mixer_recipe
+from benchmarks.recipe_catalog import compile_named_recipe, load_kernel_recipe
 
 
 SOURCE_MODES = {
@@ -103,11 +103,8 @@ def _run(pairs, warmup):
     compiled_values = tuple(
         torch.tensor(value, device="cuda", requires_grad=True) for value in base
     )
-    plan = compile_mixer(
-        named_mixer_recipe("sparse_attention_core"),
-        backend=MixerBackend.LIBRARY,
-        intent=MixerIntent.TRAINING,
-        dtype="float32",
+    plan = compile_named_recipe(
+        "sparse_attention_core", target="library", intent="training"
     )
     results = {}
     for case_name, (mode, context) in SOURCE_MODES.items():
@@ -145,7 +142,7 @@ def _run(pairs, warmup):
             )
             return plan.execute(
                 query=q, key=k, value=v, attention_mask=torch_mask
-            ).output.reshape(batch, sequence, width)
+            )["output"].reshape(batch, sequence, width)
 
         def source_backward():
             with tf.GradientTape() as tape:

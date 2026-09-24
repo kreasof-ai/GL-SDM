@@ -51,7 +51,7 @@ def test_compiled_fla_gated_additive_matches_direct_pinned_upstream(recipe_name)
         MixerIntent,
         compile_mixer,
     )
-    from urm.frontend.recipes import named_mixer_recipe
+    from benchmarks.recipe_catalog import load_kernel_recipe
 
     torch.manual_seed(44018 if recipe_name == "simple_gla" else 44019)
     query = torch.randn(1, 24, 2, 16, device="cuda", dtype=torch.float32)
@@ -69,7 +69,7 @@ def test_compiled_fla_gated_additive_matches_direct_pinned_upstream(recipe_name)
         "initial_state": initial_state.detach().requires_grad_(),
     }
     plan = compile_mixer(
-        named_mixer_recipe(recipe_name),
+        load_kernel_recipe(recipe_name),
         backend=MixerBackend.LIBRARY,
         intent=MixerIntent.TRAINING,
         dtype="float32",

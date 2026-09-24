@@ -15,7 +15,7 @@ import torch.nn.functional as F
 
 from provenance import provenance, write_artifact
 from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
-from urm.frontend.recipes import named_mixer_recipe
+from benchmarks.recipe_catalog import load_kernel_recipe
 
 EXPECTED_REVISION = "28bb3de8afbe7c0b00115e0fbff36afc9ad49c11"
 RECIPE = "atma_gated_delta_decode_core"
@@ -270,7 +270,7 @@ def run(pairs: int, warmup: int, output: Path):
     inputs = _inputs()
     direct_inputs, compiled_inputs = _clone(inputs), _clone(inputs)
     plan = compile_mixer(
-        named_mixer_recipe(RECIPE),
+        load_kernel_recipe(RECIPE),
         backend=MixerBackend.LIBRARY,
         intent=MixerIntent.INFERENCE,
         dtype="float32",

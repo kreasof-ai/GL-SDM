@@ -50,7 +50,7 @@ from measurement import (
 )
 from provenance import provenance, write_artifact
 from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
-from urm.frontend.recipes import named_mixer_recipe
+from benchmarks.recipe_catalog import load_kernel_recipe
 
 # Frozen production-matrix budget for k1-masked-variant: 0.15 (not 0.10).
 SLOWDOWN_BUDGET_FRACTION = 0.15
@@ -289,7 +289,7 @@ def _run_case(case, dtype_name, dtype, pairs, warmup, block):
 
     plan_started = time.perf_counter()
     plan = compile_mixer(
-        named_mixer_recipe(MASKED_RECIPE),
+        load_kernel_recipe(MASKED_RECIPE),
         backend=MixerBackend.NATIVE,
         intent=MixerIntent.TRAINING,
         dtype=dtype_name,

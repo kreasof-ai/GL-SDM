@@ -12,7 +12,7 @@ import torch
 
 from provenance import provenance, utc_now, write_artifact
 from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
-from urm.frontend.recipes import named_mixer_recipe
+from benchmarks.recipe_catalog import load_kernel_recipe
 from unified_mixer_factorized_attention import _clone, _max_error, _profile
 
 
@@ -66,7 +66,7 @@ def _run(pairs: int, warmup: int, sequence: int = 1024, key_dim: int = 16, heads
         ).mul_(0.1)
         for width in (key_dim, key_dim, value_dim)
     )
-    recipe = named_mixer_recipe("hla_second_order_core")
+    recipe = load_kernel_recipe("hla_second_order_core")
     build_start = time.perf_counter()
     plan = compile_mixer(
         recipe,

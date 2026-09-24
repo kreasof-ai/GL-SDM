@@ -13,7 +13,7 @@ import torch
 from measurement import quantile
 from provenance import provenance, utc_now, write_artifact
 from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
-from urm.frontend.recipes import named_mixer_recipe
+from benchmarks.recipe_catalog import load_kernel_recipe
 from unified_mixer_factorized_attention import _clone, _max_error, _profile
 
 
@@ -59,7 +59,7 @@ def _run(pairs: int, warmup: int):
     ).cuda().eval()
     generator = torch.Generator(device="cuda").manual_seed(76076)
     base = torch.randn(batch, sequence, width, device="cuda", generator=generator).mul_(0.1)
-    recipe = named_mixer_recipe("h3_ssm_fft_core")
+    recipe = load_kernel_recipe("h3_ssm_fft_core")
     build_start = time.perf_counter()
     plan = compile_mixer(
         recipe,

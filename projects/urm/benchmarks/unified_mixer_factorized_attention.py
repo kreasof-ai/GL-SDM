@@ -16,7 +16,7 @@ import torch
 from measurement import quantile
 from provenance import provenance, write_artifact
 from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
-from urm.frontend.recipes import named_mixer_recipe
+from benchmarks.recipe_catalog import compile_named_recipe, load_kernel_recipe
 
 
 def _identity(module_name: str, expected_revision: str):
@@ -142,14 +142,8 @@ def _run_tpa(pairs, warmup):
     with torch.no_grad():
         layer.c_proj.weight.copy_(torch.eye(64, device="cuda"))
     base = torch.randn(1, 64, 64, device="cuda").mul_(0.1)
-    recipe = named_mixer_recipe("tpa_attention_core")
     build_start = time.perf_counter()
-    plan = compile_mixer(
-        recipe,
-        backend=MixerBackend.LIBRARY,
-        intent=MixerIntent.TRAINING,
-        dtype="float32",
-    )
+    plan = compile_named_recipe("tpa_attention_core", target="library", intent="training")
     build_ms = (time.perf_counter() - build_start) * 1000
 
     def upstream(x):
@@ -157,7 +151,7 @@ def _run_tpa(pairs, warmup):
 
     def compiled(x):
         q, k, v = layer.c_qkv(x)
-        out = plan.execute(query=q, key=k, value=v).output
+        out = plan.execute(query=q, key=k, value=v)["output"]
         return layer.c_proj(out.contiguous().view(1, 64, 64))
 
     upstream_x, compiled_x = _clone(base), _clone(base)
@@ -210,7 +204,7 @@ def _run_tucker(pairs, warmup):
         for shape in shapes
     )
     layer = source.FlashAttentionTucker(causal=False, attn_autotune=False).cuda()
-    recipe = named_mixer_recipe("tucker_attention_core")
+    recipe = load_kernel_recipe("tucker_attention_core")
     build_start = time.perf_counter()
     plan = compile_mixer(
         recipe,
@@ -279,7 +273,7 @@ def _run_longformer(pairs, warmup):
         torch.randn(batch, sequence, heads, dim, device="cuda").mul_(0.1)
         for _ in range(3)
     )
-    recipe = named_mixer_recipe("longformer_attention_core")
+    recipe = load_kernel_recipe("longformer_attention_core")
     build_start = time.perf_counter()
     plan = compile_mixer(
         recipe,
@@ -347,7 +341,7 @@ def _run_kata(pairs, warmup):
         ).mul_(0.1)
         for width in (dim, dim, value_dim)
     )
-    recipe = named_mixer_recipe("kata_attention_core")
+    recipe = load_kernel_recipe("kata_attention_core")
     build_start = time.perf_counter()
     plan = compile_mixer(
         recipe,
@@ -475,14 +469,8 @@ def _run_conformer(pairs, warmup):
         use_sdpa=True,
     ).cuda().eval()
     base = torch.randn(batch, sequence, width, device="cuda").mul_(0.1)
-    recipe = named_mixer_recipe("conformer_attention_core")
     build_start = time.perf_counter()
-    plan = compile_mixer(
-        recipe,
-        backend=MixerBackend.LIBRARY,
-        intent=MixerIntent.TRAINING,
-        dtype="float32",
-    )
+    plan = compile_named_recipe("conformer_attention_core", target="library", intent="training")
     build_ms = (time.perf_counter() - build_start) * 1000
 
     def upstream(x):
@@ -494,7 +482,7 @@ def _run_conformer(pairs, warmup):
             query=query.transpose(1, 2).contiguous(),
             key=key.transpose(1, 2).contiguous(),
             value=value.transpose(1, 2).contiguous(),
-        ).output
+        )["output"]
         return layer.linear_out(output.reshape(batch, sequence, width))
 
     upstream_x, compiled_x = _clone(base), _clone(base)
@@ -556,14 +544,8 @@ def _run_hopfield(pairs, warmup):
         embed_dim=width, num_heads=heads, dropout=0.0, bias=True
     ).cuda().eval()
     base = torch.randn(batch, sequence, width, device="cuda").mul_(0.1)
-    recipe = named_mixer_recipe("hopfield_attention_core")
     build_start = time.perf_counter()
-    plan = compile_mixer(
-        recipe,
-        backend=MixerBackend.LIBRARY,
-        intent=MixerIntent.TRAINING,
-        dtype="float32",
-    )
+    plan = compile_named_recipe("hopfield_attention_core", target="library", intent="training")
     build_ms = (time.perf_counter() - build_start) * 1000
 
     def upstream(x):
@@ -586,7 +568,7 @@ def _run_hopfield(pairs, warmup):
             item.reshape(batch, sequence, heads, dim)
             for item in (q, k, v)
         )
-        output = plan.execute(query=q, key=k, value=v).output
+        output = plan.execute(query=q, key=k, value=v)["output"]
         return layer.out_proj(output.reshape(batch, sequence, width))
 
     upstream_x, compiled_x = _clone(base), _clone(base)

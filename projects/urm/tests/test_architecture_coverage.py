@@ -6,7 +6,7 @@ from pathlib import Path
 
 from benchmarks.comparators.anchors import UPSTREAM_ANCHORS
 from urm.compiler.select.anchors import TRUSTED_ANCHORS
-from urm.frontend.recipes import MIXER_RECIPE_NAMES, named_mixer_recipe
+from benchmarks.recipe_catalog import kernel_recipe_names, load_recipe
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -170,8 +170,8 @@ def test_named_register_is_complete_and_source_pinned_or_explicitly_blocked():
     assert sum(row.get("native_urm_profile") is not None for row in rows) == 4
     recipe_ids = {
         architecture_id
-        for recipe_name in MIXER_RECIPE_NAMES
-        for architecture_id in named_mixer_recipe(recipe_name).architecture_ids
+        for recipe_name in kernel_recipe_names()
+        for architecture_id in load_recipe(recipe_name).architecture_ids
     }
     prototype_ids = {
         row["id"]

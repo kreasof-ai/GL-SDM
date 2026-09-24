@@ -16,7 +16,7 @@ from model.blocks import polar_reduce
 
 from provenance import provenance, write_artifact
 from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
-from urm.frontend.recipes import named_mixer_recipe
+from benchmarks.recipe_catalog import load_kernel_recipe
 
 EXPECTED_ATMA_REVISION = "28bb3de8afbe7c0b00115e0fbff36afc9ad49c11"
 RECIPES = ("polar_attention_core", "foveal_sparse_polar_attention_core")
@@ -227,11 +227,11 @@ def run(pairs: int, warmup: int, output: Path):
         operands = _inputs(recipe, 1830 if recipe == RECIPES[0] else 1831)
         direct_inputs, compiled_inputs = _clone(operands), _clone(operands)
         plan = compile_mixer(
-            named_mixer_recipe(recipe), backend=MixerBackend.LIBRARY,
+            load_kernel_recipe(recipe), backend=MixerBackend.LIBRARY,
             intent=MixerIntent.TRAINING, dtype="float32",
         )
         reference_plan = compile_mixer(
-            named_mixer_recipe(recipe), intent=MixerIntent.TRAINING, dtype="float32"
+            load_kernel_recipe(recipe), intent=MixerIntent.TRAINING, dtype="float32"
         )
         reference_inputs, oracle_inputs = _clone(operands), _clone(operands)
         weights = (

@@ -21,7 +21,7 @@ from unified_mixer_fla import (
     _state_max_errors,
 )
 from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
-from urm.frontend.recipes import named_mixer_recipe
+from benchmarks.recipe_catalog import load_kernel_recipe
 
 EXPECTED_MAMBA_REVISION = "e9594ce1c732d97440f0332fdc43170a2294dbfa"
 RECIPE = "mamba3_siso_core"
@@ -131,13 +131,13 @@ def run(pairs: int, warmup: int, output_path: Path) -> None:
     compiled_inputs = _clone_inputs(inputs)
     reference_inputs = _clone_inputs(inputs)
     plan = compile_mixer(
-        named_mixer_recipe(RECIPE),
+        load_kernel_recipe(RECIPE),
         backend=MixerBackend.LIBRARY,
         intent=MixerIntent.TRAINING,
         dtype="bfloat16",
     )
     reference_plan = compile_mixer(
-        named_mixer_recipe(RECIPE),
+        load_kernel_recipe(RECIPE),
         backend=MixerBackend.REFERENCE,
         intent=MixerIntent.TRAINING,
         dtype="bfloat16",

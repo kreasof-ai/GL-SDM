@@ -35,7 +35,7 @@ from measurement import (
 )
 from provenance import provenance, write_artifact
 from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
-from urm.frontend.recipes import named_mixer_recipe
+from benchmarks.recipe_catalog import load_kernel_recipe
 
 EXPECTED_FLA_REVISION = "864a87f6ce5be8828bef81eb22baafd41937cdf2"
 # Frozen production-matrix budget for k2-diagonal-recurrence.
@@ -298,7 +298,7 @@ def _run_case(case, dtype_name, dtype, pairs, warmup, block):
 
     plan_started = time.perf_counter()
     plan = compile_mixer(
-        named_mixer_recipe("hgrn_ssm_core"),
+        load_kernel_recipe("hgrn_ssm_core"),
         backend=MixerBackend.NATIVE,
         intent=MixerIntent.TRAINING,
         dtype=dtype_name,

@@ -46,7 +46,7 @@ from measurement import (
 )
 from provenance import provenance, write_artifact
 from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
-from urm.frontend.recipes import named_mixer_recipe
+from benchmarks.recipe_catalog import compile_named_recipe, load_kernel_recipe
 
 SLOWDOWN_BUDGET_FRACTION = 0.10
 # Frozen production-matrix tolerances (benchmarks/production-matrix.json):
@@ -143,7 +143,7 @@ def _direct_expanded_kv(inputs, scale, causal):
 def _compiled(plan, inputs):
     return plan.execute(
         query=inputs["query"], key=inputs["key"], value=inputs["value"]
-    ).output
+    )["output"]
 
 
 def _time_one(call, inputs, *, backward: bool, block: int = 1, no_grad: bool = False):
@@ -274,14 +274,11 @@ def _run_case(case, dtype_name, dtype, pairs, warmup, block):
     compiled_inputs = {n: t.detach().clone().requires_grad_() for n, t in operands.items()}
 
     plan_started = time.perf_counter()
-    plan = compile_mixer(
-        named_mixer_recipe("mha"),
-        backend=MixerBackend.NATIVE,
-        intent=MixerIntent.TRAINING,
-        dtype=dtype_name,
-    )
+    plan = compile_named_recipe("mha", target="native", intent="training")
     plan_build_ms = (time.perf_counter() - plan_started) * 1000
-    native_anchor = plan.anchor
+    native_anchor = tuple(
+        step.anchor for step in plan.compilation.plan.steps if step.anchor
+    )
 
     # --- Correctness first: native vs SDPA AND native vs independent oracle.
     direct_out = _direct({n: t.detach() for n, t in operands.items()}, scale, causal)

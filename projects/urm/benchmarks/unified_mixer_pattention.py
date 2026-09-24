@@ -17,7 +17,7 @@ from torch.nn.attention import SDPBackend, sdpa_kernel
 from measurement import quantile
 from provenance import provenance, write_artifact
 from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
-from urm.frontend.recipes import named_mixer_recipe
+from benchmarks.recipe_catalog import compile_named_recipe, load_kernel_recipe
 
 EXPECTED_REVISION = "4d56c73f407635e62f6df16b97dc897b4477129e"
 BATCH, SEQUENCE, PARAMETER_TOKENS, KEY_DIM, VALUE_DIM = 1, 128, 256, 32, 32
@@ -79,7 +79,7 @@ def _compiled(plan, inputs):
     k = inputs["key_param_tokens"].view(1, PARAMETER_TOKENS, 1, KEY_DIM)
     v = inputs["value_param_tokens"].view(1, PARAMETER_TOKENS, 1, VALUE_DIM)
     with sdpa_kernel(SDPBackend.EFFICIENT_ATTENTION):
-        output = plan.execute(query=q, key=k, value=v).output
+        output = plan.execute(query=q, key=k, value=v)["output"]
     return output.squeeze(2) * PARAMETER_TOKENS
 
 
@@ -152,11 +152,8 @@ def run(pairs: int, warmup: int, output_path: Path) -> None:
     source, revision, source_hash = _source_identity()
     inputs = _inputs(8127)
     plan_started = time.perf_counter()
-    plan = compile_mixer(
-        named_mixer_recipe("pattention_core"),
-        backend=MixerBackend.LIBRARY,
-        intent=MixerIntent.TRAINING,
-        dtype="bfloat16",
+    plan = compile_named_recipe(
+        "pattention_core", target="library", intent="training"
     )
     plan_build_ms = (time.perf_counter() - plan_started) * 1000
     direct_inputs, compiled_inputs = _clone(inputs), _clone(inputs)

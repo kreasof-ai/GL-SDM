@@ -49,7 +49,7 @@ from fla.ops.gsa import chunk_gsa
 from measurement import quantile
 from provenance import provenance, write_artifact
 from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
-from urm.frontend.recipes import named_mixer_recipe
+from benchmarks.recipe_catalog import load_kernel_recipe
 
 EXPECTED_FLA_REVISION = "864a87f6ce5be8828bef81eb22baafd41937cdf2"
 EXPECTED_FLASH_ATTN_REVISION = "1bda8f9290cd48d030f1516f0e680cd464ef3554"
@@ -1568,7 +1568,7 @@ def run(
         compiled_inputs = _clone_inputs(operands)
         plan_started = time.perf_counter()
         plan = compile_mixer(
-            named_mixer_recipe(recipe),
+            load_kernel_recipe(recipe),
             backend=MixerBackend.LIBRARY,
             intent=MixerIntent.TRAINING,
             dtype=(
@@ -1666,7 +1666,7 @@ def run(
         }:
             reference_inputs = _clone_inputs(operands)
             reference_plan = compile_mixer(
-                named_mixer_recipe(recipe),
+                load_kernel_recipe(recipe),
                 backend=MixerBackend.REFERENCE,
                 intent=MixerIntent.TRAINING,
                 dtype=(

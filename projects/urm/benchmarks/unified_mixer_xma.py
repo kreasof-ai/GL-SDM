@@ -16,7 +16,7 @@ from xma import KernelBackend
 
 from provenance import provenance, write_artifact
 from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
-from urm.frontend.recipes import named_mixer_recipe
+from benchmarks.recipe_catalog import load_kernel_recipe
 
 EXPECTED_XMA_REVISION = "384ed0a7bd82ced1f40609603dd541cac5416844"
 RECIPES = ("rnn_core", "gru_core", "m2rnn_core")
@@ -212,7 +212,7 @@ def run(recipe: str, pairs: int, warmup: int, output: Path) -> None:
     operands = _inputs(recipe, seed=72100 + RECIPES.index(recipe))
     plan_started = time.perf_counter()
     plan = compile_mixer(
-        named_mixer_recipe(recipe), backend=MixerBackend.LIBRARY,
+        load_kernel_recipe(recipe), backend=MixerBackend.LIBRARY,
         intent=MixerIntent.TRAINING, dtype="float32",
     )
     build_ms = (time.perf_counter() - plan_started) * 1000
@@ -222,7 +222,7 @@ def run(recipe: str, pairs: int, warmup: int, output: Path) -> None:
 
     reference_inputs, equation_inputs = _clone(operands), _clone(operands)
     reference_plan = compile_mixer(
-        named_mixer_recipe(recipe), intent=MixerIntent.TRAINING, dtype="float32"
+        load_kernel_recipe(recipe), intent=MixerIntent.TRAINING, dtype="float32"
     )
     reference = _differentiate(
         lambda values: _compiled(reference_plan, values), reference_inputs

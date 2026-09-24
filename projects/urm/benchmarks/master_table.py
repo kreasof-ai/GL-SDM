@@ -43,7 +43,10 @@ from typing import Any
 
 import numpy as np
 
-from urm.frontend.recipes import named_mixer_recipe
+from benchmarks.recipe_catalog import (
+    is_graph_recipe as _is_graph_recipe,
+    load_kernel_recipe,
+)
 
 from representation_coverage import _rng_operands
 
@@ -53,9 +56,9 @@ MD_OUT = PROJECT_ROOT / "docs" / "validation" / "master-table.md"
 DEVICE_LIMITS = PROJECT_ROOT / "results" / "device-limits.json"
 FINEWEB = PROJECT_ROOT / "data" / "finewebedu_train_000001.bin"
 
-# The 62 representation-covered recipes (each lowers into a canonical core and
+# The representation-covered recipes (each lowers into a canonical core and
 # matches its independent equation, per benchmarks/representation_coverage.py).
-COVERED_RECIPES = (
+_COVERED_RECIPES_ALL = (
     "abc_core", "based_attention_core", "cat_attention_core", "comba_core",
     "conformer_attention_core", "delta_net", "deltaformer_attention_core",
     "differential_attention_core", "dsa_attention_core", "foveal_attention_core",
@@ -74,6 +77,14 @@ COVERED_RECIPES = (
     "simple_gla", "sparse_attention_core", "sparse_delta_memory",
     "tda_attention_core", "titans_linear_memory_core", "tpa_attention_core",
     "ttt_linear_core", "tucker_attention_core", "wall_attention_core",
+)
+
+# Schema-v2 graph recipes (the 14 K1 names + sparse_delta_memory) compile
+# through the public graph path and are excluded from this legacy sweep until
+# the master table itself migrates to the graph path (the remaining step in
+# docs/planning/remaining-work.md).
+COVERED_RECIPES = tuple(
+    name for name in _COVERED_RECIPES_ALL if not _is_graph_recipe(name)
 )
 
 
@@ -279,7 +290,7 @@ def build_recipe_mixer(config, recipe_name: str, backend: str, dtype: str | None
 
     if dtype is None:
         dtype = _mixer_dtype(recipe_name, backend)
-    recipe = named_mixer_recipe(recipe_name)
+    recipe = load_kernel_recipe(recipe_name)
     spec = recipe.spec
     mb = MixerBackend.NATIVE if backend == "native" else MixerBackend.LIBRARY
     # Try the recipe's required dtype first, then fall back across dtypes so a
@@ -1196,7 +1207,7 @@ def measure_recipe_master(recipe_name: str) -> dict[str, Any]:
 
     config = PretrainingConfig(**MODEL)
     peaks = _peaks()
-    row: dict[str, Any] = {"recipe": recipe_name, "family": named_mixer_recipe(recipe_name).spec.family.name}
+    row: dict[str, Any] = {"recipe": recipe_name, "family": load_kernel_recipe(recipe_name).spec.family.name}
     n_params = None
 
     # Identical FineWeb batches for both backends (deterministic, seed fixed).
@@ -1609,7 +1620,7 @@ def _run_one(name: str, tmpdir: Path) -> dict[str, Any]:
                         env[var] = f"{entry}:{existing}" if existing else entry
         env["URM_SDM_ALLOW_UNPINNED_RUNTIME"] = "1"
     cmd = [sys.executable, str(Path(__file__).resolve()), "--worker", name, "--out", str(out_path)]
-    recipe = named_mixer_recipe(name)
+    recipe = load_kernel_recipe(name)
     # titans: BOTH the native and the pinned FLA upstream kernels are serial
     # (naive.py builds an O(T^2) [B,H,T,T] intermediate and loops over chunks in
     # pure PyTorch; the URM native kernel is the matching serial recomputation).

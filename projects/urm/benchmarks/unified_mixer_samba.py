@@ -12,7 +12,7 @@ import torch
 from provenance import provenance, utc_now, write_artifact
 from benchmarks.comparators.samba import load_samba_attention, samba_source_root
 from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
-from urm.frontend.recipes import named_mixer_recipe
+from benchmarks.recipe_catalog import compile_named_recipe, load_kernel_recipe
 from unified_mixer_factorized_attention import _clone, _max_error, _profile
 
 
@@ -42,13 +42,9 @@ def _run(pairs: int, warmup: int):
     base = torch.randn(
         batch, sequence, width, device="cuda", generator=generator
     ).mul_(0.1)
-    recipe = named_mixer_recipe("samba_attention_core")
     build_start = time.perf_counter()
-    plan = compile_mixer(
-        recipe,
-        backend=MixerBackend.LIBRARY,
-        intent=MixerIntent.TRAINING,
-        dtype="float32",
+    plan = compile_named_recipe(
+        "samba_attention_core", target="library", intent="training"
     )
     build_ms = (time.perf_counter() - build_start) * 1000
 
@@ -68,7 +64,7 @@ def _run(pairs: int, warmup: int):
         query = query.reshape(batch, sequence, heads, head_dim)
         key = key.reshape(batch, sequence, heads, head_dim)
         value = value.reshape(batch, sequence, heads, head_dim)
-        output = plan.execute(query=query, key=key, value=value).output
+        output = plan.execute(query=query, key=key, value=value)["output"]
         return layer.proj(output.reshape(batch, sequence, width))
 
     upstream_inputs, compiled_inputs = _clone(base), _clone(base)

@@ -17,7 +17,7 @@ from fla.ops.attnres import fused_attnres
 from measurement import quantile
 from provenance import provenance, write_artifact
 from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
-from urm.frontend.recipes import named_mixer_recipe
+from benchmarks.recipe_catalog import load_kernel_recipe
 
 EXPECTED_FLA_REVISION = "864a87f6ce5be8828bef81eb22baafd41937cdf2"
 DEPTH, BATCH, SEQUENCE, WIDTH = 8, 1, 256, 128
@@ -188,13 +188,13 @@ def run(pairs: int, warmup: int, output_path: Path) -> None:
     operands = _inputs(7199)
     plan_started = time.perf_counter()
     plan = compile_mixer(
-        named_mixer_recipe("attnres_depth_core"),
+        load_kernel_recipe("attnres_depth_core"),
         backend=MixerBackend.LIBRARY,
         intent=MixerIntent.TRAINING,
         dtype="bfloat16",
     )
     equation_plan = compile_mixer(
-        named_mixer_recipe("attnres_depth_core"),
+        load_kernel_recipe("attnres_depth_core"),
         backend=MixerBackend.REFERENCE,
         intent=MixerIntent.TRAINING,
         dtype="float32",

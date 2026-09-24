@@ -16,7 +16,7 @@ import torch
 from measurement import quantile
 from provenance import provenance, write_artifact
 from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
-from urm.frontend.recipes import named_mixer_recipe
+from benchmarks.recipe_catalog import load_kernel_recipe
 
 EXPECTED_BDH_REVISION = "2b0d7a45b058d4309c84a10e0768d541fe18bdc2"
 BATCH, SEQUENCE, HEADS, DIM, VALUE_DIM = 1, 64, 2, 32, 16
@@ -209,7 +209,7 @@ def run(pairs: int, warmup: int, output_path: Path) -> None:
     operands = _inputs(seed=63063)
 
     build_start = time.perf_counter()
-    recipe = named_mixer_recipe("bdh_attention_core")
+    recipe = load_kernel_recipe("bdh_attention_core")
     library_plan = compile_mixer(
         recipe,
         backend=MixerBackend.LIBRARY,

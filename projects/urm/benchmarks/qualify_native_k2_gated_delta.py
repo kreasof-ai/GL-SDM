@@ -49,7 +49,7 @@ from measurement import (
 )
 from provenance import provenance, write_artifact
 from urm.compiler.mixer import MixerBackend, MixerIntent, compile_mixer
-from urm.frontend.recipes import named_mixer_recipe
+from benchmarks.recipe_catalog import load_kernel_recipe
 
 EXPECTED_FLA_REVISION = "864a87f6ce5be8828bef81eb22baafd41937cdf2"
 # Frozen production-matrix budget for k2-gated-delta-recurrence.
@@ -307,7 +307,7 @@ def _run_case(case, dtype_name, dtype, pairs, warmup, block):
     compiled_inputs = {n: t.detach().clone().requires_grad_() for n, t in operands.items()}
 
     plan = compile_mixer(
-        named_mixer_recipe("gated_delta_net"),
+        load_kernel_recipe("gated_delta_net"),
         backend=MixerBackend.NATIVE,
         intent=MixerIntent.TRAINING,
         dtype=dtype_name,
