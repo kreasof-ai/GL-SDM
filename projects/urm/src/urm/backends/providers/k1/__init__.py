@@ -51,9 +51,9 @@ class K1TorchReferenceProvider(_K1Provider):
     tier = "reference"
 
     def execute(self, request: ProviderRequest, operands: dict[str, Any]) -> dict[str, Any]:
-        from .torch import torch_k1_softmax_attention
+        from .torch import k1_softmax_attention
 
-        out = torch_k1_softmax_attention(
+        out = k1_softmax_attention(
             operands["query"],
             operands["key"],
             operands["value"],

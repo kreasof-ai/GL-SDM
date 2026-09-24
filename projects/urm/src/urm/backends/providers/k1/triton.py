@@ -1568,3 +1568,40 @@ __all__ = [
     "execute_positive_feature",
     "execute_thresholded_attend",
 ]
+
+
+def k1_softmax_attention(
+    query,
+    key,
+    value,
+    *,
+    descriptor,
+    score_bias=None,
+    attention_mask=None,
+    scale=None,
+):
+    """Canonical K1 softmax attention — the native Triton implementation of the
+    uniform batched signature.
+
+    Same role order, batched shapes (``[B, T, H, D]``), closed
+    :class:`K1Descriptor` and output return as the NumPy oracle and Torch
+    reference. The descriptor supplies causal/scale policy here — the only
+    place that translation happens.
+    """
+    from urm.ir.program import K1ScaleRule as _SR
+
+    if descriptor.scale_rule is _SR.EXPLICIT_OPERAND:
+        if scale is None:
+            raise ValueError("K1 explicit_operand scale rule requires a scale value")
+        resolved = float(scale)
+    else:
+        resolved = float(query.shape[-1]) ** -0.5
+    return execute_online_softmax(
+        query,
+        key,
+        value,
+        attention_mask=attention_mask,
+        score_bias=score_bias,
+        causal=descriptor.causal,
+        scale=resolved,
+    )

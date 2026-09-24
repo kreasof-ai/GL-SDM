@@ -163,3 +163,40 @@ def attention_vjp(query, key, value, output_cotangent, *, scale=None, causal=Tru
     else:
         dk, dv = dk_b, dv_b
     return {"query": dq, "key": dk, "value": dv}
+
+
+def k1_softmax_attention(
+    query,
+    key,
+    value,
+    *,
+    descriptor,
+    score_bias=None,
+    attention_mask=None,
+    scale=None,
+):
+    """Canonical K1 softmax attention — the batched signature every tier shares.
+
+    Same role order, batched shapes (``[B, T, H, D]``), closed descriptor and
+    return as the Torch reference and native Triton schedule. Runs in float64.
+    Returns output ``[B, T, H, Dv]``.
+    """
+    q = np.asarray(query, dtype=np.float64)
+    k = np.asarray(key, dtype=np.float64)
+    v = np.asarray(value, dtype=np.float64)
+    q = np.transpose(q, (0, 2, 1, 3))  # [B,T,H,D] -> [B,H,T,D] for the oracle
+    k = np.transpose(k, (0, 2, 1, 3))
+    v = np.transpose(v, (0, 2, 1, 3))
+    out = np.stack(
+        [
+            attention(
+                q[b], k[b], v[b],
+                scale=scale,
+                causal=descriptor.causal,
+                score_bias=score_bias,
+                attention_mask=attention_mask,
+            )
+            for b in range(q.shape[0])
+        ]
+    )
+    return np.transpose(out, (0, 2, 1, 3))

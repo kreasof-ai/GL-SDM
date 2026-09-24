@@ -23,7 +23,7 @@ def _torch() -> Any:
     return torch
 
 
-def torch_linear_delta_state(
+def linear_delta_state(
     initial_state: Any,
     keys: Any,
     queries: Any,
@@ -125,4 +125,8 @@ def torch_linear_delta_state(
     return out, m.to(dtype)
 
 
-__all__ = ["torch_linear_delta_state"]
+__all__ = ["linear_delta_state", "torch_linear_delta_state"]
+
+
+# Back-compat alias: the canonical name is linear_delta_state.
+torch_linear_delta_state = linear_delta_state

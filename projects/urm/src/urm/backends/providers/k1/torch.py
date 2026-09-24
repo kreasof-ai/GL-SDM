@@ -21,7 +21,7 @@ def _torch() -> Any:
     return torch
 
 
-def torch_k1_softmax_attention(
+def k1_softmax_attention(
     query: Any,
     key: Any,
     value: Any,
@@ -74,4 +74,8 @@ def torch_k1_softmax_attention(
     return torch.matmul(probs, v).transpose(1, 2).to(value.dtype)
 
 
-__all__ = ["torch_k1_softmax_attention"]
+__all__ = ["k1_softmax_attention", "torch_k1_softmax_attention"]
+
+
+# Back-compat alias: the canonical name is k1_softmax_attention.
+torch_k1_softmax_attention = k1_softmax_attention

@@ -144,3 +144,50 @@ def recurrent_vjp(
         "beta": db,
         "log_decay": dg,
     }
+
+
+def sparse_delta_state(
+    memory,
+    read_addresses,
+    read_weights,
+    *,
+    write_addresses=None,
+    write_weights=None,
+    values=None,
+    beta=None,
+    log_decay=None,
+    spec,
+):
+    """Canonical K3 sparse-delta state — the address-index signature every tier shares.
+
+    Same operand form (address indices, not slot vectors) as the Torch reference
+    and native launcher. Runs in float64. Returns ``(readings, updated_memory)``.
+    """
+    from urm.ir.program import SparseReadTiming as _RT
+
+    mem = np.asarray(memory, dtype=np.float64)
+    r_idx = np.asarray(read_addresses, dtype=np.int64)
+    r_w = np.asarray(read_weights, dtype=np.float64)
+    w_idx = np.asarray(write_addresses, dtype=np.int64)
+    w_w = np.asarray(write_weights, dtype=np.float64)
+    vals = np.asarray(values, dtype=np.float64)
+    b = np.asarray(beta, dtype=np.float64)
+    g = np.asarray(log_decay, dtype=np.float64)
+    if spec.read_timing is not _RT.AFTER_UPDATE:
+        raise ValueError("the K3 NumPy oracle covers the after-update read")
+    P, T, reads = r_idx.shape
+    slots = mem.shape[1]
+    outs = np.empty((P, T, mem.shape[2]), dtype=np.float64)
+    finals = np.empty_like(mem)
+    for p in range(P):
+        writes = np.zeros((T, slots))
+        reads_v = np.zeros((T, slots))
+        sel = np.zeros((T, slots), dtype=bool)
+        for t in range(T):
+            writes[t, w_idx[p, t]] = w_w[p, t]
+            reads_v[t, r_idx[p, t]] = r_w[p, t]
+            sel[t, w_idx[p, t]] = True
+        out_p, m = recurrent(mem[p], writes, reads_v, vals[p], b[p, :, 0], g[p, :, 0], sel)
+        outs[p] = out_p
+        finals[p] = m
+    return outs, finals

@@ -24,6 +24,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from ....ir.program import K2GateScope, K2ReadTiming, LinearDeltaSpec
+
 
 def _inputs(memory, keys, queries, values, beta, log_decay):
     m, k, q, v, b, g = (
@@ -219,3 +221,63 @@ def recurrent_vjp(memory, keys, queries, values, beta, log_decay,
         "beta": db,
         "log_decay": dg,
     }
+
+
+def linear_delta_state(
+    initial_state,
+    keys,
+    queries,
+    values,
+    beta,
+    log_decay,
+    *,
+    spec: LinearDeltaSpec,
+    scale: float | None = None,
+):
+    """Canonical K2 linear-delta state law — the batched signature every tier shares.
+
+    This is the uniform interface: same role order, same batched shapes, same
+    descriptor and same return as the Torch reference
+    (:func:`urm.backends.providers.k2.torch.linear_delta_state`) and the
+    native Triton schedule. Shapes: ``initial_state`` ``[B, H, K, V]``;
+    ``keys``/``queries`` ``[B, H, T, K]``; ``values`` ``[B, H, T, V]``;
+    ``beta``/``log_decay`` per gate scope. Runs in float64 (the oracle tier).
+    Returns ``(out [B,H,T,V], final_state [B,H,K,V])``.
+    """
+    from ....ir.program import K2GateScope as _GS
+
+    m0 = np.asarray(initial_state, dtype=np.float64)
+    k = np.asarray(keys, dtype=np.float64)
+    q = np.asarray(queries, dtype=np.float64)
+    v = np.asarray(values, dtype=np.float64)
+    b = np.asarray(beta, dtype=np.float64)
+    g = np.asarray(log_decay, dtype=np.float64)
+    if b.ndim == 4 and b.shape[-1] == 1:
+        b = b[..., 0]
+    if g.ndim == 4 and g.shape[-1] == 1:
+        g = g[..., 0]
+    if spec.scale_rule.value == "one":
+        resolved = 1.0
+    elif spec.scale_rule.value == "key_dim_rsqrt":
+        resolved = float(k.shape[-1]) ** -0.5
+    else:
+        if scale is None:
+            raise ValueError("scale_rule=explicit_operand requires a scale value")
+        resolved = float(scale)
+    B, H = k.shape[0], k.shape[1]
+    out = np.empty((B, H, v.shape[2], v.shape[3]), dtype=np.float64)
+    final = np.empty_like(m0)
+    for bi in range(B):
+        for hi in range(H):
+            decay = np.zeros(k.shape[2]) if spec.gate_scope is _GS.NONE else g[bi, hi]
+            o, m = recurrent(
+                m0[bi, hi], k[bi, hi], q[bi, hi], v[bi, hi], b[bi, hi], decay,
+                scale=resolved,
+                is_delta=spec.delta,
+                read_before_update=spec.read_timing.value == "before_update",
+                normalizer=spec.normalized,
+                epsilon=spec.epsilon,
+            )
+            out[bi, hi] = o[0] if spec.normalized else o
+            final[bi, hi] = m[0] if spec.normalized else m
+    return out, final

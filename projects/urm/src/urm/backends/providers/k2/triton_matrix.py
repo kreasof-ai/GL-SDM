@@ -1138,3 +1138,55 @@ def execute_matrix_state_decode_step(
 
 
 __all__ = ["execute_matrix_state_recurrence", "execute_matrix_state_decode_step"]
+
+
+def linear_delta_state(
+    initial_state,
+    keys,
+    queries,
+    values,
+    beta,
+    log_decay,
+    *,
+    spec,
+    scale=None,
+):
+    """Canonical K2 linear-delta state law — the native Triton implementation of
+    the uniform batched signature.
+
+    Same role order, batched shapes (``[B, H, T, *]``), closed
+    :class:`LinearDeltaSpec` and ``(output, final_state)`` return as the NumPy
+    oracle and Torch reference. The descriptor is decomposed into the native
+    kernel's semantic knobs here — the only place that translation happens.
+    """
+    gate = spec.gate_scope.value
+    granularity = {
+        "none": "none",
+        "scalar": "head",
+        "head": "head",
+        "channel": "key_channel",
+    }[gate]
+    # The native kernel consumes [B, T, H, *]; the canonical operands arrive
+    # [B, H, T, *]. Transpose to the kernel layout, run, transpose back.
+    import torch
+
+    q = queries.transpose(1, 2).contiguous()
+    k = keys.transpose(1, 2).contiguous()
+    v = values.transpose(1, 2).contiguous()
+    g = None if granularity == "none" else log_decay.transpose(1, 2).contiguous()
+    b = beta.transpose(1, 2).contiguous() if spec.delta else None
+    out, final = execute_matrix_state_recurrence(
+        query=q,
+        key=k,
+        value=v,
+        log_decay=g,
+        beta=b,
+        initial_state=initial_state,
+        scale=scale,
+        decay_granularity=granularity,
+        is_delta=spec.delta,
+        read_before=spec.read_timing.value == "before_update",
+        normalizer=spec.normalized,
+        epsilon=spec.epsilon,
+    )
+    return out.transpose(1, 2), final

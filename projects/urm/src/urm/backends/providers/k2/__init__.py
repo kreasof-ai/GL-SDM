@@ -53,10 +53,10 @@ class K2TorchReferenceProvider(_Base):
         return None
 
     def execute(self, request: ProviderRequest, operands: dict[str, Any]) -> dict[str, Any]:
-        from .torch import torch_linear_delta_state
+        from .torch import linear_delta_state
 
         scale_op = operands.get("scale")
-        result = torch_linear_delta_state(
+        result = linear_delta_state(
             operands["initial_state"],
             operands["key"],
             operands["query"],

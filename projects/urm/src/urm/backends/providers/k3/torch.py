@@ -5,24 +5,67 @@ from __future__ import annotations
 from urm.ir.program import SparseReadTiming, SparseStateMixerSpec
 
 
-def torch_sparse_state_mixer(
+def sparse_delta_state(
     memory,
-    read_indices,
-    read_weights,
+    read_addresses=None,
+    read_weights=None,
     *,
-    write_indices=None,
+    write_addresses=None,
     write_weights=None,
     values=None,
     beta=None,
     log_decay=None,
+    spec: SparseStateMixerSpec | None = None,
+    # Back-compat kwargs (legacy callsites): positional aliases and a bare
+    # read_timing; when ``spec`` is omitted one is synthesized from these.
+    read_indices=None,
+    write_indices=None,
     read_timing: SparseReadTiming = SparseReadTiming.CURRENT_STATE,
     accumulation_dtype=None,
 ):
-    """Functional ordered recurrence with fp32 arithmetic and state casts."""
+    """Canonical K3 sparse-delta state — the differentiable Torch implementation of
+    the uniform address-index signature.
+
+    Same operand names and shapes as the NumPy oracle and native launcher; the
+    closed :class:`SparseStateMixerSpec` supplies read timing and accumulation
+    policy. fp32 arithmetic with state casts. Returns ``(readings, updated_memory)``.
+    """
     import torch
 
+    if read_addresses is None:
+        read_addresses = read_indices
+    if write_addresses is None:
+        write_addresses = write_indices
+    if spec is None:
+        from urm.ir.program import DType, SparseStateOperation
+
+        parallel, sequence, reads = (
+            int(read_addresses.shape[0]),
+            int(read_addresses.shape[1]),
+            int(read_addresses.shape[2]),
+        )
+        slots = int(memory.shape[1])
+        value_dim = int(memory.shape[2])
+        writes = 0 if write_addresses is None else int(write_addresses.shape[2])
+        spec = SparseStateMixerSpec(
+            parallel=parallel,
+            sequence=sequence,
+            slots_per_partition=slots,
+            value_dim=value_dim,
+            writes=writes,
+            reads=reads,
+            dtype=DType.FLOAT32,
+            operation=(
+                SparseStateOperation.UPDATE if write_addresses is not None else SparseStateOperation.READ_ONLY
+            ),
+            read_timing=read_timing,
+        )
+    else:
+        read_timing = spec.read_timing
     if accumulation_dtype is None:
         accumulation_dtype = torch.float32
+    read_indices = read_addresses
+    write_indices = write_addresses
     state = memory.clone()
     parallel, sequence, _ = read_indices.shape
     outputs = []
@@ -88,4 +131,8 @@ def torch_sparse_state_mixer(
     return torch.stack(outputs), state
 
 
-__all__ = ["torch_sparse_state_mixer"]
+__all__ = ["sparse_delta_state", "torch_sparse_state_mixer"]
+
+
+# Back-compat alias: the canonical name is sparse_delta_state.
+torch_sparse_state_mixer = sparse_delta_state

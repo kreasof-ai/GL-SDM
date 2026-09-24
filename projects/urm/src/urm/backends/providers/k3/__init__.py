@@ -80,19 +80,19 @@ class K3TorchReferenceProvider(_Base):
         return None
 
     def execute(self, request: ProviderRequest, operands: dict[str, Any]) -> dict[str, Any]:
-        from .torch import torch_sparse_state_mixer
+        from .torch import sparse_delta_state
 
         spec = _k3_runtime_spec(request.descriptor, operands)
-        outputs, state = torch_sparse_state_mixer(
+        outputs, state = sparse_delta_state(
             operands["memory"],
             operands["read_addresses"],
             operands["read_weights"],
-            write_indices=operands.get("write_addresses"),
+            write_addresses=operands.get("write_addresses"),
             write_weights=operands.get("write_weights"),
             values=operands.get("values"),
             beta=operands.get("beta"),
             log_decay=operands.get("log_decay"),
-            read_timing=spec.read_timing,
+            spec=spec,
         )
         return {"readings": outputs, "updated_memory": state}
 
@@ -178,42 +178,20 @@ class K3NumpyProvider(_NumpyBase):
         oracle's dense slot-vector form is adapted to that same form here, so
         all three tiers take identical operands.
         """
-        from .numpy import recurrent
+        from .numpy import sparse_delta_state
 
-        memory = np.asarray(operands["memory"], dtype=np.float64)
-        read_idx = np.asarray(operands["read_addresses"], dtype=np.int64)
-        read_w = np.asarray(operands["read_weights"], dtype=np.float64)
-        write_idx = np.asarray(operands["write_addresses"], dtype=np.int64)
-        write_w = np.asarray(operands["write_weights"], dtype=np.float64)
-        values = np.asarray(operands["values"], dtype=np.float64)
-        beta = np.asarray(operands["beta"], dtype=np.float64)
-        log_decay = np.asarray(operands["log_decay"], dtype=np.float64)
-
-        # Scatter the address-index operands into the oracle's dense slot-vector
-        # form. Contract: after-update read, within-token unique write slots.
-        # The oracle consumes one partition as 2-D [T, S] arrays (no batch dim).
-        if request.descriptor.read_timing.value != "after_update":
-            raise ValueError("the K3 NumPy oracle covers the after-update read")
-        parallel, sequence, reads = read_idx.shape
-        slots = memory.shape[1]
-        outs = np.empty((parallel, sequence, memory.shape[2]), dtype=np.float64)
-        finals = np.empty_like(memory)
-        for p in range(parallel):
-            writes = np.zeros((sequence, slots))
-            reads_v = np.zeros((sequence, slots))
-            sel = np.zeros((sequence, slots), dtype=bool)
-            for t in range(sequence):
-                w_addr, w_w = write_idx[p, t], write_w[p, t]
-                r_addr, r_w = read_idx[p, t], read_w[p, t]
-                writes[t, w_addr] = w_w
-                reads_v[t, r_addr] = r_w
-                sel[t, w_addr] = True
-            out_p, m = recurrent(
-                memory[p], writes, reads_v, values[p],
-                beta[p, :, 0], log_decay[p, :, 0], sel,
-            )
-            outs[p] = out_p
-            finals[p] = m
+        spec = _k3_runtime_spec(request.descriptor, operands)
+        outs, finals = sparse_delta_state(
+            operands["memory"],
+            operands["read_addresses"],
+            operands["read_weights"],
+            write_addresses=operands.get("write_addresses"),
+            write_weights=operands.get("write_weights"),
+            values=operands.get("values"),
+            beta=operands.get("beta"),
+            log_decay=operands.get("log_decay"),
+            spec=spec,
+        )
         return {"readings": outs, "updated_memory": finals}
 
 __all__ = [
