@@ -4,7 +4,7 @@
 compiled graph (a :class:`~urm.compiler.pipeline.CompilationResult` carrying
 the typed program plus the per-step plan) and executes the plan steps in graph
 order. Each step names a typed operation and its selected anchor; the anchor
-maps to exactly one :class:`~urm.backends.providers.Provider` in the dispatch
+maps to exactly one :class:`~urm.backends.contract.Provider` in the dispatch
 table, which accepts or declines the closed request and then executes it.
 
 The runtime owns no equation logic: operands are bound by *role* (never by
@@ -18,25 +18,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from urm.backends.providers import ProviderFamily, ProviderRequest
-from urm.backends.providers.k1 import (
-    K1NativeTritonProvider,
-    K1NumpyProvider,
-    K1SdpaLibraryProvider,
-    K1TorchReferenceProvider,
-)
-from urm.backends.providers.k2 import (
-    K2NativeDiagonalProvider,
-    K2NativeMatrixProvider,
-    K2NumpyProvider,
-    K2TorchReferenceProvider,
-)
-from urm.backends.providers.k3 import (
-    K3NativeTritonProvider,
-    K3NumpyProvider,
-    K3RouteNativeTritonProvider,
-    K3TorchReferenceProvider,
-)
+from urm.backends.contract import ProviderFamily, ProviderRequest
+from urm.backends.registry import discover_providers
 from urm.compiler.pipeline import CompilationResult
 from urm.ir.program import (
     LinearDeltaState,
@@ -52,28 +35,11 @@ class PlanBindingError(RuntimeError):
     """Raised when a serialized plan cannot be bound or executed as written."""
 
 
-# The single dispatch table: serialized anchor name → its one provider. An
-# anchor name that is not present here is an unknown provider and fails the
-# lookup; no name ever maps to two providers.
-_PROVIDERS = {
-    provider.name: provider
-    for provider in (
-        # Reference Torch tier (compiler-selectable).
-        K1TorchReferenceProvider(),
-        K1SdpaLibraryProvider(),
-        K1NativeTritonProvider(),
-        K2TorchReferenceProvider(),
-        K2NativeDiagonalProvider(),
-        K2NativeMatrixProvider(),
-        K3TorchReferenceProvider(),
-        K3NativeTritonProvider(),
-        K3RouteNativeTritonProvider(),
-        # Independent NumPy oracle tier (reference evidence, not compiler-selected).
-        K1NumpyProvider(),
-        K2NumpyProvider(),
-        K3NumpyProvider(),
-    )
-}
+# The single dispatch table: serialized anchor name → its one provider, built
+# by filesystem auto-discovery (one directory per backend, one module per
+# family). An anchor name not present here is an unknown provider and fails the
+# lookup; discovery rejects any name provided by two backends.
+_PROVIDERS = discover_providers()
 
 
 _K1_OPTIONAL_ROLES = ("score_bias", "attention_mask", "scale")

@@ -18,16 +18,16 @@ from benchmarks.comparators.sdm.upstream import (
     probe_sdm_support,
 )
 from benchmarks.comparators.sdm.reference import torch_product_key
-from urm.backends.providers.k3.triton_route_launcher import (
+from urm.backends.historical.triton_k3_route_launcher import (
     CertifiedSparseRouteScores,
     TritonSparseRouteBackend,
 )
-from urm.backends.providers.k3.triton_state_launcher import (
+from urm.backends.historical.triton_k3_state_launcher import (
     CertifiedSparseStateRoutes,
     SparseState,
     TritonSparseStateMixerBackend,
 )
-from urm.backends.providers.k3.torch import torch_sparse_state_mixer
+from urm.backends.torch.k3 import torch_sparse_state_mixer
 from urm.ir.program import (
     DType,
     SparseReadTiming,

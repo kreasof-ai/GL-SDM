@@ -257,3 +257,35 @@ def sparse_route_selection(
 
 
 __all__ = ["sparse_route_selection"]
+
+
+# ---------------------------------------------------------------------------
+# Provider surface (auto-discovered by urm.backends.registry)
+# ---------------------------------------------------------------------------
+
+
+class K3RouteNativeTritonProvider:
+    name = "urm_native_sparse_route_selection_v0"
+    family = "k3_route"
+    tier = "native"
+
+    def decline(self, request) -> str | None:
+        from ...ir.program import SparseRouteSelectionSpec
+
+        if not isinstance(request.descriptor, SparseRouteSelectionSpec):
+            return "K3 route providers require a closed SparseRouteSelectionSpec"
+        import torch
+
+        if not torch.cuda.is_available():
+            return "native K3 route selection requires CUDA"
+        return None
+
+    def execute(self, request, operands):
+        spec = request.descriptor
+        addresses, weights = sparse_route_selection(
+            operands["scores"], spec.source_extent, spec.route_width
+        )
+        return {"addresses": addresses, "weights": weights}
+
+
+PROVIDERS = (K3RouteNativeTritonProvider(),)

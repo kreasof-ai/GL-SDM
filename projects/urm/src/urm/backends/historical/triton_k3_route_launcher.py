@@ -137,7 +137,7 @@ class TritonSparseRouteBackend:
                 f"{NATIVE_SPARSE_ROUTE_NAME} declined [unsupported_hardware]: "
                 "v0 requires SM80 or newer"
             )
-        from urm.backends.providers.k3.triton_route import (
+        from urm.backends.triton.k3_route import (
             sparse_route_selection,
         )
 

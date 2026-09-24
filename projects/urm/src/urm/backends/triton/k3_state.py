@@ -806,3 +806,68 @@ __all__ = [
     "sparse_state_read",
     "sparse_state_update",
 ]
+
+
+# ---------------------------------------------------------------------------
+# Provider surface (auto-discovered by urm.backends.registry)
+# ---------------------------------------------------------------------------
+
+
+def _k3_runtime_spec(spec, operands):
+    """Re-materialize the recipe-time batch dims from the operand shapes."""
+    from dataclasses import replace as _replace
+
+    values = operands.get("values")
+    parallel, sequence = None, None
+    if values is not None:
+        parallel, sequence = int(values.shape[0]), int(values.shape[1])
+    elif operands.get("read_addresses") is not None:
+        parallel = int(operands["read_addresses"].shape[0])
+        sequence = int(operands["read_addresses"].shape[1])
+    return _replace(spec, parallel=parallel or spec.parallel, sequence=sequence or spec.sequence)
+
+
+class K3NativeTritonProvider:
+    name = "urm_native_sparse_state_mixer_v0"
+    family = "k3"
+    tier = "native"
+
+    def decline(self, request) -> str | None:
+        from ...ir.program import SparseStateMixerSpec
+
+        if not isinstance(request.descriptor, SparseStateMixerSpec):
+            return "K3 providers require a closed SparseStateMixerSpec"
+        import torch
+
+        if not torch.cuda.is_available():
+            return "native K3 requires CUDA"
+        return None
+
+    def execute(self, request, operands):
+        from ..historical.triton_k3_state_launcher import (
+            CertifiedSparseStateRoutes,
+            SparseState,
+            TritonSparseStateMixerBackend,
+        )
+
+        spec = _k3_runtime_spec(request.descriptor, operands)
+        routes = CertifiedSparseStateRoutes.certify_trusted(
+            spec,
+            operands["read_addresses"],
+            operands["read_weights"],
+            write_indices=operands.get("write_addresses"),
+            write_weights=operands.get("write_weights"),
+        )
+        backend = TritonSparseStateMixerBackend(spec)
+        prepared = backend._prepare_generated_routes(
+            routes,
+            values=operands.get("values"),
+            beta=operands.get("beta"),
+            log_decay=operands.get("log_decay"),
+        )
+        state = SparseState(memory=operands["memory"], sequence_length=0)
+        readings, new_state = backend.execute(state, prepared)
+        return {"readings": readings, "updated_memory": new_state.memory}
+
+
+PROVIDERS = (K3NativeTritonProvider(),)

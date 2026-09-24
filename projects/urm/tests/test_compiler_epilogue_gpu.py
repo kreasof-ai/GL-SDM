@@ -20,7 +20,7 @@ if not torch.cuda.is_available():
         "CUDA required for the fused-epilogue backend tests", allow_module_level=True
     )
 
-from urm.backends.providers.k1.row_scale import (
+from urm.backends.historical.triton_k1_row_scale import (
     ROUTED_REDUCTION_ROW_SCALE_EPILOGUE_VERSION,
     routed_reduce_row_scale,
 )
@@ -165,7 +165,7 @@ def test_deterministic_repeatable_forward() -> None:
 
 
 def test_metadata_reports_epilogue_capability() -> None:
-    from urm.backends.providers.k1.row_scale import (
+    from urm.backends.historical.triton_k1_row_scale import (
         routed_reduce_row_scale_metadata,
     )
 
@@ -176,7 +176,7 @@ def test_metadata_reports_epilogue_capability() -> None:
 
 def test_v1_contract_stays_unchanged_alongside_prototype() -> None:
     """The frozen v1 kernel must not grow an implicit epilogue."""
-    from urm.backends.providers.k1.routed_reduce import routed_reduce
+    from urm.backends.historical.triton_k1_routed_reduce import routed_reduce
 
     indices, weights, values, scale = _sample(q=8, k=2, s=16, d=32, seed=43)
     v1_output = routed_reduce(indices, weights, values)

@@ -4,7 +4,7 @@ This is the native generator for the K2 matrix-state class - the single largest
 recurrence group in the catalog. One reusable kernel covers the whole class; the
 compiler selects the decay granularity, update rule, and read timing from the
 semantic spec, never from an architecture name. The equation per token mirrors
-the NumPy canonical core :func:`urm.backends.providers.k2.numpy.recurrent`::
+the NumPy canonical core :func:`urm.backends.numpy.k2.recurrent`::
 
     Z_t    = decay(G_t) * M_{t-1}        (or Z_t = left_t @ M_{t-1}, factored)
     h_t    = retr_t^T Z_t                (retrieval; delta rule only)
@@ -807,7 +807,7 @@ def execute_matrix_state_recurrence(
     ``(output, final_state, final_normalizer)`` with the denominator state
     ``[B,H,K]``.
 
-    Canonical-core options (mirroring ``urm.backends.providers.k2.numpy.recurrent``):
+    Canonical-core options (mirroring ``urm.backends.numpy.k2.recurrent``):
 
     - ``retrieval_keys`` (``[B,T,H,K]``): a separate retrieval key for the delta
       rule (comba dual-key); the write outer product still uses ``key``.
@@ -1190,3 +1190,51 @@ def linear_delta_state(
         epsilon=spec.epsilon,
     )
     return out.transpose(1, 2), final
+
+
+# ---------------------------------------------------------------------------
+# Provider surface (auto-discovered by urm.backends.registry)
+# ---------------------------------------------------------------------------
+
+
+class _K2NativeBase:
+    """Native K2 anchors share the typed request/result ABI. Until a qualified
+    Triton K2 schedule is admitted (Gate 2), the native tier executes the
+    reference recurrence so the public path stays fail-closed and honest."""
+
+    family = "k2"
+    tier = "native"
+
+    def decline(self, request) -> str | None:
+        from ...ir.program import LinearDeltaSpec
+
+        if not isinstance(request.descriptor, LinearDeltaSpec):
+            return "K2 providers require a closed LinearDeltaSpec"
+        return None
+
+    def execute(self, request, operands):
+        from ..torch.k2 import linear_delta_state
+
+        scale_op = operands.get("scale")
+        result = linear_delta_state(
+            operands["initial_state"], operands["key"], operands["query"],
+            operands["value"], operands["beta"], operands["log_decay"],
+            spec=request.descriptor,
+            scale=None if scale_op is None else float(scale_op),
+        )
+        if request.descriptor.normalized:
+            out, (final_state, denominator) = result
+            return {"output": out, "final_state": final_state, "final_denominator": denominator}
+        out, final_state = result
+        return {"output": out, "final_state": final_state}
+
+
+class K2NativeDiagonalProvider(_K2NativeBase):
+    name = "urm_native_diagonal_recurrence_v1"
+
+
+class K2NativeMatrixProvider(_K2NativeBase):
+    name = "urm_native_matrix_state_recurrence_v1"
+
+
+PROVIDERS = (K2NativeDiagonalProvider(), K2NativeMatrixProvider())

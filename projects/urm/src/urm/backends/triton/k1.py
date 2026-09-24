@@ -1605,3 +1605,40 @@ def k1_softmax_attention(
         causal=descriptor.causal,
         scale=resolved,
     )
+
+
+# ---------------------------------------------------------------------------
+# Provider surface (auto-discovered by urm.backends.registry)
+# ---------------------------------------------------------------------------
+
+
+class K1NativeTritonProvider:
+    name = "urm_native_k1_online_softmax_v1"
+    family = "k1"
+    tier = "native"
+
+    def decline(self, request) -> str | None:
+        from ...ir.program import K1Descriptor
+
+        if not isinstance(request.descriptor, K1Descriptor):
+            return "K1 providers require a closed K1Descriptor"
+        if request.accumulation_dtype != "float32":
+            return "K1 v1 requires float32 accumulation"
+        import torch
+
+        if not torch.cuda.is_available():
+            return "native K1 requires CUDA"
+        return None
+
+    def execute(self, request, operands):
+        out = k1_softmax_attention(
+            operands["query"], operands["key"], operands["value"],
+            descriptor=request.descriptor,
+            score_bias=operands.get("score_bias"),
+            attention_mask=operands.get("attention_mask"),
+            scale=None if operands.get("scale") is None else float(operands["scale"]),
+        )
+        return {"output": out}
+
+
+PROVIDERS = (K1NativeTritonProvider(),)

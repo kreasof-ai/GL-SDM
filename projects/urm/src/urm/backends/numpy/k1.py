@@ -200,3 +200,97 @@ def k1_softmax_attention(
         ]
     )
     return np.transpose(out, (0, 2, 1, 3))
+
+
+# ---------------------------------------------------------------------------
+# Provider surface (auto-discovered by urm.backends.registry)
+# ---------------------------------------------------------------------------
+
+
+class K1NumpyProvider:
+    name = "urm.reference.numpy.k1.softmax_attention.v1"
+    family = "k1"
+    tier = "reference"
+
+    def decline(self, request) -> str | None:
+        from ...ir.program import K1Descriptor
+
+        if not isinstance(request.descriptor, K1Descriptor):
+            return "K1 NumPy provider requires a closed K1Descriptor"
+        return None
+
+    def execute(self, request, operands):
+        out = k1_softmax_attention(
+            operands["query"], operands["key"], operands["value"],
+            descriptor=request.descriptor,
+            score_bias=operands.get("score_bias"),
+            attention_mask=operands.get("attention_mask"),
+            scale=None if operands.get("scale") is None else float(operands["scale"]),
+        )
+        return {"output": out}
+
+
+PROVIDERS = (K1NumpyProvider(),)
+
+
+def attention_online(query, key, value, *, scale=None, causal=True, score_bias=None,
+                     attention_mask=None, block_size=64):
+    """K1 online (tiled) softmax: the performance-axis form of the K1 equation.
+
+    This is the running ``(m, l, a)`` online-softmax reduction — the same
+    equation as :func:`attention`, evaluated by streaming key blocks with a
+    running row maximum and exponent sum, never materializing the score matrix.
+    It is the same-equation oracle for the native Triton tiled schedule: a fast
+    K1 kernel is verified against this form, proving the online reassociation
+    is exact in reals (and bounding its float envelope against the fp64
+    materialized form). Not a performance backend — an equation-preserving
+    reference for the tiled lowering.
+    """
+    q, k, v = _inputs(query, key, value)
+    q_heads, q_len, key_dim = q.shape
+    kv_heads, k_len, _ = k.shape
+    if scale is None:
+        scale = key_dim ** -0.5
+    group = q_heads // kv_heads
+    k_b = np.repeat(k, group, axis=0) if group != 1 else k
+    v_b = np.repeat(v, group, axis=0) if group != 1 else v
+
+    # Precompute additive bias and visibility per (query, source) once.
+    bias = np.zeros((q_heads, q_len, k_len), dtype=np.float64)
+    if score_bias is not None:
+        bias = bias + np.asarray(score_bias, dtype=np.float64)
+    visible = np.ones((q_heads, q_len, k_len), dtype=bool)
+    if causal:
+        q_pos = np.arange(q_len)[:, None] + (k_len - q_len)
+        k_pos = np.arange(k_len)[None, :]
+        visible &= (k_pos <= q_pos)[None]
+    if attention_mask is not None:
+        mask = np.asarray(attention_mask)
+        visible &= mask if mask.dtype == bool else np.isfinite(mask)
+
+    out = np.zeros((q_heads, q_len, v_b.shape[-1]), dtype=np.float64)
+    for h in range(q_heads):
+        for t in range(q_len):
+            m = -np.inf  # running row maximum
+            l = 0.0      # running exponent sum
+            a = np.zeros(v_b.shape[-1], dtype=np.float64)  # running weighted value
+            for start in range(0, k_len, block_size):
+                stop = min(start + block_size, k_len)
+                s = scale * (k_b[h, start:stop] @ q[h, t]) + bias[h, t, start:stop]
+                vis = visible[h, t, start:stop]
+                s = np.where(vis, s, -np.inf)
+                m_b = np.max(s) if np.any(vis) else -np.inf
+                m_new = max(m, m_b)
+                # Rescale the running accumulator to the new maximum.
+                if np.isfinite(m_new):
+                    l = l * np.exp(m - m_new) if np.isfinite(m) else l
+                    a = a * np.exp(m - m_new) if np.isfinite(m) else a
+                    exp_b = np.where(vis, np.exp(s - m_new), 0.0)
+                    l = l + exp_b.sum()
+                    a = a + exp_b @ v_b[h, start:stop]
+                m = m_new
+            out[h, t] = a / l if l != 0 else 0.0  # all-masked row -> zero
+    return out
+
+
+__all__.append("attention_online") if "__all__" in dir() else None

@@ -1,7 +1,7 @@
 """Float64 canonical K2 matrix-state delta recurrence for one partition.
 
 This is the dense-address specialization of the K3 sparse-slot oracle
-(:mod:`urm.backends.providers.k3.numpy`): the sparse write/read slot vectors become dense
+(:mod:`urm.backends.numpy.k3`): the sparse write/read slot vectors become dense
 key/query vectors over the key dimension, and the per-slot decay becomes a
 per-head scalar or per-key-channel diagonal. For one independent partition
 (state ``M`` of shape ``[K, V]``), with scalar write strength ``beta_t`` and a
@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from ....ir.program import K2GateScope, K2ReadTiming, LinearDeltaSpec
+from ...ir.program import K2GateScope, K2ReadTiming, LinearDeltaSpec
 
 
 def _inputs(memory, keys, queries, values, beta, log_decay):
@@ -184,7 +184,7 @@ def recurrent_vjp(memory, keys, queries, values, beta, log_decay,
 
     After-update reads. Gradients are returned for memory, keys, queries, values,
     beta, and log_decay. Head-granularity decay (scalar per token). The adjoint
-    mirrors :func:`urm.backends.providers.k3.numpy.recurrent_vjp` with dense keys.
+    mirrors :func:`urm.backends.numpy.k3.recurrent_vjp` with dense keys.
     """
     m, k, q, v, b, g = _inputs(memory, keys, queries, values, beta, log_decay)
     if g.ndim != 1:
@@ -238,13 +238,13 @@ def linear_delta_state(
 
     This is the uniform interface: same role order, same batched shapes, same
     descriptor and same return as the Torch reference
-    (:func:`urm.backends.providers.k2.torch.linear_delta_state`) and the
+    (:func:`urm.backends.torch.k2.linear_delta_state`) and the
     native Triton schedule. Shapes: ``initial_state`` ``[B, H, K, V]``;
     ``keys``/``queries`` ``[B, H, T, K]``; ``values`` ``[B, H, T, V]``;
     ``beta``/``log_decay`` per gate scope. Runs in float64 (the oracle tier).
     Returns ``(out [B,H,T,V], final_state [B,H,K,V])``.
     """
-    from ....ir.program import K2GateScope as _GS
+    from ...ir.program import K2GateScope as _GS
 
     m0 = np.asarray(initial_state, dtype=np.float64)
     k = np.asarray(keys, dtype=np.float64)
@@ -281,3 +281,32 @@ def linear_delta_state(
             out[bi, hi] = o[0] if spec.normalized else o
             final[bi, hi] = m[0] if spec.normalized else m
     return out, final
+
+
+# ---------------------------------------------------------------------------
+# Provider surface (auto-discovered by urm.backends.registry)
+# ---------------------------------------------------------------------------
+
+
+class K2NumpyProvider:
+    name = "urm.reference.numpy.k2.linear_delta_state.v1"
+    family = "k2"
+    tier = "reference"
+
+    def decline(self, request) -> str | None:
+        if not isinstance(request.descriptor, LinearDeltaSpec):
+            return "K2 NumPy provider requires a closed LinearDeltaSpec"
+        return None
+
+    def execute(self, request, operands):
+        scale_op = operands.get("scale")
+        out, final = linear_delta_state(
+            operands["initial_state"], operands["key"], operands["query"],
+            operands["value"], operands["beta"], operands["log_decay"],
+            spec=request.descriptor,
+            scale=None if scale_op is None else float(scale_op),
+        )
+        return {"output": out, "final_state": final}
+
+
+PROVIDERS = (K2NumpyProvider(),)

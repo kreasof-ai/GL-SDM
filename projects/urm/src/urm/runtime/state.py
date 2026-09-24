@@ -64,7 +64,7 @@ class MatrixStateDecodeSession:
         beta: Any = None,
     ) -> Any:
         """One single-token decode step, updating the persistent state in place."""
-        from urm.backends.providers.k2.triton_matrix import (
+        from urm.backends.triton.k2 import (
             execute_matrix_state_decode_step,
         )
 
@@ -109,7 +109,7 @@ class DiagonalDecodeSession:
         read_gate: Any = None,
     ) -> Any:
         """One single-token diagonal decode step, updating the state in place."""
-        from urm.backends.providers.k2.triton_diagonal import (
+        from urm.backends.historical.triton_k2_diagonal import (
             execute_diagonal_decode_step,
         )
 
@@ -156,10 +156,10 @@ class SparseStateDecodeSession:
         self.write_width = write_width
         self.read_timing_before_update = read_timing_before_update
         batch, slots, value_dim = self.memory.shape
-        from urm.backends.providers.k3.triton_state_launcher import (
+        from urm.backends.historical.triton_k3_state_launcher import (
             TritonSparseStateMixerBackend,
         )
-        from urm.backends.providers.k3.triton_route_launcher import (
+        from urm.backends.historical.triton_k3_route_launcher import (
             TritonSparseRouteBackend,
         )
         from urm.ir.program import (
@@ -206,11 +206,11 @@ class SparseStateDecodeSession:
         ``read_scores``/``write_scores`` are the factorized route-score tables
         ``[B, 1, 2*sqrt(slots)]`` produced by the model's route scorer.
         """
-        from urm.backends.providers.k3.triton_state_launcher import (
+        from urm.backends.historical.triton_k3_state_launcher import (
             CertifiedSparseStateRoutes,
             SparseState,
         )
-        from urm.backends.providers.k3.triton_route_launcher import (
+        from urm.backends.historical.triton_k3_route_launcher import (
             CertifiedSparseRouteScores,
             TritonSparseRouteBackend,
         )
@@ -274,7 +274,7 @@ class SparseStateDecodeSession:
         well-formed (in-bounds, strictly increasing and unique within each token,
         finite nonnegative normalized weights).
         """
-        from urm.backends.providers.k3.triton_state_launcher import (
+        from urm.backends.historical.triton_k3_state_launcher import (
             CertifiedSparseStateRoutes,
             SparseState,
         )

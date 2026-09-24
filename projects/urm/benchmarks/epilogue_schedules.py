@@ -13,14 +13,14 @@ from collections.abc import Mapping
 
 import torch
 
-from urm.backends.providers.k1.row_scale import (
+from urm.backends.historical.triton_k1_row_scale import (
     RoutedEpilogueLaunchConfig,
     execute_plan_step,
 )
-from urm.backends.providers.k1.row_scale import (
+from urm.backends.historical.triton_k1_row_scale import (
     launch_backward as _production_backward,
 )
-from urm.backends.providers.k1.row_scale import (
+from urm.backends.historical.triton_k1_row_scale import (
     launch_forward as _production_forward,
 )
 
@@ -80,7 +80,7 @@ def backward_launch(point, indices, weights, values, row_scale, grad_output):
 
 def compile_feedback_for(handle) -> dict[str, int | None]:
     """Best-effort register/shared-memory metadata from a compiled kernel."""
-    from urm.backends.providers.k1.row_scale import (
+    from urm.backends.historical.triton_k1_row_scale import (
         _extract_resource_usage,
     )
 

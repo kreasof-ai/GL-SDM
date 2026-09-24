@@ -191,3 +191,36 @@ def sparse_delta_state(
         outs[p] = out_p
         finals[p] = m
     return outs, finals
+
+
+# ---------------------------------------------------------------------------
+# Provider surface (auto-discovered by urm.backends.registry)
+# ---------------------------------------------------------------------------
+
+
+class K3NumpyProvider:
+    name = "urm.reference.numpy.k3.sparse_delta_state.v1"
+    family = "k3"
+    tier = "reference"
+
+    def decline(self, request) -> str | None:
+        from ...ir.program import SparseStateMixerSpec
+
+        if not isinstance(request.descriptor, SparseStateMixerSpec):
+            return "K3 NumPy provider requires a closed SparseStateMixerSpec"
+        return None
+
+    def execute(self, request, operands):
+        outs, finals = sparse_delta_state(
+            operands["memory"], operands["read_addresses"], operands["read_weights"],
+            write_addresses=operands.get("write_addresses"),
+            write_weights=operands.get("write_weights"),
+            values=operands.get("values"),
+            beta=operands.get("beta"),
+            log_decay=operands.get("log_decay"),
+            spec=request.descriptor,
+        )
+        return {"readings": outs, "updated_memory": finals}
+
+
+PROVIDERS = (K3NumpyProvider(),)

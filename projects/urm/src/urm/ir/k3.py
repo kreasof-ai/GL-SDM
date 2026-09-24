@@ -21,12 +21,12 @@ validation boundary.
 Ownership
 ---------
 - Contract: `docs/kernels/sparse-delta.md`
-- Native implementations: `urm.backends.providers.k3.triton_state`
-  (score-to-state pipeline), `urm.backends.providers.k3.triton_route_launcher`
-  (route production), and `urm.backends.providers.k3.triton_state_launcher`
+- Native implementations: `urm.backends.triton.k3_state`
+  (score-to-state pipeline), `urm.backends.historical.triton_k3_route_launcher`
+  (route production), and `urm.backends.historical.triton_k3_state_launcher`
   (certified route-state mixer). The executable plan binding lives in
   `urm.runtime.bind`.
-- Reference/oracle: `urm.backends.providers.k3.numpy` (independent recurrence, chunked
+- Reference/oracle: `urm.backends.numpy.k3` (independent recurrence, chunked
   solve, and analytical reverse recurrence in float64).
 - Limitations: the contract does not cover state-dependent routing or a
   nonlinear state update; before-update reads require a separately derived read

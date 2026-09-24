@@ -1,7 +1,7 @@
 """Differentiable PyTorch reference for the K2 linear-delta state law.
 
 This is the Torch tier of the same typed request/result ABI as the NumPy
-oracle (:mod:`urm.backends.providers.k2.numpy`) and the native Triton
+oracle (:mod:`urm.backends.numpy.k2`) and the native Triton
 schedules: NumPy supplies the independent high-precision equation, Torch the
 transparent differentiable reference. Both implement the canonical law in
 docs/kernels/linear-delta.md — decay precedes retrieval, the canonical read is
@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ....ir.program import K2GateScope, K2ReadTiming, LinearDeltaSpec
+from ...ir.program import K2GateScope, K2ReadTiming, LinearDeltaSpec
 
 
 def _torch() -> Any:
@@ -130,3 +130,38 @@ __all__ = ["linear_delta_state", "torch_linear_delta_state"]
 
 # Back-compat alias: the canonical name is linear_delta_state.
 torch_linear_delta_state = linear_delta_state
+
+
+# ---------------------------------------------------------------------------
+# Provider surface (auto-discovered by urm.backends.registry)
+# ---------------------------------------------------------------------------
+
+
+class K2TorchReferenceProvider:
+    name = "urm.unified.k2.state_reference.v1"
+    family = "k2"
+    tier = "reference"
+
+    def decline(self, request) -> str | None:
+        if not isinstance(request.descriptor, LinearDeltaSpec):
+            return "K2 providers require a closed LinearDeltaSpec"
+        if request.accumulation_dtype != "float32":
+            return "K2 v1 requires float32 accumulation"
+        return None
+
+    def execute(self, request, operands):
+        scale_op = operands.get("scale")
+        result = linear_delta_state(
+            operands["initial_state"], operands["key"], operands["query"],
+            operands["value"], operands["beta"], operands["log_decay"],
+            spec=request.descriptor,
+            scale=None if scale_op is None else float(scale_op),
+        )
+        if request.descriptor.normalized:
+            out, (final_state, denominator) = result
+            return {"output": out, "final_state": final_state, "final_denominator": denominator}
+        out, final_state = result
+        return {"output": out, "final_state": final_state}
+
+
+PROVIDERS = (K2TorchReferenceProvider(),)

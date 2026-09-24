@@ -136,3 +136,34 @@ __all__ = ["sparse_delta_state", "torch_sparse_state_mixer"]
 
 # Back-compat alias: the canonical name is sparse_delta_state.
 torch_sparse_state_mixer = sparse_delta_state
+
+
+# ---------------------------------------------------------------------------
+# Provider surface (auto-discovered by urm.backends.registry)
+# ---------------------------------------------------------------------------
+
+
+class K3TorchReferenceProvider:
+    name = "urm.unified.k3.sparse_delta_reference.v1"
+    family = "k3"
+    tier = "reference"
+
+    def decline(self, request) -> str | None:
+        if not isinstance(request.descriptor, SparseStateMixerSpec):
+            return "K3 providers require a closed SparseStateMixerSpec"
+        return None
+
+    def execute(self, request, operands):
+        outputs, state = sparse_delta_state(
+            operands["memory"], operands["read_addresses"], operands["read_weights"],
+            write_addresses=operands.get("write_addresses"),
+            write_weights=operands.get("write_weights"),
+            values=operands.get("values"),
+            beta=operands.get("beta"),
+            log_decay=operands.get("log_decay"),
+            spec=request.descriptor,
+        )
+        return {"readings": outputs, "updated_memory": state}
+
+
+PROVIDERS = (K3TorchReferenceProvider(),)
