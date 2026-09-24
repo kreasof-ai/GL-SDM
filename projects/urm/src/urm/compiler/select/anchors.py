@@ -316,6 +316,16 @@ class AnchorRegistry:
     def register(self, selector: AnchorSelector) -> None:
         self._selectors.append(selector)
 
+    def register_anchors(self, anchors: Sequence[ExecutionAnchor]) -> None:
+        """Register additional anchor instances under a generic selector.
+
+        This is the consumer-extension point: the core ships only URM-owned
+        anchors; external/architecture-named providers (FLA, ATMA, Mamba, ...)
+        are registered here by the consumer that provisions them, alongside
+        their executors. The same legality gate applies to registered anchors.
+        """
+        self._selectors.append(make_selector(tuple(anchors)))
+
     def select(self, request: AnchorRequest) -> AnchorDecision:
         for selector in tuple(self._selectors):
             decision = selector(request)
@@ -330,7 +340,6 @@ class AnchorRegistry:
         )
 
 
-SDM_EXTERNAL_ANCHOR_NAME = "facebook_sparse_delta_memory_183e7df_external_adapter"
 NATIVE_SPARSE_MEMORY_ANCHOR_NAME = "urm_native_sparse_memory_e2e_v0"
 
 # Injectable capability probe for the pinned SDM upstream checkout. The compiler
@@ -361,61 +370,11 @@ class _SdmProbeUnavailable:
     code: str
     reason: str
     supported: bool = False
-SDM_SPARSE_STATE_FALLBACK_ANCHOR_NAME = (
-    "facebook_sparse_delta_memory_183e7df_precomputed_route_adapter"
-)
 NATIVE_SPARSE_STATE_MIXER_ANCHOR_NAME = "urm_native_sparse_state_mixer_v0"
 NATIVE_SPARSE_ROUTE_ANCHOR_NAME = "urm_native_sparse_route_selection_v0"
 NATIVE_DIAGONAL_RECURRENCE_ANCHOR_NAME = "urm_native_diagonal_recurrence_v1"
 NATIVE_MATRIX_STATE_RECURRENCE_ANCHOR_NAME = "urm_native_matrix_state_recurrence_v1"
 NATIVE_K1_ONLINE_SOFTMAX_ANCHOR_NAME = "urm_native_k1_online_softmax_v1"
-MAMBA_SELECTIVE_SCAN_ANCHOR_NAME = "mamba_selective_scan_adapter"
-MAMBA2_SSD_ANCHOR_NAME = "mamba2_ssd_adapter"
-FLA_LOG_LINEAR_ANCHOR_NAME = "fla_chunk_log_linear_attention_adapter"
-BDH_ATTENTION_ANCHOR_NAME = "bdh_attention_adapter"
-FLA_KDA_ANCHOR_NAME = "fla_chunk_kda_adapter"
-FLA_GATED_DELTA_PRODUCT_ANCHOR_NAME = "fla_chunk_gated_delta_product_adapter"
-FLA_IPLR_ANCHOR_NAME = "fla_fused_recurrent_iplr_adapter"
-FLA_DPLR_ANCHOR_NAME = "fla_chunk_dplr_adapter"
-FLA_RWKV7_ANCHOR_NAME = "fla_chunk_rwkv7_adapter"
-FLA_HGRN_ANCHOR_NAME = "fla_fused_recurrent_hgrn_adapter"
-FLA_GDN2_ANCHOR_NAME = "fla_chunk_gdn2_adapter"
-FLA_BASED_ANCHOR_NAME = "fla_fused_chunk_based_adapter"
-FLA_REBASED_ANCHOR_NAME = "fla_parallel_rebased_adapter"
-FLA_RWKV4_ANCHOR_NAME = "fla_fused_recurrent_rwkv4_adapter"
-FLA_FORGETTING_ATTENTION_ANCHOR_NAME = "fla_parallel_forgetting_attention_adapter"
-FLA_PARALLAX_ANCHOR_NAME = "fla_parallel_parallax_adapter"
-FLA_WALL_ANCHOR_NAME = "fla_parallel_wall_attention_adapter"
-FLA_MOBA_ANCHOR_NAME = "fla_parallel_moba_adapter"
-FLA_ATTNRES_ANCHOR_NAME = "fla_fused_attnres_adapter"
-FLA_RWKV6_ANCHOR_NAME = "fla_fused_recurrent_rwkv6_adapter"
-FLA_MOMENTUM_DELTA_ANCHOR_NAME = "fla_chunk_momentum_delta_rule_adapter"
-FLA_PATH_ATTENTION_ANCHOR_NAME = "fla_parallel_path_attention_adapter"
-FLA_GATED_OJA_ANCHOR_NAME = "fla_chunk_gated_oja_adapter"
-FLA_COMBA_ANCHOR_NAME = "fla_chunk_comba_adapter"
-FLA_PGDN_ANCHOR_NAME = "fla_chunk_precond_gated_delta_adapter"
-FLA_PKDA_ANCHOR_NAME = "fla_chunk_precond_kda_adapter"
-FLA_ABC_ANCHOR_NAME = "fla_chunk_abc_adapter"
-FLA_GSA_ANCHOR_NAME = "fla_chunk_gsa_adapter"
-FLA_DELTAFORMER_ANCHOR_NAME = "fla_parallel_deltaformer_adapter"
-FLA_MESA_NET_ANCHOR_NAME = "fla_chunk_mesa_net_adapter"
-FLA_TITANS_LINEAR_ANCHOR_NAME = "fla_chunk_titans_linear_adapter"
-FLA_TTT_LINEAR_ANCHOR_NAME = "fla_chunk_ttt_linear_adapter"
-XMA_RNN_ANCHOR_NAME = "xma_rnn_triton_adapter"
-XMA_GRU_ANCHOR_NAME = "xma_gru_triton_adapter"
-XMA_M2RNN_ANCHOR_NAME = "xma_m2rnn_triton_adapter"
-ATMA_POLAR_ANCHOR_NAME = "atma_polar_triton_adapter"
-ATMA_POLAR_SPARSE_ANCHOR_NAME = "atma_polar_sparse_triton_adapter"
-ATMA_GATED_DELTA_DECODE_ANCHOR_NAME = "atma_gated_delta_decode_adapter"
-MAMBA3_SISO_ANCHOR_NAME = "mamba3_siso_combined_adapter"
-TDA_TRITON_ANCHOR_NAME = "tda_triton_attention_adapter"
-TUCKER_TRITON_ANCHOR_NAME = "tucker_triton_attention_adapter"
-LONGFORMER_SLIDING_CHUNKS_ANCHOR_NAME = "longformer_sliding_chunks_adapter"
-KATA_PARALLEL_TRITON_ANCHOR_NAME = "kata_parallel_triton_adapter"
-FWPKM_SELECTED_SOFTMAX_ANCHOR_NAME = "fwpkm_selected_softmax_triton_adapter"
-H3_SSM_FFT_ANCHOR_NAME = "h3_ssm_fft_convolution_adapter"
-HYENA_FFT_ANCHOR_NAME = "hyena_fft_convolution_adapter"
-HLA_SECOND_ORDER_ANCHOR_NAME = "hla_second_order_triton_adapter"
 
 
 TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
@@ -427,216 +386,10 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
     ),
     ExecutionAnchor(
         kind=AnchorKind.ATTENTION,
-        name="flash_attention_adapter",
-        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.ATTENTION,
         name="torch.nn.functional.scaled_dot_product_attention",
         backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
         supported_visitors=frozenset(),
         semantic_contracts=frozenset({"normalized_softmax_attention_v1"}),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.ATTENTION,
-        name=FLA_FORGETTING_ATTENTION_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.ATTENTION,
-        name=FLA_PARALLAX_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.ATTENTION,
-        name=FLA_DELTAFORMER_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.ATTENTION,
-        name=FLA_WALL_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.ATTENTION,
-        name=FLA_MOBA_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.ATTENTION,
-        name=FLA_ATTNRES_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.ATTENTION,
-        name=TDA_TRITON_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float32"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.ATTENTION,
-        name=TUCKER_TRITON_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.ATTENTION,
-        name=LONGFORMER_SLIDING_CHUNKS_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.ATTENTION,
-        name=KATA_PARALLEL_TRITON_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.ATTENTION,
-        name=FWPKM_SELECTED_SOFTMAX_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float32"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name=H3_SSM_FFT_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float32"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name=HYENA_FFT_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float32"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name=HLA_SECOND_ORDER_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float32"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name=FLA_RWKV6_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name=FLA_MOMENTUM_DELTA_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.ATTENTION,
-        name=FLA_PATH_ATTENTION_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name=FLA_GATED_OJA_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name=FLA_COMBA_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name=FLA_PGDN_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name=FLA_PKDA_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name=FLA_ABC_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name=FLA_GSA_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name=FLA_MESA_NET_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float32", "bfloat16"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name=FLA_TITANS_LINEAR_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float32"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name=FLA_TTT_LINEAR_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name=XMA_RNN_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float32"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name=XMA_GRU_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float32"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name=XMA_M2RNN_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float32"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.ATTENTION,
-        name=ATMA_POLAR_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float32"}),
-        supported_visitors=frozenset(),
-        semantic_contracts=frozenset({"polar_attention_v1"}),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.ATTENTION,
-        name=ATMA_POLAR_SPARSE_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float32"}),
-        supported_visitors=frozenset(),
-        semantic_contracts=frozenset({"polar_attention_v1"}),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name=ATMA_GATED_DELTA_DECODE_ANCHOR_NAME,
-        forward_only=True,
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name=MAMBA3_SISO_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float32", "bfloat16"}),
-        supported_visitors=frozenset(),
     ),
     ExecutionAnchor(
         kind=AnchorKind.ATTENTION,
@@ -654,48 +407,6 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
     ),
     ExecutionAnchor(
         kind=AnchorKind.RECURRENT_SCAN,
-        name="fla_gated_delta_rule_adapter",
-        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name="fla_chunk_simple_gla_adapter",
-        backward_verified_dtypes=frozenset({"float32"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name="fla_chunk_gla_adapter",
-        backward_verified_dtypes=frozenset({"float32", "bfloat16"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name="fla_fused_recurrent_simple_gla_decode_adapter",
-        forward_only=True,
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name="fla_fused_recurrent_gla_decode_adapter",
-        forward_only=True,
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name="fla_chunk_linear_attention_adapter",
-        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name="fla_chunk_delta_rule_adapter",
-        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
         name="urm.unified.k2.state_reference.v1",
         backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
         supported_visitors=frozenset(),
@@ -710,90 +421,6 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
         kind=AnchorKind.RECURRENT_SCAN,
         name=NATIVE_MATRIX_STATE_RECURRENCE_ANCHOR_NAME,
         backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name=MAMBA_SELECTIVE_SCAN_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float32"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name=MAMBA2_SSD_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float32"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name=FLA_LOG_LINEAR_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float32"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name=BDH_ATTENTION_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float32"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name=FLA_KDA_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float32"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name=FLA_GATED_DELTA_PRODUCT_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name=FLA_IPLR_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float32"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name=FLA_DPLR_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name=FLA_RWKV7_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float16", "bfloat16"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name=FLA_HGRN_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float32"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name=FLA_GDN2_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float32"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name=FLA_BASED_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float32"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name=FLA_REBASED_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float32"}),
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
-        kind=AnchorKind.RECURRENT_SCAN,
-        name=FLA_RWKV4_ANCHOR_NAME,
-        backward_verified_dtypes=frozenset({"float32"}),
         supported_visitors=frozenset(),
     ),
     ExecutionAnchor(
@@ -843,15 +470,6 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
         supported_visitors=frozenset(),
     ),
     ExecutionAnchor(
-        kind=AnchorKind.SPARSE_DELTA_MEMORY,
-        name=SDM_EXTERNAL_ANCHOR_NAME,
-        effect=ORDERED_STATE,
-        backward_verified_dtypes=frozenset({"float32", "bfloat16"}),
-        deterministic_accumulation=False,
-        commit_capable=True,
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
         kind=AnchorKind.SPARSE_ROUTE_SELECTION,
         name=NATIVE_SPARSE_ROUTE_ANCHOR_NAME,
         effect=PURE,
@@ -878,15 +496,6 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
         supported_visitors=frozenset(),
     ),
     ExecutionAnchor(
-        kind=AnchorKind.SPARSE_STATE_MIXER,
-        name=SDM_SPARSE_STATE_FALLBACK_ANCHOR_NAME,
-        effect=ORDERED_STATE,
-        backward_verified_dtypes=frozenset({"float32", "bfloat16"}),
-        deterministic_accumulation=False,
-        commit_capable=True,
-        supported_visitors=frozenset(),
-    ),
-    ExecutionAnchor(
         kind=AnchorKind.PAGE_GATHER_UPDATE,
         name="page_gather_update_reserved",
         trusted=False,
@@ -896,8 +505,7 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
         name="simulated_collective",
         commit_capable=True,
         supported_visitors=frozenset(),
-    ),
-)
+    ),)
 
 
 def make_sdm_selector(
@@ -974,7 +582,9 @@ def make_native_sparse_memory_selector(
         if request.kind is not AnchorKind.SPARSE_DELTA_MEMORY:
             return None
         preferred = (request.schedule_params or {}).get("anchor_override")
-        if preferred == SDM_EXTERNAL_ANCHOR_NAME:
+        # Abstain when the caller explicitly requested the pinned external SDM
+        # provider (registered by the comparator consumer, not core).
+        if preferred == "facebook_sparse_delta_memory_183e7df_external_adapter":
             return None
         from urm.ir.program import SparseMemoryAccess
 
@@ -1059,8 +669,11 @@ def make_sparse_state_mixer_selector(
         spec = request.semantic_op.spec
         preferred = (request.schedule_params or {}).get("anchor_override")
         native_status = native_probe(spec)
+        # The pinned external fallback (registered by the comparator consumer) is
+        # selected only by explicit override; the native anchor wins otherwise.
         if (
-            preferred != SDM_SPARSE_STATE_FALLBACK_ANCHOR_NAME
+            preferred
+            != "facebook_sparse_delta_memory_183e7df_precomputed_route_adapter"
             and native_status.supported
         ):
             return AnchorDecision(anchor=anchor, decline=None)
@@ -1204,6 +817,25 @@ def make_sparse_route_selector(
     return _select
 
 
+# Consumer-registered anchor providers. The core ships only URM-owned anchors;
+# external/architecture-named providers (FLA, ATMA, Mamba, the frozen SDM
+# upstream, ...) are registered here by the consumer that provisions them
+# (``benchmarks.comparators.anchors``), alongside their executors. Registration
+# is additive and order-preserving; the same legality gate applies.
+_PROVIDER_ANCHORS: list[ExecutionAnchor] = []
+_PROVIDER_SELECTORS: list[AnchorSelector] = []
+
+
+def register_anchor_provider(anchors: Sequence[ExecutionAnchor]) -> None:
+    """Register external anchor declarations for future default registries."""
+    _PROVIDER_ANCHORS.extend(anchors)
+
+
+def register_anchor_selector(selector: AnchorSelector) -> None:
+    """Register an external anchor selector (e.g. a revision-aware SDM probe)."""
+    _PROVIDER_SELECTORS.append(selector)
+
+
 def default_registry() -> AnchorRegistry:
     registry = AnchorRegistry()
     sparse_route_anchor = next(
@@ -1218,24 +850,17 @@ def default_registry() -> AnchorRegistry:
         if anchor.name == NATIVE_SPARSE_MEMORY_ANCHOR_NAME
     )
     registry.register(make_native_sparse_memory_selector(native_sparse_memory_anchor))
-    sdm_anchor = next(
-        anchor for anchor in TRUSTED_ANCHORS if anchor.name == SDM_EXTERNAL_ANCHOR_NAME
-    )
-    registry.register(make_sdm_selector(sdm_anchor))
     sparse_state_anchor = next(
         anchor
         for anchor in TRUSTED_ANCHORS
         if anchor.kind is AnchorKind.SPARSE_STATE_MIXER
     )
-    sparse_state_fallback = next(
-        anchor
-        for anchor in TRUSTED_ANCHORS
-        if anchor.name == SDM_SPARSE_STATE_FALLBACK_ANCHOR_NAME
-    )
-    registry.register(
-        make_sparse_state_mixer_selector(
-            sparse_state_anchor, fallback_anchor=sparse_state_fallback
-        )
-    )
+    registry.register(make_sparse_state_mixer_selector(sparse_state_anchor))
     registry.register(make_selector(TRUSTED_ANCHORS))
+    # Consumer-installed selectors (e.g. the SDM revision probe) run before the
+    # consumer-registered anchor catalog so pinned-source semantics win.
+    for selector in _PROVIDER_SELECTORS:
+        registry.register(selector)
+    if _PROVIDER_ANCHORS:
+        registry.register(make_selector(tuple(_PROVIDER_ANCHORS)))
     return registry

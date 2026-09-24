@@ -9,14 +9,21 @@ import pytest
 
 from urm.compiler.common.diagnostics import CompilerError, DiagnosticCode
 from urm.compiler.select.anchors import (
-    SDM_EXTERNAL_ANCHOR_NAME,
-    TRUSTED_ANCHORS,
     AnchorKind,
     AnchorRegistry,
     ExecutionAnchor,
     make_sdm_selector,
 )
+from benchmarks.comparators.anchors import (
+    SDM_EXTERNAL_ANCHOR_NAME,
+    UPSTREAM_ANCHORS,
+    register_anchor_providers,
+)
 from urm.compiler.pipeline import CompilationIntent, ScheduleParams, UrmCompiler
+
+# The override-validation path reads the consumer-registered provider catalog;
+# install it so these comparator-integration tests are order-independent.
+register_anchor_providers()
 from urm.ir.program import (
     DType,
     MergePolicy,
@@ -26,7 +33,7 @@ from urm.ir.program import (
 )
 
 CANONICAL_ANCHOR = next(
-    anchor for anchor in TRUSTED_ANCHORS if anchor.name == SDM_EXTERNAL_ANCHOR_NAME
+    anchor for anchor in UPSTREAM_ANCHORS if anchor.name == SDM_EXTERNAL_ANCHOR_NAME
 )
 
 

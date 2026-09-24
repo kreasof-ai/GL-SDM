@@ -186,9 +186,9 @@ def validate_schedule_params(
 ) -> tuple[Diagnostic, ...]:
     """Structured validation of schedule hints; empty tuple means valid."""
     collector = DiagnosticsCollector()
-    from urm.compiler.select.anchors import TRUSTED_ANCHORS
+    from urm.compiler.select.anchors import TRUSTED_ANCHORS, _PROVIDER_ANCHORS
 
-    known_anchors = {a.name for a in TRUSTED_ANCHORS}
+    known_anchors = {a.name for a in (*TRUSTED_ANCHORS, *_PROVIDER_ANCHORS)}
     for key, anchor_name in params.anchor_overrides.items():
         if not key or not anchor_name:
             collector.error(
@@ -1174,11 +1174,13 @@ class UrmCompiler:
                 elif request_kind is AnchorKind.SPARSE_DELTA_MEMORY:
                     from urm.compiler.select.anchors import (
                         NATIVE_SPARSE_MEMORY_ANCHOR_NAME,
-                        SDM_EXTERNAL_ANCHOR_NAME,
                     )
 
+                    sdm_external = (
+                        "facebook_sparse_delta_memory_183e7df_external_adapter"
+                    )
                     if override not in {
-                        SDM_EXTERNAL_ANCHOR_NAME,
+                        sdm_external,
                         NATIVE_SPARSE_MEMORY_ANCHOR_NAME,
                     }:
                         decision = AnchorDecision(
@@ -1190,7 +1192,7 @@ class UrmCompiler:
                                     "the canonical SDM external anchor or native "
                                     "sparse memory anchor "
                                     f"{NATIVE_SPARSE_MEMORY_ANCHOR_NAME!r} and "
-                                    f"{SDM_EXTERNAL_ANCHOR_NAME!r}"
+                                    f"{sdm_external!r}"
                                 ),
                             ),
                         )
@@ -1212,12 +1214,14 @@ class UrmCompiler:
                 elif request_kind is AnchorKind.SPARSE_STATE_MIXER:
                     from urm.compiler.select.anchors import (
                         NATIVE_SPARSE_STATE_MIXER_ANCHOR_NAME,
-                        SDM_SPARSE_STATE_FALLBACK_ANCHOR_NAME,
                     )
 
+                    sdm_fallback = (
+                        "facebook_sparse_delta_memory_183e7df_precomputed_route_adapter"
+                    )
                     if override not in {
                         NATIVE_SPARSE_STATE_MIXER_ANCHOR_NAME,
-                        SDM_SPARSE_STATE_FALLBACK_ANCHOR_NAME,
+                        sdm_fallback,
                     }:
                         decision = AnchorDecision(
                             anchor=None,
@@ -1227,7 +1231,7 @@ class UrmCompiler:
                                     f"override {override!r} is incompatible with "
                                     "the SparseStateMixer native/fallback anchors "
                                     f"{NATIVE_SPARSE_STATE_MIXER_ANCHOR_NAME!r} and "
-                                    f"{SDM_SPARSE_STATE_FALLBACK_ANCHOR_NAME!r}"
+                                    f"{sdm_fallback!r}"
                                 ),
                             ),
                         )
@@ -1401,12 +1405,10 @@ class UrmCompiler:
         override_name: str,
         op,
     ) -> AnchorDecision:
-        from urm.compiler.select.anchors import (
-            SDM_SPARSE_STATE_FALLBACK_ANCHOR_NAME,
-            TRUSTED_ANCHORS,
-        )
+        from urm.compiler.select.anchors import TRUSTED_ANCHORS, _PROVIDER_ANCHORS
 
-        anchor = next((a for a in TRUSTED_ANCHORS if a.name == override_name), None)
+        catalog = (*TRUSTED_ANCHORS, *_PROVIDER_ANCHORS)
+        anchor = next((a for a in catalog if a.name == override_name), None)
         if anchor is None or anchor.kind is not kind:
             return AnchorDecision(
                 anchor=None,
@@ -1420,7 +1422,8 @@ class UrmCompiler:
         # support probe before it is selectable. Overriding the name must never
         # select an incompatible equation (acceptance-contract section 4); the
         # probe is the capability gate for the external checkout.
-        if override_name == SDM_SPARSE_STATE_FALLBACK_ANCHOR_NAME:
+        sdm_fallback = "facebook_sparse_delta_memory_183e7df_precomputed_route_adapter"
+        if override_name == sdm_fallback:
             from urm.compiler.select.anchors import _default_sdm_support_probe
 
             upstream_status = _default_sdm_support_probe()
@@ -2403,9 +2406,10 @@ def compile_mixer(
                 "torch.nn.functional.scaled_dot_product_attention",
             )
         elif spec.family is MixerKernelFamily.SPARSE_DELTA:
-            from urm.compiler.select.anchors import SDM_SPARSE_STATE_FALLBACK_ANCHOR_NAME
-
-            anchor = SDM_SPARSE_STATE_FALLBACK_ANCHOR_NAME
+            # Legacy recipe dispatch (deleted once the graph path covers K3);
+            # the pinned SDM fallback anchor is registered by the comparator
+            # consumer, not core.
+            anchor = "facebook_sparse_delta_memory_183e7df_precomputed_route_adapter"
         else:
             anchor = library_k2_anchor
             assert anchor is not None

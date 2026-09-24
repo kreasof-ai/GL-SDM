@@ -25,7 +25,7 @@ from benchmarks.comparators.sdm.reference import (
     torch_sparse_read,
     torch_write_read,
 )
-from urm.compiler.select.anchors import SDM_EXTERNAL_ANCHOR_NAME, TRUSTED_ANCHORS
+from benchmarks.comparators.anchors import SDM_EXTERNAL_ANCHOR_NAME, UPSTREAM_ANCHORS
 
 BACKWARD_TOLERANCES = {
     torch.float32: {
@@ -316,7 +316,7 @@ def test_training_backward_is_differentially_certified(dtype) -> None:
 
 def test_advertised_backward_dtypes_equal_differential_gate_coverage() -> None:
     anchor = next(
-        item for item in TRUSTED_ANCHORS if item.name == SDM_EXTERNAL_ANCHOR_NAME
+        item for item in UPSTREAM_ANCHORS if item.name == SDM_EXTERNAL_ANCHOR_NAME
     )
     advertised = {str(dtype).removeprefix("torch.") for dtype in BACKWARD_TOLERANCES}
     assert anchor.backward_verified_dtypes == advertised

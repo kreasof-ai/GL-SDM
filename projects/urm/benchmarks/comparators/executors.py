@@ -996,7 +996,7 @@ def _execute_fla_hgrn(plan: CompiledMixerPlan, torch: Any, **operands: Any):
         if initial_state.shape[-1] != 1:
             raise ValueError("HGRN initial_state must have shape [B,C] or [B,C,1]")
         initial_state = initial_state.squeeze(-1)
-    from urm.compiler.select.anchors import FLA_HGRN_ANCHOR_NAME
+    from benchmarks.comparators.anchors import FLA_HGRN_ANCHOR_NAME
 
     output, final_state = _pinned_fla_hgrn()(
         x,
@@ -2125,7 +2125,7 @@ def _execute_mamba2_ssm_library(plan: CompiledMixerPlan, torch: Any, **operands:
         raise RuntimeError("the pinned Mamba-2 SSD adapter requires CUDA tensors")
     if x.dtype != torch.float32:
         raise RuntimeError("the pinned Mamba-2 SSD adapter is qualified for float32")
-    from urm.compiler.select.anchors import MAMBA2_SSD_ANCHOR_NAME
+    from benchmarks.comparators.anchors import MAMBA2_SSD_ANCHOR_NAME
 
     output, final_state = _pinned_mamba2_scan()(
         x,
@@ -2238,7 +2238,7 @@ def _execute_mamba_selective_scan(plan: CompiledMixerPlan, torch: Any, **operand
         skip = None
     else:
         skip = torch.full((channels,), float(skip), device=x.device, dtype=x.dtype)
-    from urm.compiler.select.anchors import MAMBA_SELECTIVE_SCAN_ANCHOR_NAME
+    from benchmarks.comparators.anchors import MAMBA_SELECTIVE_SCAN_ANCHOR_NAME
 
     output, final_state = _pinned_mamba_selective_scan()(
         u,
@@ -2750,6 +2750,12 @@ def _check_fla_k2_runtime(query: Any, key: Any, value: Any, torch: Any):
 
 
 def register_all() -> None:
+    # Register the upstream/architecture-named anchor capability declarations so
+    # the compiler's default registry includes them (the core ships only
+    # URM-owned anchors; the comparator suite owns the upstream providers).
+    from benchmarks.comparators.anchors import register_anchor_providers
+
+    register_anchor_providers()
     register_external_executor('fla_parallel_deltaformer_adapter', _execute_fla_deltaformer)
     register_external_executor('fla_parallel_forgetting_attention_adapter', _execute_fla_forgetting_attention)
     register_external_executor('fla_parallel_parallax_adapter', _execute_fla_parallax_attention)

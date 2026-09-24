@@ -4,6 +4,7 @@ import json
 import re
 from pathlib import Path
 
+from benchmarks.comparators.anchors import UPSTREAM_ANCHORS
 from urm.compiler.select.anchors import TRUSTED_ANCHORS
 from urm.frontend.recipes import MIXER_RECIPE_NAMES, named_mixer_recipe
 
@@ -17,7 +18,9 @@ def test_named_register_is_complete_and_source_pinned_or_explicitly_blocked():
     assert manifest["schema_version"] == 3
     rows = manifest["architectures"]
     unified_tests = (ROOT / "tests/test_unified_mixer.py").read_text(encoding="utf-8")
-    trusted_anchor_names = {anchor.name for anchor in TRUSTED_ANCHORS}
+    # Anchor coverage spans the URM-owned core anchors plus the consumer-owned
+    # upstream providers (the comparator suite registers them).
+    trusted_anchor_names = {anchor.name for anchor in (*TRUSTED_ANCHORS, *UPSTREAM_ANCHORS)}
     assert len({row["id"] for row in rows}) == len(rows)
     assert len({row["architecture"] for row in rows}) == len(rows)
     coverage = (ROOT / "docs/planning/coverage.md").read_text(encoding="utf-8")

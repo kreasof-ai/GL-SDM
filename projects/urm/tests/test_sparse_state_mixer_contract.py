@@ -11,12 +11,20 @@ import pytest
 from urm.compiler.common.diagnostics import CompilerError, DiagnosticCode
 from urm.compiler.select.anchors import (
     NATIVE_SPARSE_STATE_MIXER_ANCHOR_NAME,
-    SDM_SPARSE_STATE_FALLBACK_ANCHOR_NAME,
     TRUSTED_ANCHORS,
     AnchorKind,
     AnchorRegistry,
     make_sparse_state_mixer_selector,
 )
+from benchmarks.comparators.anchors import (
+    SDM_SPARSE_STATE_FALLBACK_ANCHOR_NAME,
+    UPSTREAM_ANCHORS,
+    register_anchor_providers,
+)
+
+# The override-validation path reads the consumer-registered provider catalog;
+# install it so these comparator-integration tests are order-independent.
+register_anchor_providers()
 from urm.compiler.pipeline import CompilationIntent, ScheduleParams, UrmCompiler
 from urm.ir.program import (
     DType,
@@ -189,7 +197,7 @@ def _compiler_with_fallback(*, native_supported: bool, upstream_supported: bool)
     )
     fallback = next(
         item
-        for item in TRUSTED_ANCHORS
+        for item in UPSTREAM_ANCHORS
         if item.name == SDM_SPARSE_STATE_FALLBACK_ANCHOR_NAME
     )
     registry = AnchorRegistry()
