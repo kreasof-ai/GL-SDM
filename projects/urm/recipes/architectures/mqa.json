@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "name": "mqa",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.fla_attention_naive",
+    "notes": "arch-002. Same U1.S equation as arch-001 with the head map set to all query heads -> one KV head (H=1, G=HQ); verified against fla/ops/attn/naive.py group-sharing. Layer module: architectures/head_map_attention.py (head_map='single')."
+  },
+  "layers": [
+    {
+      "id": "mqa_layer",
+      "operation": "weighted_reduce",
+      "external_component": "architectures.head_map_attention.HeadMapAttention",
+      "params": {
+        "head_map": "single",
+        "query_domain": "sequence",
+        "source_domain": "sequence",
+        "normalization": "softmax",
+        "selection": "dense",
+        "causal": true
+      },
+      "state": {},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Layer parity vs pinned fla naive (shared KV across all query heads) in tests/test_architectures_head_map_attention.py; shared-KV gradient accumulation covered by the backward gate. Residual: B[shared-head gradients_and_decode] decode/cache behavior not claimed."
+  }
+}
