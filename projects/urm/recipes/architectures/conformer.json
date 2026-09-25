@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "name": "conformer",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.conformer",
+    "notes": "arch-075. Verified in the sweep against espnet2/asr_transducer/encoder/modules/attention.py @ 2950325e: the mixer is noncausal U1.S with an additive score bias — softmax([(q+u)·kᵀ + rel_shift((q+v)·pᵀ)]/√d)·v. The rel-pos frontend (linear_pos, pos_bias_u/v, rel_shift) and the Conformer block's macaron FFN / depthwise conv / norms / residuals are external. Layer module: architectures/conformer_attention.py."
+  },
+  "layers": [
+    {
+      "id": "conformer_relpos_attention",
+      "operation": "weighted_reduce",
+      "external_component": "architectures.conformer_attention.ConformerRelPosAttention",
+      "params": {
+        "external_stages": [
+          "linear_q/k/v/out projections",
+          "linear_pos + pos_bias_u/v + rel_shift (relative-position score bias)",
+          "macaron FFN, depthwise convolution module, LayerNorms and residuals (block wrapper)"
+        ],
+        "normalization": "softmax",
+        "selection": "dense",
+        "causal": false,
+        "head_map": "equal",
+        "score_bias": true,
+        "attention_mask": true
+      },
+      "state": {},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Layer parity vs the pinned RelPositionMultiHeadedAttention (full u/v-bias variant, masked and unmasked) in tests/test_architectures_conformer.py; gradients reach the position-bias parameters. The simplified_attention_score variant, streaming chunk/left-context caches, and the Conformer block wrapper (macaron FFN + conv module) are residual external work, not claimed."
+  }
+}
