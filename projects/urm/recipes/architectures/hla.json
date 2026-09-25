@@ -4,7 +4,7 @@
   "kind": "complete_model_graph",
   "source": {
     "comparator": "benchmarks.comparators.hla",
-    "notes": "arch-074 (flagship Nest combinator). Masked second-order UNNORMALIZED causal case (paper Eq. 3.3 + Algorithm 1, the default operator): S_t = Σk_ik_iᵀ, C_t = Σq_iv_iᵀ, G_t = G_{t-1} + ΔS_t·C_{t-1}, o_t = q_tᵀ(S_tC_t − G_t). The Nest shape is two dependent additive prefix accumulations with the strict-causality correction from the nesting; the per-token prefix matrices are the carried state bundle (the K2 read q_tᵀM_t does not expose the matrix, so the prefix scan + correction are the external Nest structure). Verified against the pinned paper (HLA.pdf, arXiv 2510.27258, @ 484fef2b). Layer module: architectures/hla.py."
+    "notes": "arch-074 (flagship Nest combinator). Masked second-order UNNORMALIZED causal case (paper Eq. 3.3 + Algorithm 1, the default operator). The Nest combinator composes through the public graph as TWO DEPENDENT typed K2 calls — S_t = S_(t-1) + k_t k_tᵀ, r_t = S_t q_t (call 1: query=q,key=k,value=k); F_t = F_(t-1) + r_t v_tᵀ, o_t = q_tᵀ F_t (call 2: query=q,key=r,value=v). Both are the plain additive K2 law (delta=False, gate_scope=none, scale_rule=one, after-update read); the paper's F_t = S_tC_t − G_t expands to exactly the second call's state, and S_t symmetric makes call 1's output orientation exact. The two states (S, F) are explicit producer-carried edges; r is materialized between calls; unfused (two launches). Verified against the pinned paper (HLA.pdf, arXiv 2510.27258, @ 484fef2b). Layer module: architectures/hla.py."
   },
   "layers": [
     {
@@ -12,17 +12,17 @@
       "operation": "linear_delta_state",
       "external_component": "architectures.hla.HLALayer",
       "params": {
-        "combinator": "Nest: two dependent additive prefix accumulations (S_t, C_t) + strict-causality correction (G_t)",
-        "external_stages": ["prefix scan (S, C)", "correction recurrence (G)", "output contraction o_t = q_tᵀ(S_tC_t − G_t)"],
-        "note": "default masked unnormalized causal case only"
+        "combinator": "Nest: two dependent additive K2 calls (S_t state, then F_t state) composed via producer/consumer edges — the exact factorization of the masked unnormalized law",
+        "external_stages": ["none for the mixer (executes through public K2); q/k/v construction is upstream of the layer"],
+        "note": "default masked unnormalized causal case only; unfused two-K2 composition"
       },
-      "state": {"state_bundle": "(S, C, m, G, h) — both calls' states carried for continuation"},
+      "state": {"state_bundle": "(S, F) — one additive K2 state per call, both carried for continuation"},
       "cache": {}
     }
   ],
   "coverage": {
     "level": "generic_model_integration",
     "validated": true,
-    "notes": "Serial-recurrence parity vs an independent brute-force transcription of the closed-form masked identity, the strict-causality gate (future-token perturbation does not change earlier outputs), and gradients through the nested recurrence in tests/test_architectures_hla.py. NOT claimed (sweep verdict): the normalized variant (Eq. 3.4, +ε), decay γ (Eq. 4.1), ridge λ, the chunk-parallel associative scan, and any source-derived VJP (autograd through the external recurrence covers backward)."
+    "notes": "The public two-K2 Nest graph matches the independent serial Algorithm 1 recurrence (hla_serial_reference) AND an independent brute-force transcription of the closed-form masked identity; the strict-causality gate (future-token perturbation does not change earlier outputs); and gradients through the pair — in tests/test_architectures_hla.py. NOT claimed (sweep verdict): the normalized variant (Eq. 3.4, +ε), decay γ (Eq. 4.1), ridge λ, the chunk-parallel associative scan, and the fused single-kernel schedule (the two-K2 composition is unfused; fusion is a later proven rewrite)."
   }
 }

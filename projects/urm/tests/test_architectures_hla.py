@@ -15,9 +15,28 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from architectures.hla import HLALayer
+from architectures.hla import HLALayer, hla_serial_reference
 
 H, K, V, T = 2, 8, 6, 7
+
+
+def test_two_k2_graph_matches_serial_recurrence():
+    """The public two-K2 Nest graph == the independent serial Algorithm 1 recurrence.
+
+    This is the composition claim: HLA's masked unnormalized law factors into two
+    dependent additive K2 calls (S_t += k kᵀ, r_t = S_t q_t; F_t += r vᵀ,
+    o_t = q_tᵀ F_t). The layer executes that two-node public graph; the serial
+    recurrence is the independent comparator.
+    """
+    torch.manual_seed(3)
+    q = torch.randn(2, H, T, K)
+    k = torch.randn(2, H, T, K)
+    v = torch.randn(2, H, T, V)
+    layer = HLALayer(K)
+    graph_out = layer(q, k, v)                 # public two-K2 graph
+    serial_out = hla_serial_reference(q, k, v)  # independent serial recurrence
+    err = (graph_out - serial_out).abs().max().item()
+    assert err < 1e-4, f"two-K2 graph vs serial recurrence: max abs err {err}"
 
 
 def _brute_force_hla(q, k, v):
