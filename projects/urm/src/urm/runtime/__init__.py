@@ -1,9 +1,9 @@
-"""Runtime: plan binding and state sessions.
+"""Runtime: plan binding and value certification.
 
-Exposes the plan-authority binder (:class:`BoundGraphPlan`) and the persistent
-state sessions for compiled plans. There is no backend registry here: selection
-is a compiler decision (:mod:`urm.compiler.select`), and execution binds the
-verified plan.
+Exposes the plan-authority binder (:class:`BoundGraphPlan`) and the K3
+route/operand certification (:mod:`urm.runtime.certification`). There is no
+backend registry here: selection is a compiler decision
+(:mod:`urm.compiler.select`), and execution binds the verified plan.
 """
 
 from __future__ import annotations

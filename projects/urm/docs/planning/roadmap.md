@@ -21,7 +21,7 @@
 
 ## Gate 1 — One provider contract and complete execution plans
 
-**Files:** `src/urm/backends/interface.py`, `compiler/select/`, `compiler/partition/`, `compiler/schedule/`, `compiler/lower/`, `compiler/verify/`, `runtime/bind.py`, `runtime/state.py`.
+**Files:** `src/urm/backends/interface.py`, `compiler/select/`, `compiler/partition/`, `compiler/schedule/`, `compiler/lower/`, `compiler/verify/`, `runtime/bind.py`, `runtime/certification.py`.
 
 1. Unify `BackendRequest`/`CapabilityRegistry` and `ExecutionAnchor` around one immutable semantic request, capability decline and executable entry point. Remove name sets, first-match-by-kind, empty wildcard contracts, global provider mutation and SDM upstream override from core.
 2. Partition the complete graph into effect-safe regions. Select one exact provider and schedule per region; serialize role bindings, placement, materialization, state ABI, mode, backward/decode and numerical envelope. Runtime invokes that plan without re-deciding.
