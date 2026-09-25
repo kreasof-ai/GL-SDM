@@ -27,14 +27,19 @@ def test_architecture_documents_validate_against_schema() -> None:
         jsonschema.validate(json.loads(path.read_text(encoding="utf-8")), schema)
 
 
-def test_samba_and_pattention_are_honestly_scoped_fragments() -> None:
-    samba = load_architecture_recipe_file(ARCHS / "samba.json")
+def test_pattention_is_honestly_scoped_fragment() -> None:
+    # PAttention's parameter-token module is not yet built; it records fragment scope.
     patention = load_architecture_recipe_file(ARCHS / "pattention.json")
-    # Neither claims source-architecture coverage; both record fragment scope.
-    assert samba.coverage_level == "kernel_fragment"
-    assert samba.coverage_validated is False
     assert patention.coverage_level == "kernel_fragment"
     assert patention.coverage_validated is False
+
+
+def test_samba_records_attention_branch_scope() -> None:
+    # Batch 1 landed the attention branch (arch-053 composition-now): validated
+    # layer parity, with the Mamba-gated configurations explicitly out of scope.
+    samba = load_architecture_recipe_file(ARCHS / "samba.json")
+    assert samba.coverage_level == "generic_model_integration"
+    assert samba.coverage_validated is True
 
 
 def test_loader_rejects_empty_layer_graph() -> None:

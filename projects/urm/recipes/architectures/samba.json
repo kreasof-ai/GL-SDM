@@ -4,21 +4,31 @@
   "kind": "complete_model_graph",
   "source": {
     "comparator": "benchmarks.comparators.samba",
-    "notes": "Samba interleaves Mamba-style SSM layers with sliding-window attention layers. The pinned attention comparison lives in the comparator; the full hybrid layer composition is NOT yet represented here."
+    "notes": "arch-053. The attention branch is plain causal U1.S with a GQA-capable head map (n_query_groups) and external RoPE — verified against lit_gpt/model.py CausalSelfAttention @ 617c7a0f. The per-layer mixer selection (use_mamba/use_retnet/use_gla schedules) and the mamba_swa_mlp Mamba-then-attention block mode are gated on the Mamba selective-SSM axis (A8) and are NOT claimed here; this module is the attention branch only. Layer module: architectures/samba_attention.py."
   },
   "layers": [
     {
-      "id": "samba_attention_core",
-      "operation": "samba_attention_core",
+      "id": "samba_attention_branch",
+      "operation": "weighted_reduce",
+      "external_component": "architectures.samba_attention.SambaAttentionLayer",
       "params": {
-        "scope": "fragment_only",
-        "note": "This is the K1 sliding-window attention fragment only. It does not by itself constitute full Samba coverage."
-      }
+        "external_stages": [
+          "batched Q/K/V projection (per query-group packing)",
+          "RoPE (build_rope_cache + apply_rotary_emb, fp32 cache)",
+          "output projection"
+        ],
+        "normalization": "softmax",
+        "selection": "dense",
+        "causal": true,
+        "head_map": "equal|single|grouped (derived from n_head/n_query_groups)"
+      },
+      "state": {},
+      "cache": {}
     }
   ],
   "coverage": {
-    "level": "kernel_fragment",
-    "validated": false,
-    "notes": "samba_attention_core remains a K1 fragment. Full Samba requires the complete interleaved SSM+attention layer graph with its state/cache branches, recorded as ordered layers referencing typed operations, before any source-architecture coverage claim is made."
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Attention-branch parity vs the pinned CausalSelfAttention (MHA and GQA query-group configs, RoPE injected) in tests/test_architectures_samba.py; gradients flow through the QKV and output projections. The per-layer Mamba/RetNet/GLA schedule, the mamba_swa_mlp block mode (Mamba axis A8), the optional short-conv (sc_attn), local sliding window and KV-cache/decode paths are residual external work, not claimed."
   }
 }
