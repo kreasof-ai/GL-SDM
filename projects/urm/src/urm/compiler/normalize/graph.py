@@ -77,7 +77,8 @@ _K1_ROLES = frozenset(
     {"query", "key", "value", "score_bias", "attention_mask", "scale", "channel_gate"}
 )
 _K2_ROLES = frozenset(
-    {"query", "key", "value", "beta", "log_decay", "initial_state", "scale"}
+    {"query", "key", "value", "beta", "log_decay", "initial_state", "scale",
+     "erase_gate", "write_gate", "predict_key", "alpha", "low_rank_beta"}
 )
 
 
@@ -126,7 +127,8 @@ def _k1_descriptor(params: dict[str, Any], roles: tuple[tuple[str, str], ...]) -
 
 
 _K2_PARAMS = frozenset(
-    {"delta", "gate_scope", "read_timing", "scale_rule", "normalized", "epsilon", "roles"}
+    {"delta", "gate_scope", "read_timing", "scale_rule", "normalized", "epsilon", "roles",
+     "erase_gate", "write_gate", "predict_key", "low_rank"}
 )
 _K1_PARAMS = frozenset(
     {
@@ -146,7 +148,8 @@ def _reject_unknown_params(params: dict[str, Any], legal: frozenset[str], node_i
         )
 
 
-def _linear_delta_spec(params: dict[str, Any]) -> LinearDeltaSpec:
+def _linear_delta_spec(params: dict[str, Any], roles: Any) -> LinearDeltaSpec:
+    role_names = set(dict(roles))
     return LinearDeltaSpec(
         delta=bool(params.get("delta", True)),
         gate_scope=_enum(K2GateScope, params.get("gate_scope", "none"), field="k2.gate_scope"),
@@ -156,6 +159,10 @@ def _linear_delta_spec(params: dict[str, Any]) -> LinearDeltaSpec:
         scale_rule=_enum(K2ScaleRule, params.get("scale_rule", "one"), field="k2.scale_rule"),
         normalized=bool(params.get("normalized", False)),
         epsilon=float(params.get("epsilon", 1e-6)),
+        erase_gate="erase_gate" in role_names,
+        write_gate="write_gate" in role_names,
+        predict_key="predict_key" in role_names,
+        low_rank=bool(params.get("low_rank", False)),
     )
 
 
@@ -236,7 +243,7 @@ def _build_node(node: dict[str, Any], *, index: int) -> SemanticNode:
             name=node_id,
             inputs=inputs,
             outputs=outputs,
-            spec=_linear_delta_spec(params),
+            spec=_linear_delta_spec(params, roles),
             roles=roles,
         )
     if op == "matmul":

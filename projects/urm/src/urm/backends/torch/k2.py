@@ -33,6 +33,11 @@ def linear_delta_state(
     *,
     spec: LinearDeltaSpec,
     scale: float | None = None,
+    erase_gate: Any | None = None,
+    write_gate: Any | None = None,
+    predict_key: Any | None = None,
+    alpha: Any | None = None,
+    low_rank_beta: Any | None = None,
 ) -> tuple[Any, Any] | tuple[Any, tuple[Any, Any]]:
     """Run the canonical K2 recurrence over a token sequence.
 
@@ -98,15 +103,41 @@ def linear_delta_state(
         if norm is not None and norm_decay is not None:
             norm = norm_decay * norm  # decay the denominator with the state
 
-        # h_t = k_tᵀ Z_t : contract the key over the state's key axis.
-        retr = torch.einsum("bhk,bhkv->bhv", k[:, :, t], z)  # [B,H,V]
-        if spec.delta:
-            delta = b[:, :, t].unsqueeze(-1) * (v[:, :, t] - retr)
+        # The generalized rank-1 transition (A8). The read/erase key may be gated
+        # (erase_gate, GDN2 b), replaced by an independent predict key (Comba p),
+        # or augmented by an additive low-rank transition (alpha^T·S)⊗beta read off
+        # the PRE-decay state (IPLR/DPLR/RWKV-7).
+        if spec.low_rank:
+            # Additive orientation: S_t = D_t·S_{t-1} + k_t⊗v_t + (α_tᵀS_{t-1})⊗β_t.
+            # The low-rank read αᵀS uses the pre-decay state m.
+            a = alpha.to(torch.float32)
+            lb = low_rank_beta.to(torch.float32)
+            lr_read = torch.einsum("bhk,bhkv->bhv", a[:, :, t], m)  # [B,H,V] off pre-decay
+            m = z + k[:, :, t].unsqueeze(-1) * v[:, :, t].unsqueeze(-2) \
+                + lb[:, :, t].unsqueeze(-1) * lr_read.unsqueeze(-2)
+            if norm is not None:
+                norm = norm + k[:, :, t]
         else:
-            delta = v[:, :, t]
-        m = z + k[:, :, t].unsqueeze(-1) * delta.unsqueeze(-2)
-        if norm is not None:
-            norm = norm + k[:, :, t]
+            # Delta-correction orientation: read off the decayed state z.
+            read_key = k[:, :, t]
+            if spec.predict_key:
+                read_key = predict_key.to(torch.float32)[:, :, t]
+            if spec.erase_gate:
+                read_key = read_key * erase_gate.to(torch.float32)[:, :, t]
+            # h_t = read_keyᵀ Z_t : contract the read key over the state's key axis.
+            retr = torch.einsum("bhk,bhkv->bhv", read_key, z)  # [B,H,V]
+            # The write value: v (optionally write-gated). The delta correction
+            # subtracts the read-back; the additive law writes the value directly.
+            write_value = v[:, :, t]
+            if spec.write_gate:
+                write_value = write_gate.to(torch.float32)[:, :, t] * write_value
+            if spec.delta:
+                delta = b[:, :, t].unsqueeze(-1) * (write_value - retr)
+            else:
+                delta = write_value
+            m = z + k[:, :, t].unsqueeze(-1) * delta.unsqueeze(-2)
+            if norm is not None:
+                norm = norm + k[:, :, t]
 
         if spec.read_timing is K2ReadTiming.BEFORE_UPDATE:
             read_state = z
@@ -159,6 +190,11 @@ class K2TorchReferenceProvider:
             operands["value"], operands["beta"], operands["log_decay"],
             spec=request.descriptor,
             scale=None if scale_op is None else float(scale_op),
+            erase_gate=operands.get("erase_gate"),
+            write_gate=operands.get("write_gate"),
+            predict_key=operands.get("predict_key"),
+            alpha=operands.get("alpha"),
+            low_rank_beta=operands.get("low_rank_beta"),
         )
         if request.descriptor.normalized:
             out, (final_state, denominator) = result

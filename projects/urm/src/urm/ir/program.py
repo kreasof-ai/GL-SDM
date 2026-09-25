@@ -207,6 +207,18 @@ class LinearDeltaSpec:
     scale_rule: K2ScaleRule = K2ScaleRule.ONE
     normalized: bool = False  # a normalized variant carries a denominator state
     epsilon: float = 1e-6
+    # A8 transition breadth (generalized rank-1 K2 transition). All default to the
+    # canonical law; each is a typed role bound by name, never inferred.
+    # erase_gate: channel gate on the READ/erase key (GDN2 b, Comba predict key p).
+    erase_gate: bool = False
+    # write_gate: channel gate on the WRITE value (GDN2 w).
+    write_gate: bool = False
+    # predict_key: an independent retrieval/erase key distinct from the write key
+    # (Comba p); when set, the delta read uses predict_key instead of key.
+    predict_key: bool = False
+    # low_rank: an additive rank-1 state transition (alpha^T S)⊗beta read off the
+    # PRE-decay state (IPLR/DPLR/RWKV-7). Adds the alpha/beta roles.
+    low_rank: bool = False
     accumulation_dtype: DType = DType.FLOAT32
 
     def __post_init__(self) -> None:
@@ -214,6 +226,10 @@ class LinearDeltaSpec:
             raise ValueError("a normalized K2 variant requires epsilon > 0")
         if self.accumulation_dtype is not DType.FLOAT32:
             raise ValueError("K2 v1 requires float32 accumulation")
+        if self.low_rank and self.delta:
+            raise ValueError("low_rank transition is the additive orientation; delta=True is the correction orientation")
+        if self.predict_key and self.erase_gate:
+            raise ValueError("predict_key and erase_gate both redefine the read key; use one")
 
 
 class SparseScoreComposition(StrEnum):

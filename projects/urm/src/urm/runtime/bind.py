@@ -111,7 +111,11 @@ def _operands_for(
     if family is ProviderFamily.K1:
         return _bind_roles(op, ("query", "key", "value"), _K1_OPTIONAL_ROLES, tensors)
     if family is ProviderFamily.K2:
-        return _bind_roles(op, _K2_REQUIRED_ROLES, ("scale",), tensors)
+        return _bind_roles(
+            op, _K2_REQUIRED_ROLES,
+            ("scale", "erase_gate", "write_gate", "predict_key", "alpha", "low_rank_beta"),
+            tensors,
+        )
     if family is ProviderFamily.K3:
         # K3 roles are the frozen operand names of the sparse-state contract.
         bound = {name: tensors.get(name) for name in op.inputs}
