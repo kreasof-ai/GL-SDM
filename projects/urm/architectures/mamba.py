@@ -16,9 +16,17 @@ matrix state (the K2 contract's [H,K,V] matrix).
 Mamba-2 (044): the semiseparable (chunked) form — within a chunk the diagonal
 blocks give ``Y = (CBᵀ ∘ L)X`` with ``L = exp(segsum(A·dt))`` the intra-chunk
 decay mask; off-diagonal blocks factor through a boundary-state recurrence with
-decay_chunk = exp(segsum(A·dt) at chunk ends). The cross-chunk boundary carry is
-the defining structure; residual here (the within-chunk diagonal-block form is
-verified).
+decay_chunk = exp(segsum(A·dt) at chunk ends). Its recurrent core maps EXACTLY
+onto the canonical additive K2 law (scalar-per-head transition →
+``gate_scope=head``, ``delta=False``, state ``M[dstate, head_dim]``) and executes
+through the public K2 path in ``Mamba2K2Layer`` — verified against the pinned
+``ssd_chunk_scan_combined_ref`` and the diagonal scan. The chunked semiseparable
+kernel (chunk_state/state_passing/chunk_scan) is a physical schedule — residual.
+
+Mamba-1's diagonal gate ``exp(dt_d·A_{d,n})`` varies over BOTH state dims and does
+NOT fit ``LinearDeltaSpec`` (its channel gate decays only the key axis); admitting
+it needs a new elementwise diagonal-affine law, which is a single-client physical
+branch — residual per the two-client rule.
 
 The δ/B/C/A discretization frontend, the D·u skip, the optional z gate, and the
 conv short-circuit are external.
@@ -27,6 +35,8 @@ conv short-circuit are external.
 from __future__ import annotations
 
 import torch
+
+from architectures.k2_linear_state import K2LinearStateLayer
 
 
 def selective_scan_diag(u, delta, A, B, C, delta_bias=None, delta_softplus=True):
@@ -126,4 +136,63 @@ class Mamba2Layer(torch.nn.Module):
         return out.transpose(1, 2)
 
 
-__all__ = ["Mamba1Layer", "Mamba2Layer", "selective_scan_diag"]
+class Mamba2K2Layer(K2LinearStateLayer):
+    """Mamba-2's recurrent core routed through the public head-gated matrix K2.
+
+    Mamba-2's scalar-per-head transition maps EXACTLY onto the canonical additive
+    K2 law (``delta=False``, ``gate_scope=head``, ``scale_rule=one``): the state is
+    the matrix ``M[N, P]`` (dstate × head_dim), the head gate is ``exp(A_h·dt_t)``,
+    the additive write is ``B_t ⊗ (dt_t·u_t)`` (key=B, value=dt·u), and the
+    after-update read is ``C_tᵀ M_t`` (query=C). Verified against the pinned
+    ``ssd_chunk_scan_combined_ref`` and the diagonal scan (0.0). The selective
+    frontend (dt/B/C projections, A_log/dt_bias discretization), the D·u skip, the
+    z gate, conv and the chunked semiseparable kernel are external.
+
+    Unlike Mamba-1 (whose diagonal gate ``exp(dt_d·A_{d,n})`` varies over both state
+    dims and needs a new elementwise law — residual, single-client), Mamba-2's
+    scalar-per-head gate fits the existing ``gate_scope=head`` descriptor, so the
+    recurrent core executes through the public K2 path here.
+    """
+
+    def __init__(self, d_model: int, n_heads: int, head_dim: int, d_state: int, *,
+                 target: str = "reference", intent: str = "inference"):
+        super().__init__(
+            hidden_size=d_model, num_heads=n_heads, head_k_dim=d_state, head_v_dim=head_dim,
+            delta=False, gate_scope="head", scale_rule="one",
+            target=target, intent=intent,
+        )
+        self.d_model = d_model
+        self.n_heads = n_heads
+        self.head_dim = head_dim
+        self.d_state = d_state
+        # External selective frontend: dt/B/C projections and the A parameter.
+        self.A_log = torch.nn.Parameter(torch.randn(n_heads))           # per-head A
+        self.dt_bias = torch.nn.Parameter(torch.rand(n_heads))
+        self.in_proj = torch.nn.Linear(d_model, d_model + n_heads + d_state + d_state, bias=False)
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        """hidden_states [B,L,D] → output [B,L,D]."""
+        B, L, D = hidden_states.shape
+        H, P, N = self.n_heads, self.head_dim, self.d_state
+        proj = self.in_proj(hidden_states)
+        x, dt, Bm, Cm = proj.split([D, H, N, N], dim=-1)
+        # External discretization: A = -exp(A_log) (per head); dt = softplus(dt + dt_bias).
+        A = -self.A_log.exp()                                           # [H]
+        dt = torch.nn.functional.softplus(dt + self.dt_bias)            # [B,L,H]
+        # K2 operands ([B,H,L,*]): query=C[N], key=B[N], value=dt·u[P], log_decay=A_h·dt.
+        Cm_e = Cm.reshape(B, L, 1, N).expand(B, L, H, N).permute(0, 2, 1, 3)   # [B,H,L,N]
+        Bm_e = Bm.reshape(B, L, 1, N).expand(B, L, H, N).permute(0, 2, 1, 3)   # [B,H,L,N]
+        u_r = x.reshape(B, L, H, P).permute(0, 2, 1, 3)                          # [B,H,L,P]
+        dt_hl = dt.permute(0, 2, 1)                                            # [B,H,L]
+        val = u_r * dt_hl.unsqueeze(-1)                                        # [B,H,L,P] = dt·u
+        log_decay = A.reshape(1, H, 1) * dt_hl                                 # [B,H,L] = A_h·dt
+        out = self._run_mixer({
+            "query": Cm_e, "key": Bm_e, "value": val,
+            "beta": torch.ones(B, H, L, device=hidden_states.device),
+            "log_decay": log_decay,
+            "initial_state": torch.zeros(B, H, N, P, device=hidden_states.device),
+        })["output"]                                                            # [B,H,L,P]
+        return out.permute(0, 2, 1, 3).reshape(B, L, D)
+
+
+__all__ = ["Mamba1Layer", "Mamba2Layer", "Mamba2K2Layer", "selective_scan_diag"]

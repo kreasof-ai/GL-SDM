@@ -14,9 +14,52 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from architectures.mamba import Mamba1Layer, Mamba2Layer, selective_scan_diag
+from architectures.mamba import Mamba1Layer, Mamba2K2Layer, Mamba2Layer, selective_scan_diag
 
 D, N, L, H, P = 3, 4, 6, 2, 4
+
+
+def test_mamba2_core_routes_through_public_k2():
+    """Mamba-2's recurrent core executes through the public head-gated matrix K2.
+
+    The scalar-per-head transition maps onto the canonical additive K2 law
+    (delta=False, gate_scope=head): state M[dstate, head_dim], gate exp(A_h·dt),
+    write B⊗(dt·u), read CᵀM. Verified against the pinned ssd_chunk_scan_combined_ref
+    and the diagonal-scan layer sharing the same external frontend.
+    """
+    import sys
+    sys.path.insert(0, "/tmp/urm-comparator-pins/mamba")
+    from mamba_ssm.ops.triton.ssd_combined import ssd_chunk_scan_combined_ref
+    torch.manual_seed(5)
+    d_model = H * P
+    layer = Mamba2K2Layer(d_model, H, P, N)
+    x = torch.randn(1, 8, d_model)
+    with torch.no_grad():
+        out_k2 = layer(x)
+        proj = layer.in_proj(x)
+        xx, dt, Bm, Cm = proj.split([d_model, H, N, N], dim=-1)
+        A = -layer.A_log.exp()
+        dt = torch.nn.functional.softplus(dt + layer.dt_bias)
+        expected = ssd_chunk_scan_combined_ref(
+            xx.reshape(1, 8, H, P), dt, A, Bm.unsqueeze(2), Cm.unsqueeze(2), 4, dt_softplus=False
+        ).reshape(1, 8, d_model)
+    err = (out_k2 - expected).abs().max().item()
+    assert err < 2e-3, f"Mamba2 public-K2 vs pinned chunked SSD: max abs err {err}"
+
+
+def test_mamba2_k2_matches_diagonal_scan_layer():
+    """The public-K2 Mamba-2 core == the diagonal-scan layer on shared weights."""
+    torch.manual_seed(7)
+    d_model = H * P
+    k2 = Mamba2K2Layer(d_model, H, P, N)
+    diag = Mamba2Layer(d_model, H, P, N)
+    with torch.no_grad():
+        diag.in_proj.weight.copy_(k2.in_proj.weight)
+        diag.A_log.copy_(k2.A_log)
+        diag.dt_bias.copy_(k2.dt_bias)
+        x = torch.randn(2, 5, d_model)
+        err = (k2(x) - diag(x)).abs().max().item()
+    assert err < 1e-4, f"Mamba2 public-K2 vs diagonal-scan: max abs err {err}"
 
 
 def test_mamba1_selective_scan_matches_pinned_ref():
