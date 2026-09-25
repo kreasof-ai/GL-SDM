@@ -44,6 +44,9 @@ class AnchorKind(StrEnum):
     SPARSE_ROUTE_SELECTION = "sparse_route_selection"
     SPARSE_STATE_MIXER = "sparse_state_mixer"
     COLLECTIVE_EXCHANGE = "collective_exchange"
+    # Ordinary typed operators (cross-call composition merge, A14) — a typed
+    # linear combination of producer outputs, unfused by default.
+    MERGE = "merge"
 
 
 class VisitorKind(StrEnum):
@@ -556,6 +559,12 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
         name="torch_linear",
         backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
         supported_visitors=frozenset({VisitorKind.FINAL_SCALE_CONVERT}),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.MERGE,
+        name="torch.merge.linear_combination.v1",
+        backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
+        supported_visitors=frozenset(),
     ),
     ExecutionAnchor(
         kind=AnchorKind.ATTENTION,

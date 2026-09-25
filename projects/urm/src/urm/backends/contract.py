@@ -31,13 +31,16 @@ from urm.ir.program import (
 
 
 class ProviderFamily:
-    """The four closed provider families (string constants, not an enum, so
-    the dispatch table keys stay stable in serialized plans)."""
+    """The closed provider families (string constants, not an enum, so the
+    dispatch table keys stay stable in serialized plans). The four mixer
+    families (K1/K2/K3/K3_ROUTE) carry the routed/state equations; ``MERGE`` is
+    the ordinary typed operator for cross-call composition (axis A14)."""
 
     K1 = "k1"
     K2 = "k2"
     K3 = "k3"
     K3_ROUTE = "k3_route"
+    MERGE = "merge"
 
 
 @dataclass(frozen=True, slots=True)

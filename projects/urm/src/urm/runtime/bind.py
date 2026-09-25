@@ -23,6 +23,7 @@ from urm.backends.registry import discover_providers
 from urm.compiler.pipeline import CompilationResult
 from urm.ir.program import (
     LinearDeltaState,
+    Merge,
     ScoreNormalization,
     SemanticProgram,
     SparseRouteGeneration,
@@ -97,6 +98,9 @@ def _family_and_descriptor(op: SemanticNode) -> tuple[str, Any, dict[str, Any]]:
         return (ProviderFamily.K3, op.spec, {})
     if isinstance(op, SparseRouteGeneration):
         return (ProviderFamily.K3_ROUTE, op.spec, {})
+    if isinstance(op, Merge):
+        # Ordinary typed operator (cross-call composition merge, A14).
+        return ("merge", op, {})
     raise PlanBindingError(f"op {op.name!r} ({type(op).__name__}) has no provider family")
 
 
@@ -120,6 +124,23 @@ def _operands_for(
         if scores is None:
             raise PlanBindingError(f"K3 route node {op.name!r}: scores unbound")
         return {"scores": scores}
+    if family == "merge":
+        # Merge terms bind by input name; scale operands are optional runtime
+        # tensors (e.g. the Diff λ) that must be present when declared. "" marks
+        # an unscaled term.
+        bound = {name: tensors.get(name) for name in op.inputs}
+        for name, value in bound.items():
+            if value is None:
+                raise PlanBindingError(f"merge node {op.name!r}: term {name!r} unbound")
+        for s in op.scale_operands:
+            if not s:
+                continue
+            bound[s] = tensors.get(s)
+            if bound[s] is None:
+                raise PlanBindingError(
+                    f"merge node {op.name!r}: scale operand {s!r} unbound"
+                )
+        return bound
     raise PlanBindingError(f"unknown provider family {family!r}")
 
 

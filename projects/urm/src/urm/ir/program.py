@@ -541,6 +541,40 @@ class Transform(SemanticOp):
 
 
 @dataclass(frozen=True, slots=True)
+class Merge(SemanticOp):
+    """Typed linear combination of N producer outputs: ``out = Σ_i c_i · x_i``.
+
+    This is the cross-call composition merge (generality axis A14): the
+    Differential pairing ``F1 − λ·F2``, the ABC/GSA slot combine and the MoM
+    scatter-add are all instances. The coefficients are semantic fields —
+    visible to the compiler, never a kernel branch. An ordinary typed operator
+    (like GEMM): it retains its own cost and effects and is unfused by default
+    (fusion is a later proven rewrite).
+    """
+
+    coefficients: tuple[float, ...] = ()
+    # Per-term scale operand names, aligned to ``inputs``; "" means "no runtime
+    # scale for this term". The Diff equation F1 − λ·F2 is coefficients=(1,−1)
+    # with scale_operands=("", "lam").
+    scale_operands: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        n_terms = len(self.inputs)
+        if self.coefficients and len(self.coefficients) != n_terms:
+            raise ValueError(
+                f"merge coefficients ({len(self.coefficients)}) must match the "
+                f"number of input terms ({n_terms})"
+            )
+        if self.scale_operands and len(self.scale_operands) != n_terms:
+            raise ValueError(
+                f"merge scale_operands ({len(self.scale_operands)}) must align "
+                f"one-to-one with the input terms ({n_terms}); use '' for an "
+                "unscaled term"
+            )
+
+
+
+@dataclass(frozen=True, slots=True)
 class OrderedRecurrence(SemanticOp):
     """Ordered scan shell; the exact equation stays backend-owned.
 

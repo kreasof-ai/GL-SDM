@@ -66,6 +66,7 @@ from urm.ir.program import (
     LinearDeltaState,
     LogicalDomain,
     Matmul,
+    Merge,
     OrderedRecurrence,
     RouteSpec,
     Score,
@@ -1527,6 +1528,10 @@ class UrmCompiler:
             return _weighted_reduce_anchor_kind(op), visitors
         if isinstance(op, Matmul):
             return AnchorKind.GEMM, ()
+        if isinstance(op, Merge):
+            # Ordinary typed operator (a linear combination of producer outputs);
+            # dispatched through the elementwise merge anchor, unfused by default.
+            return AnchorKind.MERGE, ()
         if isinstance(op, Gather):
             return AnchorKind.ROUTED_REDUCTION, ()
         if isinstance(op, OrderedRecurrence):
@@ -1710,6 +1715,7 @@ _GRAPH_TARGETS: dict[str, frozenset[str]] = {
             "urm.unified.k1.softmax_reference.v1",
             "urm.unified.k2.state_reference.v1",
             "urm.unified.k3.sparse_delta_reference.v1",
+            "torch.merge.linear_combination.v1",
         }
     ),
     "library": frozenset({"torch.nn.functional.scaled_dot_product_attention"}),

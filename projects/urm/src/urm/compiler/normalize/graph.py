@@ -32,6 +32,7 @@ from urm.ir.program import (
     LinearDeltaState,
     LogicalDomain,
     Matmul,
+    Merge,
     MergePolicy,
     OrderedRecurrence,
     RouteSpec,
@@ -250,6 +251,14 @@ def _build_node(node: dict[str, Any], *, index: int) -> SemanticNode:
             inputs=inputs,
             outputs=outputs,
             algorithm=str(params["transition"]),
+        )
+    if op == "merge":
+        return Merge(
+            name=node_id,
+            inputs=inputs,
+            outputs=outputs,
+            coefficients=tuple(float(c) for c in params.get("coefficients", ())),
+            scale_operands=tuple(str(s) for s in params.get("scale_operands", ())),
         )
     if op == "state_read":
         return StateRead(
