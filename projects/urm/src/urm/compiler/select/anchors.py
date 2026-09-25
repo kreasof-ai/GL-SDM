@@ -13,13 +13,23 @@ anchor implementations, so no arbitrary tensor callback can enter the core IR.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 
 from urm.compiler.common.diagnostics import DiagnosticCode
 from urm.ir.effects import ORDERED_STATE, PURE, EffectSignature
 from urm.compiler.placement.locality import Locality, LocalityConstraint
+from urm.ir.program import (
+    DType,
+    MergePolicy,
+    SparseReadTiming,
+    SparseStateLayout,
+    SparseStateMixerSpec,
+    SparseStateOperation,
+    SparseStatePolicy,
+    SparseUpdateRule,
+)
 
 
 class AnchorKind(StrEnum):
@@ -373,6 +383,171 @@ NATIVE_SPARSE_ROUTE_ANCHOR_NAME = "urm_native_sparse_route_selection_v0"
 NATIVE_DIAGONAL_RECURRENCE_ANCHOR_NAME = "urm_native_diagonal_recurrence_v1"
 NATIVE_MATRIX_STATE_RECURRENCE_ANCHOR_NAME = "urm_native_matrix_state_recurrence_v1"
 NATIVE_K1_ONLINE_SOFTMAX_ANCHOR_NAME = "urm_native_k1_online_softmax_v1"
+
+
+# ---------------------------------------------------------------------------
+# K3 native capability + schedule policy (moved from the retired urm.ir.k3)
+#
+# This is selection data, not IR: the frozen v0 capability envelope and the
+# deterministic launch policy of the native K3 lowering. It is deliberately
+# free of GPU-runtime imports so plan-time code can serialize the schedule on
+# a GPU-less machine; the backend that honors it lives in
+# :mod:`urm.backends.triton.k3`.
+# ---------------------------------------------------------------------------
+
+
+class SparseStateCapabilityEnvelope:
+    """Pre-tuning limits of the first native A10G-oriented lowering."""
+
+    schema_version: int = 0
+    minimum_compute_capability: tuple[int, int] = (8, 0)
+    maximum_parallel: int = 16
+    maximum_sequence: int = 2048
+    maximum_slots_per_partition: int = 1_048_576
+    maximum_value_dim: int = 1024
+    maximum_route_width: int = 64
+    supported_dtypes: tuple[DType, ...] = (DType.FLOAT32, DType.BFLOAT16)
+    supported_index_dtypes: tuple[str, ...] = ("int32", "int64")
+
+
+FROZEN_V0_ENVELOPE = SparseStateCapabilityEnvelope()
+
+
+@dataclass(frozen=True, slots=True)
+class SparseStateSupportStatus:
+    supported: bool
+    code: str
+    reason: str | None = None
+    details: Mapping[str, object] | None = None
+
+    @classmethod
+    def yes(cls) -> SparseStateSupportStatus:
+        return cls(True, "supported")
+
+    @classmethod
+    def no(cls, code: str, reason: str, **details: object) -> SparseStateSupportStatus:
+        return cls(False, code, reason, details)
+
+    def require(self) -> None:
+        if not self.supported:
+            raise ValueError(
+                f"{NATIVE_SPARSE_STATE_MIXER_ANCHOR_NAME} declined [{self.code}]: "
+                f"{self.reason}"
+            )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "supported": self.supported,
+            "code": self.code,
+            "reason": self.reason,
+            "details": dict(self.details or {}),
+        }
+
+
+def sparse_state_spec_status(
+    spec: SparseStateMixerSpec,
+    *,
+    device_type: str,
+    index_dtype: str = "int64",
+    contiguous: bool = True,
+    compute_capability: tuple[int, int] | None = None,
+) -> SparseStateSupportStatus:
+    """Return a structured v0 capability decision without importing Torch."""
+    envelope = FROZEN_V0_ENVELOPE
+    exact_semantics = (
+        spec.update_rule is SparseUpdateRule.DECAYED_DELTA
+        and spec.collision_policy is MergePolicy.ORDERED
+        and spec.within_token_collision_policy is MergePolicy.REJECT
+        and spec.state_policy is SparseStatePolicy.PERSISTENT_IN_PLACE
+        and spec.accumulation_dtype is DType.FLOAT32
+        and spec.state_layout is SparseStateLayout.PARTITION_SLOT_VALUE
+        and spec.page_size == 1
+    )
+    if not exact_semantics:
+        return SparseStateSupportStatus.no(
+            "unsupported_semantics", "operation is outside the frozen v0 algebra"
+        )
+    if spec.operation is SparseStateOperation.READ_ONLY:
+        if spec.read_timing is not SparseReadTiming.CURRENT_STATE:
+            return SparseStateSupportStatus.no(
+                "unsupported_semantics", "read-only mode must read current state"
+            )
+    elif spec.read_timing not in {
+        SparseReadTiming.BEFORE_UPDATE,
+        SparseReadTiming.AFTER_UPDATE,
+    }:
+        return SparseStateSupportStatus.no(
+            "unsupported_semantics", "update read timing is unsupported"
+        )
+    if spec.dtype not in envelope.supported_dtypes:
+        return SparseStateSupportStatus.no(
+            "unsupported_dtype", f"dtype {spec.dtype.value} is outside v0"
+        )
+    if device_type != "cuda":
+        return SparseStateSupportStatus.no(
+            "unsupported_device", "v0 native execution requires CUDA"
+        )
+    if not contiguous:
+        return SparseStateSupportStatus.no(
+            "unsupported_layout", "v0 requires contiguous logical tensors"
+        )
+    if index_dtype not in envelope.supported_index_dtypes:
+        return SparseStateSupportStatus.no(
+            "unsupported_dtype", f"index dtype {index_dtype} is outside v0"
+        )
+    if compute_capability is not None and compute_capability < (
+        envelope.minimum_compute_capability
+    ):
+        return SparseStateSupportStatus.no(
+            "unsupported_hardware",
+            "v0 requires SM80 or newer",
+            found_compute_capability=compute_capability,
+        )
+    limits = {
+        "parallel": (spec.parallel, envelope.maximum_parallel),
+        "sequence": (spec.sequence, envelope.maximum_sequence),
+        "slots_per_partition": (
+            spec.slots_per_partition,
+            envelope.maximum_slots_per_partition,
+        ),
+        "value_dim": (spec.value_dim, envelope.maximum_value_dim),
+        "writes": (spec.writes, envelope.maximum_route_width),
+        "reads": (spec.reads, envelope.maximum_route_width),
+    }
+    exceeded = {
+        name: {"requested": requested, "maximum": maximum}
+        for name, (requested, maximum) in limits.items()
+        if requested > maximum
+    }
+    if exceeded:
+        return SparseStateSupportStatus.no(
+            "unsupported_shape",
+            "one or more dimensions exceed the predeclared v0 bounds",
+            exceeded=exceeded,
+        )
+    return SparseStateSupportStatus.yes()
+
+
+def sparse_state_launch_parameters(value_dim: int) -> tuple[int, int]:
+    """Shared production schedule; D=64 retains the reviewed D=4 fragment."""
+    if value_dim == 64:
+        return 4, 2
+    block = max(16, 1 << (min(value_dim, 256) - 1).bit_length())
+    return block, 8 if block >= 256 else 4 if block >= 64 else 2
+
+
+def sparse_state_launch_schedule(spec: SparseStateMixerSpec) -> dict[str, str | int]:
+    """Serialize the deterministic v0 schedule without importing a GPU runtime."""
+    block_d, warps = sparse_state_launch_parameters(spec.value_dim)
+    return {
+        "schedule_family": "partition_owned_ordered_token_scan",
+        "block_d": block_d,
+        "num_warps": warps,
+        "num_stages": 3,
+        "tokens_per_program": -1,
+        "read_timing": spec.read_timing.value,
+        "state_layout": spec.state_layout.value,
+    }
 
 
 TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (

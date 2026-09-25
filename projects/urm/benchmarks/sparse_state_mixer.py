@@ -358,7 +358,7 @@ def _correctness(bundle) -> dict[str, object]:
     import torch
 
     from urm.backends.torch.k3 import torch_sparse_state_mixer
-    from urm.ir.k3 import numpy_sparse_state_mixer
+    from urm.backends.numpy.k3 import numpy_sparse_state_mixer
 
     case = bundle["case"]
     prepared = bundle["prepared"]

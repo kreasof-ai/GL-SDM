@@ -37,7 +37,7 @@ from urm.ir.program import (
     SparseStateOperation,
     sparse_state_mixer_program,
 )
-from urm.ir.k3 import FROZEN_V0_ENVELOPE, sparse_state_spec_status
+from urm.compiler.select.anchors import FROZEN_V0_ENVELOPE, sparse_state_spec_status
 
 
 def _spec(**changes) -> SparseStateMixerSpec:
@@ -151,7 +151,7 @@ def guarded(name, *args, **kwargs):
         raise AssertionError('torch import attempted')
     return real_import(name, *args, **kwargs)
 builtins.__import__ = guarded
-import urm.ir.k3
+import urm.compiler.select.anchors
 import urm.runtime.certification
 import urm.ir.program
 """

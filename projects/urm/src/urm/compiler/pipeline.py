@@ -1279,7 +1279,7 @@ class UrmCompiler:
                 and anchor.name.startswith("urm_native_")
                 and isinstance(op, SparseStateMixerAccess)
             ):
-                from urm.ir.k3 import sparse_state_launch_schedule
+                from urm.compiler.select.anchors import sparse_state_launch_schedule
 
                 step_launch_config = sparse_state_launch_schedule(op.spec)
             if anchor.kind is AnchorKind.SPARSE_ROUTE_SELECTION:

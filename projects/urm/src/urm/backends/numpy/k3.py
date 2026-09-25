@@ -8,6 +8,9 @@ state casts are modeled. This module does not certify a BF16 lowering.
 from __future__ import annotations
 
 import numpy as np
+import numpy.typing as npt
+
+from urm.ir.program import SparseReadTiming
 
 
 def _inputs(memory, writes, reads, values, beta, log_decay, selected):
@@ -191,6 +194,78 @@ def sparse_delta_state(
         outs[p] = out_p
         finals[p] = m
     return outs, finals
+
+
+# ---------------------------------------------------------------------------
+# Transparent fp32 oracle (moved from the retired urm.ir.k3)
+#
+# Unlike the float64 canonical above, this oracle models the stored-state
+# casts of the v0 mixer and covers all three read timings; the mixer tests and
+# benchmarks use it as the transparent reference.
+# ---------------------------------------------------------------------------
+
+
+def numpy_sparse_state_mixer(
+    memory: npt.ArrayLike,
+    read_indices: npt.ArrayLike,
+    read_weights: npt.ArrayLike,
+    *,
+    write_indices: npt.ArrayLike | None = None,
+    write_weights: npt.ArrayLike | None = None,
+    values: npt.ArrayLike | None = None,
+    beta: npt.ArrayLike | None = None,
+    log_decay: npt.ArrayLike | None = None,
+    read_timing: SparseReadTiming = SparseReadTiming.CURRENT_STATE,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Transparent NumPy oracle using fp32 arithmetic and stored-state casts."""
+    state = np.array(memory, copy=True)
+    read_indices_array = np.asarray(read_indices, dtype=np.int64)
+    read_weights_array = np.asarray(read_weights)
+    parallel, sequence, _ = read_indices_array.shape
+    outputs = np.empty(
+        (parallel, sequence, state.shape[-1]), dtype=np.asarray(memory).dtype
+    )
+    updating = write_indices is not None
+    if updating:
+        wi = np.asarray(write_indices, dtype=np.int64)
+        ww = np.asarray(write_weights)
+        value_array = np.asarray(values)
+        beta_array = np.asarray(beta)
+        decay_array = np.asarray(log_decay)
+    for partition in range(parallel):
+        for token in range(sequence):
+            if read_timing in {
+                SparseReadTiming.CURRENT_STATE,
+                SparseReadTiming.BEFORE_UPDATE,
+            }:
+                selected = state[partition, read_indices_array[partition, token]]
+                outputs[partition, token] = np.sum(
+                    read_weights_array[partition, token, :, None].astype(np.float32)
+                    * selected.astype(np.float32),
+                    axis=0,
+                ).astype(state.dtype)
+            if updating:
+                addresses = wi[partition, token]
+                old = state[partition, addresses].astype(np.float32)
+                decayed = old * np.exp(
+                    decay_array[partition, token, 0].astype(np.float32)
+                )
+                weights = ww[partition, token, :, None].astype(np.float32)
+                retrieved = np.sum(weights * decayed, axis=0)
+                delta = beta_array[partition, token, 0].astype(np.float32) * (
+                    value_array[partition, token].astype(np.float32) - retrieved
+                )
+                state[partition, addresses] = (decayed + weights * delta).astype(
+                    state.dtype
+                )
+            if read_timing is SparseReadTiming.AFTER_UPDATE:
+                selected = state[partition, read_indices_array[partition, token]]
+                outputs[partition, token] = np.sum(
+                    read_weights_array[partition, token, :, None].astype(np.float32)
+                    * selected.astype(np.float32),
+                    axis=0,
+                ).astype(state.dtype)
+    return outputs, state
 
 
 # ---------------------------------------------------------------------------

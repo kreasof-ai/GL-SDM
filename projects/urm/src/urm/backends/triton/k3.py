@@ -17,6 +17,7 @@ from typing import Any, Callable, ContextManager
 PROFILE_RANGES = False
 
 NATIVE_SPARSE_ROUTE_NAME = "urm_native_sparse_route_selection_v0"
+NATIVE_SPARSE_STATE_MIXER_NAME = "urm_native_sparse_state_mixer_v0"
 
 # Injectable profiling hook. The backend never imports a profiler; a consumer
 # (e.g. benchmarks/profiling) installs one via ``set_state_profiler``. The hook
@@ -400,7 +401,7 @@ def _sparse_state_update_backward_kernel(
 
 
 def _launch_parameters(value_dim: int) -> tuple[int, int]:
-    from urm.ir.k3 import sparse_state_launch_parameters
+    from urm.compiler.select.anchors import sparse_state_launch_parameters
 
     return sparse_state_launch_parameters(value_dim)
 
@@ -1196,9 +1197,8 @@ class K3RouteNativeTritonProvider:
 # lives in urm.runtime.certification)
 # ---------------------------------------------------------------------------
 
-from urm.ir.k3 import (
+from urm.compiler.select.anchors import (
     FROZEN_V0_ENVELOPE,
-    NATIVE_SPARSE_STATE_MIXER_NAME,
     sparse_state_launch_schedule,
     sparse_state_spec_status,
 )

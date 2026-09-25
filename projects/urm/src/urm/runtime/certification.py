@@ -20,9 +20,8 @@ from urm.ir.program import (
     SparseStateMixerSpec,
     SparseStateOperation,
 )
-from urm.ir.k3 import (
+from urm.compiler.select.anchors import (
     FROZEN_V0_ENVELOPE,
-    NATIVE_SPARSE_STATE_MIXER_NAME,
     SparseStateSupportStatus,
     sparse_state_launch_schedule,
     sparse_state_spec_status,

@@ -28,7 +28,7 @@ from urm.ir.program import (
     SparseStateMixerSpec,
     SparseStateOperation,
 )
-from urm.ir.k3 import numpy_sparse_state_mixer
+from urm.backends.numpy.k3 import numpy_sparse_state_mixer
 
 TOLERANCES = {
     torch.float32: {"atol": 2e-5, "rtol": 2e-5},

@@ -3,7 +3,7 @@
 Layering (docs/compiler/compiler-charter.md, docs/planning/roadmap.md):
 
     architecture/NAS specification
-      -> semantic routing and state IR        (ir/program.py, ir/k3.py)
+      -> semantic routing and state IR        (ir/program.py)
       -> verified algebraic reparameterization (rewrite/)
       -> rewrite/lowering candidate enumeration (pipeline.py)
       -> backend-independent constraint IR      (solve/constraints.py)
