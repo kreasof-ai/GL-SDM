@@ -15,7 +15,10 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from architectures.log_linear_attention import LogLinearAttentionLayer
+from architectures.log_linear_attention import (
+    LogLinearAttentionLayer,
+    log_linear_disjoint_reference,
+)
 from architectures.log_linear_mamba2 import LogLinearMamba2Layer
 
 H, D, T = 2, 8, 8
@@ -71,3 +74,22 @@ def test_log_linear_gradients_flow():
     g.requires_grad_(True)
     LogLinearAttentionLayer(H, D)(q, k, v, g, ls).square().sum().backward()
     assert g.grad is not None and g.grad.abs().sum().item() > 0
+
+
+def test_disjoint_block_form_matches_pinned_naive():
+    """The disjoint dyadic-block decomposition is the exact A4 reference oracle.
+
+    Each causal pair (t, j≤t) belongs to exactly one dyadic level; the disjoint form
+    sums the per-level contributions with decay exp(gcum[t]−gcum[j]). It reproduces
+    the pinned naive (and the full-matrix layer) at 0.0 — this is the honest A4
+    reference. The banked recurrent form (the pinned chunked kernel's carry-cascade
+    state with within-chunk decay) is the residual schedule, recorded not claimed.
+    """
+    q, k, v, g, ls = _operands(seed=17)
+    from benchmarks.comparators.fla_k2 import fla_op
+    naive = fla_op("fla.ops.log_linear_attn.naive.naive_log_linear_attn")
+    with torch.no_grad():
+        expected = naive(q, k, v, g, ls)
+        disjoint = log_linear_disjoint_reference(q, k, v, g, ls)
+    err = (disjoint - expected).abs().max().item()
+    assert err < 1e-4, f"disjoint-block A4 oracle vs pinned naive: max abs err {err}"

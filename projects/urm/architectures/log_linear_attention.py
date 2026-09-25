@@ -67,6 +67,50 @@ def construct_H_matrix(a: torch.Tensor, L: torch.Tensor) -> torch.Tensor:
     return H
 
 
+def dyadic_level_of(t: int, j: int, num_levels: int) -> int:
+    """The disjoint dyadic level owning the causal pair (t, j).
+
+    The pinned level masks partition the causal triangle so each (t, j≤t) pair belongs
+    to exactly ONE level: j == t is level 0 (the diagonal); otherwise the LARGEST l
+    whose aligned block ``[(t>>(l-1))<<(l-1) − 2^{l-1}, (t>>(l-1))<<(l-1))`` contains j.
+    Verified to reconstruct ``construct_H_matrix`` exactly (0.0).
+    """
+    if j == t:
+        return 0
+    best = 0
+    for l in range(1, num_levels):
+        half = 1 << (l - 1)
+        base = (t >> (l - 1)) << (l - 1)
+        if base - half <= j < base:
+            best = l
+    return best
+
+
+def log_linear_disjoint_reference(q, k, v, g, level_scales):
+    """The disjoint dyadic-block reference form of the hierarchical law (exact oracle).
+
+    Equivalent to ``construct_H_matrix`` + the contraction, but computed as a sum over
+    the disjoint dyadic blocks — each key j contributes to query t at exactly one level
+    with decay ``exp(gcum[t]−gcum[j])`` (gcum the per-head prefix cumsum of g) and the
+    per-level scale ``level_scales[t, level]``. Verified against the pinned
+    ``naive_log_linear_attn`` and the full-matrix form at 0.0. This is the honest
+    reference oracle; the banked recurrent form (the pinned chunked kernel's
+    ``LogLinearAttentionState`` with the carry-cascade promote/reset and within-chunk
+    decay) is the residual schedule, not yet derived to parity.
+    """
+    B, T, H, D = q.shape
+    num_levels = level_scales.shape[-1]
+    gcum = g.permute(0, 2, 1).cumsum(-1)                      # [B,H,T]
+    out = torch.zeros(B, T, H, D, dtype=torch.float32)
+    for t in range(T):
+        for j in range(t + 1):
+            l = dyadic_level_of(t, j, num_levels)
+            aij = torch.exp(gcum[..., t] - gcum[..., j])       # [B,H]
+            score = (q[:, t].float() * k[:, j].float()).sum(-1)  # [B,H]
+            out[:, t] += (level_scales[:, t, :, l].float() * aij * score).unsqueeze(-1) * v[:, j].float()
+    return out.to(q.dtype)
+
+
 class LogLinearAttentionLayer(torch.nn.Module):
     """Log-linear attention mixer (full-matrix reference form of the hierarchical law)."""
 
@@ -82,4 +126,10 @@ class LogLinearAttentionLayer(torch.nn.Module):
         return torch.einsum("bhlc,bchp->blhp", M, v)
 
 
-__all__ = ["LogLinearAttentionLayer", "construct_H_matrix", "segsum"]
+__all__ = [
+    "LogLinearAttentionLayer",
+    "construct_H_matrix",
+    "segsum",
+    "dyadic_level_of",
+    "log_linear_disjoint_reference",
+]
