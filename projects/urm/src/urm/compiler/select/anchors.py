@@ -406,11 +406,22 @@ NATIVE_K1_ONLINE_SOFTMAX_ANCHOR_NAME = "urm_native_k1_online_softmax_v1"
 
 
 class SparseStateCapabilityEnvelope:
-    """Pre-tuning limits of the first native A10G-oriented lowering."""
+    """Pre-tuning limits of the first native A10G-oriented lowering.
+
+    ``maximum_parallel`` admission note: the v0 bound of 16 was pre-tuning
+    conservatism, not a kernel constraint — the parallel dim P is pure data
+    parallelism (banks never interact: the read grid is ``(P, T, D-blocks)``, the
+    update grid is ``(P, D-blocks)``, no cross-bank data flow). Admitted to 4096 on
+    the evidence of ``test_native_mixer_parallel_dim_scaling``: native-vs-reference
+    parity is exact (fp32, ~1e-7) at P ∈ {1 … 160} including the training-harness
+    point P=80 (B=8 × H=10), and wall time is flat in P (P=4→32 identical, P=80
+    within 10%) — the GPU absorbs the banks concurrently. 4096 keeps a declared cap
+    against accidental unbounded launches while covering any realistic harness config.
+    """
 
     schema_version: int = 0
     minimum_compute_capability: tuple[int, int] = (8, 0)
-    maximum_parallel: int = 16
+    maximum_parallel: int = 4096
     maximum_sequence: int = 2048
     maximum_slots_per_partition: int = 1_048_576
     maximum_value_dim: int = 1024

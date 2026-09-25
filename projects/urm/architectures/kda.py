@@ -45,8 +45,11 @@ class KDALayer(K2LinearStateLayer):
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         B, T, _ = hidden_states.shape
         H, dk, dv = self.num_heads, self.head_k_dim, self.head_v_dim
-        q = self.q_proj(hidden_states).view(B, T, H, dk)
-        k = self.k_proj(hidden_states).view(B, T, H, dk)
+        # The pinned law applies q/k L2-norm in-kernel (use_qk_l2norm_in_kernel=True);
+        # the URM composition applies it externally, like GatedDeltaNet. Without it the
+        # delta-rule state grows unboundedly under bf16 and NaNs on the first step.
+        q = F.normalize(self.q_proj(hidden_states).view(B, T, H, dk), p=2, dim=-1)
+        k = F.normalize(self.k_proj(hidden_states).view(B, T, H, dk), p=2, dim=-1)
         v = self.v_proj(hidden_states).view(B, T, H, dv)
         beta = torch.sigmoid(self.b_proj(hidden_states))
         g = self._gate(hidden_states)  # [B,T,H*K]

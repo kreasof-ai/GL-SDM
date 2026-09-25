@@ -37,6 +37,10 @@ class SimpleGLALayer(K2LinearStateLayer):
         self.k_proj = torch.nn.Linear(hidden_size, num_heads * head_k_dim, bias=False)
         self.v_proj = torch.nn.Linear(hidden_size, num_heads * head_v_dim, bias=False)
         self.gk_proj = torch.nn.Linear(hidden_size, num_heads, bias=True)
+        # The pinned layer applies a per-head RMSNorm to the mixer output before o_proj
+        # (fla.layers.simple_gla g_norm); the URM composition matches it — without the
+        # output norm the head-scalar-gated state output is scale-unstable in training.
+        self.o_norm = torch.nn.RMSNorm(head_v_dim, eps=1e-5)
         self.o_proj = torch.nn.Linear(num_heads * head_v_dim, hidden_size, bias=False)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
@@ -52,7 +56,9 @@ class SimpleGLALayer(K2LinearStateLayer):
             "log_decay": g.transpose(1, 2),
             "initial_state": torch.zeros(B, H, dk, dv, device=q.device),
         })["output"]
-        return self.o_proj(out.transpose(1, 2).reshape(B, T, H * dv))
+        o = out.transpose(1, 2).reshape(B, T, H, dv)
+        o = self.o_norm(o.float()).to(o.dtype)
+        return self.o_proj(o.reshape(B, T, H * dv))
 
 
 class LightningAttentionLayer(K2LinearStateLayer):

@@ -238,6 +238,32 @@ def test_native_int32_routes_match_reference(dtype) -> None:
     )
 
 
+@pytest.mark.parametrize("parallel", [16, 32, 80, 160])
+def test_native_mixer_parallel_dim_scaling(parallel) -> None:
+    """P beyond the pre-tuning v0 bound (16): exact parity with the reference.
+
+    The P dim is pure data parallelism (banks never interact), admitted to 4096 in the
+    capability envelope on this evidence: parity at P ∈ {16, 32, 80, 160} — 80 is the
+    training-harness point (B=8 × H=10) — plus flat wall-clock scaling in P.
+    """
+    backend, prepared, memory, values, beta, log_decay = _case(
+        dtype=torch.float32,
+        parallel=parallel,
+        sequence=9,
+        slots=257,
+        dim=73,
+        writes=7,
+        reads=5,
+        index_dtype=torch.int32,
+    )
+    expected, expected_state = _reference(prepared, memory, values, beta, log_decay)
+    actual, state = backend.execute(SparseState(memory.clone()), prepared)
+    torch.testing.assert_close(actual, expected, **TOLERANCES[torch.float32])
+    torch.testing.assert_close(
+        state.memory, expected_state, **TOLERANCES[torch.float32]
+    )
+
+
 def test_long_recurrence_near_frozen_sequence_limit() -> None:
     backend, prepared, memory, values, beta, log_decay = _case(
         dtype=torch.float32,

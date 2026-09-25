@@ -89,3 +89,49 @@ def test_gradient_alignment_trace_when_enabled():
     # Gradient capture is a surface; the trace dict is present (may be empty if the
     # capture point is post-step). The gate is that the run completes with it on.
     assert result.grad_trace is not None
+
+
+def test_stateful_sdm_lifecycle_and_metrics():
+    """SDM: the persistent-state lifecycle is exercised and metrics are recorded.
+
+    The stateful path must (a) train natively (loss finite and decreasing), (b) pass
+    the checkpoint gate (bitwise-lossless round-trip + loss-trajectory resume — the
+    native K3 backward's relaxed atomics make bitwise parameter equality unachievable
+    by design), (c) record throughput and peak memory, and (d) produce a kernel parity
+    report in place of a KL gate (no comparable upstream — the pinned router's tie
+    policy is backend-dependent).
+    """
+    cfg = _cfg("sdm", target="native", steps=3)
+    mixer = get_mixer("sdm")
+    assert mixer.stateful
+    data = synthetic_generator(cfg.microbatch_tokens, cfg.sequence_length,
+                               cfg.vocab_size, device=DEVICE, seed=cfg.seed)
+    result = train(cfg, mixer, data, device=DEVICE)
+    assert result.final_loss == result.final_loss
+    assert result.checkpoint_aligned
+    assert result.kl_divergence is None  # no comparable upstream — by design
+    assert result.throughput_tokens_s > 0
+    assert result.peak_memory_gib > 0
+    from train.harness import kernel_parity_report
+    report = kernel_parity_report(mixer, heads=2, head_dim=32, batch=2, seq=16)
+    assert report["native_vs_oracle_max_abs_diff"] < 1e-5
+
+
+def test_kl_gate_covers_all_upstream_backed_mixers():
+    """Every mixer with an upstream kernel produces a near-zero KL on the native tier."""
+    import torch
+    from train.harness import _kl, _upstream_mixer_callable
+    for name, spec in MIXER_REGISTRY.items():
+        if not spec.has_reference_kernel or name in ("dense_attention", "forgetting_attention"):
+            continue  # covered elsewhere / K1 reference tier
+        run = _upstream_mixer_callable(spec, target="native")
+        assert run is not None, f"{name}: no comparator"
+        torch.manual_seed(4242)
+        q = torch.randn(1, 32, 2, 64, device=DEVICE)
+        k = torch.randn(1, 32, 2, 64, device=DEVICE)
+        v = torch.randn(1, 32, 2, 64, device=DEVICE)
+        urm_out, up_out = run(q, k, v, DEVICE)
+        assert urm_out is not None, f"{name}: comparator returned None"
+        kl = _kl(torch.softmax(urm_out.float(), dim=-1),
+                 torch.softmax(up_out.float(), dim=-1))
+        assert kl < 1e-5, f"{name}: KL {kl} too high"

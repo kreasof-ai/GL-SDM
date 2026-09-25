@@ -72,20 +72,26 @@ class TrainConfig:
         return self.microbatch_tokens // self.sequence_length
 
 
-def model_flops_per_step(cfg: TrainConfig, mixer_name: str = "dense_attention") -> int:
+def model_flops_per_step(cfg: TrainConfig, mixer_name: str = "dense_attention",
+                         exact_params: int | None = None) -> int:
     """Useful forward+backward FLOPs for one optimizer step (the MFU numerator).
 
     NanoGPT-style accounting: ``6 * N * tokens`` for the parameter matmuls (fwd+bwd),
     plus the mixer's family-specific state/score term. The K1 (dense softmax) term is
     the ``12 * L * H * T * D`` score+reduce work; the K2 linear-state mixers replace the
-    quadratic attention term with the linear scan's ``O(T * K * V)`` state work. This is
-    an estimate, not a mixer-exact count; it is the numerator for the MFU ratio only.
+    quadratic attention term with the linear scan's ``O(T * K * V)`` state work; the K3
+    sparse-memory mixers count the routed read+update work ``O((R + 2W) * D)`` per token
+    per head. ``exact_params`` is the model's true trainable count when the caller has
+    built it; otherwise a dense-qkvo estimate stands in. Numerator for the MFU ratio only.
     """
-    model = _param_count_estimate(cfg)
+    model = exact_params if exact_params is not None else _param_count_estimate(cfg)
     tokens = cfg.batch_tokens
     if mixer_name == "dense_attention":
         # Quadratic attention score+reduce over the sequence.
         mixer_term = 12 * cfg.layers * cfg.num_heads * cfg.sequence_length * cfg.head_dim * tokens
+    elif mixer_name == "sdm":
+        # K3 sparse RMW: per token per head, read R slots + retrieved/write W slots.
+        mixer_term = 6 * cfg.layers * cfg.num_heads * (8 + 2 * 8) * cfg.head_dim * tokens
     else:
         # Linear-state scan: state update + read per token is O(K*V) per head.
         mixer_term = (6 * cfg.layers * cfg.num_heads * cfg.head_dim * cfg.head_dim * tokens)
@@ -162,6 +168,8 @@ class TrainResult:
     grad_trace: dict[str, list[float]] = field(default_factory=dict)
     kl_divergence: float | None = None
     wallclock_s: float = 0.0
+    throughput_tokens_s: float = 0.0
+    peak_memory_gib: float = 0.0
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -169,6 +177,8 @@ class TrainResult:
             "mfu": self.mfu, "params": self.params,
             "checkpoint_aligned": self.checkpoint_aligned,
             "kl_divergence": self.kl_divergence, "wallclock_s": self.wallclock_s,
+            "throughput_tokens_s": self.throughput_tokens_s,
+            "peak_memory_gib": self.peak_memory_gib,
         }
 
 
@@ -180,24 +190,25 @@ def build_model(cfg: TrainConfig, mixer: MixerSpec, *, device: str = "cuda",
         layers=cfg.layers, width=cfg.width, num_heads=cfg.num_heads,
         head_dim=cfg.head_dim, mixer=mixer, mlp_ratio=cfg.mlp_ratio, intent="training",
         target=target or cfg.target,
+        batch_size=(cfg.microbatch_tokens // cfg.sequence_length) if mixer.stateful else None,
     )
     return model.to(device)
 
 
 def make_compile_safe(model: URMDecoderLM) -> URMDecoderLM:
-    """Mark each block's public-path mixer call as a dynamo boundary so torch.compile works.
+    """Mark plan.execute-based mixers as dynamo boundaries so torch.compile works.
 
-    The mixers execute a compiled URM plan (a Python dispatch loop dynamo cannot trace).
-    The K2-family layers self-mark their ``_run_mixer`` on the native tier at construction;
-    for K1-family reference-tier layers we disable dynamo on the mixer's forward (which
-    calls ``self._plan.execute``). The plan, provider and equation are unchanged — this
-    only changes how dynamo partitions the graph (the surround fuses; the provider runs
+    Native K2-family layers run their mixer as an opaque custom op (traceable, no
+    boundary needed) and are skipped. Mixers whose forward calls ``self._plan.execute``
+    (a Python dispatch loop dynamo cannot trace — K3 SDM, K1 reference tiers, K2 on the
+    reference tier) get their forward disabled: the plan, provider and equation are
+    unchanged; only the dynamo partition moves (the surround fuses; the provider runs
     eagerly).
     """
     for block in model.blocks:
         mixer = block.mixer
         if getattr(mixer, "_target", None) == "native":
-            continue  # K2 native layers self-disabled _run_mixer at construction.
+            continue  # native K2: the mixer is already an opaque custom op.
         inner = getattr(mixer, "_mixer", mixer)  # FoX adapter holds the real mixer in _mixer
         fwd = getattr(inner, "forward", None)
         if callable(fwd) and getattr(inner, "_plan", None) is not None:
@@ -218,13 +229,13 @@ def train(cfg: TrainConfig, mixer: MixerSpec, data_iter, *,
     """
     model = build_model(cfg, mixer, device=device)
     if cfg.compile_model:
-        # The native K2 layers self-mark their mixer as a dynamo boundary at construction;
-        # the K1 reference-tier mixers are plain compilable torch. torch.compile the model
-        # so the surround fuses while each public-path provider runs as its own node.
-        model = torch.compile(model)
+        # The native K2 layers run their mixer as an opaque custom op (no boundary
+        # needed); plan.execute-based mixers (K3 SDM, K1 reference tiers) get their
+        # forward marked as a dynamo boundary so the surround still fuses.
+        model = torch.compile(make_compile_safe(model))
     optimizers = build_optimizers(model)
     n_params = sum(p.numel() for p in model.parameters())
-    flops_per_step = model_flops_per_step(cfg, mixer.name)
+    flops_per_step = model_flops_per_step(cfg, mixer.name, exact_params=n_params)
     # The honest MFU denominator: the measured bf16 GEMM peak (ATMA's --measure-peak
     # method), not the unreachable nominal vendor peak. Cached per process.
     if device == "cuda" and torch.cuda.is_available():
@@ -245,22 +256,40 @@ def train(cfg: TrainConfig, mixer: MixerSpec, data_iter, *,
 
     grad_trace: dict[str, list[float]] = {}
     final_loss = 0.0
+    # Stateful lifecycle (SDM/K3): each step is a fresh stream (reset at step start);
+    # within a step, microbatches form a continued stream — the memory carries across
+    # them DETACHED (benchmarks/pretraining_step.py's pattern). The detach is what keeps
+    # the autograd graph step-local.
+    def _maybe_reset():
+        if mixer.stateful:
+            (getattr(model, "_orig_mod", model)).reset_state()
+
+    def _maybe_detach():
+        if mixer.stateful:
+            (getattr(model, "_orig_mod", model)).detach_state()
+
     # Warmup / compile.
     for _ in range(min(2, cfg.steps)):
+        _maybe_reset()
         inputs, targets = next(data_iter)
         loss = _step_loss(inputs, targets)
         (loss / cfg.grad_accum).backward()
+        _maybe_detach()
         for opt in optimizers:
             opt.step()
         model.zero_grad(set_to_none=True)
+    if device == "cuda":
+        torch.cuda.reset_peak_memory_stats()
     t0 = time.perf_counter()
     for step in range(cfg.steps):
         model.train()
         step_loss = 0.0
+        _maybe_reset()
         for _ in range(cfg.grad_accum):
             inputs, targets = next(data_iter)
             loss = _step_loss(inputs, targets)
             (loss / cfg.grad_accum).backward()
+            _maybe_detach()
             step_loss += loss.item() / cfg.grad_accum
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         for opt in optimizers:
@@ -271,6 +300,10 @@ def train(cfg: TrainConfig, mixer: MixerSpec, data_iter, *,
             _record_gradient_norms(model, grad_trace)
     wallclock = time.perf_counter() - t0
     mfu = (flops_per_step * cfg.steps / wallclock) / peak if wallclock > 0 else 0.0
+    throughput = (cfg.steps * cfg.grad_accum * cfg.microbatch_tokens) / wallclock if wallclock > 0 else 0.0
+    peak_memory_gib = (
+        torch.cuda.max_memory_allocated() / 2**30 if device == "cuda" else 0.0
+    )
 
     checkpoint_aligned = _check_checkpoint_alignment(cfg, mixer, data_iter, device=device)
     kl = _kl_gate(cfg, mixer, model, device=device)
@@ -279,6 +312,7 @@ def train(cfg: TrainConfig, mixer: MixerSpec, data_iter, *,
         mixer=mixer.name, steps=cfg.steps, final_loss=final_loss, mfu=mfu,
         params=n_params, checkpoint_aligned=checkpoint_aligned,
         grad_trace=grad_trace, kl_divergence=kl, wallclock_s=wallclock,
+        throughput_tokens_s=throughput, peak_memory_gib=peak_memory_gib,
     )
 
 
@@ -303,43 +337,85 @@ def _check_checkpoint_alignment(cfg: TrainConfig, mixer: MixerSpec, data_iter, *
     MFU path is measured separately in ``train``.
     """
     # Reduced shape: 2 layers / 2 heads is enough to exercise resume determinism.
+    # The gate runs on the reference tier for speed — except stateful K3 mixers, whose
+    # route generation has no reference-tier provider: those run the gate on the tier
+    # under training (the tier being certified).
+    gate_target = cfg.target if mixer.stateful else "reference"
     small = TrainConfig(
         mixer=cfg.mixer, vocab_size=min(cfg.vocab_size, 512),
         sequence_length=min(cfg.sequence_length, 64), layers=2, width=128,
         num_heads=2, head_dim=cfg.head_dim, batch_tokens=128, microbatch_tokens=128,
-        steps=cfg.steps, seed=cfg.seed, target="reference",
+        steps=cfg.steps, seed=cfg.seed, target=gate_target,
     )
     seed_stream = [torch.randint(0, small.vocab_size, (small.microbatch_sequences, small.sequence_length),
                                  generator=torch.Generator().manual_seed(1000 + s))
                    for s in range(small.steps + 1)]
 
-    def run_with_checkpoint(checkpoint_at: int | None) -> dict[str, torch.Tensor]:
+    def run_with_checkpoint(checkpoint_at: int | None) -> dict[str, object]:
         torch.manual_seed(small.seed)
-        model = build_model(small, mixer, device=device, target="reference")
+        model = build_model(small, mixer, device=device, target=gate_target)
         optimizers = build_optimizers(model)
+        roundtrip_lossless = True
+        losses: list[float] = []
         for step in range(small.steps + 1):
             if checkpoint_at is not None and step == checkpoint_at:
                 state = {k: v.detach().clone() for k, v in model.state_dict().items()}
                 opt_state = [opt.state_dict() for opt in optimizers]
-                model = build_model(small, mixer, device=device, target="reference")
+                model = build_model(small, mixer, device=device, target=gate_target)
                 model.load_state_dict(state)
+                # The checkpoint round-trip itself must be lossless — bitwise. This is
+                # the structural resume property (a missing/misregistered param or
+                # buffer fails here exactly, with no kernel noise involved).
+                roundtrip_lossless = all(
+                    torch.equal(model.state_dict()[k], v) for k, v in state.items()
+                )
                 optimizers = build_optimizers(model)
                 for opt, st in zip(optimizers, opt_state):
                     opt.load_state_dict(st)
+            # The same stateful lifecycle as the timed loop, applied identically on
+            # both arms so resume fidelity is what's actually being measured.
+            if mixer.stateful:
+                model.reset_state()
             tokens = seed_stream[step].to(device)
             inputs, targets = tokens[:, :-1].int(), tokens[:, 1:].long()
             _, loss = model(inputs, targets)
             loss.backward()
+            if mixer.stateful:
+                model.detach_state()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             for opt in optimizers:
                 opt.step()
             model.zero_grad(set_to_none=True)
-        return {k: v.detach().clone() for k, v in model.state_dict().items()}
+            losses.append(float(loss.item()))
+        return {
+            "params": {k: v.detach().clone() for k, v in model.state_dict().items()},
+            "losses": losses,
+            "roundtrip_lossless": roundtrip_lossless,
+        }
 
     uninterrupted = run_with_checkpoint(None)
     resumed = run_with_checkpoint(small.steps)
+    if not mixer.stateful:
+        return all(
+            torch.equal(uninterrupted["params"][k], resumed["params"][k])
+            for k in uninterrupted["params"]
+        )
+    # Stateful (K3) mixers: the native backward scatters gradients with relaxed
+    # tl.atomic_add — summation order is scheduler-dependent BY DESIGN (a serialized
+    # scatter would destroy the P-parallelism the kernel exists for). Measured on this
+    # config: two IDENTICAL uninterrupted runs diverge up to 1.6e-2 in parameters over
+    # 11 steps while their per-step losses agree to 2e-4 — the noise is high-dimensional
+    # but cancels in the loss. So bitwise parameter equality is unachievable and is not
+    # the property under test. The gate is: (a) the checkpoint round-trip is
+    # bitwise-lossless (structural — a misregistered param/buffer fails exactly), and
+    # (b) the resumed run's loss trajectory matches the uninterrupted run within 1e-2
+    # absolute per step (~50x the measured run-to-run loss spread): resume reproduces
+    # the training trajectory, which is what checkpointing is FOR.
+    if not resumed["roundtrip_lossless"]:
+        return False
     return all(
-        torch.equal(uninterrupted[k], resumed[k]) for k in uninterrupted
+        abs(a - b) <= 1e-2
+        for a, b in zip(uninterrupted["losses"], resumed["losses"])
     )
 
 
@@ -486,7 +562,245 @@ def _upstream_mixer_callable(mixer: MixerSpec, target: str = "reference"):
                 upstream = naive_forgetting_attn(q, k, v, g)
             return urm, upstream
         return run
+    # --- Native-K2 envelope family: mixer-level KL vs the pinned fla naive ops ---
+    if mixer.name in _K2_FLA_COMPARATORS:
+        return _make_k2_fla_comparator(mixer.name, target)
     return None
 
 
-__all__ = ["TrainConfig", "TrainResult", "train", "build_model", "model_flops_per_step"]
+def _make_k2_fla_comparator(name: str, target: str):
+    """Mixer-level KL comparators for the native-K2 family vs the pinned fla naive ops.
+
+    Each comparator reproduces the operand recipe of the corresponding per-architecture
+    parity test (tests/test_architectures_<name>.py), on the tier under training.
+    """
+    def run(q, k, v, device):
+        import sys
+        if "/tmp/urm-comparator-pins/fla" not in sys.path:
+            sys.path.insert(0, "/tmp/urm-comparator-pins/fla")
+        B, T, H, D = q.shape
+        try:
+            if name == "gated_deltanet":
+                from architectures.gated_deltanet import GatedDeltaNetLayer
+                from fla.ops.gated_delta_rule.naive import naive_recurrent_gated_delta_rule as upstream_fn
+                layer = GatedDeltaNetLayer(H * D, H, D, D, target=target, intent="inference").to(device)
+            elif name == "hgrn2":
+                from architectures.hgrn2 import HGRN2Layer
+                from fla.ops.gla.naive import naive_recurrent_gla as upstream_fn
+                layer = HGRN2Layer(H * D, H, D, D, target=target, intent="inference").to(device)
+            elif name == "kda":
+                from architectures.kda import KDALayer
+                from fla.ops.kda.naive import naive_recurrent_kda as upstream_fn
+                layer = KDALayer(H * D, H, D, D, target=target, intent="inference").to(device)
+            elif name == "linear_attention":
+                from architectures.linear_attention import LinearAttentionLayer
+                from fla.ops.linear_attn.naive import naive_recurrent_linear_attn as upstream_fn
+                layer = LinearAttentionLayer(H * D, H, D, D, target=target, intent="inference").to(device)
+            elif name == "retnet":
+                from architectures.retnet import RetNetLayer
+                from fla.ops.retention.naive import naive_retention as upstream_fn
+                layer = RetNetLayer(H * D, H, D, D, target=target, intent="inference").to(device)
+            elif name in ("simple_gla", "lightning_attention"):
+                from architectures.simple_gla import LightningAttentionLayer, SimpleGLALayer
+                from fla.ops.simple_gla.naive import naive_recurrent_simple_gla as upstream_fn
+                cls = SimpleGLALayer if name == "simple_gla" else LightningAttentionLayer
+                layer = cls(H * D, H, D, D, target=target, intent="inference").to(device)
+            else:
+                return None, None
+        except Exception:
+            return None, None
+
+        qt = q.transpose(1, 2).float()
+        kt = k.transpose(1, 2).float()
+        vt = v.transpose(1, 2).float()
+        m0 = torch.zeros(B, H, D, D, device=device)
+
+        if name == "gated_deltanet":
+            qn = torch.nn.functional.normalize(q, dim=-1)
+            kn = torch.nn.functional.normalize(k, dim=-1)
+            beta = torch.rand(B, T, H, device=device)
+            # The pinned gate schedule: g = -exp(A_log)·softplus(g_in + dt_bias), with
+            # the layer's own parameters (the per-architecture test's recipe).
+            g_in = torch.randn(B, T, H, device=device)
+            g = -torch.exp(layer.A_log) * torch.nn.functional.softplus(
+                g_in + layer.dt_bias)
+            # URM mixer takes [B,H,T,*]; the naive takes [B,T,H,*] and returns [B,T,H,V].
+            urm = layer._run_mixer({"query": qn.transpose(1, 2).float(), "key": kn.transpose(1, 2).float(),
+                "value": vt, "beta": beta.transpose(1, 2), "log_decay": g.transpose(1, 2),
+                "initial_state": m0})["output"]
+            with torch.no_grad():
+                upstream, _ = upstream_fn(qn, kn, v, beta, g, scale=None,
+                                          output_final_state=True)
+                upstream = upstream.transpose(1, 2)
+        elif name == "hgrn2":
+            # HGRN2's law IS the GLA channel-gate form: q=silu(q), k=1-exp(gk).
+            qs = torch.nn.functional.silu(q)
+            g = torch.nn.functional.logsigmoid(torch.randn(B, T, H, D, device=device))
+            ks = 1 - g.exp()
+            urm = layer._run_mixer({"query": qs.transpose(1, 2).float(), "key": ks.transpose(1, 2).float(),
+                "value": vt, "beta": torch.ones(B, H, T, device=device),
+                "log_decay": g.transpose(1, 2), "initial_state": m0})["output"]
+            with torch.no_grad():
+                # naive_recurrent_gla takes [B,T,H,*] (transposes internally), no scale kwarg.
+                upstream, _ = upstream_fn(qs, ks, v, g, output_final_state=True)
+                upstream = upstream.transpose(1, 2)
+        elif name == "kda":
+            qn = torch.nn.functional.normalize(q, dim=-1)
+            kn = torch.nn.functional.normalize(k, dim=-1)
+            g = -torch.rand(B, T, H, D, device=device)
+            beta = torch.rand(B, T, H, device=device)
+            # URM mixer takes [B,H,T,*]; the naive takes [B,T,H,*] and returns [B,T,H,V].
+            urm = layer._run_mixer({"query": qn.transpose(1, 2).float(), "key": kn.transpose(1, 2).float(),
+                "value": vt, "beta": beta.transpose(1, 2), "log_decay": g.transpose(1, 2),
+                "initial_state": m0})["output"]
+            with torch.no_grad():
+                upstream, _ = upstream_fn(qn, kn, v, g, beta, scale=None,
+                                          output_final_state=True)
+                upstream = upstream.transpose(1, 2)
+        elif name == "linear_attention":
+            # The pinned law includes the elu+1 feature map, applied by the layer's
+            # forward — the comparator mirrors the per-architecture test exactly.
+            # The naive takes [B,T,H,*] and returns [B,T,H,V].
+            fm = type(layer)._feature_map
+            qf = fm(q)  # [B,T,H,D]
+            kf = fm(k)
+            urm = layer._run_mixer({"query": qf.transpose(1, 2).float(),
+                "key": kf.transpose(1, 2).float(), "value": vt,
+                "beta": torch.ones(B, H, T, device=device),
+                "log_decay": torch.zeros(B, H, T, device=device),
+                "initial_state": m0})["output"]
+            with torch.no_grad():
+                upstream, _ = upstream_fn(qf, kf, v, scale=None, output_final_state=True,
+                                          normalize=False)
+                upstream = upstream.transpose(1, 2)
+        elif name == "retnet":
+            # naive_retention takes [B,H,T,D], computes its own per-head decay schedule
+            # (log2(1-2^(-5-h))) — the URM layer's log_gamma is initialized to it.
+            g = layer.log_gamma.view(1, 1, H).expand(B, T, H)
+            urm = layer._run_mixer({"query": qt, "key": kt, "value": vt,
+                "beta": torch.ones(B, H, T, device=device),
+                "log_decay": g.transpose(1, 2).contiguous(),
+                "initial_state": m0})["output"]
+            with torch.no_grad():
+                upstream = upstream_fn(qt, kt, vt)  # [B,H,T,D], fixed decay, no state
+        else:  # simple_gla / lightning_attention — head-scalar gates, [B,T,H].
+            # naive_recurrent_simple_gla takes [B,T,H,*] and g [B,T,H] (broadcast over K).
+            if name == "simple_gla":
+                g = torch.nn.functional.logsigmoid(torch.randn(B, T, H, device=device)) / 8
+            else:
+                # Lightning: static per-head g_gamma [H], expanded over B,T.
+                g = layer.g_gamma.view(1, 1, H).expand(B, T, H)
+            urm = layer._run_mixer({"query": qt, "key": kt, "value": vt,
+                "beta": torch.ones(B, H, T, device=device),
+                "log_decay": g.transpose(1, 2).contiguous(), "initial_state": m0})["output"]
+            with torch.no_grad():
+                upstream, _ = upstream_fn(q, k, v, g)
+                upstream = upstream.transpose(1, 2)
+        return urm, upstream
+    return run
+
+
+_K2_FLA_COMPARATORS = {
+    "gated_deltanet", "hgrn2", "kda", "linear_attention", "retnet",
+    "simple_gla", "lightning_attention",
+}
+
+
+def kernel_parity_report(mixer: MixerSpec, *, heads: int = 4, head_dim: int = 32,
+                         batch: int = 2, seq: int = 64, device: str = "cuda"
+                         ) -> dict[str, float | str]:
+    """Native-vs-reference tier parity for mixers with no upstream kernel to gate on.
+
+    The KL gate compares against a pinned upstream; where none exists (HLA ships only a
+    paper; SDM's pinned router tie policy is backend-dependent so route identity is not
+    claimed), the honest substitute is the public path agreeing with itself across tiers:
+    same operands, reference tier vs native tier, max-abs-diff on the output. The mixer's
+    law itself was verified against its pinned source in the per-architecture work — this
+    report certifies the NATIVE execution of that law.
+    """
+    import torch as _t
+
+    if mixer.stateful:
+        return _k3_parity_report(mixer, heads=heads, head_dim=head_dim,
+                                 batch=batch, seq=seq, device=device)
+
+    def _build(target):
+        return mixer.builder(heads * head_dim, heads, head_dim, "inference", target)
+
+    ref_layer = _build("reference").to(device)
+    nat_layer = _build("native").to(device)
+    nat_layer.load_state_dict(ref_layer.state_dict())
+    x = _t.randn(batch, seq, heads * head_dim, device=device)
+    with _t.no_grad():
+        out_ref = ref_layer(x)
+        out_nat = nat_layer(x)
+    return {
+        "mixer": mixer.name,
+        "report": "native_vs_reference",
+        "max_abs_diff": float((out_ref - out_nat).abs().max().item()),
+    }
+
+
+def _k3_parity_report(mixer: MixerSpec, *, heads: int, head_dim: int,
+                      batch: int, seq: int, device: str) -> dict[str, float | str]:
+    """K3 mixer-law parity: native-generated routes feed BOTH mixer tiers.
+
+    The route-generation kernel is native-only (no reference-tier provider exists), so a
+    layer-level reference build cannot compile. Instead: generate canonical routes once
+    with the native route kernel, then run the K3 sparse-delta state law on the native
+    and reference tiers with identical routes/operands and compare readings + updated
+    memory. This isolates the mixer law (U3.D) — the piece the architecture claims.
+    """
+    import torch as _t
+
+    from urm.backends.numpy.k3 import numpy_sparse_state_mixer
+    from urm.backends.torch.k3 import sparse_delta_state as ref_sds
+    from urm.backends.triton.k3 import sparse_delta_state as native_sds
+    from urm.backends.triton.k3 import sparse_route_selection
+    from urm.ir.program import (
+        DType, SparseReadTiming, SparseStateMixerSpec, SparseStateOperation,
+    )
+
+    P, T, S, D, R, W = batch * heads, seq, 256, head_dim, 8, 8
+    spec = SparseStateMixerSpec(
+        parallel=P, sequence=T, slots_per_partition=S, value_dim=D, writes=W, reads=R,
+        dtype=DType.FLOAT32, operation=SparseStateOperation.UPDATE,
+        read_timing=SparseReadTiming.AFTER_UPDATE,
+    )
+    _t.manual_seed(9103)
+    # Native route generation (the only tier that exists for it) produces canonical
+    # ascending routes with softmax weights from product-key scores.
+    scores = _t.randn(P, T, 2 * 16, device=device)  # factor_extent 16 -> 256 slots
+    ri, rw = sparse_route_selection(scores, S, R, index_dtype=_t.int32)
+    wi, ww = sparse_route_selection(scores + 0.01 * _t.randn_like(scores), S, W,
+                                    index_dtype=_t.int32)
+    memory = _t.randn(P, S, D, device=device)
+    vals = _t.randn(P, T, D, device=device)
+    beta = _t.rand(P, T, 1, device=device)
+    ld = -_t.rand(P, T, 1, device=device) * 0.1
+    # Fresh memory clones per path: the native kernel mutates in place
+    # (PERSISTENT_IN_PLACE is the declared state policy).
+    out_n, mem_n = native_sds(memory.clone(), ri, rw, write_addresses=wi,
+                              write_weights=ww, values=vals, beta=beta, log_decay=ld,
+                              spec=spec)
+    out_r, mem_r = ref_sds(memory.clone(), ri, rw, write_addresses=wi,
+                           write_weights=ww, values=vals, beta=beta, log_decay=ld,
+                           spec=spec)
+    out_o, mem_o = numpy_sparse_state_mixer(
+        memory.cpu().numpy(), ri.cpu().numpy(), rw.float().cpu().numpy(),
+        write_indices=wi.cpu().numpy(), write_weights=ww.float().cpu().numpy(),
+        values=vals.cpu().numpy(), beta=beta.cpu().numpy(), log_decay=ld.cpu().numpy(),
+        read_timing=SparseReadTiming.AFTER_UPDATE,
+    )
+    out_o = _t.as_tensor(out_o).to(device); mem_o = _t.as_tensor(mem_o).to(device)
+    return {
+        "mixer": mixer.name,
+        "report": "k3_native_vs_reference_vs_oracle",
+        "native_vs_reference_max_abs_diff": float((out_n - out_r).abs().max().item()),
+        "native_vs_oracle_max_abs_diff": float((out_n - out_o).abs().max().item()),
+        "memory_native_vs_oracle_max_abs_diff": float((mem_n - mem_o).abs().max().item()),
+    }
+
+
+__all__ = ["TrainConfig", "TrainResult", "train", "build_model", "model_flops_per_step",
+           "kernel_parity_report"]

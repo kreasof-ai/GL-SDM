@@ -34,6 +34,7 @@ class MixerSpec:
     upstream: str | None
     has_reference_kernel: bool
     has_decode_kernel: bool
+    stateful: bool = False  # carries persistent memory across microbatches (SDM/K3)
 
 
 class RMSNorm(nn.Module):
@@ -74,7 +75,8 @@ class URMDecoderLM(nn.Module):
 
     def __init__(self, *, vocab_size: int, sequence_length: int, layers: int,
                  width: int, num_heads: int, head_dim: int, mixer: MixerSpec,
-                 mlp_ratio: int = 4, intent: str = "training", target: str = "reference"):
+                 mlp_ratio: int = 4, intent: str = "training", target: str = "reference",
+                 batch_size: int | None = None):
         super().__init__()
         self.config = dict(vocab_size=vocab_size, sequence_length=sequence_length,
                            layers=layers, width=width, num_heads=num_heads,
@@ -82,8 +84,18 @@ class URMDecoderLM(nn.Module):
         self.mixer_spec = mixer
         self.token = nn.Embedding(vocab_size, width)
         self.position = nn.Embedding(sequence_length, width)
+
+        def _build() -> nn.Module:
+            if mixer.stateful:
+                # Persistent-state mixers size their memory banks per (batch, head) at
+                # construction; the harness supplies the microbatch batch size.
+                if batch_size is None:
+                    raise ValueError(f"stateful mixer {mixer.name!r} requires batch_size")
+                return mixer.builder(width, num_heads, head_dim, intent, target, batch_size)
+            return mixer.builder(width, num_heads, head_dim, intent, target)
+
         self.blocks = nn.ModuleList(
-            DecoderBlock(width, mixer.builder(width, num_heads, head_dim, intent, target), mlp_ratio)
+            DecoderBlock(width, _build(), mlp_ratio)
             for _ in range(layers)
         )
         self.norm = RMSNorm(width)
@@ -113,6 +125,25 @@ class URMDecoderLM(nn.Module):
                 logits.float().reshape(-1, logits.shape[-1]), targets.reshape(-1)
             )
         return logits, loss
+
+    def reset_state(self) -> None:
+        """Zero persistent mixer state (stateful mixers only; no-op otherwise)."""
+        for block in self.blocks:
+            reset = getattr(block.mixer, "reset_state", None)
+            if callable(reset):
+                reset()
+
+    def detach_state(self) -> None:
+        """Persist the last forward's final state, detached from the autograd graph.
+
+        Without the detach, every microbatch extends one autograd graph through the
+        memory bank — unbounded graph growth and wrong gradients (the classic
+        stateful-recurrence problem K1/K2 mixers don't have).
+        """
+        for block in self.blocks:
+            detach = getattr(block.mixer, "detach_state", None)
+            if callable(detach):
+                detach()
 
     def forward_distribution(self, tokens: torch.Tensor) -> torch.Tensor:
         """Softmax next-token distribution (the KL-gate surface)."""
