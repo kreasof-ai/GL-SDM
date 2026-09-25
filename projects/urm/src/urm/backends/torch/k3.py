@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from urm.ir.program import SparseReadTiming, SparseStateMixerSpec
+from urm.ir.program import SparseReadTiming, SparseStateMixerSpec, SparseStateOperation
 
 
 def sparse_delta_state(
@@ -143,6 +143,60 @@ torch_sparse_state_mixer = sparse_delta_state
 # ---------------------------------------------------------------------------
 
 
+def validate_k3_route_provenance(spec: SparseStateMixerSpec, operands) -> str | None:
+    """Validate the route operands fed to a K3 state mixer (route provenance).
+
+    The K3 contract certifies that routes are "already certified logical addresses
+    and normalized weights"; on the public graph path that certification is the
+    provider's job (the runtime binds raw tensors by role, and the spec's
+    parallel/sequence are placeholder batch dims re-materialized from the operand
+    shapes). This reuses the ``CertifiedSparseStateRoutes.certify`` value semantics
+    so the reference tier enforces the route invariants: partition-local in-bounds
+    addresses, strictly increasing and unique within each token, the declared route
+    width, and finite nonnegative normalized weights. Returns a structured decline
+    reason, or ``None`` when well-formed.
+    """
+    import torch
+
+    def _check(indices, weights, width, label):
+        if indices is None or weights is None:
+            return f"K3 {label} routes are unbound"
+        if not isinstance(indices, torch.Tensor) or indices.dtype not in (torch.int32, torch.int64):
+            return f"K3 {label} addresses must be int32/int64 tensors"
+        if indices.shape != weights.shape:
+            return f"K3 {label} addresses and weights must share a shape"
+        if indices.ndim != 3 or indices.shape[-1] != width:
+            return f"K3 {label} routes must be [parallel, sequence, {width}]"
+        idx = indices.to(torch.int64)
+        if bool(((idx < 0) | (idx >= spec.slots_per_partition)).any().item()):
+            return f"K3 {label} addresses must be partition-local and in bounds"
+        if width > 1 and bool((idx[..., 1:] <= idx[..., :-1]).any().item()):
+            return f"K3 {label} addresses must be strictly increasing and unique within a token"
+        w = weights.to(torch.float32)
+        if not bool(torch.isfinite(w).all().item()):
+            return f"K3 {label} weights must be finite"
+        if bool((w < 0).any().item()):
+            return f"K3 {label} weights must be nonnegative"
+        atol = 2e-5 if spec.dtype.value == "float32" else 4e-3
+        sums = w.sum(dim=-1)
+        if not bool(torch.allclose(sums, torch.ones_like(sums), atol=atol, rtol=0)):
+            return f"K3 {label} weights must be normalized (sum to 1 over the route width)"
+        return None
+
+    read_err = _check(
+        operands.get("read_addresses"), operands.get("read_weights"), spec.reads, "read"
+    )
+    if read_err is not None:
+        return read_err
+    if spec.operation is SparseStateOperation.UPDATE:
+        write_err = _check(
+            operands.get("write_addresses"), operands.get("write_weights"), spec.writes, "write"
+        )
+        if write_err is not None:
+            return write_err
+    return None
+
+
 class K3TorchReferenceProvider:
     name = "urm.unified.k3.sparse_delta_reference.v1"
     family = "k3"
@@ -154,6 +208,11 @@ class K3TorchReferenceProvider:
         return None
 
     def execute(self, request, operands):
+        # Route-provenance gate: validate the route operands against the spec's
+        # bounds before the equation runs (the runtime binds raw tensors by role).
+        provenance = validate_k3_route_provenance(request.descriptor, operands)
+        if provenance is not None:
+            raise ValueError(provenance)
         outputs, state = sparse_delta_state(
             operands["memory"], operands["read_addresses"], operands["read_weights"],
             write_addresses=operands.get("write_addresses"),
