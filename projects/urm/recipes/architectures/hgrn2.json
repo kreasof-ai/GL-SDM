@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "name": "hgrn2",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.fla_k2",
+    "notes": "arch-024. U2.A channel-decay in value-first state layout: q = swish(q_proj), g = logsigmoid(f_proj), k = 1 − exp(g) (complement gate as key), v = i_proj, mixer chunk/fused GLA with gk=g, state_v_first=True — verified against fla/layers/hgrn2.py @ 864a87f6. state_v_first is purely physical layout (sweep); the mixer is the U2.A channel-gate law. Layer module: architectures/hgrn2.py."
+  },
+  "layers": [
+    {
+      "id": "hgrn2_layer",
+      "operation": "linear_delta_state",
+      "external_component": "architectures.hgrn2.HGRN2Layer",
+      "params": {
+        "external_stages": ["Q/K/V projections (q swish, v direct)", "complement gate key construction k = 1 − exp(g)", "output projection"],
+        "delta": false,
+        "gate_scope": "channel",
+        "read_timing": "after_update",
+        "scale_rule": "key_dim_rsqrt"
+      },
+      "state": {"initial_state": "zero (cache modes are residual)"},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Mixer parity vs the pinned fused_recurrent_gla (gk=g, state_v_first=True, GPU) in tests/test_architectures_hgrn2.py; full-layer composition + gradients. The lower-bound logaddexp variant, short conv and cache/chunked paths are residual external work, not claimed."
+  }
+}
