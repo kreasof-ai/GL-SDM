@@ -230,11 +230,12 @@ def _build_node(node: dict[str, Any], *, index: int) -> SemanticNode:
             raise NormalizeError(
                 f"node {node_id!r}: linear_delta_state requires an explicit roles mapping"
             )
-        missing = [
-            r
-            for r in ("query", "key", "value", "beta", "log_decay", "initial_state")
-            if r not in dict(roles)
-        ]
+        # log_decay is required unless gate_scope is "none" (no decay); the
+        # executor synthesizes the zero schedule for that case.
+        required = ["query", "key", "value", "beta", "initial_state"]
+        if params.get("gate_scope", "none") != "none":
+            required.append("log_decay")
+        missing = [r for r in required if r not in dict(roles)]
         if missing:
             raise NormalizeError(
                 f"node {node_id!r}: linear_delta_state is missing required roles {missing}"

@@ -111,9 +111,13 @@ def _operands_for(
     if family is ProviderFamily.K1:
         return _bind_roles(op, ("query", "key", "value"), _K1_OPTIONAL_ROLES, tensors)
     if family is ProviderFamily.K2:
+        # log_decay is required unless the spec has no decay (gate_scope none).
+        required = [r for r in _K2_REQUIRED_ROLES
+                    if r != "log_decay" or op.spec.gate_scope.value != "none"]
         return _bind_roles(
-            op, _K2_REQUIRED_ROLES,
-            ("scale", "erase_gate", "write_gate", "predict_key", "alpha", "low_rank_beta"),
+            op, tuple(required),
+            ("scale", "log_decay", "erase_gate", "write_gate", "predict_key",
+             "alpha", "low_rank_beta"),
             tensors,
         )
     if family is ProviderFamily.K3:

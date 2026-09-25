@@ -55,12 +55,12 @@ def linear_delta_state(
     q = queries.to(torch.float32)
     v = values.to(torch.float32)
     b = beta.to(torch.float32)
-    g = log_decay.to(torch.float32)
+    g = log_decay.to(torch.float32) if log_decay is not None else None
     # beta/log_decay may arrive as [B, H, T, 1]; squeeze only a trailing
     # singleton that is NOT the token axis (i.e. only when 4-D).
     if b.dim() == 4 and b.shape[-1] == 1:
         b = b.squeeze(-1)
-    if g.dim() == 4 and g.shape[-1] == 1:
+    if g is not None and g.dim() == 4 and g.shape[-1] == 1:
         g = g.squeeze(-1)
 
     if spec.gate_scope is K2GateScope.NONE:
@@ -187,7 +187,7 @@ class K2TorchReferenceProvider:
         scale_op = operands.get("scale")
         result = linear_delta_state(
             operands["initial_state"], operands["key"], operands["query"],
-            operands["value"], operands["beta"], operands["log_decay"],
+            operands["value"], operands["beta"], operands.get("log_decay"),
             spec=request.descriptor,
             scale=None if scale_op is None else float(scale_op),
             erase_gate=operands.get("erase_gate"),
