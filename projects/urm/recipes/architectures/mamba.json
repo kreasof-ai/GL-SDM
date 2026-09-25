@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "name": "mamba",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.mamba",
+    "notes": "arch-043 Mamba-1 + arch-044 Mamba-2/SSD (A8 read/write coupling). The selective SSM diagonal recurrence x_i = exp(δ_i·A)·x_{i-1} + δ_i·B_i·u_i, y_i = C_i·x_i with input-precomputable (selective) δ/B/C — a per-channel diagonal vector-state recurrence, structurally distinct from the K2 matrix state. Mamba-2 shares the same recurrence (A per-head broadcast, dt per head); its chunked semiseparable kernel (chunk_state/state_passing/chunk_scan) is a physical schedule. Verified against the pinned mamba_ssm selective_scan_ref (Mamba-1) and ssd_chunk_scan_combined_ref (Mamba-2). The δ/B/C/A discretization frontend, D·u skip, z gate and conv are external. Layer modules: architectures/mamba.py."
+  },
+  "layers": [
+    {"id": "mamba1_layer", "operation": "linear_delta_state", "external_component": "architectures.mamba.Mamba1Layer", "params": {"axis": "A8 read/write coupling: selective diagonal SSM (input-precomputable coefficients)", "external_stages": ["δ/B/C projections", "A discretization", "D·u skip", "z gate", "conv"], "note": "per-channel diagonal vector state [D,N]"}, "state": {"x": "[D, N] per channel"}, "cache": {}},
+    {"id": "mamba2_layer", "operation": "linear_delta_state", "external_component": "architectures.mamba.Mamba2Layer", "params": {"axis": "A8 read/write coupling: semiseparable SSD (same diagonal recurrence; chunked kernel residual)", "external_stages": ["Mamba-2 frontend", "chunked semiseparable kernel"], "note": "within-chunk diagonal + cross-chunk boundary carry"}, "state": {"x": "[D, N] per channel"}, "cache": {}}
+  ],
+  "coverage": {"level": "generic_model_integration", "validated": true, "notes": "Mamba-1 parity vs the pinned selective_scan_ref (0.0) and the selectivity invariant; Mamba-2 recurrence vs the pinned ssd_chunk_scan_combined_ref (4.8e-7); layer composition + gradients in tests/test_architectures_mamba.py. The selective frontend, D·u/z gate/conv, and the Mamba-2 chunked kernel are residual, not claimed."}
+}
