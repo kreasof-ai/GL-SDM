@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "name": "deltaformer",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.fla_k2",
+    "notes": "arch-013 (UT causal triangular transform). DeltaFormer: stage 1 strict-causal triangular value correction u = (I + diag(β)·strict_tril(P))^{-1}·v by forward substitution (P = tril_softmax(qkᵀ/√D, strict)), stage 2 ordinary causal softmax attention over u. The strict-past correction is a data-dependent operand correction, NOT a per-token projection (sweep verdict). Verified against fla/ops/deltaformer/naive.py @ 864a87f6. Layer module: architectures/deltaformer.py."
+  },
+  "layers": [{"id": "deltaformer_layer", "operation": "weighted_reduce", "external_component": "architectures.deltaformer.DeltaFormerLayer", "params": {"axis": "UT: strict-causal triangular value correction (typed transform) + K1 over corrected values", "external_stages": ["β frontend", "chunked/kernel forms"], "note": "stage 1 strict-causal, stage 2 includes diagonal"}, "state": {}, "cache": {}}],
+  "coverage": {"level": "generic_model_integration", "validated": true, "notes": "Parity vs the pinned naive_deltaformer_attn_head_first (fp32), the strict-past invariant (future-value perturbation leaves earlier outputs unchanged), and gradients in tests/test_architectures_ut.py. The chunked/kernel forms are residual, not claimed."}
+}
