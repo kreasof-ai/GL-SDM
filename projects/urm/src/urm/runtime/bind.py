@@ -28,6 +28,7 @@ from urm.ir.program import (
     SemanticProgram,
     SparseRouteGeneration,
     SparseStateMixerAccess,
+    TriangularSolve,
     WeightedReduce,
 )
 
@@ -101,6 +102,9 @@ def _family_and_descriptor(op: SemanticNode) -> tuple[str, Any, dict[str, Any]]:
     if isinstance(op, Merge):
         # Ordinary typed operator (cross-call composition merge, A14).
         return ("merge", op, {})
+    if isinstance(op, TriangularSolve):
+        # Ordinary typed operator (strict-causal triangular operand correction, UT).
+        return (ProviderFamily.TRIANGULAR_SOLVE, op, {})
     raise PlanBindingError(f"op {op.name!r} ({type(op).__name__}) has no provider family")
 
 
@@ -149,6 +153,10 @@ def _operands_for(
                     f"merge node {op.name!r}: scale operand {s!r} unbound"
                 )
         return bound
+    if family == ProviderFamily.TRIANGULAR_SOLVE:
+        # Bind the strict-lower probability operand, the per-token diagonal and
+        # the right-hand side value by role (never by name).
+        return _bind_roles(op, ("probs", "beta", "value"), (), tensors)
     raise PlanBindingError(f"unknown provider family {family!r}")
 
 

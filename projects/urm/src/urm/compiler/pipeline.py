@@ -79,6 +79,7 @@ from urm.ir.program import (
     SparseStateMixerAccess,
     StateUpdate,
     Transform,
+    TriangularSolve,
     WeightedReduce,
 )
 
@@ -1547,6 +1548,10 @@ class UrmCompiler:
             # Ordinary typed operator (a linear combination of producer outputs);
             # dispatched through the elementwise merge anchor, unfused by default.
             return AnchorKind.MERGE, ()
+        if isinstance(op, TriangularSolve):
+            # Ordinary typed operator (strict-causal triangular operand
+            # correction, UT); dispatched through the triangular-solve anchor.
+            return AnchorKind.TRIANGULAR_SOLVE, ()
         if isinstance(op, Gather):
             return AnchorKind.ROUTED_REDUCTION, ()
         if isinstance(op, OrderedRecurrence):
@@ -1731,6 +1736,7 @@ _GRAPH_TARGETS: dict[str, frozenset[str]] = {
             "urm.unified.k2.state_reference.v1",
             "urm.unified.k3.sparse_delta_reference.v1",
             "torch.merge.linear_combination.v1",
+            "urm.unified.triangular_solve.reference.v1",
         }
     ),
     "library": frozenset({"torch.nn.functional.scaled_dot_product_attention"}),

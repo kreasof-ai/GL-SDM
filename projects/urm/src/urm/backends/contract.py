@@ -25,8 +25,10 @@ from typing import Any, Protocol
 from urm.ir.program import (
     K1Descriptor,
     LinearDeltaSpec,
+    Merge,
     SparseRouteSelectionSpec,
     SparseStateMixerSpec,
+    TriangularSolve,
 )
 
 
@@ -41,6 +43,7 @@ class ProviderFamily:
     K3 = "k3"
     K3_ROUTE = "k3_route"
     MERGE = "merge"
+    TRIANGULAR_SOLVE = "triangular_solve"
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +62,8 @@ class ProviderRequest:
         | LinearDeltaSpec
         | SparseStateMixerSpec
         | SparseRouteSelectionSpec
+        | Merge
+        | TriangularSolve
     )
     mode: str
     accumulation_dtype: str = "float32"

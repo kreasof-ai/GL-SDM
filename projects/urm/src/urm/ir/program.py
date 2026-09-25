@@ -692,6 +692,33 @@ class Merge(SemanticOp):
 
 
 @dataclass(frozen=True, slots=True)
+class TriangularSolve(SemanticOp):
+    """Strict-causal triangular operand correction (generality axis UT).
+
+    Solves the strictly-lower-triangular system over the token axis:
+    ``u = (I + diag(β)·strict_tril(P))^{-1}·v`` by forward substitution, i.e.
+    ``u_t = v_t − β_t·Σ_{j<t} P_tj·u_j``. This is a data-dependent, read-
+    dependent correction (the write ``u_t`` feeds later reads), which the
+    canonical K2 rank-1 law cannot express — DeltaFormer's stage-1 value
+    correction is the client; PaTH's Householder score correction is the broader
+    (distinct) UT pattern. An ordinary typed operator (like Merge/GEMM): ``P``
+    is the strict-lower probability operand, ``beta`` the per-token diagonal,
+    ``value`` the right-hand side; the correction is computed in fp32 and the
+    op is unfused by default.
+    """
+
+    # The closed role vocabulary (``probs`` = the strict-lower probability
+    # operand, ``beta`` = the per-token diagonal, ``value`` = the right-hand
+    # side) bound to graph edges. No other semantic fields in v1: the
+    # strict-lower structure and the solve are the closed equation.
+    roles: tuple[tuple[str, str], ...] = ()
+
+    @property
+    def effect(self) -> EffectSignature:
+        return ORDERED_STATE
+
+
+@dataclass(frozen=True, slots=True)
 class OrderedRecurrence(SemanticOp):
     """Ordered scan shell; the exact equation stays backend-owned.
 
@@ -809,6 +836,7 @@ SemanticNode = (
     | WeightedReduce
     | Matmul
     | Transform
+    | TriangularSolve
     | OrderedRecurrence
     | LinearDeltaState
     | StateRead

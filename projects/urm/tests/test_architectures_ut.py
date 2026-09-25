@@ -14,13 +14,30 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from architectures.deltaformer import DeltaFormerLayer
+from architectures.deltaformer import (
+    DeltaFormerLayer,
+    strict_causal_value_correction,
+)
 from architectures.path_attention import PaTHAttentionLayer
 
 H, D, T = 2, 8, 8
 
 
 # --- arch-013 DeltaFormer ---
+
+
+def test_deltaformer_solve_routes_through_public_op():
+    """Stage-1 (the UT triangular solve) executes as the typed public op, matching
+    the independent serial forward-substitution comparator exactly."""
+    torch.manual_seed(3)
+    q = torch.randn(2, H, T, D); k = torch.randn(2, H, T, D); v = torch.randn(2, H, T, D)
+    beta = torch.rand(2, H, T)
+    layer = DeltaFormerLayer(H, D)
+    with torch.no_grad():
+        u_graph = layer.correct_values(q, k, v, beta)          # public triangular_solve op
+        u_serial = strict_causal_value_correction(q, k, v, beta)  # independent serial recurrence
+    err = (u_graph - u_serial).abs().max().item()
+    assert err == 0.0, f"public triangular_solve vs serial comparator: max abs err {err}"
 
 def test_deltaformer_matches_pinned_naive():
     torch.manual_seed(5)

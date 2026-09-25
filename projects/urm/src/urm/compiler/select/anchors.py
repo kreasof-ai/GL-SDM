@@ -47,6 +47,9 @@ class AnchorKind(StrEnum):
     # Ordinary typed operators (cross-call composition merge, A14) — a typed
     # linear combination of producer outputs, unfused by default.
     MERGE = "merge"
+    # Strict-causal triangular operand correction (UT) — the data-dependent
+    # forward-substitution solve u = (I + diag(β)·strict_tril(P))^{-1}·v.
+    TRIANGULAR_SOLVE = "triangular_solve"
 
 
 class VisitorKind(StrEnum):
@@ -563,6 +566,13 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
     ExecutionAnchor(
         kind=AnchorKind.MERGE,
         name="torch.merge.linear_combination.v1",
+        backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.TRIANGULAR_SOLVE,
+        name="urm.unified.triangular_solve.reference.v1",
+        effect=ORDERED_STATE,
         backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
         supported_visitors=frozenset(),
     ),

@@ -58,6 +58,7 @@ from urm.ir.program import (
     TensorHandle,
     Transform,
     TransformKind,
+    TriangularSolve,
     WeightedReduce,
 )
 
@@ -82,6 +83,9 @@ _K2_ROLES = frozenset(
     {"query", "key", "value", "beta", "log_decay", "initial_state", "scale",
      "erase_gate", "write_gate", "predict_key", "alpha", "low_rank_beta"}
 )
+# TriangularSolve (UT): the strict-lower probability operand, the per-token
+# diagonal, and the right-hand side value.
+_TRISOLVE_ROLES = frozenset({"probs", "beta", "value"})
 
 
 def _roles(
@@ -290,6 +294,17 @@ def _build_node(node: dict[str, Any], *, index: int) -> SemanticNode:
             coefficients=tuple(float(c) for c in params.get("coefficients", ())),
             scale_operands=tuple(str(s) for s in params.get("scale_operands", ())),
         )
+    if op == "triangular_solve":
+        # Role-bound (probs/beta/value); no other params in v1.
+        _reject_unknown_params(params, frozenset({"roles"}), node_id)
+        roles = _roles(params.get("roles"), legal=_TRISOLVE_ROLES, node_id=node_id)
+        role_names = set(dict(roles))
+        missing = _TRISOLVE_ROLES - role_names
+        if missing:
+            raise NormalizeError(
+                f"node {node_id!r}: triangular_solve is missing required roles {sorted(missing)}"
+            )
+        return TriangularSolve(name=node_id, inputs=inputs, outputs=outputs, roles=roles)
     if op == "state_read":
         return StateRead(
             name=node_id,

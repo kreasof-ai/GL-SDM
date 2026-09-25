@@ -138,6 +138,7 @@ GRAPH_OPERATIONS: frozenset[str] = frozenset(
         "sparse_state_mixer",
         "linear_delta_state",
         "merge",
+        "triangular_solve",
     }
 )
 
