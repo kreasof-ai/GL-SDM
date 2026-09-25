@@ -71,7 +71,9 @@ def recurrent(memory, keys, queries, values, beta, log_decay, *, scale=1.0,
     Z)``; ``is_delta=False`` is the additive linear update ``M = Z + k v^T``
     (beta is ignored). ``normalizer=True`` tracks a denominator state ``z_t``
     (the same decay, accumulating the keys) and reads ``y = scale * (q^T M) /
-    max(q^T z, epsilon)`` - the query/key-normalized (linear-attention) form.
+    (scale * (q^T z) + epsilon)`` — the query/key-normalized (linear-attention)
+    form, matching the pinned fla normalized law (scale inside the denominator,
+    additive epsilon).
 
     ``erase_gate``/``write_gate`` (each ``[T]``) generalize the delta rule to the
     dual-gate form ``update = write_gate * v - erase_gate * (k^T Z)``; the plain
@@ -101,10 +103,10 @@ def recurrent(memory, keys, queries, values, beta, log_decay, *, scale=1.0,
             norm_decay = decay[:, 0] if decay.ndim == 2 else decay
             norm = norm_decay * norm
         if read_before_update:
-            denom = (q[t] @ norm) if normalizer else None
+            denom = (scale * (q[t] @ norm)) if normalizer else None
             out[t] = scale * (q[t] @ z)
             if normalizer:
-                out[t] = out[t] / max(denom, epsilon)
+                out[t] = out[t] / (denom + epsilon)
         if update_keys is not None:
             uk = np.asarray(update_keys[t], dtype=np.float64)
             uv = np.asarray(update_values[t], dtype=np.float64)
@@ -127,7 +129,7 @@ def recurrent(memory, keys, queries, values, beta, log_decay, *, scale=1.0,
         if not read_before_update:
             out[t] = scale * (q[t] @ m)
             if normalizer:
-                out[t] = out[t] / max(q[t] @ norm, epsilon)
+                out[t] = out[t] / (scale * (q[t] @ norm) + epsilon)
     if normalizer:
         return out, (m, norm)
     return out, m

@@ -116,7 +116,10 @@ def linear_delta_state(
             read_norm = norm
         y = resolved_scale * torch.einsum("bhk,bhkv->bhv", q[:, :, t], read_state)
         if norm is not None:
-            denom = (q[:, :, t] * read_norm).sum(-1, keepdim=True).clamp_min(spec.epsilon)
+            # Pinned normalized law (fla naive_chunk/ fused_recurrent linear_attn):
+            # the scale is inside the denominator and epsilon is an additive
+            # offset, not a clamp — (q·scale)·k_cum + ε.
+            denom = (resolved_scale * q[:, :, t] * read_norm).sum(-1, keepdim=True) + spec.epsilon
             y = y / denom
         outs.append(y)
     out = torch.stack(outs, dim=2).to(dtype)  # [B,H,T,V]
