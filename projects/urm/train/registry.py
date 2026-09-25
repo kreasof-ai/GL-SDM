@@ -22,37 +22,37 @@ from __future__ import annotations
 from train.model import MixerSpec
 
 
-def _build_dense_attention(model_dim, num_heads, head_dim, intent):
+def _build_dense_attention(model_dim, num_heads, head_dim, intent, target="reference"):
     """K1: dense causal softmax attention (MHA) through the public K1 path."""
     from architectures.head_map_attention import HeadMapAttention
 
     return HeadMapAttention(
         model_dim, query_heads=num_heads, kv_heads=num_heads, head_dim=head_dim,
-        causal=True, head_map="equal", target="reference", intent=intent,
+        causal=True, head_map="equal", target=target, intent=intent,
     )
 
 
-def _build_gla(model_dim, num_heads, head_dim, intent):
+def _build_gla(model_dim, num_heads, head_dim, intent, target="reference"):
     """K2: GLA channel-gated linear-delta state through the public K2 path."""
     from architectures.gla import GLALayer
 
     return GLALayer(
         model_dim, num_heads=num_heads, head_k_dim=head_dim, head_v_dim=head_dim,
-        target="reference", intent=intent,
+        target=target, intent=intent,
     )
 
 
-def _build_deltanet(model_dim, num_heads, head_dim, intent):
+def _build_deltanet(model_dim, num_heads, head_dim, intent, target="reference"):
     """K2: DeltaNet delta-rule state through the public K2 path."""
     from architectures.deltanet import DeltaNetLayer
 
     return DeltaNetLayer(
         model_dim, num_heads=num_heads, head_k_dim=head_dim, head_v_dim=head_dim,
-        target="reference", intent=intent,
+        target=target, intent=intent,
     )
 
 
-def _build_fox(model_dim, num_heads, head_dim, intent):
+def _build_fox(model_dim, num_heads, head_dim, intent, target="reference"):
     """K1: FoX forgetting attention (cumulative-gate score bias) through public K1."""
     return _FoXAdapter(model_dim, num_heads, head_dim, intent)
 

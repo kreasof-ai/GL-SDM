@@ -105,6 +105,13 @@ class K2LinearStateLayer(torch.nn.Module):
         self._plan = compile_graph(
             program, target=target, intent=CompilationIntent(intent)
         )
+        # On the native tier, the plan dispatches to a fused Triton kernel through a Python
+        # loop dynamo cannot trace. Make the mixer call an opaque graph break so a
+        # torch.compile'd model fuses the surround while the public-path provider runs
+        # eagerly — the plan, provider and equation are unchanged. We rebind the instance
+        # attribute so subclass forwards that call self._run_mixer hit the disabled form.
+        if target == "native":
+            self._run_mixer = torch._dynamo.disable(self._run_mixer)
 
     def _run_mixer(self, operands: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         return self._plan.execute(**operands)

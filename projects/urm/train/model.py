@@ -30,7 +30,7 @@ class MixerSpec:
     """
 
     name: str
-    builder: object  # Callable[[int, int, int, str], nn.Module]
+    builder: object  # Callable[[int, int, int, str, str], nn.Module]  (dim, heads, head_dim, intent, target)
     upstream: str | None
     has_reference_kernel: bool
     has_decode_kernel: bool
@@ -74,16 +74,16 @@ class URMDecoderLM(nn.Module):
 
     def __init__(self, *, vocab_size: int, sequence_length: int, layers: int,
                  width: int, num_heads: int, head_dim: int, mixer: MixerSpec,
-                 mlp_ratio: int = 4, intent: str = "training"):
+                 mlp_ratio: int = 4, intent: str = "training", target: str = "reference"):
         super().__init__()
         self.config = dict(vocab_size=vocab_size, sequence_length=sequence_length,
                            layers=layers, width=width, num_heads=num_heads,
-                           head_dim=head_dim, mixer=mixer.name)
+                           head_dim=head_dim, mixer=mixer.name, target=target)
         self.mixer_spec = mixer
         self.token = nn.Embedding(vocab_size, width)
         self.position = nn.Embedding(sequence_length, width)
         self.blocks = nn.ModuleList(
-            DecoderBlock(width, mixer.builder(width, num_heads, head_dim, intent), mlp_ratio)
+            DecoderBlock(width, mixer.builder(width, num_heads, head_dim, intent, target), mlp_ratio)
             for _ in range(layers)
         )
         self.norm = RMSNorm(width)

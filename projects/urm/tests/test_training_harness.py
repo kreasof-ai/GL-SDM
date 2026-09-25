@@ -35,6 +35,10 @@ def _cfg(name: str, **over):
         mixer=name, vocab_size=512, sequence_length=64, layers=2, width=128,
         num_heads=2, head_dim=64, batch_tokens=128, microbatch_tokens=128,
         steps=4, seed=0,
+        # Correctness tests run eager: compiling several fresh small models per test hits
+        # dynamo's recompile limit and adds nothing to the correctness evidence. The
+        # compiled+bf16 MFU path is exercised by train/run.py at scale.
+        compile_model=False,
     )
     base.update(over)
     return TrainConfig(**base)
