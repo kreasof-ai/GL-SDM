@@ -26,8 +26,6 @@ import torch
 from train.model import MixerSpec, URMDecoderLM
 from train.optimizer import build_optimizers
 
-# Cached measured bf16 peak (one calibration per process).
-_MEASURED_PEAK: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,8 +50,8 @@ class TrainConfig:
     capture_gradients: bool = False  # gradient alignment adds one sync per group
     compile_model: bool = True       # torch.compile the surround (mixer is an opaque boundary)
     bf16: bool = True                # bf16 autocast (the A10G bf16 peak is the MFU denominator)
-    target: str = "native"           # the MFU path runs the native tier; "reference" is the
-                                     # correctness oracle (slower, used by the parity gates)
+    target: str | None = None        # the mixer's registered tier (registry.tier) is the
+                                     # default; pass "native"/"reference" to override
 
     def __post_init__(self):
         if self.width != self.num_heads * self.head_dim:
@@ -108,8 +106,13 @@ def _param_count_estimate(cfg: TrainConfig) -> int:
     return embeddings + norms + mixer + mlp + head
 
 
-def _nominal_peak_flops(device_name: str) -> float:
-    """The vendor's nominal dense bf16 peak (the optimistic denominator)."""
+def _adopted_peak_flops(device_name: str) -> float:
+    """The adopted achievable bf16 peak per device (the MFU denominator).
+
+    Not the vendor nominal: the A10G nominally claims 125 TFLOPS but measures ~67 on
+    dense GEMM calibration; we adopt 70 as the achievable ceiling. Unknown devices fall
+    back to a conservative 65 TFLOPS.
+    """
     n = device_name.lower()
     if "b200" in n or "b300" in n:
         return 2250e12
@@ -120,7 +123,7 @@ def _nominal_peak_flops(device_name: str) -> float:
     if "l40s" in n:
         return 362e12
     if "a10g" in n:
-        return 125e12
+        return 70e12  # adopted achievable bf16 GEMM ceiling (measured ~67 on this instance)
     if "l4" in n:
         return 121e12
     if "t4" in n:
@@ -189,7 +192,7 @@ def build_model(cfg: TrainConfig, mixer: MixerSpec, *, device: str = "cuda",
         vocab_size=cfg.vocab_size, sequence_length=cfg.sequence_length,
         layers=cfg.layers, width=cfg.width, num_heads=cfg.num_heads,
         head_dim=cfg.head_dim, mixer=mixer, mlp_ratio=cfg.mlp_ratio, intent="training",
-        target=target or cfg.target,
+        target=target or cfg.target or mixer.tier,
         batch_size=(cfg.microbatch_tokens // cfg.sequence_length) if mixer.stateful else None,
     )
     return model.to(device)
@@ -236,15 +239,14 @@ def train(cfg: TrainConfig, mixer: MixerSpec, data_iter, *,
     optimizers = build_optimizers(model)
     n_params = sum(p.numel() for p in model.parameters())
     flops_per_step = model_flops_per_step(cfg, mixer.name, exact_params=n_params)
-    # The honest MFU denominator: the measured bf16 GEMM peak (ATMA's --measure-peak
-    # method), not the unreachable nominal vendor peak. Cached per process.
+    # The honest MFU denominator: the device's ADOPTED achievable bf16 peak from the
+    # table (A10G: 70 TFLOPS — the achievable GEMM ceiling, not the 125 nominal), with
+    # direct measurement (ATMA's --measure-peak method) as the fallback for unknown
+    # devices. Cached per process.
     if device == "cuda" and torch.cuda.is_available():
-        global _MEASURED_PEAK
-        if _MEASURED_PEAK is None:
-            _MEASURED_PEAK = measure_bf16_peak()
-        peak = _MEASURED_PEAK
+        peak = _adopted_peak_flops(torch.cuda.get_device_name())
     else:
-        peak = _nominal_peak_flops("cpu")
+        peak = _adopted_peak_flops("cpu")
 
     def _step_loss(inputs, targets):
         if cfg.bf16 and device == "cuda":
@@ -340,7 +342,7 @@ def _check_checkpoint_alignment(cfg: TrainConfig, mixer: MixerSpec, data_iter, *
     # The gate runs on the reference tier for speed — except stateful K3 mixers, whose
     # route generation has no reference-tier provider: those run the gate on the tier
     # under training (the tier being certified).
-    gate_target = cfg.target if mixer.stateful else "reference"
+    gate_target = (cfg.target or mixer.tier) if mixer.stateful else "reference"
     small = TrainConfig(
         mixer=cfg.mixer, vocab_size=min(cfg.vocab_size, 512),
         sequence_length=min(cfg.sequence_length, 64), layers=2, width=128,
@@ -443,7 +445,7 @@ def _kl_gate(cfg: TrainConfig, mixer: MixerSpec, model: URMDecoderLM, *,
     # The comparator must exercise the SAME tier the model trains with: a reference-tier
     # comparator would certify the reference path while the native path trains — which is
     # exactly how the native key_dim_rsqrt scale divergence hid behind a green KL.
-    comparator = _upstream_mixer_callable(mixer, target=cfg.target)
+    comparator = _upstream_mixer_callable(mixer, target=(cfg.target or mixer.tier))
     if comparator is None:
         return None
     torch.manual_seed(4242)

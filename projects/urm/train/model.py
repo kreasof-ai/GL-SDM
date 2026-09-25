@@ -35,6 +35,8 @@ class MixerSpec:
     has_reference_kernel: bool
     has_decode_kernel: bool
     stateful: bool = False  # carries persistent memory across microbatches (SDM/K3)
+    public_path: bool = True  # routes through a URM plan (False = external torch composition)
+    tier: str = "reference"  # "native" where the envelope serves it, else "reference"
 
 
 class RMSNorm(nn.Module):
