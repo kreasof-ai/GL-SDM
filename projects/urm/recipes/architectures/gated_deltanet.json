@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "name": "gated_deltanet",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.fla_k2",
+    "notes": "arch-026. U2.D + head-scalar decay: S' = exp(g_t)·S, delta = β_t(v_t − k_tᵀS'), S_t = S' + k_tδᵀ, after-update read, scale 1/√K; g = −exp(A_log)·softplus(g_in + dt_bias) external (fla/layers/gate.py). Verified against fla/ops/gated_delta_rule + fla/layers/gated_deltanet.py @ 864a87f6. Layer module: architectures/gated_deltanet.py."
+  },
+  "layers": [
+    {
+      "id": "gated_deltanet_layer",
+      "operation": "linear_delta_state",
+      "external_component": "architectures.gated_deltanet.GatedDeltaNetLayer",
+      "params": {
+        "external_stages": ["Q/K/V projections + l2 q/k norm", "gate projection + A_log/dt_bias schedule (g = −exp(A_log)·softplus)", "sigmoid beta", "output RMSNorm + output projection"],
+        "delta": true,
+        "gate_scope": "head",
+        "read_timing": "after_update",
+        "scale_rule": "key_dim_rsqrt"
+      },
+      "state": {"initial_state": "zero (cache modes are residual)"},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Mixer parity vs the pinned fused_recurrent_gated_delta_rule (GPU) and the external gate-schedule identity in tests/test_architectures_gated_deltanet.py; full-layer composition + gradients to A_log/dt_bias. Short conv, use_gate output gating, cache/chunked paths are residual external work, not claimed."
+  }
+}
