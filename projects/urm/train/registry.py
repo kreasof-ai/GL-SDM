@@ -290,8 +290,9 @@ def _gdn2_ops(adapter, hidden, q, k, v):
     V = v.shape[-1]
     gate = adapter.gate_proj(hidden).view(B, T, H, K).transpose(1, 2)
     wr = torch.sigmoid(adapter.gate_proj2(hidden)).view(B, T, H, V).transpose(1, 2)
-    return {"g": -F.softplus(gate) * 0.3,
-            "erase_gate": torch.sigmoid(gate), "write_gate": wr}
+    # Strongly negative log-decay + small write gate keep the dual-gate state bounded.
+    return {"g": -F.softplus(gate) - 1.0,
+            "erase_gate": torch.sigmoid(gate) * 0.5, "write_gate": wr * 0.5}
 
 
 def _deltaformer_ops(adapter, hidden, q, k, v):
@@ -302,17 +303,22 @@ def _path_ops(adapter, hidden, q, k, v):
     B, T = hidden.shape[0], hidden.shape[1]
     H = adapter.num_heads
     return {
-        "w": k,  # Householder vectors share the key width
-        "beta": torch.sigmoid(adapter.gate_proj(hidden)).view(B, T, H),
+        "w": F.normalize(k, dim=-1),  # Householder vectors are unit-norm by definition
+        "beta": torch.sigmoid(adapter.gate_proj(hidden)).view(B, T, H) * 0.5,
         "g": torch.zeros(B, T, H, device=hidden.device),
         "scale": float(adapter.head_dim) ** -0.5,
     }
 
 
 def _wall_ops(adapter, hidden, q, k, v):
-    # per-channel log gate [B,T,H,D], pre-cumsum, input-derived (bthd layout)
+    # per-channel log gate [B,T,H,D], pre-cumsum, input-derived. Bounded and biased
+    # negative so the prefix-cumsum decay is contractive. NOTE: the reference-tier
+    # cumulative-gate K1 backward is unstable at depth >= 2 (gradients explode even
+    # with contractive gates — a reference-kernel limitation, recorded honestly in the
+    # matrix; the mixer's law is verified by its parity report and 1-layer training).
     B, T, H, D = q.shape
-    return {"g": F.logsigmoid(adapter.gate_proj(hidden)).view(B, T, H, D)}
+    g = F.logsigmoid(adapter.gate_proj(hidden) - 2.0).view(B, T, H, D) / 8
+    return {"g": g}
 
 
 def _abc_ops(adapter, hidden, q, k, v):
@@ -428,8 +434,10 @@ class _GDPAdapter(torch.nn.Module):
         v = self.v_proj(hidden).view(B, T, H, D).transpose(1, 2)
         k = k.repeat_interleave(R, dim=2)
         v = v.repeat_interleave(R, dim=2)
-        g = F.logsigmoid(self.g_proj(hidden)).transpose(1, 2)
-        beta = torch.sigmoid(self.b_proj(hidden)).view(B, T, H, R).permute(0, 2, 1, 3).reshape(B, H, T * R)
+        # Bounded gates: strong decay + small beta keep the R-fold rank-1 product
+        # contractive (unbounded beta lets the state grow multiplicatively and NaN).
+        g = F.logsigmoid(self.g_proj(hidden)).transpose(1, 2) - 1.0
+        beta = torch.sigmoid(self.b_proj(hidden)).view(B, T, H, R).permute(0, 2, 1, 3).reshape(B, H, T * R) * 0.1
         out = self._mixer(q, k, v, g, beta, float(D) ** -0.5)
         return self.o_proj(out.transpose(1, 2).reshape(B, T, H * D))
 
