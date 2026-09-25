@@ -43,6 +43,11 @@ class LogicalDomain(StrEnum):
     PARAMETER_BLOCK = "parameter_block"
     RECURRENT_STATE = "recurrent_state"
     MEMORY_PAGE = "memory_page"
+    # Depth: the residual-source / layer-index axis. AttnRes (arch-054)
+    # aggregates previous-layer residuals over this domain; Foveal (arch-065)
+    # is the second client. Admitted by the direction sweep as a typed logical
+    # domain — no sequence state, recurrence or causal mask attaches to it.
+    DEPTH = "depth"
 
 
 class SelectionKind(StrEnum):

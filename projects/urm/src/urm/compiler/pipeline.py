@@ -489,11 +489,17 @@ def _weighted_reduce_anchor_kind(op: WeightedReduce) -> AnchorKind:
         has_qk = "query" in roles and "key" in roles
     else:
         has_qk = "query" in op.inputs and "key" in op.inputs
+    # Sequence-to-sequence is the canonical attention domain. The sweep admits
+    # the depth domain (arch-054 AttnRes, arch-065 Foveal) as the same softmax
+    # equation over a logical depth axis: the reducer is identical (dense
+    # softmax weighted reduce over inline Q·K scores), only the logical axis
+    # differs, so the ATTENTION kind — not routed reduction — is correct there.
+    _ATTENTION_DOMAINS = (LogicalDomain.SEQUENCE, LogicalDomain.DEPTH)
     is_attention = (
         spec.normalization is ScoreNormalization.SOFTMAX
         and spec.selection is SelectionKind.DENSE
-        and spec.query_domain is LogicalDomain.SEQUENCE
-        and spec.source_domain is LogicalDomain.SEQUENCE
+        and spec.query_domain in _ATTENTION_DOMAINS
+        and spec.source_domain in _ATTENTION_DOMAINS
         and has_qk
     )
     return AnchorKind.ATTENTION if is_attention else AnchorKind.ROUTED_REDUCTION
