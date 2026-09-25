@@ -413,6 +413,20 @@ class K1HeadMap(StrEnum):
     GROUPED = "grouped"
 
 
+class K1ScoreLaw(StrEnum):
+    """The closed K1 score algebra (generality axis A13).
+
+    ``DOT``: ``s_ij = (q_i·k_j)·scale`` — plain dot-product score; any
+    data-dependent additive term rides the ``score_bias`` operand (FoX's
+    cumulative log-gate is the client). ``CHANNEL_DECAY``: ``s_ij = Σ_n q_in
+    k_jn · decay(P_in − P_jn)`` — a per-channel decay *inside* the channel
+    contraction (Wall is the client); not expressible as an additive bias.
+    """
+
+    DOT = "dot"
+    CHANNEL_DECAY = "channel_decay"
+
+
 @dataclass(frozen=True, slots=True)
 class K1Descriptor:
     """The closed softmax-attention equation contract for one K1 node.
@@ -430,6 +444,7 @@ class K1Descriptor:
     causal: bool = False
     score_bias: bool = False
     attention_mask: bool = False
+    score_law: K1ScoreLaw = K1ScoreLaw.DOT
     masked_row: str = "zero"  # closed edge policy: fully masked rows return zero
     accumulation_dtype: DType = DType.FLOAT32
 

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ...ir.program import K1Descriptor, K1ScaleRule
+from ...ir.program import K1Descriptor, K1ScaleRule, K1ScoreLaw
 
 
 def _torch() -> Any:
@@ -30,12 +30,18 @@ def k1_softmax_attention(
     score_bias: Any | None = None,
     attention_mask: Any | None = None,
     scale: float | None = None,
+    channel_gate: Any | None = None,
 ) -> Any:
     """Canonical K1 softmax attention over ``[B, T, H, D]`` operands.
 
     The score scale follows the descriptor's scale law (never a runtime
     default): the key-dim rule or an explicit operand. Grouped query→KV head
     sharing expands shared KV heads. A fully masked row returns zero.
+
+    The score law is the descriptor's ``score_law``: ``DOT`` is the plain
+    dot-product score (an additive term rides ``score_bias``); ``CHANNEL_DECAY``
+    contracts per channel with a decay ``exp(P_in − P_jn)`` where ``P`` is the
+    prefix cumsum of ``channel_gate`` (the Wall score law).
     """
     torch = _torch()
     if descriptor.scale_rule is K1ScaleRule.EXPLICIT_OPERAND:
@@ -52,7 +58,22 @@ def k1_softmax_attention(
         repeat = q.shape[1] // k.shape[1]
         k = k.repeat_interleave(repeat, dim=1)
         v = v.repeat_interleave(repeat, dim=1)
-    scores = torch.matmul(q, k.transpose(-1, -2)) * resolved_scale
+    if descriptor.score_law is K1ScoreLaw.CHANNEL_DECAY:
+        if channel_gate is None:
+            raise ValueError("K1 channel_decay score law requires a channel_gate operand")
+        # s_ij = (Σ_n q_in k_jn · exp(P_in − P_jn)) · scale, P = cumsum(channel_gate).
+        # The channel_gate operand is the natural-log gate. (The pinned Wall source
+        # works in base-2 — exp2(cumsum(g_log2)·RCP_LN2) — and applies scale·RCP_LN2;
+        # exp(cumsum(g_log2) diff) with the gate passed as g_log2 reproduces the decay,
+        # and the caller folds RCP_LN2 into the scale to match the pinned softmax base.)
+        # P = prefix cumsum of the gate over TIME (dim 2 in [B,H,T,D]).
+        P = channel_gate.to(torch.float32).transpose(1, 2).cumsum(2)   # [B,H,T,D]
+        diff = P.unsqueeze(3) - P.unsqueeze(2)                          # [B,H,Ti,Tj,D]
+        scores = (
+            q.unsqueeze(3) * k.unsqueeze(2) * torch.exp(diff)
+        ).sum(-1) * resolved_scale                                       # [B,H,Ti,Tj]
+    else:
+        scores = torch.matmul(q, k.transpose(-1, -2)) * resolved_scale
     if score_bias is not None:
         scores = scores + score_bias.to(torch.float32)
     if descriptor.causal:
@@ -105,6 +126,7 @@ class K1TorchReferenceProvider:
             score_bias=operands.get("score_bias"),
             attention_mask=operands.get("attention_mask"),
             scale=None if operands.get("scale") is None else float(operands["scale"]),
+            channel_gate=operands.get("channel_gate"),
         )
         return {"output": out}
 

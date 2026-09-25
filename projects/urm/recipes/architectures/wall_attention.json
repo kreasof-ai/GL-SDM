@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "name": "wall_attention",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.fla_k2",
+    "notes": "arch-011 (A13 score/reducer). Wall Attention: per-pair score s_ij = Σ_n q_in k_jn · exp(P_in − P_jn) · scale with P = cumsum(per-channel log gate g [B,T,HQ,K]); causal mask; softmax; @v. The per-channel decay sits INSIDE the channel contraction, so it is NOT expressible as an additive pairwise bias (sweep verdict) — it is the typed K1ScoreLaw.CHANNEL_DECAY score law with the channel_gate operand. The pinned base-2 form (exp2(cumsum(g)·RCP_LN2), score·RCP_LN2, base-2 softmax) equals the natural-exp form with base-e softmax at the natural scale. Verified against fla/ops/wall_attn/naive.py @ 864a87f6. Layer module: architectures/wall_attention.py."
+  },
+  "layers": [
+    {
+      "id": "wall_attention_layer",
+      "operation": "weighted_reduce",
+      "external_component": "architectures.wall_attention.WallAttentionLayer",
+      "params": {
+        "axis": "A13 score/reducer: CHANNEL_DECAY score law (per-channel decay inside the channel contraction) via the channel_gate operand",
+        "external_stages": ["per-channel gate projection", "prefix cumsum P = cumsum(g)", "grouped-KV expansion"],
+        "score_law": "channel_decay",
+        "normalization": "softmax",
+        "selection": "dense",
+        "causal": true
+      },
+      "state": {},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Parity vs the pinned naive_wall_attn (fp32, CUDA) and the zero-gate-reduces-to-causal-softmax invariant in tests/test_architectures_wall.py; gradients to the channel gate. The optional sink bias / window / varlen / scalar-gate branches and any native stable interval-decay evaluation are residual, not claimed."
+  }
+}

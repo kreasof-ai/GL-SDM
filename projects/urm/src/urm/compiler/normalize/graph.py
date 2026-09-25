@@ -25,6 +25,7 @@ from urm.ir.program import (
     K1Descriptor,
     K1HeadMap,
     K1ScaleRule,
+    K1ScoreLaw,
     K2GateScope,
     K2ReadTiming,
     K2ScaleRule,
@@ -72,7 +73,7 @@ def _enum(enum_type: Any, value: Any, *, field: str) -> Any:
 
 
 _K1_ROLES = frozenset(
-    {"query", "key", "value", "score_bias", "attention_mask", "scale"}
+    {"query", "key", "value", "score_bias", "attention_mask", "scale", "channel_gate"}
 )
 _K2_ROLES = frozenset(
     {"query", "key", "value", "beta", "log_decay", "initial_state", "scale"}
@@ -114,6 +115,7 @@ def _k1_descriptor(params: dict[str, Any], roles: tuple[tuple[str, str], ...]) -
         causal=bool(params.get("causal", False)),
         score_bias="score_bias" in dict(roles),
         attention_mask="attention_mask" in dict(roles),
+        score_law=_enum(K1ScoreLaw, params.get("score_law", "dot"), field="k1.score_law"),
         accumulation_dtype=DType.FLOAT32,
     )
 
@@ -125,7 +127,7 @@ _K1_PARAMS = frozenset(
     {
         "query_domain", "source_domain", "selection", "normalization", "top_k",
         "threshold", "page_size", "capacity_policy", "deterministic", "causal",
-        "scale_rule", "head_map", "group_size", "roles", "epilogue",
+        "scale_rule", "head_map", "group_size", "roles", "epilogue", "score_law",
     }
 )
 
