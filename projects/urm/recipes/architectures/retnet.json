@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "name": "retnet",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.fla_k2",
+    "notes": "arch-017. U2.A static per-head decay γ_h = 1 − 2^(−5−h), S_t = γ_h·S_{t-1} + k_t v_t, after-update read, scale 1/√d — the sweep disproved the data-dependent-gate hypothesis (A10) and confirmed the static schedule, against fla/ops/retention + fla/layers/multiscale_retention.py @ 864a87f6. External stages: Q/K/V projections, rotary, swish gating + RMSNorm output, output projection. Layer module: architectures/retnet.py."
+  },
+  "layers": [
+    {
+      "id": "retnet_layer",
+      "operation": "linear_delta_state",
+      "external_component": "architectures.retnet.RetNetLayer",
+      "params": {
+        "external_stages": ["Q/K/V projections", "rotary embeddings", "swish gating + output projection", "static log-decay schedule (log γ_h)"],
+        "delta": false,
+        "gate_scope": "head",
+        "read_timing": "after_update",
+        "scale_rule": "key_dim_rsqrt",
+        "gate": "static γ_h = 1 − 2^(−5−h)"
+      },
+      "state": {"initial_state": "zero (cache modes are residual)"},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Mixer parity vs the pinned fused_recurrent_retention (GPU) in tests/test_architectures_retnet.py; full-layer composition with gradients. Rotary, RMSNorm output, cache/chunked/parallel (chunkwise) paths are residual external work, not claimed."
+  }
+}
