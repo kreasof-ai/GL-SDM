@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "name": "yoco",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.fla_k2",
+    "notes": "arch-052. Two decoders: self-decoder = Simple-GLA (U2.A head-scalar data-dependent gate, after-update read); cross-decoder = softmax attention (U1.S) of per-token queries against a SHARED KV cache built once by YOCOSharedKVBuilder, with offset-causal alignment (seqlen_offset = S − T). Verified against fla/layers/yoco.py @ 864a87f6. The shared-KV cache construction (kv_norm) and rotary are external. Layer module: architectures/yoco.py."
+  },
+  "layers": [
+    {
+      "id": "yoco_self_decoder",
+      "operation": "linear_delta_state",
+      "external_component": "architectures.yoco.YOCOSelfDecoder",
+      "params": {
+        "external_stages": ["Q/K/V projections", "head-scalar gate projection (logsigmoid/normalizer)", "output projection"],
+        "delta": false,
+        "gate_scope": "head",
+        "read_timing": "after_update",
+        "scale_rule": "key_dim_rsqrt"
+      },
+      "state": {"initial_state": "zero (cache modes are residual)"},
+      "cache": {}
+    },
+    {
+      "id": "yoco_cross_decoder",
+      "operation": "weighted_reduce",
+      "external_component": "architectures.yoco.YOCOCrossDecoder",
+      "params": {
+        "external_stages": ["q projection", "shared KV cache (built once by YOCOSharedKVBuilder)", "offset-causal mask (seqlen_offset)", "output projection"],
+        "normalization": "softmax",
+        "selection": "dense",
+        "causal": "offset-causal over the shared cache",
+        "head_map": "equal"
+      },
+      "state": {},
+      "cache": {"shared_kv": "built once by the external YOCOSharedKVBuilder"}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Self-decoder parity vs pinned fused_recurrent_simple_gla (GPU) and cross-decoder parity vs an offset-causal oracle in tests/test_architectures_yoco.py; both decoders compose with gradient flow. The YOCOSharedKVBuilder (kv_norm + cache construction), rotary, windowed/decoding paths and the K2 gate-VJP concerns for the cross-decoder (sweep) are residual external work, not claimed."
+  }
+}
