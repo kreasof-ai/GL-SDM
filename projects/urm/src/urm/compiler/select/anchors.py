@@ -392,6 +392,7 @@ NATIVE_SPARSE_ROUTE_ANCHOR_NAME = "urm_native_sparse_route_selection_v0"
 NATIVE_DIAGONAL_RECURRENCE_ANCHOR_NAME = "urm_native_diagonal_recurrence_v1"
 NATIVE_MATRIX_STATE_RECURRENCE_ANCHOR_NAME = "urm_native_matrix_state_recurrence_v1"
 NATIVE_K1_ONLINE_SOFTMAX_ANCHOR_NAME = "urm_native_k1_online_softmax_v1"
+NATIVE_K1_INDEXED_GATHER_ANCHOR_NAME = "urm_native_k1_indexed_gather_v1"
 NATIVE_DYADIC_BANKED_STATE_ANCHOR_NAME = "urm_native_dyadic_banked_state_v1"
 NATIVE_TRIANGULAR_SOLVE_ANCHOR_NAME = "urm_native_triangular_solve_v1"
 
@@ -639,12 +640,14 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
         backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
         supported_visitors=frozenset(),
         # The Torch reference K1 executor dispatches on every admitted reducer
-        # law (softmax, threshold, squared-sum, map_normalize), so it accepts
-        # each non-softmax contract the descriptor can produce. The native and
-        # SDPA anchors declare only softmax and decline these.
+        # law (softmax, threshold, squared-sum, map_normalize) plus the A2
+        # indexed gather, so it accepts each non-softmax contract and the
+        # indexed contract the descriptor can produce. The native and SDPA
+        # anchors declare only softmax and decline these.
         semantic_contracts=frozenset(
             {
                 "normalized_softmax_attention_v1",
+                "k1_indexed_gather_v1",
                 "k1_threshold_relu_power_v1",
                 "k1_squared_sum_v1",
                 "k1_map_normalize_v1",
@@ -657,6 +660,22 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
         backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
         supported_visitors=frozenset(),
         semantic_contracts=frozenset({"normalized_softmax_attention_v1"}),
+    ),
+    # The native Triton indexed gather-attend (the A2 law): one program per
+    # (batch, query-head, query-block) loops the W gathered slots, gathering
+    # per-row K/V and accumulating the online softmax in fp32; the backward
+    # scatters dk/dv to the gathered positions through relaxed atomics (the K3
+    # native policy), so cross-program accumulation order is not guaranteed.
+    # Parity-qualified against the Torch reference, forward AND cotangents
+    # (tests/test_native_k1_indexed.py). It declares only the indexed contract
+    # and declines non-indexed descriptors via the equation-contract gate.
+    ExecutionAnchor(
+        kind=AnchorKind.ATTENTION,
+        name=NATIVE_K1_INDEXED_GATHER_ANCHOR_NAME,
+        backward_verified_dtypes=frozenset({"float32"}),
+        deterministic_accumulation=False,
+        supported_visitors=frozenset(),
+        semantic_contracts=frozenset({"k1_indexed_gather_v1"}),
     ),
     ExecutionAnchor(
         kind=AnchorKind.RECURRENT_SCAN,

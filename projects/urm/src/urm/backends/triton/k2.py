@@ -106,6 +106,8 @@ def _kernels():
         ERASE,
         WRITE,
         LEFT,
+        ALPHA,
+        LRB,
         UK,
         UV,
         RB,
@@ -132,6 +134,7 @@ def _kernels():
         HAS_RETR: tl.constexpr,
         NORMALIZER: tl.constexpr,
         HAS_LEFT: tl.constexpr,
+        HAS_ALPHA: tl.constexpr,
         BLOCK_K: tl.constexpr,
         BLOCK_V: tl.constexpr,
     ):
@@ -169,6 +172,18 @@ def _kernels():
                 Q + qk_token_base + token * (H * K_DIM) + k_index, k_mask, other=0.0
             ).to(tl.float32)
             q_t = _apply_feature_map(q_t, FEATURE_MAP)
+            # The additive low-rank transition (RWKV-7 DPLR): the rank-1 read
+            # alphaᵀ·state is taken off the PRE-decay state, then the decay applies
+            # to the carried state and the low-rank term is added undecayed in the
+            # update below: m = exp(g)·state + k·vᵀ + low_rank_beta·(alphaᵀ·state).
+            lr_read = tl.zeros((BLOCK_V,), dtype=tl.float32)
+            if HAS_ALPHA:
+                a_t = tl.load(
+                    ALPHA + qk_token_base + token * (H * K_DIM) + k_index,
+                    k_mask,
+                    other=0.0,
+                ).to(tl.float32)
+                lr_read = tl.sum(state * a_t[:, None], axis=0)
             if HAS_LEFT:
                 left_t = tl.load(
                     LEFT
@@ -266,6 +281,14 @@ def _kernels():
             else:
                 delta = v_t
                 state = state + k_t[:, None] * delta[None, :]
+                if HAS_ALPHA:
+                    # The undecayed rank-1 update: low_rank_beta ⊗ (alphaᵀ·pre-decay state).
+                    lb_t = tl.load(
+                        LRB + qk_token_base + token * (H * K_DIM) + k_index,
+                        k_mask,
+                        other=0.0,
+                    ).to(tl.float32)
+                    state = state + lb_t[:, None] * lr_read[None, :]
             if NORMALIZER:
                 norm = norm + k_t
             if not READ_BEFORE:
@@ -308,6 +331,8 @@ def _kernels():
         ERASE,
         WRITE,
         LEFT,
+        ALPHA,
+        LRB,
         UK,
         UV,
         RB,
@@ -327,6 +352,8 @@ def _kernels():
         GRAD_ERASE,
         GRAD_WRITE,
         GRAD_LEFT,
+        GRAD_ALPHA,
+        GRAD_LRB,
         GRAD_UK,
         GRAD_UV,
         GRAD_RB,
@@ -348,6 +375,7 @@ def _kernels():
         HAS_RETR: tl.constexpr,
         NORMALIZER: tl.constexpr,
         HAS_LEFT: tl.constexpr,
+        HAS_ALPHA: tl.constexpr,
         BLOCK_K: tl.constexpr,
         BLOCK_V: tl.constexpr,
     ):
@@ -516,6 +544,9 @@ def _kernels():
             grad_k = tl.zeros((BLOCK_K,), dtype=tl.float32)
             grad_v = tl.zeros((BLOCK_V,), dtype=tl.float32)
             grad_beta = 0.0
+            # Low-rank adjoint terms (the RWKV-7 DPLR update), filled under HAS_ALPHA.
+            a_t = tl.zeros((BLOCK_K,), dtype=tl.float32)
+            dlr = tl.zeros((BLOCK_V,), dtype=tl.float32)
             if RANK > 0:
                 dz = dstate_t
                 for r in tl.static_range(RANK - 1, -1, -1):
@@ -632,6 +663,34 @@ def _kernels():
                 grad_v = tl.sum(dstate_t * k_t[:, None], axis=0)
                 grad_k = tl.sum(dstate_t * v_t[None, :], axis=1)
                 dsdec = dstate_t
+            if HAS_ALPHA:
+                # Adjoint of the undecayed rank-1 update lb ⊗ (alphaᵀ·state_prev):
+                # it reads the PRE-decay state, so its gradient reaches state_prev
+                # directly (added to dstate below), bypassing the decay adjoint.
+                a_t = tl.load(
+                    ALPHA + qk_token_base + token * (H * K_DIM) + k_index,
+                    k_mask,
+                    other=0.0,
+                ).to(tl.float32)
+                lb_t = tl.load(
+                    LRB + qk_token_base + token * (H * K_DIM) + k_index,
+                    k_mask,
+                    other=0.0,
+                ).to(tl.float32)
+                lr_read = tl.sum(state_prev * a_t[:, None], axis=0)
+                dlr = tl.sum(dstate_t * lb_t[:, None], axis=0)
+                grad_lb = tl.sum(dstate_t * lr_read[None, :], axis=1)
+                grad_alpha = tl.sum(state_prev * dlr[None, :], axis=1)
+                tl.store(
+                    GRAD_LRB + qk_token_base + token * (H * K_DIM) + k_index,
+                    grad_lb,
+                    k_mask,
+                )
+                tl.store(
+                    GRAD_ALPHA + qk_token_base + token * (H * K_DIM) + k_index,
+                    grad_alpha,
+                    k_mask,
+                )
             dsdec = dsdec + dsdec_out
             if NORMALIZER:
                 if READ_BEFORE:
@@ -683,6 +742,10 @@ def _kernels():
                         v_mask,
                     )
                 dstate = decay * dsdec
+                if HAS_ALPHA:
+                    # The rank-1 term reads the pre-decay state directly, so its
+                    # adjoint reaches state_prev undecayed (alongside the decay path).
+                    dstate = dstate + a_t[:, None] * dlr[None, :]
             grad_q = _apply_feature_map_backward(q_raw, grad_q, FEATURE_MAP)
             grad_k = _apply_feature_map_backward(k_raw, grad_k, FEATURE_MAP)
             tl.store(
@@ -788,6 +851,8 @@ def execute_matrix_state_recurrence(
     erase_gate: Any | None = None,
     write_gate: Any | None = None,
     left_transitions: Any | None = None,
+    alpha: Any | None = None,
+    low_rank_beta: Any | None = None,
     update_keys: Any | None = None,
     update_values: Any | None = None,
     rank_beta: Any | None = None,
@@ -815,6 +880,11 @@ def execute_matrix_state_recurrence(
       dual-gate delta update ``write*v - (erase*k)^T Z`` (gdn2).
     - ``left_transitions`` (``[B,T,H,K,K]``): a factored left transition
       ``Z = left_t @ M`` replacing diagonal decay (generalized-delta IPLR/DPLR).
+    - ``alpha``/``low_rank_beta`` (each ``[B,T,H,K]``): the additive rank-1
+      transition factors (RWKV-7 DPLR), COMPOSED with pointwise decay. The rank-1
+      read ``alphaᵀ·M`` is taken off the pre-decay state, the decay applies to the
+      carried state, and the low-rank term is added undecayed alongside the
+      ``k·vᵀ`` write: ``M = exp(g)·M + k·vᵀ + low_rank_beta·(alphaᵀ·M)``.
     - ``update_keys``/``update_values``/``rank_beta`` (``[B,T,R,H,K]`` /
       ``[B,T,R,H,V]`` / ``[B,T,R,H]``): ``R`` sequential rank-1 delta updates
       within one token (gated_delta_product).
@@ -847,6 +917,7 @@ def execute_matrix_state_recurrence(
     dual_gate = erase_gate is not None or write_gate is not None
     has_retr = retrieval_keys is not None
     has_left = left_transitions is not None
+    has_alpha = alpha is not None or low_rank_beta is not None
     multi_rank = update_keys is not None
     if multi_rank:
         ranks = update_keys.shape[2]
@@ -868,6 +939,18 @@ def execute_matrix_state_recurrence(
         raise ValueError("left_transitions replace pointwise decay")
     if has_left and normalizer:
         raise ValueError("the canonical core does not combine left transitions and a normalizer")
+    if has_alpha:
+        # The additive rank-1 transition (RWKV-7 DPLR) is factored as alpha/low_rank_beta
+        # and COMPOSES with pointwise decay (the read is off the pre-decay state). It is
+        # exclusive of the full-matrix left transition and of the other transition forms.
+        if alpha is None or low_rank_beta is None:
+            raise ValueError("the low-rank transition requires both alpha and low_rank_beta")
+        if has_left:
+            raise ValueError("alpha/low_rank_beta and left_transitions are exclusive")
+        if is_delta or dual_gate or multi_rank or has_retr:
+            raise ValueError("the low-rank transition is the additive orientation (no delta/gates)")
+        if normalizer:
+            raise ValueError("the canonical core does not combine a low-rank transition and a normalizer")
     if is_delta and not dual_gate and beta is None:
         raise ValueError("the delta update rule requires beta")
     if decay_code != _DECAY_NONE and log_decay is None:
@@ -911,6 +994,8 @@ def execute_matrix_state_recurrence(
     left_c = _optional(
         left_transitions, (batch, sequence, heads, key_dim, key_dim), "left_transitions"
     )
+    alpha_c = _optional(alpha, (batch, sequence, heads, key_dim), "alpha")
+    lrb_c = _optional(low_rank_beta, (batch, sequence, heads, key_dim), "low_rank_beta")
     uk_c = _optional(
         update_keys, (batch, sequence, max(ranks, 1), heads, key_dim), "update_keys"
     )
@@ -930,7 +1015,7 @@ def execute_matrix_state_recurrence(
 
     class _MatrixState(torch.autograd.Function):
         @staticmethod
-        def forward(ctx, q, k, v, g, b, retr, erase, write, left, uk, uv, rb, initial):
+        def forward(ctx, q, k, v, g, b, retr, erase, write, left, alpha, lrb, uk, uv, rb, initial):
             output = torch.empty(
                 (batch, sequence, heads, value_dim), device=q.device, dtype=q.dtype
             )
@@ -966,16 +1051,16 @@ def execute_matrix_state_recurrence(
                 else final
             )
             forward_kernel[grid](
-                q, k, v, g, b, retr, erase, write, left, uk, uv, rb,
+                q, k, v, g, b, retr, erase, write, left, alpha, lrb, uk, uv, rb,
                 initial, output, states, norm_states, rank_states, final, final_norm,
                 heads, sequence, key_dim, value_dim, ranks, resolved_scale,
                 resolved_epsilon,
                 decay_code, is_delta, read_before, has_initial,
-                feature_code, dual_gate, has_retr, normalizer, has_left,
+                feature_code, dual_gate, has_retr, normalizer, has_left, has_alpha,
                 block_k, block_v, num_warps=warps,
             )
             ctx.save_for_backward(
-                q, k, v, g, b, retr, erase, write, left, uk, uv, rb,
+                q, k, v, g, b, retr, erase, write, left, alpha, lrb, uk, uv, rb,
                 initial, states, norm_states, rank_states,
             )
             ctx.has_initial = has_initial
@@ -985,7 +1070,7 @@ def execute_matrix_state_recurrence(
 
         @staticmethod
         def backward(ctx, grad_output, grad_final, grad_final_norm=None):
-            (q, k, v, g, b, retr, erase, write, left, uk, uv, rb,
+            (q, k, v, g, b, retr, erase, write, left, alpha, lrb, uk, uv, rb,
              initial, states, norm_states, rank_states) = ctx.saved_tensors
             grad_output = (
                 torch.zeros_like(v) if grad_output is None else grad_output.contiguous()
@@ -1009,6 +1094,8 @@ def execute_matrix_state_recurrence(
                 if has_left
                 else left
             )
+            grad_alpha = torch.zeros_like(alpha) if has_alpha else alpha
+            grad_lrb = torch.zeros_like(lrb) if has_alpha else lrb
             grad_uk = torch.zeros_like(uk) if multi_rank else uk
             grad_uv = torch.zeros_like(uv) if multi_rank else uv
             grad_rb = torch.zeros_like(rb) if multi_rank else rb
@@ -1030,17 +1117,17 @@ def execute_matrix_state_recurrence(
                 else grad_final_norm.contiguous().float()
             )
             backward_kernel[grid](
-                q, k, v, g, b, retr, erase, write, left, uk, uv, rb,
+                q, k, v, g, b, retr, erase, write, left, alpha, lrb, uk, uv, rb,
                 initial, states, norm_states, rank_states,
                 grad_output, grad_final_tensor, grad_final_norm_tensor,
                 grad_q, grad_k, grad_v, grad_g, grad_b,
-                grad_retr, grad_erase, grad_write, grad_left,
+                grad_retr, grad_erase, grad_write, grad_left, grad_alpha, grad_lrb,
                 grad_uk, grad_uv, grad_rb, grad_initial,
                 heads, sequence, key_dim, value_dim, ranks, resolved_scale,
                 resolved_epsilon,
                 decay_code, is_delta, read_before, ctx.has_initial,
                 grad_final is not None,
-                feature_code, dual_gate, has_retr, normalizer, has_left,
+                feature_code, dual_gate, has_retr, normalizer, has_left, has_alpha,
                 block_k, block_v, num_warps=warps,
             )
             return (
@@ -1053,6 +1140,8 @@ def execute_matrix_state_recurrence(
                 grad_erase if dual_gate else None,
                 grad_write if dual_gate else None,
                 grad_left if has_left else None,
+                grad_alpha if has_alpha else None,
+                grad_lrb if has_alpha else None,
                 grad_uk if multi_rank else None,
                 grad_uv if multi_rank else None,
                 grad_rb if multi_rank else None,
@@ -1061,7 +1150,7 @@ def execute_matrix_state_recurrence(
 
     return _MatrixState.apply(
         query_c, key_c, value_c, log_decay_c, beta_c,
-        retr_c, erase_c, write_c, left_c, uk_c, uv_c, rb_c, initial_tensor,
+        retr_c, erase_c, write_c, left_c, alpha_c, lrb_c, uk_c, uv_c, rb_c, initial_tensor,
     )
 
 
@@ -1169,11 +1258,15 @@ def linear_delta_state(
     ``delta=True`` + erase/write maps to the kernel's additive dual-gate — the pinned
     law's β≡1 makes them the same equation, verified to 1.5e-5 fwd / 1.5e-4 cotangent),
     multi-rank (GatedDeltaProduct, 7.6e-5 fwd / 1.4e-4 cotangent), the retrieval key
-    (Comba, 1.9e-6), and the low-rank left transition (IPLR: the descriptor's
-    ``alpha``/``low_rank_beta`` build the kernel's ``left = I + β αᵀ``, 1.4e-6 fwd /
-    3.3e-6 cotangent). The normalized variant stays declined (the kernel's
-    ``y/max(q·z, ε)`` diverges from the pinned ``y/((scale·q·norm)+ε)`` — measured
-    1.9e7) and the elementwise gate stays reference-tier (single-client).
+    (Comba, 1.9e-6), and the low-rank left transition. The low-rank transition has two
+    native schedules: with no decay (IPLR) the descriptor's ``alpha``/``low_rank_beta``
+    build the kernel's full ``left = I + β αᵀ`` (1.4e-6 fwd / 3.3e-6 cotangent); with a
+    pointwise decay (RWKV-7 DPLR) the kernel takes ``alpha``/``low_rank_beta`` directly
+    and composes the rank-1 update with the decay — ``M = exp(g)·M + k·vᵀ +
+    low_rank_beta·(alphaᵀ·M)`` with the read off the pre-decay state. The normalized
+    variant stays declined (the kernel's ``y/max(q·z, ε)`` diverges from the pinned
+    ``y/((scale·q·norm)+ε)`` — measured 1.9e7) and the elementwise gate stays
+    reference-tier (single-client).
     """
     if spec.normalized:
         # The native kernel's normalizer reads y/max(q·z, ε); the pinned law is
@@ -1224,14 +1317,23 @@ def linear_delta_state(
         wg = write_gate.transpose(1, 2).contiguous() if dual_gate else None
         retr = predict_key.transpose(1, 2).contiguous() if spec.predict_key else None
         left = None
+        lr_alpha = None
+        lr_beta = None
         if spec.low_rank:
-            # IPLR: the descriptor's per-channel alpha / low_rank_beta build the
-            # kernel's full left transition left_t = I + β αᵀ.
             a = alpha.transpose(1, 2).contiguous()
             lb = low_rank_beta.transpose(1, 2).contiguous()
-            K = keys.shape[-1]
-            left = torch.eye(K, device=keys.device, dtype=torch.float32) \
-                .expand(*a.shape[:3], K, K) + lb.unsqueeze(-1) * a.unsqueeze(-2)
+            if granularity == "none":
+                # IPLR (no decay): the descriptor's per-channel alpha / low_rank_beta
+                # build the kernel's full left transition left_t = I + β αᵀ.
+                K = keys.shape[-1]
+                left = torch.eye(K, device=keys.device, dtype=torch.float32) \
+                    .expand(*a.shape[:3], K, K) + lb.unsqueeze(-1) * a.unsqueeze(-2)
+            else:
+                # RWKV-7 (DPLR): the rank-1 transition COMPOSES with the pointwise
+                # decay. Pass alpha/low_rank_beta so the kernel reads alphaᵀ·M off the
+                # pre-decay state and adds low_rank_beta·(alphaᵀ·M) undecayed.
+                lr_alpha = a
+                lr_beta = lb
         uk = uv = rb = None
         if spec.num_deltas > 1:
             # GatedDeltaProduct: the operands carry R factors on a T*R time axis;
@@ -1251,7 +1353,8 @@ def linear_delta_state(
             initial_state=initial_state, scale=scale, decay_granularity=granularity,
             is_delta=(spec.delta and not dual_gate and spec.num_deltas == 1), read_before=read_before,
             retrieval_keys=retr, erase_gate=eg, write_gate=wg,
-            left_transitions=left, update_keys=uk, update_values=uv, rank_beta=rb,
+            left_transitions=left, alpha=lr_alpha, low_rank_beta=lr_beta,
+            update_keys=uk, update_values=uv, rank_beta=rb,
         )
         return out.transpose(1, 2), final
 

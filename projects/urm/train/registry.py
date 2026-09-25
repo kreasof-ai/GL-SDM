@@ -626,15 +626,15 @@ MIXER_REGISTRY: dict[str, MixerSpec] = {
     "kata": MixerSpec("kata", _op("kata.KATALayer", extra=_kata_ops, num_groups=4),
                       None, False, False),
     "moba": MixerSpec("moba", _op("moba.MoBALayer", extra=_moba_ops, chunk_size=8, topk=2),
-                      None, False, False),
+                      None, False, False, tier="native"),
     "nsa": MixerSpec("nsa", _op("nsa.NSASelectedLayer", layout="bthd", extra=_nsa_ops, block_size=8),
-                     None, False, False),
+                     None, False, False, tier="native"),
     "dsa": MixerSpec("dsa", _op("dsa.DSALayer", layout="bthd", extra=_dsa_ops),
-                     None, False, False),
+                     None, False, False, tier="native"),
     "longformer": MixerSpec("longformer", _op("longformer.LongformerLayer", layout="bthd", extra=_longformer_ops, window=8),
-                            None, False, False),
+                            None, False, False, tier="native"),
     "sparse_transformer": MixerSpec("sparse_transformer", _op("sparse_transformer.SparseTransformerLayer", layout="bthd", extra=_sparse_transformer_ops, stride=4, local_ctx=4),
-                                    None, False, False),
+                                    None, False, False, tier="native"),
     "abc_gsa": MixerSpec("abc_gsa", _build_abc("abc_gsa.ABCLayer"),
                          "fla.ops.abc", True, True, tier="native"),
     "gsa": MixerSpec("gsa", _build_abc("abc_gsa.GSALayer", gate=True),
@@ -643,7 +643,7 @@ MIXER_REGISTRY: dict[str, MixerSpec] = {
                                       None, False, False, tier="native"),
     "hopfield_association": MixerSpec("hopfield_association", _build_hopfield, None, False, False),
     "pattention": MixerSpec("pattention", _build_pattention, None, False, False),
-    "conformer_attention": MixerSpec("conformer_attention", _build_conformer, None, False, False, tier="native"),
+    "conformer_attention": MixerSpec("conformer_attention", _build_conformer, None, False, False),
     "mamba1": MixerSpec("mamba1", _build_mamba1_k2, "mamba_ssm", True, True),
     "log_linear_mamba2": MixerSpec("log_linear_mamba2", _build_log_linear_mamba2, None, False, False, tier="native"),
     "mla_attention": MixerSpec("mla_attention", _build_mla, None, False, False),
@@ -662,10 +662,10 @@ MIXER_REGISTRY: dict[str, MixerSpec] = {
     "mamba1_external": MixerSpec("mamba1_external", _build_mamba1_external, None, False, False, public_path=False),
     # --- admitted late: rwkv7 (low-rank left transition, native-qualified), tda/based
     # (reference tier — threshold reducer / feature map not native) ---
-    # rwkv7 needs the low-rank left transition COMPOSED with pointwise decay (w); the
-    # native kernel treats them as exclusive (left replaces decay) — reference-tier until
-    # the kernel admits the composition.
-    "rwkv7": MixerSpec("rwkv7", _build_rwkv7, "fla.ops.rwkv7", True, True),
+    # rwkv7: the low-rank left transition COMPOSED with pointwise decay — admitted to the
+    # native K2 kernel (the composition order verified vs the pinned fla fused_recurrent_rwkv7
+    # at 7.2e-7; tests/test_native_k2_rwkv7.py).
+    "rwkv7": MixerSpec("rwkv7", _build_rwkv7, "fla.ops.rwkv7", True, True, tier="native"),
     "tda": MixerSpec("tda", _build_tda, None, False, False),
     "based_attention": MixerSpec("based_attention", _build_based, "fla.ops.based", True, True),
     # indexed_attention is the shared A2 gather-attend BASE (no forward of its own) —

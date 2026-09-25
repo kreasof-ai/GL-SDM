@@ -535,6 +535,12 @@ def _equation_contract_for(op: SemanticNode) -> str | None:
             # anchor that declares it (the Torch reference) is selectable, so the
             # native/SDPA softmax anchors decline rather than execute the wrong law.
             return f"k1_{k1.reducer_law.value}_v1"
+        if k1 is not None and k1.indexed:
+            # The A2 indexed gather-attend is the softmax law over an externally
+            # routed per-query source set — a distinct contract so the dense
+            # native/SDPA softmax anchors decline it and the indexed-capable
+            # anchors (the Torch reference and the native indexed gather) serve it.
+            return "k1_indexed_gather_v1"
         return "normalized_softmax_attention_v1"
     if isinstance(op, LinearDeltaState):
         # The canonical K2 law (delta/additive update, diagonal gate scopes
@@ -1769,6 +1775,7 @@ _GRAPH_TARGETS: dict[str, frozenset[str]] = {
     "native": frozenset(
         {
             "urm_native_k1_online_softmax_v1",
+            "urm_native_k1_indexed_gather_v1",
             "urm_native_diagonal_recurrence_v1",
             "urm_native_matrix_state_recurrence_v1",
             "urm_native_sparse_route_selection_v0",
