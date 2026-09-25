@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "name": "rebased",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.fla_k2",
+    "notes": "arch-021. U2.A normalized linear attention after an external squared-dot polynomial feature map, mixer chunk_linear_attn(normalize=True, scale=1) — verified against fla/layers/rebased.py + modules/feature_map.py (RebasedFeatureMap) @ 864a87f6. The feature map (with optional gamma/beta/normalize) is external. Layer module: architectures/based_attention.py (ReBasedLayer)."
+  },
+  "layers": [
+    {
+      "id": "rebased_layer",
+      "operation": "linear_delta_state",
+      "external_component": "architectures.based_attention.ReBasedLayer",
+      "params": {
+        "external_stages": ["Q/K/V projections", "squared-dot polynomial feature map on q/k", "output projection"],
+        "delta": false,
+        "gate_scope": "none",
+        "read_timing": "after_update",
+        "scale_rule": "explicit_operand (scale=1)",
+        "normalized": true
+      },
+      "state": {"initial_state": "zero (cache modes are residual)"},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Mixer parity vs pinned fused_recurrent_linear_attn (normalize=True, scale=1, GPU) in tests/test_architectures_based.py; full-layer composition + gradients. The RebasedFeatureMap gamma/beta/normalize options, cache/chunked paths and the parallel rebased path are residual external work, not claimed."
+  }
+}

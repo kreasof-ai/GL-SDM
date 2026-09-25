@@ -54,24 +54,34 @@ class K2LinearStateLayer(torch.nn.Module):
         self.normalized = normalized
 
         decay_shape = ["B", "H", "T", "K"] if gate_scope == "channel" else ["B", "H", "T"]
+        graph_inputs = [
+            {"name": "query", "dtype": "float32", "shape": ["B", "H", "T", "K"]},
+            {"name": "key", "dtype": "float32", "shape": ["B", "H", "T", "K"]},
+            {"name": "value", "dtype": "float32", "shape": ["B", "H", "T", "V"]},
+            {"name": "beta", "dtype": "float32", "shape": ["B", "H", "T"]},
+            {"name": "log_decay", "dtype": "float32", "shape": decay_shape},
+            {"name": "initial_state", "dtype": "float32", "shape": ["B", "H", "K", "V"]},
+        ]
+        node_inputs = ["query", "key", "value", "beta", "log_decay", "initial_state"]
+        roles = {
+            "query": "query", "key": "key", "value": "value",
+            "beta": "beta", "log_decay": "log_decay", "initial_state": "initial_state",
+        }
+        if scale_rule == "explicit_operand":
+            graph_inputs.append({"name": "scale", "dtype": "float32", "shape": []})
+            node_inputs.append("scale")
+            roles["scale"] = "scale"
         document = {
             "schema_version": 2,
             "name": f"k2_state:{gate_scope}",
             "kind": "kernel_fragment",
             "graph": {
-                "inputs": [
-                    {"name": "query", "dtype": "float32", "shape": ["B", "H", "T", "K"]},
-                    {"name": "key", "dtype": "float32", "shape": ["B", "H", "T", "K"]},
-                    {"name": "value", "dtype": "float32", "shape": ["B", "H", "T", "V"]},
-                    {"name": "beta", "dtype": "float32", "shape": ["B", "H", "T"]},
-                    {"name": "log_decay", "dtype": "float32", "shape": decay_shape},
-                    {"name": "initial_state", "dtype": "float32", "shape": ["B", "H", "K", "V"]},
-                ],
+                "inputs": graph_inputs,
                 "nodes": [
                     {
                         "id": "state",
                         "op": "linear_delta_state",
-                        "inputs": ["query", "key", "value", "beta", "log_decay", "initial_state"],
+                        "inputs": node_inputs,
                         "outputs": ["output", "final_state"],
                         "params": {
                             "delta": delta,
@@ -79,14 +89,7 @@ class K2LinearStateLayer(torch.nn.Module):
                             "read_timing": read_timing,
                             "scale_rule": scale_rule,
                             "normalized": normalized,
-                            "roles": {
-                                "query": "query",
-                                "key": "key",
-                                "value": "value",
-                                "beta": "beta",
-                                "log_decay": "log_decay",
-                                "initial_state": "initial_state",
-                            },
+                            "roles": roles,
                         },
                     }
                 ],
