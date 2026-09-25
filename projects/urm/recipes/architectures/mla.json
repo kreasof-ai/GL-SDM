@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "name": "mla",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.fla_mla",
+    "notes": "arch-004. Verified in the sweep against fla/layers/mla.py @ 864a87f6: external latent projection (kv_lora_rank + RMSNorm) expands per head (k = [k_nope ; k_rot broadcast], v from latent), the mixer is plain causal U1.S over the expanded heads (scaling = qk_head_dim^-0.5), v padded to qk_head_dim and cropped back. Layer module: architectures/mla_attention.py."
+  },
+  "layers": [
+    {
+      "id": "mla_layer",
+      "operation": "weighted_reduce",
+      "external_component": "architectures.mla_attention.MLALayer",
+      "params": {
+        "external_stages": [
+          "q projection (optional q_lora_rank + RMSNorm)",
+          "kv latent projection (kv_lora_rank + RMSNorm + per-head expansion)",
+          "shared rope key projection + rotary on rope head-dims",
+          "v pad-to-qk_head_dim / crop-to-v_head_dim",
+          "output projection"
+        ],
+        "normalization": "softmax",
+        "selection": "dense",
+        "causal": true,
+        "head_map": "equal",
+        "scale_rule": "key_dim_rsqrt (qk_head_dim^-0.5)"
+      },
+      "state": {},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Layer parity vs the pinned MLA equation (fp32 transcription oracle; the pinned module itself requires flash-attn at construction, which is unavailable here — recorded honestly) with and without q_lora in tests/test_architectures_mla.py; gradients flow through the latent projections. The pinned TODO (cache only compressed_kv + k_rot, recover full k/v — compressed-cache equality) and cache/decode modes are residual blockers, not claimed."
+  }
+}
