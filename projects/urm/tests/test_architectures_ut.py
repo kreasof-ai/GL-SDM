@@ -18,7 +18,7 @@ from architectures.deltaformer import (
     DeltaFormerLayer,
     strict_causal_value_correction,
 )
-from architectures.path_attention import PaTHAttentionLayer
+from architectures.path_attention import PaTHAttentionLayer, _householder_T
 
 H, D, T = 2, 8, 8
 
@@ -76,6 +76,23 @@ def test_deltaformer_gradients_flow():
 
 
 # --- arch-010 PaTH ---
+
+def test_path_householder_routes_through_public_op():
+    """PaTH's Householder T_mat executes as the public triangular_solve op (P = w wᵀ,
+    beta, identity value columns), matching the serial forward-substitution comparator."""
+    torch.manual_seed(11)
+    HQ = 4
+    w = torch.randn(1, T, H, D) * 0.3
+    beta = torch.rand(1, T, H) * 0.5
+    layer = PaTHAttentionLayer(HQ, D)
+    with torch.no_grad():
+        T_public = layer.householder_T(w, beta)                       # public triangular_solve
+        wbf = (w * beta.unsqueeze(-1)).permute(0, 2, 1, 3).float()    # [B,H,T,D]
+        wf = w.permute(0, 2, 1, 3).float()
+        T_serial = _householder_T(wbf, wf)                            # independent serial comparator
+    err = (T_public - T_serial).abs().max().item()
+    assert err < 1e-4, f"public triangular_solve Householder vs serial comparator: {err}"
+
 
 def test_path_single_chunk_matches_pinned():
     torch.manual_seed(5)
