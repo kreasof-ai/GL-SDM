@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "name": "raven",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.fla_k2",
+    "notes": "arch-050. External top-k router injected as dense gates into the GSA two-stage slot-summary mixer: router = r_proj(x), sigmoid scores, topk slot indices, renormalized weights, multihot scatter s_multihot; decay f = logsigmoid(f_proj)/normalizer masked f = f·s_multihot, s = 1 − exp(f); then the GSA mixer. Verified against fla/layers/raven.py + fla/ops/gsa/naive.py @ 864a87f6. Layer module: architectures/raven.py."
+  },
+  "layers": [
+    {
+      "id": "raven_layer",
+      "operation": "linear_delta_state",
+      "external_component": "architectures.raven.RavenLayer",
+      "params": {
+        "combinator": "external top-k router → dense gates into the GSA two-stage mixer (reuses architectures/abc_gsa.py)",
+        "external_stages": ["top-k router (r_proj, sigmoid, topk, renormalize, multihot scatter)", "GLA-style decay masked by router", "Q/K/V projections", "output projection"],
+        "structural_finding": "same stage-1/stage-2 gate-axis finding as arch-048/049 (stage 1 external, stage 2 typed K2)."
+      },
+      "state": {"hk": "[K, M]", "hv": "[M, V]"},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Router-masked mixer parity vs the pinned naive_recurrent_gsa (fp32) and the sparse multihot router invariant (exactly topk non-zero slots) in tests/test_architectures_raven.py; full-layer composition + gradients. Training-time Gumbel noise (RNG-sensitive), Mamba2 decay variant, router_type='mlp', router_score='softmax', feature map, q/k norm, RoPE, output gate and cache/chunked paths are residual external work, not claimed."
+  }
+}
