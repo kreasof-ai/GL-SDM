@@ -10,8 +10,9 @@ This tree separates **what URM must mean**, **what the current code runs**, and 
 4. [76-architecture composition ledger](planning/architecture-composition.md): external call graphs, unresolved internal axes and per-ID closeout record. It is a target, not a coverage claim.
 5. [Verified direction sweep](planning/direction-sweep.md): per-architecture verified direction (composition / combinator / axis / external-only) against pinned source, with the ledger corrections it surfaced.
 6. [Roadmap](planning/roadmap.md): ordered work, file ownership and completion gates.
-7. [Runtime contract](runtime/execution.md): serialized plans, provider ABI and state sessions.
-8. [Evidence rules and current status](validation/evidence.md): what can be claimed now, how to measure, and how historical results are labeled.
+7. [Architecture-to-URM integration instructions](planning/architecture-urm-integration.md): review of external-only mixer modules, reusable semantics, and acceptance checks.
+8. [Runtime contract](runtime/execution.md): serialized plans, provider ABI and state sessions.
+9. [Evidence rules and current status](validation/evidence.md): what can be claimed now, how to measure, and how historical results are labeled.
 
 ## Machine records and generated pages
 
