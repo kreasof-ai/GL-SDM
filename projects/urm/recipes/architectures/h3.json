@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "name": "h3",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.h3",
+    "notes": "arch-076. Verified in the sweep against src/models/ssm/h3.py @ 5c4d06b5: the mixer is entirely external ordinary operators — q/k/v projections, two causal FFT convs (shift-SSM on k, then S4D on the k⊗v outer-product layout), pointwise multiplies, and the q-contraction (mul_sum over the query head dim). NO URM kernel call is needed; any U2 state-space rewrite is separately blocked. Layer module: architectures/h3_mixer.py."
+  },
+  "layers": [
+    {
+      "id": "h3_mixer_layer",
+      "operation": "external",
+      "external_component": "architectures.h3_mixer.H3MixerLayer",
+      "params": {
+        "external_stages": [
+          "q/k/v projections",
+          "causal FFT conv (shift-SSM on k) + D_k skip",
+          "k⊗v outer-product layout + causal FFT conv (S4D) + D skip",
+          "q contraction (mul_sum over query head dim) + output projection",
+          "S4D/shift SSKernel modules (kernels supplied per forward)"
+        ],
+        "note": "no URM kernel call; FFT convs are external ordinary ops"
+      },
+      "state": {},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Layer parity vs the pinned H3 module (identical projections/gains, pinned S4D/shift kernels supplied per forward) in tests/test_architectures_h3.py; gradients flow through the projections and skip gains. The SSKernel parameterization itself and the use_fast_fftconv (CUDA kernel) path are external; the U2 state-space rewrite is a separate blocked claim. This does not count as native three-kernel mixer coverage."
+  }
+}
