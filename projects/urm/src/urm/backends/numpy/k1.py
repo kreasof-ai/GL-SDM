@@ -213,10 +213,22 @@ class K1NumpyProvider:
     tier = "reference"
 
     def decline(self, request) -> str | None:
-        from ...ir.program import K1Descriptor
+        from ...ir.program import K1Descriptor, K1ReducerLaw, K1ScoreLaw
 
         if not isinstance(request.descriptor, K1Descriptor):
             return "K1 NumPy provider requires a closed K1Descriptor"
+        # The NumPy oracle executes only the plain dot-product score with a
+        # softmax reducer (plus causal/score_bias/attention_mask). It does not
+        # implement the channel-decay score law, the threshold/squared-sum
+        # reducers, or the indexed gather — decline those rather than accept and
+        # compute the wrong equation. (The Torch reference dispatches on all of
+        # them and is the reference for those laws.)
+        if request.descriptor.score_law is not K1ScoreLaw.DOT:
+            return "K1 NumPy oracle requires the DOT score law"
+        if request.descriptor.reducer_law is not K1ReducerLaw.SOFTMAX:
+            return "K1 NumPy oracle requires the SOFTMAX reducer law"
+        if request.descriptor.indexed:
+            return "K1 NumPy oracle does not execute indexed gather"
         return None
 
     def execute(self, request, operands):

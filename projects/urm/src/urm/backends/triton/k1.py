@@ -1618,12 +1618,23 @@ class K1NativeTritonProvider:
     tier = "native"
 
     def decline(self, request) -> str | None:
-        from ...ir.program import K1Descriptor
+        from ...ir.program import K1Descriptor, K1ReducerLaw, K1ScoreLaw
 
         if not isinstance(request.descriptor, K1Descriptor):
             return "K1 providers require a closed K1Descriptor"
         if request.accumulation_dtype != "float32":
             return "K1 v1 requires float32 accumulation"
+        # Decline what the online-softmax kernel does not execute. The kernel is
+        # the plain dot-product score with a softmax reducer (plus causal masking,
+        # score_bias and attention_mask); it has no channel-decay score, no
+        # threshold/squared-sum reducer, and no indexed gather. Accepting one of
+        # those descriptors here would silently run the wrong law.
+        if request.descriptor.score_law is not K1ScoreLaw.DOT:
+            return "native K1 online softmax requires the DOT score law"
+        if request.descriptor.reducer_law is not K1ReducerLaw.SOFTMAX:
+            return "native K1 online softmax requires the SOFTMAX reducer law"
+        if request.descriptor.indexed:
+            return "native K1 online softmax does not execute indexed gather"
         import torch
 
         if not torch.cuda.is_available():

@@ -215,6 +215,16 @@ class K1SdpaLibraryProvider:
     def decline(self, request) -> str | None:
         if not isinstance(request.descriptor, K1Descriptor):
             return "K1 providers require a closed K1Descriptor"
+        # torch SDPA executes only the plain dot-product score with a softmax
+        # reducer (plus causal/attn_mask/scale and grouped-head sharing). Decline
+        # the score/reducer laws and the indexed path it cannot express rather
+        # than silently running softmax.
+        if request.descriptor.score_law is not K1ScoreLaw.DOT:
+            return "SDPA requires the DOT score law"
+        if request.descriptor.reducer_law is not K1ReducerLaw.SOFTMAX:
+            return "SDPA requires the SOFTMAX reducer law"
+        if request.descriptor.indexed:
+            return "SDPA does not execute indexed gather"
         return None
 
     def execute(self, request, operands):
