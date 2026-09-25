@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "name": "hopfield",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.hopfield",
+    "notes": "arch-078. Verified in the sweep against hflayers/__init__.py + functional.py @ f56f929c: each association step is exactly U1.S (softmax(β·q·kᵀ)·v, per-head scaling); the iteration loop, query-refresh edge (q ← ξ·k), pattern norms/projections and stopping are external control flow. Layer module: architectures/hopfield_association.py."
+  },
+  "layers": [
+    {
+      "id": "hopfield_association_layer",
+      "operation": "weighted_reduce",
+      "external_component": "architectures.hopfield_association.HopfieldAssociationLayer",
+      "params": {
+        "external_stages": [
+          "per-pattern LayerNorms (stored/state/projection)",
+          "full-width q/k/v in-projections",
+          "per-head learnable scaling folded into q",
+          "iteration loop with query-refresh q ← ξ·k and max-head-norm stopping"
+        ],
+        "normalization": "softmax",
+        "selection": "dense",
+        "causal": false,
+        "head_map": "equal"
+      },
+      "state": {},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Layer parity vs the pinned Hopfield module (single-update fragment, bounded and unbounded iteration to the fixed point) in tests/test_architectures_hopfield.py; gradients flow through the iteration to patterns and the per-head scaling. Per-head early deactivation is flattened to the whole-batch stopping rule (same fixed point). Output projection, masks, add_zero_attn and Hopfield-space norms are residual external options, not claimed."
+  }
+}
