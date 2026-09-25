@@ -16,7 +16,7 @@ This is a **typed semantic backlog**, not a list of implemented kernels. A descr
 | **A10: stochastic routes** | RNG state, replay, estimator and distribution | Sampled routing; replay and estimator tests |
 | **A11: parameter/expert/depth** | Static parameter domain, depth dependencies, grouped GEMM/dispatch and gradient accumulation | PAttention/AttnRes; complete replaced-layer parity |
 | **A12: inner optimization** | Closed loss/update/optimizer state, loop bounds, checkpoint and outer-gradient policy | Titans/TTT; no callback or affine-scan assertion |
-| **A13: score/reduction algebra** | Score map, normalization, neutral element, all-masked behavior, sum/LSE/max/positive or iterative reduction and VJP | POLAR/Foveal, TDA/KATA as distinct equations; physical reuse must be measured |
+| **A13: score/reduction algebra** | Score map, normalization, neutral element, all-masked behavior, sum/LSE/max/positive or iterative reduction and VJP | POLAR/Foveal, TDA/KATA as distinct equations; physical reuse must be measured. **Admitted (partial):** `K1ScoreLaw` (DOT + CHANNEL_DECAY) and `K1ReducerLaw` (SOFTMAX + THRESHOLD_RELU_POWER + SQUARED_SUM) in the K1 descriptor — verified clients FoX (additive bias via `score_bias`), Wall (channel-decay), TDA (threshold), KATA (squared-sum). External residual: Parallax (multi-statistic), POLAR/Foveal (polar/null-sink) |
 | **A14: cross-call composition** | Typed producer/consumer edges, output pairing, coefficients, state ownership and legal fusion | Differential/TDA/HLA; independent call reference and cost proof |
 
 ## Current execution boundary
