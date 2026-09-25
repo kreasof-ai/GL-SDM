@@ -459,11 +459,15 @@ def _online_softmax_backward_dq(
     Q,
     K,
     V,
+    MASK,
+    BIAS,
     OUTPUT,
     LOGSUMEXP,
     GRAD_OUTPUT,
     DELTA,
     GRAD_Q,
+    GRAD_MASK,
+    GRAD_BIAS,
     B: tl.constexpr,
     TQ: tl.constexpr,
     TK: tl.constexpr,
@@ -471,6 +475,27 @@ def _online_softmax_backward_dq(
     HK: tl.constexpr,
     D: tl.constexpr,
     DV: tl.constexpr,
+    MASK_SB: tl.constexpr,
+    MASK_SH: tl.constexpr,
+    MASK_SQ: tl.constexpr,
+    MASK_SK: tl.constexpr,
+    BIAS_SB: tl.constexpr,
+    BIAS_SH: tl.constexpr,
+    BIAS_SQ: tl.constexpr,
+    BIAS_SK: tl.constexpr,
+    GRAD_MASK_SB: tl.constexpr,
+    GRAD_MASK_SH: tl.constexpr,
+    GRAD_MASK_SQ: tl.constexpr,
+    GRAD_MASK_SK: tl.constexpr,
+    GRAD_BIAS_SB: tl.constexpr,
+    GRAD_BIAS_SH: tl.constexpr,
+    GRAD_BIAS_SQ: tl.constexpr,
+    GRAD_BIAS_SK: tl.constexpr,
+    HAS_MASK: tl.constexpr,
+    MASK_IS_BOOL: tl.constexpr,
+    NEED_GRAD_MASK: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+    NEED_GRAD_BIAS: tl.constexpr,
     CAUSAL: tl.constexpr,
     SCALE: tl.constexpr,
     INPUT_FP32: tl.constexpr,
@@ -479,7 +504,15 @@ def _online_softmax_backward_dq(
     BLOCK_D: tl.constexpr,
     BLOCK_V: tl.constexpr,
 ):
-    """Query-parallel grad_q pass (no dK/dV atomics; those use the KV-tiled pass)."""
+    """Query-parallel grad_q pass (no dK/dV atomics; those use the KV-tiled pass).
+
+    This pass owns each (query-head, query-row) pair exactly once, so it is also
+    where the additive score-bias / attention-mask cotangents are accumulated:
+    the probabilities it recomputes already carry the bias/mask, and the score
+    cotangent ``grad_scores`` it derives is precisely ``grad_bias``/``grad_mask``
+    (broadcast dims reduce through relaxed atomics, matching the single-pass
+    kernel's policy).
+    """
     batch = tl.program_id(0)
     query_head = tl.program_id(1)
     query_start = tl.program_id(2) * BLOCK_M
@@ -542,6 +575,35 @@ def _online_softmax_backward_dq(
         ) * SCALE
         score_valid = query_valid[:, None] & key_valid[None, :]
         scores = tl.where(score_valid, scores, float("-inf"))
+        if HAS_MASK:
+            mask_offset = (
+                batch * MASK_SB
+                + query_head * MASK_SH
+                + query_offsets[:, None] * MASK_SQ
+                + keys[None, :] * MASK_SK
+            )
+            if MASK_IS_BOOL:
+                mask_values = tl.load(
+                    MASK + mask_offset, score_valid, other=0
+                )
+            else:
+                mask_values = tl.load(
+                    MASK + mask_offset, score_valid, other=0.0
+                )
+                scores += mask_values.to(tl.float32)
+        if HAS_BIAS:
+            bias_offset = (
+                batch * BIAS_SB
+                + query_head * BIAS_SH
+                + query_offsets[:, None] * BIAS_SQ
+                + keys[None, :] * BIAS_SK
+            )
+            bias_values = tl.load(
+                BIAS + bias_offset, score_valid, other=0.0
+            )
+            scores += bias_values.to(tl.float32)
+        if HAS_MASK and MASK_IS_BOOL:
+            scores = tl.where(mask_values, scores, float("-inf"))
         if CAUSAL:
             visible = keys[None, :] <= query_offsets[:, None] + TK - TQ
             scores = tl.where(visible, scores, float("-inf"))
@@ -559,6 +621,32 @@ def _online_softmax_backward_dq(
         grad_query += tl.dot(
             grad_scores.to(query.dtype), key, input_precision="ieee" if INPUT_FP32 else "tf32"
         ) * SCALE
+        if NEED_GRAD_MASK:
+            grad_mask_offset = (
+                batch * GRAD_MASK_SB
+                + query_head * GRAD_MASK_SH
+                + query_offsets[:, None] * GRAD_MASK_SQ
+                + keys[None, :] * GRAD_MASK_SK
+            )
+            tl.atomic_add(
+                GRAD_MASK + grad_mask_offset,
+                grad_scores,
+                score_valid,
+                sem="relaxed",
+            )
+        if NEED_GRAD_BIAS:
+            grad_bias_offset = (
+                batch * GRAD_BIAS_SB
+                + query_head * GRAD_BIAS_SH
+                + query_offsets[:, None] * GRAD_BIAS_SQ
+                + keys[None, :] * GRAD_BIAS_SK
+            )
+            tl.atomic_add(
+                GRAD_BIAS + grad_bias_offset,
+                grad_scores,
+                score_valid,
+                sem="relaxed",
+            )
     grad_query_offset = (
         (batch * TQ + query_offsets[:, None]) * HQ + query_head
     ) * D + key_dims[None, :]
@@ -574,6 +662,8 @@ def _online_softmax_backward_kv_tiled(
     Q,
     K,
     V,
+    MASK,
+    BIAS,
     OUTPUT,
     LOGSUMEXP,
     GRAD_OUTPUT,
@@ -586,6 +676,17 @@ def _online_softmax_backward_kv_tiled(
     HK: tl.constexpr,
     D: tl.constexpr,
     DV: tl.constexpr,
+    MASK_SB: tl.constexpr,
+    MASK_SH: tl.constexpr,
+    MASK_SQ: tl.constexpr,
+    MASK_SK: tl.constexpr,
+    BIAS_SB: tl.constexpr,
+    BIAS_SH: tl.constexpr,
+    BIAS_SQ: tl.constexpr,
+    BIAS_SK: tl.constexpr,
+    HAS_MASK: tl.constexpr,
+    MASK_IS_BOOL: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
     CAUSAL: tl.constexpr,
     SCALE: tl.constexpr,
     INPUT_FP32: tl.constexpr,
@@ -600,7 +701,9 @@ def _online_softmax_backward_kv_tiled(
     and loops over the query blocks that attend to it, so no cross-program
     accumulation (atomics) is needed. This is the proven two-pass backward: the
     query-parallel pass computes grad_q, this key-parallel pass computes
-    grad_k/grad_v.
+    grad_k/grad_v. The bias/mask only shift the recomputed probabilities here;
+    their cotangents are accumulated by the query-parallel pass (which owns each
+    score exactly once), so this pass takes no grad_mask/grad_bias operands.
     """
     batch = tl.program_id(0)
     key_head = tl.program_id(1)
@@ -654,6 +757,36 @@ def _online_softmax_backward_kv_tiled(
             if CAUSAL:
                 visible = key_offsets[:, None] <= qoff[None, :] + TK - TQ
                 score_valid = score_valid & visible
+            scores = tl.where(score_valid, scores, float("-inf"))
+            if HAS_MASK:
+                mask_offset = (
+                    batch * MASK_SB
+                    + query_head * MASK_SH
+                    + qoff[None, :] * MASK_SQ
+                    + key_offsets[:, None] * MASK_SK
+                )
+                if MASK_IS_BOOL:
+                    mask_values = tl.load(
+                        MASK + mask_offset, score_valid, other=0
+                    )
+                else:
+                    mask_values = tl.load(
+                        MASK + mask_offset, score_valid, other=0.0
+                    )
+                    scores += mask_values.to(tl.float32)
+            if HAS_BIAS:
+                bias_offset = (
+                    batch * BIAS_SB
+                    + query_head * BIAS_SH
+                    + qoff[None, :] * BIAS_SQ
+                    + key_offsets[:, None] * BIAS_SK
+                )
+                bias_values = tl.load(
+                    BIAS + bias_offset, score_valid, other=0.0
+                )
+                scores += bias_values.to(tl.float32)
+            if HAS_MASK and MASK_IS_BOOL:
+                scores = tl.where(mask_values, scores, float("-inf"))
             scores = tl.where(score_valid, scores, float("-inf"))
             probabilities = tl.where(
                 scores == float("-inf"), 0.0, tl.exp2(scores * 1.4426950408889634 - logsumexp[None, :])
@@ -1103,17 +1236,41 @@ def execute_online_softmax(
     mask_strides = _broadcast_strides_4d(attention_mask, target)
     bias_strides = _broadcast_strides_4d(score_bias, target)
     query, key, value = query.contiguous(), key.contiguous(), value.contiguous()
+    # The forward kernel loads the full channel axis in one tile (block_d covers
+    # key_dim), so the A10G's 101KB SMEM caps head widths at 64 (D=128 needs 114KB,
+    # measured). Decline wider heads loudly — never launch into a CUDA OOM.
+    if key_dim > 64 or value_dim > 64:
+        raise ValueError(
+            f"native K1 online softmax supports head widths <= 64 on this device "
+            f"(SMEM limit); got key_dim={key_dim}, value_dim={value_dim} — "
+            f"the reference tier owns wider heads"
+        )
     mask = attention_mask if attention_mask is not None else torch.empty((0,), device=query.device)
     bias = score_bias if score_bias is not None else torch.empty((0,), device=query.device)
-    block_m = 128 if query_length >= 128 else max(16, triton.next_power_of_2(query_length))
+    # The forward kernel holds [BLOCK_M, BLOCK_D] q + [BLOCK_N, BLOCK_D] k + [BLOCK_N,
+    # BLOCK_V] v + [BLOCK_M, BLOCK_N] score fp32 tiles; at block_m=128 with 3-stage
+    # pipelining that exceeds the A10G's 101KB SMEM (measured 131072 required at
+    # T>=128, D=64). block_m=64 with stages=2 stays under the limit (measured ~74KB)
+    # without a measurable throughput cost on this GPU.
+    block_m = 64 if query_length >= 64 else max(16, triton.next_power_of_2(query_length))
     block_n = 64
+    # block_d/block_v must cover the full head width (the kernel loads the whole channel
+    # axis in one tile for tl.dot — they are NOT chunked). The A10G's SMEM therefore caps
+    # the native K1 forward at head_dim <= 64 (D=128 needs 114KB > 101KB, measured); the
+    # provider declines wider heads (they stay reference-tier).
     block_d = max(16, triton.next_power_of_2(key_dim))
     block_v = max(16, triton.next_power_of_2(value_dim))
     num_warps = 8 if block_m >= 128 else 4
-    num_stages = 3
+    num_stages = 2
+    # The backward kernels hold [BLOCK_M, BLOCK_N/D/V] fp32 tiles; at block_m=128 with
+    # 3-stage pipelining they exceed the A10G's 101KB SMEM limit (measured: 131072
+    # required). The backward is memory-bound and the pipelining buys little — run the
+    # backward at num_stages=1 and cap its block_m at 64, keeping SMEM ≈ 64×64×4 ×
+    # (few tiles) comfortably under the limit at any head_dim/length.
+    bwd_block_m = min(block_m, 64)
     bwd_block_n = block_n
-    bwd_num_warps = num_warps
-    bwd_num_stages = num_stages
+    bwd_num_warps = num_warps if bwd_block_m >= 64 else 4
+    bwd_num_stages = 1
 
     class _OnlineSoftmax(torch.autograd.Function):
         @staticmethod
@@ -1181,7 +1338,11 @@ def execute_online_softmax(
             q, k, v, mask_tensor, bias_tensor, output, logsumexp = ctx.saved_tensors
             if grad_output is None:
                 return None, None, None, None, None
-            use_two_pass = False
+            # The two-pass backward (query-parallel dq + key-parallel dk/dv, FA-2 style)
+            # is the SMEM-safe path: the single-pass kernel holds too many fp32 tiles
+            # for the A10G's 101KB SMEM at head_dim=64 (measured 131072 required). The
+            # two-pass kernels run at block_m<=64, num_stages=1 — under the limit.
+            use_two_pass = True
             grad_q = torch.empty(q.shape, device=q.device, dtype=torch.float32)
             if use_two_pass:
                 grad_k = torch.empty(k.shape, device=k.device, dtype=torch.float32)
@@ -1207,32 +1368,48 @@ def execute_online_softmax(
                 )
                 grad_output_c = grad_output.contiguous()
                 _online_softmax_backward_delta[
-                    (batch, query_heads, triton.cdiv(query_length, block_m))
+                    (batch, query_heads, triton.cdiv(query_length, bwd_block_m))
                 ](
                     output, grad_output_c, delta,
                     batch, query_length, query_heads, value_dim,
-                    block_m, block_v,
-                    num_warps=4, num_stages=2,
+                    bwd_block_m, block_v,
+                    num_warps=4, num_stages=1,
                 )
                 _online_softmax_backward_dq[
-                    (batch, query_heads, triton.cdiv(query_length, block_m))
+                    (batch, query_heads, triton.cdiv(query_length, bwd_block_m))
                 ](
-                    q, k, v, output, logsumexp, grad_output_c, delta, grad_q,
+                    q, k, v, mask_tensor, bias_tensor, output, logsumexp,
+                    grad_output_c, delta, grad_q, grad_mask, grad_bias,
                     batch, query_length, key_length, query_heads, key_heads,
-                    key_dim, value_dim, ctx.causal, ctx.scale, q.dtype is torch.float32,
-                    block_m, bwd_block_n, block_d, block_v,
+                    key_dim, value_dim,
+                    *ctx.mask_strides, *ctx.bias_strides,
+                    *grad_mask_strides, *grad_bias_strides,
+                    ctx.has_mask, ctx.mask_is_bool, ctx.needs_mask_grad,
+                    ctx.has_bias, ctx.needs_bias_grad,
+                    ctx.causal, ctx.scale, q.dtype is torch.float32,
+                    bwd_block_m, bwd_block_n, block_d, block_v,
                     num_warps=bwd_num_warps, num_stages=bwd_num_stages,
                 )
                 _online_softmax_backward_kv_tiled[
                     (batch, key_heads, triton.cdiv(key_length, bwd_block_n))
                 ](
-                    q, k, v, output, logsumexp, grad_output_c, delta, grad_k, grad_v,
+                    q, k, v, mask_tensor, bias_tensor, output, logsumexp,
+                    grad_output_c, delta, grad_k, grad_v,
                     query_length, key_length, query_heads, key_heads,
-                    key_dim, value_dim, ctx.causal, ctx.scale, q.dtype is torch.float32,
-                    block_m, bwd_block_n, block_d, block_v,
+                    key_dim, value_dim,
+                    *ctx.mask_strides, *ctx.bias_strides,
+                    ctx.has_mask, ctx.mask_is_bool, ctx.has_bias,
+                    ctx.causal, ctx.scale, q.dtype is torch.float32,
+                    bwd_block_m, bwd_block_n, block_d, block_v,
                     num_warps=bwd_num_warps, num_stages=bwd_num_stages,
                 )
-                return grad_q.to(q.dtype), grad_k.to(k.dtype), grad_v.to(v.dtype), None, None
+                return (
+                    grad_q.to(q.dtype),
+                    grad_k.to(k.dtype),
+                    grad_v.to(v.dtype),
+                    grad_mask if ctx.needs_mask_grad else None,
+                    grad_bias if ctx.needs_bias_grad else None,
+                )
             _online_softmax_backward_tiled[
                 (batch, query_heads, triton.cdiv(query_length, block_m))
             ](

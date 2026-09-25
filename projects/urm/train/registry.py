@@ -53,11 +53,11 @@ def _build_dense_attention(model_dim, num_heads, head_dim, intent, target="refer
 
 
 def _build_fox(model_dim, num_heads, head_dim, intent, target="reference"):
-    return _FoXAdapter(model_dim, num_heads, head_dim, intent)
+    return _FoXAdapter(model_dim, num_heads, head_dim, intent, target)
 
 
 class _FoXAdapter(torch.nn.Module):
-    def __init__(self, model_dim, num_heads, head_dim, intent):
+    def __init__(self, model_dim, num_heads, head_dim, intent, target="reference"):
         super().__init__()
         from architectures.forgetting_attention import ForgettingAttentionLayer
         self.num_heads, self.head_dim = num_heads, head_dim
@@ -66,7 +66,7 @@ class _FoXAdapter(torch.nn.Module):
         self.v_proj = torch.nn.Linear(model_dim, num_heads * head_dim, bias=False)
         self.f_proj = torch.nn.Linear(model_dim, num_heads, bias=False)
         self.o_proj = torch.nn.Linear(num_heads * head_dim, model_dim, bias=False)
-        self._mixer = ForgettingAttentionLayer(num_heads, head_dim, intent=intent)
+        self._mixer = ForgettingAttentionLayer(num_heads, head_dim, intent=intent, target=target)
 
     def forward(self, hidden):
         B, T, _ = hidden.shape
@@ -513,6 +513,64 @@ def _build_conformer(model_dim, num_heads, head_dim, intent, target="reference")
     return _ConformerAdapter(model_dim, num_heads, head_dim, intent, target)
 
 
+def _rwkv7_ops(adapter, hidden, q, k, v):
+    # RWKV-7 operands [B,T,H,*] (bthd layout): r=read key, w=decay, k/v=write, a/b=rank-1
+    B, T, H, K = k.shape
+    a = torch.tanh(adapter.gate_proj(hidden)).view(B, T, H, K) * 0.1
+    b = torch.tanh(adapter.gate_proj2(hidden)).view(B, T, H, K) * 0.1
+    return {
+        "w": F.logsigmoid(adapter._mixer_w(hidden)) if hasattr(adapter, "_mixer_w") else F.logsigmoid(a),
+        "a": a, "b": b,
+    }
+
+
+class _RWKV7Adapter(torch.nn.Module):
+    """RWKV-7: (r, w, k, v, a, b) all [B,T,H,*]; the adapter projects q/k/v and derives
+    the decay w and the rank-1 factors a/b from the input."""
+
+    def __init__(self, model_dim, num_heads, head_dim, intent, target):
+        super().__init__()
+        from architectures.rwkv7 import RWKV7Layer
+        self.num_heads, self.head_dim = num_heads, head_dim
+        self.q_proj = torch.nn.Linear(model_dim, num_heads * head_dim, bias=False)
+        self.k_proj = torch.nn.Linear(model_dim, num_heads * head_dim, bias=False)
+        self.v_proj = torch.nn.Linear(model_dim, num_heads * head_dim, bias=False)
+        self.w_proj = torch.nn.Linear(model_dim, num_heads * head_dim, bias=True)
+        self.a_proj = torch.nn.Linear(model_dim, num_heads * head_dim, bias=True)
+        self.b_proj = torch.nn.Linear(model_dim, num_heads * head_dim, bias=True)
+        self.o_proj = torch.nn.Linear(num_heads * head_dim, model_dim, bias=False)
+        self._mixer = RWKV7Layer(num_heads, head_dim, head_dim, target=target, intent=intent)
+
+    def forward(self, hidden):
+        B, T, _ = hidden.shape
+        H, D = self.num_heads, self.head_dim
+        r = self.q_proj(hidden).view(B, T, H, D)
+        k = self.k_proj(hidden).view(B, T, H, D)
+        v = self.v_proj(hidden).view(B, T, H, D)
+        w = F.logsigmoid(self.w_proj(hidden)).view(B, T, H, D)
+        a = torch.tanh(self.a_proj(hidden)).view(B, T, H, D) * 0.1
+        b = torch.tanh(self.b_proj(hidden)).view(B, T, H, D) * 0.1
+        out = self._mixer(r, w, k, v, a, b)
+        return self.o_proj(out.reshape(B, T, H * D))
+
+
+def _build_rwkv7(model_dim, num_heads, head_dim, intent, target="native"):
+    return _RWKV7Adapter(model_dim, num_heads, head_dim, intent, target)
+
+
+def _build_tda(model_dim, num_heads, head_dim, intent, target="reference"):
+    from architectures.tda import TDALayer
+    def factory(H, D):
+        return TDALayer(H, D, target=target, intent=intent)
+    return QKVAdapter(model_dim, num_heads, head_dim, factory, layout="bthd",
+                      extra=_tda_ops)
+
+
+def _build_based(model_dim, num_heads, head_dim, intent, target="reference"):
+    from architectures.based_attention import BasedLayer
+    return BasedLayer(model_dim, num_heads, head_dim, head_dim, target=target, intent=intent)
+
+
 # =====================================================================================
 # The registry. Tier per mixer: "native" where the envelope serves it, "reference" else.
 # =====================================================================================
@@ -552,9 +610,9 @@ MIXER_REGISTRY: dict[str, MixerSpec] = {
     "cat_attention": MixerSpec("cat_attention", _build_cat_attention, None, False, False, tier="native"),
     # --- public-path, reference tier (native declines the descriptor) ---
     "deltaformer": MixerSpec("deltaformer", _op("deltaformer.DeltaFormerLayer", extra=_deltaformer_ops, gate_out_dim="heads"),
-                             None, False, False),
+                             None, False, False, tier="native"),
     "path_attention": MixerSpec("path_attention", _op("path_attention.PaTHAttentionLayer", layout="bthd", extra=_path_ops, gate_out_dim="heads"),
-                                None, False, False),
+                                None, False, False, tier="native"),
     "comba": MixerSpec("comba", _op("comba.CombaLayer", extra=_comba_ops, gate_out_dim="heads"),
                        "fla.ops.comba", True, True, tier="native"),
     "iplr": MixerSpec("iplr", _op("iplr.IPLRLayer", extra=_iplr_ops, gate_out_dim="heads_dim"),
@@ -578,30 +636,41 @@ MIXER_REGISTRY: dict[str, MixerSpec] = {
     "sparse_transformer": MixerSpec("sparse_transformer", _op("sparse_transformer.SparseTransformerLayer", layout="bthd", extra=_sparse_transformer_ops, stride=4, local_ctx=4),
                                     None, False, False),
     "abc_gsa": MixerSpec("abc_gsa", _build_abc("abc_gsa.ABCLayer"),
-                         "fla.ops.abc", True, True),
+                         "fla.ops.abc", True, True, tier="native"),
     "gsa": MixerSpec("gsa", _build_abc("abc_gsa.GSALayer", gate=True),
-                     "fla.ops.gsa", True, True),
+                     "fla.ops.gsa", True, True, tier="native"),
     "log_linear_attention": MixerSpec("log_linear_attention", _op("log_linear_attention.BankedLogLinearMixer", layout="bthd", extra=_log_linear_ops, num_levels=4, gate_out_dim="heads_dim"),
-                                      None, False, False),
+                                      None, False, False, tier="native"),
     "hopfield_association": MixerSpec("hopfield_association", _build_hopfield, None, False, False),
     "pattention": MixerSpec("pattention", _build_pattention, None, False, False),
-    "conformer_attention": MixerSpec("conformer_attention", _build_conformer, None, False, False),
+    "conformer_attention": MixerSpec("conformer_attention", _build_conformer, None, False, False, tier="native"),
     "mamba1": MixerSpec("mamba1", _build_mamba1_k2, "mamba_ssm", True, True),
-    "log_linear_mamba2": MixerSpec("log_linear_mamba2", _build_log_linear_mamba2, None, False, False),
+    "log_linear_mamba2": MixerSpec("log_linear_mamba2", _build_log_linear_mamba2, None, False, False, tier="native"),
     "mla_attention": MixerSpec("mla_attention", _build_mla, None, False, False),
     "tucker_attention": MixerSpec("tucker_attention", _build_tucker, None, False, False),
     "differential_attention": MixerSpec("differential_attention", _build_differential, None, False, False),
-    # --- K1 reference tier (native K1 training backward unqualified — roadmap debt) ---
+    # --- K1 native (the two-pass backward is SMEM-qualified at head_dim <= 64) ---
     "dense_attention": MixerSpec("dense_attention", _build_dense_attention,
-                                 "torch.nn.functional.scaled_dot_product_attention", True, True),
+                                 "torch.nn.functional.scaled_dot_product_attention", True, True, tier="native"),
     "forgetting_attention": MixerSpec("forgetting_attention", _build_fox,
-                                      "fla.ops.forgetting_attn.naive.naive_forgetting_attn", True, True),
+                                      "fla.ops.forgetting_attn.naive.naive_forgetting_attn", True, True, tier="native"),
     # --- external plain-torch compositions (public_path=False) ---
     "mom": MixerSpec("mom", _build_mom, None, False, False, public_path=False),
     "raven": MixerSpec("raven", _build_raven, None, False, False, public_path=False),
     "h3_mixer": MixerSpec("h3_mixer", _build_h3, None, False, False, public_path=False),
     "hyena_operator": MixerSpec("hyena_operator", _build_hyena, None, False, False, public_path=False),
     "mamba1_external": MixerSpec("mamba1_external", _build_mamba1_external, None, False, False, public_path=False),
+    # --- admitted late: rwkv7 (low-rank left transition, native-qualified), tda/based
+    # (reference tier — threshold reducer / feature map not native) ---
+    # rwkv7 needs the low-rank left transition COMPOSED with pointwise decay (w); the
+    # native kernel treats them as exclusive (left replaces decay) — reference-tier until
+    # the kernel admits the composition.
+    "rwkv7": MixerSpec("rwkv7", _build_rwkv7, "fla.ops.rwkv7", True, True),
+    "tda": MixerSpec("tda", _build_tda, None, False, False),
+    "based_attention": MixerSpec("based_attention", _build_based, "fla.ops.based", True, True),
+    # indexed_attention is the shared A2 gather-attend BASE (no forward of its own) —
+    # exercised through its clients (dsa, nsa, longformer, sparse_transformer). Not a
+    # standalone mixer; recorded excluded like attnres.
 }
 
 

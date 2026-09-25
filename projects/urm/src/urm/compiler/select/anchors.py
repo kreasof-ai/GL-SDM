@@ -392,6 +392,8 @@ NATIVE_SPARSE_ROUTE_ANCHOR_NAME = "urm_native_sparse_route_selection_v0"
 NATIVE_DIAGONAL_RECURRENCE_ANCHOR_NAME = "urm_native_diagonal_recurrence_v1"
 NATIVE_MATRIX_STATE_RECURRENCE_ANCHOR_NAME = "urm_native_matrix_state_recurrence_v1"
 NATIVE_K1_ONLINE_SOFTMAX_ANCHOR_NAME = "urm_native_k1_online_softmax_v1"
+NATIVE_DYADIC_BANKED_STATE_ANCHOR_NAME = "urm_native_dyadic_banked_state_v1"
+NATIVE_TRIANGULAR_SOLVE_ANCHOR_NAME = "urm_native_triangular_solve_v1"
 
 
 # ---------------------------------------------------------------------------
@@ -590,11 +592,38 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
         backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
         supported_visitors=frozenset(),
     ),
+    # The native Triton triangular solve runs the exact forward substitution
+    # (one program per batch·head × D-block walks the token axis in order) and
+    # its adjoint backward substitution, fp32 accumulation throughout; the
+    # scalar/row cotangents accumulate across D-blocks through relaxed atomics
+    # (the K3 native backward policy). Parity-qualified against the Torch
+    # reference, forward AND cotangents.
+    ExecutionAnchor(
+        kind=AnchorKind.TRIANGULAR_SOLVE,
+        name=NATIVE_TRIANGULAR_SOLVE_ANCHOR_NAME,
+        effect=ORDERED_STATE,
+        backward_verified_dtypes=frozenset({"float32"}),
+        deterministic_accumulation=False,
+        supported_visitors=frozenset(),
+    ),
     ExecutionAnchor(
         kind=AnchorKind.DYADIC_BANKED_STATE,
         name="urm.unified.dyadic_banked_state.reference.v1",
         effect=ORDERED_STATE,
         backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
+    # The native Triton banked dyadic recurrence (decay-forward form, fp32
+    # accumulation; forward AND cotangent parity vs the pinned torch reference
+    # gated in tests/test_native_dyadic_banked_state.py). The backward reduces
+    # per-token operand cotangents across value blocks with relaxed atomics, so
+    # cross-program accumulation order is not guaranteed.
+    ExecutionAnchor(
+        kind=AnchorKind.DYADIC_BANKED_STATE,
+        name=NATIVE_DYADIC_BANKED_STATE_ANCHOR_NAME,
+        effect=ORDERED_STATE,
+        backward_verified_dtypes=frozenset({"float32"}),
+        deterministic_accumulation=False,
         supported_visitors=frozenset(),
     ),
     ExecutionAnchor(
