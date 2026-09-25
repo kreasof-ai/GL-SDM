@@ -3,22 +3,29 @@
   "name": "pattention",
   "kind": "complete_model_graph",
   "source": {
-    "comparator": "benchmarks.comparators",
-    "notes": "PAttention constructs parameter tokens, reparameterizes them, and arranges them in the model. The softmax contraction is only a K1 fragment; the parameter-token construction, parameter gradients, and model arrangement are external to it."
+    "comparator": "benchmarks.comparators.pattention",
+    "notes": "arch-057 — composition-now as a typed parameter-domain composition. The mixer is attention over a fixed parameter-token source domain: scores = query @ key_paramᵀ × scale (a plain inner product, NO softmax denominator); a parameter-domain nonlinear normalizer (softmax=exp+L1×count / gelu_l2_norm / l2_norm_gelu); output = norm(scores) @ value_param. Verified against megatron/model/tokenformer.py @ 4d56c73f. The closed K1 softmax contract does not cover the non-softmax score stage, so the module composes typed matmul calls around the external normalizer (no descriptor hack). Layer module: architectures/pattention.py."
   },
   "layers": [
     {
-      "id": "pattention_core",
-      "operation": "pattention_core",
+      "id": "pattention_layer",
+      "operation": "matmul",
+      "external_component": "architectures.pattention.PattentionLayer",
       "params": {
-        "scope": "fragment_only",
-        "note": "K1 softmax-contraction fragment only. Does not include parameter-token construction/reparameterization or parameter gradients."
-      }
+        "external_stages": [
+          "learned parameter tokens (key/value nn.Parameter banks)",
+          "parameter-domain nonlinear normalizer (softmax=exp+L1*count / gelu_l2_norm / l2_norm_gelu)",
+          "router_index token subset selection (MoE mode)"
+        ],
+        "typed_operations": ["matmul (scores = q·kᵀ × scale)", "matmul (output = norm(scores)·v)"]
+      },
+      "state": {},
+      "cache": {}
     }
   ],
   "coverage": {
-    "level": "kernel_fragment",
-    "validated": false,
-    "notes": "pattention_core remains a K1 fragment. Full PAttention requires the parameter-token construction/reparameterization, parameter gradients, and model arrangement as typed graph nodes or explicit architectures/ components before any source-architecture coverage claim."
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Layer parity vs the pinned Pattention module across all three normalizer variants and a non-unit scale in tests/test_architectures_pattention.py; parameter-token gradients flow through the contraction. NOT claimed (sweep blockers): the model-replacement role (Pattention substituting for QKV/output projections and the MLP), parameter-token construction/reparameterization, and any claim that one attention contraction equals MLP or MoE."
   }
 }

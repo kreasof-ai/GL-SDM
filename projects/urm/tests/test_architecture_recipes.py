@@ -27,19 +27,24 @@ def test_architecture_documents_validate_against_schema() -> None:
         jsonschema.validate(json.loads(path.read_text(encoding="utf-8")), schema)
 
 
-def test_pattention_is_honestly_scoped_fragment() -> None:
-    # PAttention's parameter-token module is not yet built; it records fragment scope.
+def test_batch1_modules_record_validated_layer_parity() -> None:
+    # Batch 1 landed the composition-now modules: both record validated
+    # generic_model_integration with their residual blockers noted in the recipe.
+    samba = load_architecture_recipe_file(ARCHS / "samba.json")
     patention = load_architecture_recipe_file(ARCHS / "pattention.json")
-    assert patention.coverage_level == "kernel_fragment"
-    assert patention.coverage_validated is False
+    assert samba.coverage_level == "generic_model_integration"
+    assert samba.coverage_validated is True
+    assert patention.coverage_level == "generic_model_integration"
+    assert patention.coverage_validated is True
 
 
 def test_samba_records_attention_branch_scope() -> None:
-    # Batch 1 landed the attention branch (arch-053 composition-now): validated
-    # layer parity, with the Mamba-gated configurations explicitly out of scope.
+    # arch-053 claims the attention branch only; Mamba-gated configs are out.
     samba = load_architecture_recipe_file(ARCHS / "samba.json")
     assert samba.coverage_level == "generic_model_integration"
     assert samba.coverage_validated is True
+    (layer,) = samba.layers
+    assert layer.external_component == "architectures.samba_attention.SambaAttentionLayer"
 
 
 def test_loader_rejects_empty_layer_graph() -> None:
