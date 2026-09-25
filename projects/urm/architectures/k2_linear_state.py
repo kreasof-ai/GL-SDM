@@ -52,6 +52,7 @@ class K2LinearStateLayer(torch.nn.Module):
         self.gate_scope = gate_scope
         self.scale_rule = scale_rule
         self.normalized = normalized
+        self.read_timing = read_timing
 
         decay_shape = (
             ["B", "H", "T", "K", "V"] if gate_scope == "elementwise"
@@ -105,15 +106,32 @@ class K2LinearStateLayer(torch.nn.Module):
         self._plan = compile_graph(
             program, target=target, intent=CompilationIntent(intent)
         )
-        # On the native tier, the plan dispatches to a fused Triton kernel through a Python
-        # loop dynamo cannot trace. Make the mixer call an opaque graph break so a
-        # torch.compile'd model fuses the surround while the public-path provider runs
-        # eagerly — the plan, provider and equation are unchanged. We rebind the instance
-        # attribute so subclass forwards that call self._run_mixer hit the disabled form.
-        if target == "native":
-            self._run_mixer = torch._dynamo.disable(self._run_mixer)
+        self._target = target
 
     def _run_mixer(self, operands: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+        # On the native tier, dispatch to the fused Triton provider through its opaque
+        # custom op so a torch.compile'd model has no graph break at the mixer (the ATMA
+        # FLA-GDN custom-op pattern). This is the same provider equation the plan executes;
+        # the plan remains the correctness reference, and the reference-tier path still
+        # runs through plan.execute. The descriptor is fixed at construction, so the
+        # direct provider call is the identical equation.
+        if self._target == "native":
+            from urm.backends.triton.k2 import linear_delta_state
+            from urm.ir.program import (
+                K2GateScope, K2ReadTiming, K2ScaleRule, LinearDeltaSpec,
+            )
+
+            spec = LinearDeltaSpec(
+                delta=self.delta, gate_scope=K2GateScope(self.gate_scope),
+                read_timing=K2ReadTiming(self.read_timing),
+                scale_rule=K2ScaleRule(self.scale_rule), normalized=self.normalized,
+            )
+            out, final = linear_delta_state(
+                operands["initial_state"], operands["key"], operands["query"],
+                operands["value"], operands["beta"], operands["log_decay"],
+                spec=spec, scale=operands.get("scale"),
+            )
+            return {"output": out, "final_state": final}
         return self._plan.execute(**operands)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:

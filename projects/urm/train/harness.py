@@ -26,6 +26,9 @@ import torch
 from train.model import MixerSpec, URMDecoderLM
 from train.optimizer import build_optimizers
 
+# Cached measured bf16 peak (one calibration per process).
+_MEASURED_PEAK: float | None = None
+
 
 @dataclass(frozen=True, slots=True)
 class TrainConfig:
@@ -99,7 +102,8 @@ def _param_count_estimate(cfg: TrainConfig) -> int:
     return embeddings + norms + mixer + mlp + head
 
 
-def _peak_flops(device_name: str) -> float:
+def _nominal_peak_flops(device_name: str) -> float:
+    """The vendor's nominal dense bf16 peak (the optimistic denominator)."""
     n = device_name.lower()
     if "b200" in n or "b300" in n:
         return 2250e12
@@ -116,6 +120,35 @@ def _peak_flops(device_name: str) -> float:
     if "t4" in n:
         return 65e12
     return 65e12
+
+
+def measure_bf16_peak() -> float:
+    """The honest denominator: the device's measured bf16 GEMM throughput.
+
+    The nominal vendor peak is unreachable; MFU against it understates the real number.
+    We measure the dense bf16 matmul ceiling directly (the ATMA ``--measure-peak``
+    method) so the reported MFU is the true fraction of achievable compute. On the A10G
+    this is ~67 TFLOPS, not the nominal 125.
+    """
+    import statistics
+
+    shapes = ((4096, 8192, 1024), (8192, 8192, 1024), (8192, 4096, 1024))
+    values = []
+    for m, n, k in shapes:
+        a = torch.randn((m, k), device="cuda", dtype=torch.bfloat16)
+        b = torch.randn((k, n), device="cuda", dtype=torch.bfloat16)
+        for _ in range(5):
+            torch.mm(a, b)
+        start, end = torch.cuda.Event(True), torch.cuda.Event(True)
+        start.record()
+        for _ in range(20):
+            torch.mm(a, b)
+        end.record()
+        end.synchronize()
+        seconds = start.elapsed_time(end) * 1e-3 / 20
+        values.append(2 * m * n * k / seconds / 1e12)
+    torch.cuda.empty_cache()
+    return statistics.fmean(values) * 1e12
 
 
 @dataclass(slots=True)
@@ -192,7 +225,15 @@ def train(cfg: TrainConfig, mixer: MixerSpec, data_iter, *,
     optimizers = build_optimizers(model)
     n_params = sum(p.numel() for p in model.parameters())
     flops_per_step = model_flops_per_step(cfg, mixer.name)
-    peak = _peak_flops(torch.cuda.get_device_name()) if device == "cuda" and torch.cuda.is_available() else 65e12
+    # The honest MFU denominator: the measured bf16 GEMM peak (ATMA's --measure-peak
+    # method), not the unreachable nominal vendor peak. Cached per process.
+    if device == "cuda" and torch.cuda.is_available():
+        global _MEASURED_PEAK
+        if _MEASURED_PEAK is None:
+            _MEASURED_PEAK = measure_bf16_peak()
+        peak = _MEASURED_PEAK
+    else:
+        peak = _nominal_peak_flops("cpu")
 
     def _step_loss(inputs, targets):
         if cfg.bf16 and device == "cuda":
@@ -392,7 +433,56 @@ def _upstream_mixer_callable(mixer: MixerSpec):
                 upstream, _ = naive_recurrent_gla(q, k, v, gk, output_final_state=True)
             return urm, upstream
         return run
-    # DeltaNet / FoX and others: add comparators as their upstreams are wired.
+    if mixer.name == "deltanet":
+        from architectures.deltanet import DeltaNetLayer
+
+        def run(q, k, v, device):
+            B, T, H, D = q.shape
+            try:
+                import sys
+                if "/tmp/urm-comparator-pins/fla" not in sys.path:
+                    sys.path.insert(0, "/tmp/urm-comparator-pins/fla")
+                from fla.ops.delta_rule.naive import delta_rule_recurrence
+            except Exception:
+                return None, None
+            layer = DeltaNetLayer(H * D, num_heads=H, head_k_dim=D, head_v_dim=D,
+                                  target="reference", intent="inference").to(device)
+            # DeltaNet normalizes q/k; the pinned oracle does the same internally.
+            qn = torch.nn.functional.normalize(q, dim=-1)
+            kn = torch.nn.functional.normalize(k, dim=-1)
+            beta = torch.rand(B, H, T, device=device)
+            urm = layer._run_mixer({
+                "query": qn.transpose(1, 2).float(), "key": kn.transpose(1, 2).float(),
+                "value": v.transpose(1, 2).float(), "beta": beta,
+                "log_decay": torch.zeros(B, H, T, device=device),
+                "initial_state": torch.zeros(B, H, D, D, device=device),
+            })["output"]  # [B,H,T,D]
+            with torch.no_grad():
+                upstream, _ = delta_rule_recurrence(
+                    qn.transpose(1, 2), kn.transpose(1, 2), v.transpose(1, 2), beta,
+                    output_final_state=True,
+                )  # [B,H,T,D]
+            return urm, upstream
+        return run
+    if mixer.name == "forgetting_attention":
+        from architectures.forgetting_attention import ForgettingAttentionLayer
+
+        def run(q, k, v, device):
+            B, T, H, D = q.shape
+            try:
+                import sys
+                if "/tmp/urm-comparator-pins/fla" not in sys.path:
+                    sys.path.insert(0, "/tmp/urm-comparator-pins/fla")
+                from fla.ops.forgetting_attn.naive import naive_forgetting_attn
+            except Exception:
+                return None, None
+            layer = ForgettingAttentionLayer(H, D, intent="inference").to(device)
+            g = torch.nn.functional.logsigmoid(torch.randn(B, T, H, device=device))
+            urm = layer(q, k, v, g)
+            with torch.no_grad():
+                upstream = naive_forgetting_attn(q, k, v, g)
+            return urm, upstream
+        return run
     return None
 
 

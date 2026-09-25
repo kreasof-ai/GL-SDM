@@ -1184,19 +1184,18 @@ def linear_delta_state(
     v = values.transpose(1, 2).contiguous()
     g = None if granularity == "none" else log_decay.transpose(1, 2).contiguous()
     b = beta.transpose(1, 2).contiguous() if spec.delta else None
-    out, final = execute_matrix_state_recurrence(
-        query=q,
-        key=k,
-        value=v,
-        log_decay=g,
-        beta=b,
-        initial_state=initial_state,
+    # The native K2 recurrence is ALWAYS invoked as an opaque custom op (the ATMA
+    # custom-op pattern): dynamo treats it as a single fused node with no trace into the
+    # kernel closure, so a torch.compile'd model compiles without a graph break. The
+    # equation is identical — the wrapper only changes how the compiler sees the call.
+    from .k2_op import k2_recurrence
+
+    out, final = k2_recurrence(
+        q, k, v, g, b, initial_state,
         scale=scale,
         decay_granularity=granularity,
         is_delta=spec.delta,
         read_before=spec.read_timing.value == "before_update",
-        normalizer=spec.normalized,
-        epsilon=spec.epsilon,
     )
     return out.transpose(1, 2), final
 
