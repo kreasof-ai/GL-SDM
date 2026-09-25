@@ -14,9 +14,52 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from architectures.mamba import Mamba1Layer, Mamba2K2Layer, Mamba2Layer, selective_scan_diag
+from architectures.mamba import (
+    Mamba1K2Layer,
+    Mamba1Layer,
+    Mamba2K2Layer,
+    Mamba2Layer,
+    selective_scan_diag,
+)
 
 D, N, L, H, P = 3, 4, 6, 2, 4
+
+
+def test_mamba1_core_routes_through_public_elementwise_k2():
+    """Mamba-1's diagonal SSM executes through the public elementwise-gated K2.
+
+    The full per-element gate exp(dt_d·A_{d,n}) maps onto the K2 gate_scope=
+    elementwise law (H=D channels, K=1 degenerate key/query, V=N state dim). Verified
+    against the independent selective_scan_diag comparator — itself verified against
+    the pinned selective_scan_ref at 0.0 in
+    test_mamba1_selective_scan_matches_pinned_ref.
+    """
+    torch.manual_seed(5)
+    B, Dd, Nn, Ll = 2, 6, 4, 7
+    layer = Mamba1K2Layer(Dd, Nn)
+    x = torch.randn(B, Ll, Dd)
+    out_k2 = layer(x).detach()
+    proj = layer.in_proj(x).detach()
+    u, delta, Bm, Cm, _ = proj.split([Dd, Dd, Nn, Nn, Dd], dim=-1)
+    A = -layer.A_log.exp().detach()
+    # Independent comparator: the diagonal scan (verified against the pinned ref above).
+    expected = selective_scan_diag(
+        u.transpose(1, 2), delta.transpose(1, 2), A, Bm.transpose(1, 2), Cm.transpose(1, 2),
+        delta_bias=layer.dt_bias.detach(), delta_softplus=True,
+    ).transpose(1, 2)
+    err = (out_k2 - expected).abs().max().item()
+    assert err < 1e-5, f"Mamba1 public elementwise K2 vs diagonal scan: max abs err {err}"
+
+
+def test_mamba1_k2_layer_composition_and_gradients():
+    torch.manual_seed(9)
+    layer = Mamba1K2Layer(D, N)
+    x = torch.randn(2, L, D)
+    out = layer(x)
+    assert out.shape == (2, L, D)
+    out.square().sum().backward()
+    assert layer.in_proj.weight.grad is not None and layer.in_proj.weight.grad.abs().sum().item() > 0
+    assert layer.A_log.grad is not None and layer.A_log.grad.abs().sum().item() > 0
 
 
 def test_mamba2_core_routes_through_public_k2():

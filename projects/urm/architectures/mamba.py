@@ -136,6 +136,63 @@ class Mamba2Layer(torch.nn.Module):
         return out.transpose(1, 2)
 
 
+class Mamba1K2Layer(K2LinearStateLayer):
+    """Mamba-1's diagonal SSM routed through the public elementwise-gated K2.
+
+    The diagonal gate ``exp(dt_d·A_{d,n})`` varies over BOTH state dims — a full
+    per-element gate — expressed as the K2 ``gate_scope=elementwise`` law. The
+    mapping treats each channel ``d`` as an independent head (H=D), with a
+    degenerate key axis (K=1, key=query=1) and the SSM state dim as the value axis
+    (V=N): the state is ``M[D, 1, N] = x`` (the per-channel N-dim SSM state), the
+    additive write is ``dt·B·u`` (value, dim N), the per-element gate is ``dt·A``
+    (``[D, 1, N]``), and the after-update read with query=1 returns the state, so
+    ``y = C·x`` is applied externally.
+
+    Reference-tier admission: Mamba-1 is the single source client for the full
+    elementwise gate (HGRN's vector-state channel gate is adjacent but not a
+    structural match), so no native branch per the two-client rule. Verified
+    against the pinned selective_scan_ref (via selective_scan_diag) at 0.0. The
+    selective frontend (dt/B/C projections, A_log/dt_bias discretization), the D·u
+    skip, the z gate and conv are external.
+    """
+
+    def __init__(self, d_model: int, d_state: int, *,
+                 target: str = "reference", intent: str = "inference"):
+        # H = d_model (one "head" per channel), K = 1, V = d_state.
+        super().__init__(
+            hidden_size=d_model, num_heads=d_model, head_k_dim=1, head_v_dim=d_state,
+            delta=False, gate_scope="elementwise", scale_rule="one",
+            target=target, intent=intent,
+        )
+        self.d_model = d_model
+        self.d_state = d_state
+        self.A_log = torch.nn.Parameter(torch.randn(d_model, d_state))
+        self.dt_bias = torch.nn.Parameter(torch.rand(d_model))
+        self.in_proj = torch.nn.Linear(d_model, d_model * 2 + d_state * 2 + d_model, bias=False)
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        """hidden_states [B,L,D] → output [B,L,D]."""
+        B, L, D = hidden_states.shape
+        N = self.d_state
+        proj = self.in_proj(hidden_states)
+        u, delta, Bm, Cm, _skip = proj.split([D, D, N, N, D], dim=-1)
+        A = -self.A_log.exp()                                   # [D,N]
+        dt = torch.nn.functional.softplus(delta + self.dt_bias)  # [B,L,D]
+        # K2 operands ([B,H=D,T,*]): key=query=1 (K=1), value=dt·B·u (V=N), gate=dt·A ([D,1,N]).
+        ones_k = torch.ones(B, D, L, 1, device=hidden_states.device)
+        val = torch.einsum("bld,bln,bld->bdln", dt, Bm, u)      # dt·B·u -> [B,D,L,N]
+        ld = torch.einsum("bld,dn->bdln", dt, A).unsqueeze(3)   # dt·A -> [B,D,L,1,N]
+        out = self._run_mixer({
+            "query": ones_k, "key": ones_k, "value": val,
+            "beta": torch.ones(B, D, L, device=hidden_states.device),
+            "log_decay": ld,
+            "initial_state": torch.zeros(B, D, 1, N, device=hidden_states.device),
+        })["output"]                                            # [B,H=D,T=L,V=N] = x trajectory
+        # y_t = C_t · x_t (contract the state dim N). out is [B,D,L,N]; Cm is [B,L,N].
+        y = torch.einsum("bdln,bln->bld", out, Cm)              # [B,L,D]
+        return y
+
+
 class Mamba2K2Layer(K2LinearStateLayer):
     """Mamba-2's recurrent core routed through the public head-gated matrix K2.
 
@@ -195,4 +252,4 @@ class Mamba2K2Layer(K2LinearStateLayer):
         return out.permute(0, 2, 1, 3).reshape(B, L, D)
 
 
-__all__ = ["Mamba1Layer", "Mamba2Layer", "Mamba2K2Layer", "selective_scan_diag"]
+__all__ = ["Mamba1Layer", "Mamba1K2Layer", "Mamba2Layer", "Mamba2K2Layer", "selective_scan_diag"]

@@ -166,12 +166,22 @@ class RouteSpec:
 
 
 class K2GateScope(StrEnum):
-    """Granularity of the K2 diagonal decay gate G_t (a semantic field)."""
+    """Granularity of the K2 diagonal decay gate G_t (a semantic field).
+
+    ``NONE``/``SCALAR``/``HEAD``/``CHANNEL`` broadcast the gate over the state's
+    value axis (channel is a per-key-dim vector ``[K]``). ``ELEMENTWISE`` is a full
+    per-element gate ``[K, V]`` (a distinct decay for every state element) — the
+    Mamba-1 diagonal SSM ``exp(dt_d·A_{d,n})`` is the client. Elementwise is a
+    reference-tier law: single-source-client, so no native branch until a second
+    structurally independent client appears (HGRN's vector-state channel gate is
+    adjacent but not a structural match).
+    """
 
     NONE = "none"
     SCALAR = "scalar"
     HEAD = "head"
     CHANNEL = "channel"
+    ELEMENTWISE = "elementwise"
 
 
 class K2ReadTiming(StrEnum):
@@ -239,6 +249,15 @@ class LinearDeltaSpec:
             raise ValueError("num_deltas must be >= 1")
         if self.num_deltas > 1 and (self.low_rank or self.predict_key or self.erase_gate or self.write_gate):
             raise ValueError("the ordered multi-delta transition is not combined with low_rank/predict/erase/write gates")
+        if self.gate_scope is K2GateScope.ELEMENTWISE:
+            # The full per-element gate [K,V] is the Mamba-1 diagonal SSM law. It is
+            # not defined with the normalized variant (no denominator state) or the
+            # ordered multi-delta / low-rank / predict / erase / write gates (the
+            # elementwise gate IS the whole transition; combining is undefined).
+            if self.normalized:
+                raise ValueError("elementwise gate scope has no normalized variant")
+            if self.num_deltas > 1 or self.low_rank or self.predict_key or self.erase_gate or self.write_gate:
+                raise ValueError("elementwise gate scope is not combined with other transition factors")
 
 
 class SparseScoreComposition(StrEnum):

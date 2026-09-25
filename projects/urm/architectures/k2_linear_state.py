@@ -53,7 +53,11 @@ class K2LinearStateLayer(torch.nn.Module):
         self.scale_rule = scale_rule
         self.normalized = normalized
 
-        decay_shape = ["B", "H", "T", "K"] if gate_scope == "channel" else ["B", "H", "T"]
+        decay_shape = (
+            ["B", "H", "T", "K", "V"] if gate_scope == "elementwise"
+            else ["B", "H", "T", "K"] if gate_scope == "channel"
+            else ["B", "H", "T"]
+        )
         graph_inputs = [
             {"name": "query", "dtype": "float32", "shape": ["B", "H", "T", "K"]},
             {"name": "key", "dtype": "float32", "shape": ["B", "H", "T", "K"]},

@@ -73,6 +73,9 @@ def linear_delta_state(
     elif spec.gate_scope is K2GateScope.CHANNEL:
         if g is not None and g.dim() != 4:
             raise ValueError("channel decay expects log_decay [B, H, T, K]")
+    elif spec.gate_scope is K2GateScope.ELEMENTWISE:
+        if g is not None and g.dim() != 5:
+            raise ValueError("elementwise decay expects log_decay [B, H, T, K, V]")
     else:  # pragma: no cover - enum is closed
         raise ValueError(f"unsupported gate scope {spec.gate_scope}")
 
@@ -100,6 +103,12 @@ def linear_delta_state(
             decay = torch.exp(g[:, :, t]).unsqueeze(-1)  # [B,H,K,1]
             z = decay * m
             norm_decay = decay.squeeze(-1)  # [B,H,K]
+        elif spec.gate_scope is K2GateScope.ELEMENTWISE:
+            # Full per-element gate [B,H,K,V]: a distinct decay for every state
+            # element (the Mamba-1 diagonal SSM exp(dt_d·A_{d,n})).
+            decay = torch.exp(g[:, :, t])  # [B,H,K,V]
+            z = decay * m
+            norm_decay = None  # a normalized elementwise variant is not defined
         else:
             decay_k = torch.exp(g[:, :, t]).unsqueeze(-1)  # [B,H,1] key-domain broadcast
             z = decay_k.unsqueeze(-1) * m
