@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ...ir.program import K1Descriptor, K1ReducerLaw, K1ScaleRule, K1ScoreLaw
+from ...ir.program import K1Descriptor, K1ReducerLaw, K1ScaleRule, K1ScoreLaw, K1ScoreMap
 
 
 def _torch() -> Any:
@@ -164,6 +164,31 @@ def k1_softmax_attention(
         num = torch.matmul(A, v)                                     # [B,H,Ti,D]
         den = A.sum(dim=-1, keepdim=True).clamp(min=1.0)             # 1-safe denominator
         return (num / den).transpose(1, 2).to(value.dtype)
+    if descriptor.reducer_law is K1ReducerLaw.MAP_NORMALIZE:
+        # PAttention/TokenFormer: an elementwise score map composed with an Lp
+        # normalization over the source domain, scaled by count^(1/p). The map
+        # and order are closed fields (score_map / normalize_before_map); the
+        # Lp degree is normalizer_p. Masked positions were zeroed above.
+        count = scores.shape[-1]
+        p = float(descriptor.normalizer_p)
+
+        def _map(x):
+            if descriptor.score_map is K1ScoreMap.EXP:
+                return torch.exp(x)
+            if descriptor.score_map is K1ScoreMap.GELU:
+                return torch.nn.functional.gelu(x)
+            return x  # IDENTITY
+
+        def _norm(x):
+            return x / torch.norm(x, p=p, dim=-1, keepdim=True) * (count ** (1.0 / p))
+
+        if descriptor.normalize_before_map:
+            # l2_norm_gelu: normalize scores by Lp (×count^(1/p)), then apply the map.
+            weights = _map(_norm(scores))
+        else:
+            # softmax (exp+L1×count) and gelu_l2_norm: apply the map first, then norm.
+            weights = _norm(_map(scores))
+        return torch.matmul(weights, v).transpose(1, 2).to(value.dtype)
     probs = torch.softmax(scores, dim=-1)
     # Closed all-masked-row policy: a fully masked row returns zero.
     probs = torch.nan_to_num(probs, nan=0.0)

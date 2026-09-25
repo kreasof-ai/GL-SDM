@@ -578,7 +578,18 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
         name="urm.unified.k1.softmax_reference.v1",
         backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
         supported_visitors=frozenset(),
-        semantic_contracts=frozenset({"normalized_softmax_attention_v1"}),
+        # The Torch reference K1 executor dispatches on every admitted reducer
+        # law (softmax, threshold, squared-sum, map_normalize), so it accepts
+        # each non-softmax contract the descriptor can produce. The native and
+        # SDPA anchors declare only softmax and decline these.
+        semantic_contracts=frozenset(
+            {
+                "normalized_softmax_attention_v1",
+                "k1_threshold_relu_power_v1",
+                "k1_squared_sum_v1",
+                "k1_map_normalize_v1",
+            }
+        ),
     ),
     ExecutionAnchor(
         kind=AnchorKind.ATTENTION,

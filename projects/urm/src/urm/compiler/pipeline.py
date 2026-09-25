@@ -63,6 +63,7 @@ from urm.compiler.rewrite.engine import (
 from urm.ir.program import (
     CollectiveExchange,
     Gather,
+    K1ReducerLaw,
     LinearDeltaState,
     LogicalDomain,
     Matmul,
@@ -495,7 +496,15 @@ def _weighted_reduce_anchor_kind(op: WeightedReduce) -> AnchorKind:
     # equation over a logical depth axis: the reducer is identical (dense
     # softmax weighted reduce over inline Q·K scores), only the logical axis
     # differs, so the ATTENTION kind — not routed reduction — is correct there.
-    _ATTENTION_DOMAINS = (LogicalDomain.SEQUENCE, LogicalDomain.DEPTH)
+    # PAttention (arch-057) admits the parameter_block domain: key/value are
+    # learned parameter tokens, but the reducer is still the K1 equation over
+    # inline Q·K scores (the map_normalize reducer generalizes the softmax
+    # algebra, it does not change the dense inline-score structure).
+    _ATTENTION_DOMAINS = (
+        LogicalDomain.SEQUENCE,
+        LogicalDomain.DEPTH,
+        LogicalDomain.PARAMETER_BLOCK,
+    )
     is_attention = (
         spec.normalization is ScoreNormalization.SOFTMAX
         and spec.selection is SelectionKind.DENSE
@@ -518,6 +527,12 @@ def _equation_contract_for(op: SemanticNode) -> str | None:
     if isinstance(op, WeightedReduce) and (
         _weighted_reduce_anchor_kind(op) is AnchorKind.ATTENTION
     ):
+        k1 = op.k1
+        if k1 is not None and k1.reducer_law is not K1ReducerLaw.SOFTMAX:
+            # A non-softmax K1 reducer is a distinct equation contract; only an
+            # anchor that declares it (the Torch reference) is selectable, so the
+            # native/SDPA softmax anchors decline rather than execute the wrong law.
+            return f"k1_{k1.reducer_law.value}_v1"
         return "normalized_softmax_attention_v1"
     return None
 

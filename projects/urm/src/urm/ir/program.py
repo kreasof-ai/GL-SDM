@@ -459,12 +459,32 @@ class K1ReducerLaw(StrEnum):
     ``(ReLU(s − τ))^p`` with a position-dependent threshold ``τ_i = β·sqrt(2·
     log(i+1)/d)`` and NO normalization denominator (TDA). ``SQUARED_SUM``: a
     non-negative squared score ``A = Σ_g (scale·q_g·k_g)²`` with sum
-    normalization ``o = (Σ A·v)/max(Σ A, 1)`` (KATA).
+    normalization ``o = (Σ A·v)/max(Σ A, 1)`` (KATA). ``MAP_NORMALIZE``: a
+    closed elementwise score map composed with an Lp normalization over the
+    source domain, scaled by ``count^(1/p)`` — ``norm_p(map(s)) · count^(1/p)``
+    (PAttention/TokenFormer). The map and the map↔norm order are the closed
+    ``score_map`` / ``normalize_before_map`` fields; the Lp degree is
+    ``normalizer_p``.
     """
 
     SOFTMAX = "softmax"
     THRESHOLD_RELU_POWER = "threshold_relu_power"
     SQUARED_SUM = "squared_sum"
+    MAP_NORMALIZE = "map_normalize"
+
+
+class K1ScoreMap(StrEnum):
+    """The closed elementwise score map for the ``MAP_NORMALIZE`` reducer (A13).
+
+    ``EXP``: ``exp(s)`` (the 'softmax' normalizer variant = exp + L1 × count).
+    ``GELU``: ``gelu(s)``. ``IDENTITY``: no map (used with
+    ``normalize_before_map`` for the l2-normalize-then-GELU ordering, where the
+    map applies after the norm).
+    """
+
+    EXP = "exp"
+    GELU = "gelu"
+    IDENTITY = "identity"
 
 
 @dataclass(frozen=True, slots=True)
@@ -498,6 +518,12 @@ class K1Descriptor:
     # SQUARED_SUM group count (KATA): the head splits into squared_sum_groups
     # groups; A = Σ_g (scale·q_g·k_g)². None means the full dot squared.
     squared_sum_groups: int | None = None
+    # MAP_NORMALIZE fields (PAttention/TokenFormer, A13): the elementwise score
+    # map, the Lp normalizer degree, and the map↔norm order. Only legal with the
+    # MAP_NORMALIZE reducer law.
+    score_map: K1ScoreMap | None = None
+    normalizer_p: float | None = None
+    normalize_before_map: bool = False
     masked_row: str = "zero"  # closed edge policy: fully masked rows return zero
     accumulation_dtype: DType = DType.FLOAT32
 
@@ -523,6 +549,17 @@ class K1Descriptor:
             raise ValueError("squared_sum_groups is only legal with the squared_sum reducer")
         if self.indexed and self.score_law is K1ScoreLaw.CHANNEL_DECAY:
             raise ValueError("indexed K1 is defined with the dot score law")
+        if self.reducer_law is K1ReducerLaw.MAP_NORMALIZE:
+            if self.score_map is None or self.normalizer_p is None:
+                raise ValueError("map_normalize requires score_map and normalizer_p")
+            if not (self.normalizer_p >= 1.0):
+                raise ValueError("map_normalize requires normalizer_p >= 1 (an Lp norm)")
+        else:
+            if self.score_map is not None or self.normalizer_p is not None or self.normalize_before_map:
+                raise ValueError(
+                    "score_map/normalizer_p/normalize_before_map are only legal with "
+                    "the map_normalize reducer"
+                )
 
 
 @dataclass(frozen=True, slots=True)

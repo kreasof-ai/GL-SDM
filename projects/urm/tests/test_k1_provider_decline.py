@@ -26,6 +26,7 @@ from urm.ir.program import (
     K1HeadMap,
     K1ReducerLaw,
     K1ScoreLaw,
+    K1ScoreMap,
 )
 
 
@@ -130,3 +131,35 @@ def test_numpy_oracle_declines_unsupported_laws(descriptor, reason):
 @pytest.mark.parametrize("descriptor", [DOT_SOFTMAX, GQA])
 def test_numpy_oracle_accepts_dot_softmax(descriptor):
     assert K1NumpyProvider().decline(_request(descriptor)) is None
+
+
+# --- MAP_NORMALIZE reducer (A13, PAttention): reference-tier admission only ---
+
+MAP_NORMALIZE = K1Descriptor(
+    reducer_law=K1ReducerLaw.MAP_NORMALIZE,
+    score_map=K1ScoreMap.GELU,
+    normalizer_p=2.0,
+    normalize_before_map=True,
+)
+
+
+def test_map_normalize_reference_tier_only():
+    """The Torch reference executes map_normalize; native/SDPA/oracle decline it."""
+    assert K1TorchReferenceProvider().decline(_request(MAP_NORMALIZE)) is None
+    assert "SOFTMAX" in (K1NativeTritonProvider().decline(_request(MAP_NORMALIZE)) or "")
+    assert "SOFTMAX" in (K1SdpaLibraryProvider().decline(_request(MAP_NORMALIZE)) or "")
+    assert "SOFTMAX" in (K1NumpyProvider().decline(_request(MAP_NORMALIZE)) or "")
+
+
+def test_map_normalize_descriptor_validation():
+    """The map fields are only legal with the map_normalize reducer."""
+    with pytest.raises(ValueError, match="only legal with the map_normalize reducer"):
+        K1Descriptor(score_map=K1ScoreMap.EXP, normalizer_p=1.0)
+    with pytest.raises(ValueError, match="requires score_map and normalizer_p"):
+        K1Descriptor(reducer_law=K1ReducerLaw.MAP_NORMALIZE, score_map=K1ScoreMap.EXP)
+    with pytest.raises(ValueError, match="normalizer_p >= 1"):
+        K1Descriptor(
+            reducer_law=K1ReducerLaw.MAP_NORMALIZE,
+            score_map=K1ScoreMap.EXP,
+            normalizer_p=0.5,
+        )

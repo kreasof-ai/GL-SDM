@@ -4,20 +4,20 @@
   "kind": "complete_model_graph",
   "source": {
     "comparator": "benchmarks.comparators.pattention",
-    "notes": "arch-057 — composition-now as a typed parameter-domain composition. The mixer is attention over a fixed parameter-token source domain: scores = query @ key_paramᵀ × scale (a plain inner product, NO softmax denominator); a parameter-domain nonlinear normalizer (softmax=exp+L1×count / gelu_l2_norm / l2_norm_gelu); output = norm(scores) @ value_param. Verified against megatron/model/tokenformer.py @ 4d56c73f. The closed K1 softmax contract does not cover the non-softmax score stage, so the module composes typed matmul calls around the external normalizer (no descriptor hack). Layer module: architectures/pattention.py."
+    "notes": "arch-057 — composition-now as a typed parameter-domain K1 reduction. The mixer executes through the public K1 path (weighted_reduce over the parameter_block source domain): scores = query @ key_paramᵀ × scale (plain dot), then the admitted K1 MAP_NORMALIZE reducer (axis A13, reference-tier), then output = norm(scores) @ value_param. The three pinned normalizer variants map onto the closed map_normalize fields exactly: softmax = (EXP, p=1, map-then-norm); gelu_l2_norm = (GELU, p=2, map-then-norm); l2_norm_gelu = (GELU, p=2, norm-then-map). The parameter tokens are learned nn.Parameter bound as the K1 key/value roles. Verified against megatron/model/tokenformer.py @ 4d56c73f. The native/SDPA K1 anchors decline the non-softmax reducer; only the reference tier executes it (a native schedule is residual, pending a second client per the two-client physical-branch rule). Layer module: architectures/pattention.py."
   },
   "layers": [
     {
       "id": "pattention_layer",
-      "operation": "matmul",
+      "operation": "weighted_reduce",
       "external_component": "architectures.pattention.PattentionLayer",
       "params": {
+        "axis": "A13 score/reducer algebra: K1 MAP_NORMALIZE reducer (score_map EXP/GELU × Lp normalizer_p × map<->norm order), reference-tier admission",
         "external_stages": [
           "learned parameter tokens (key/value nn.Parameter banks)",
-          "parameter-domain nonlinear normalizer (softmax=exp+L1*count / gelu_l2_norm / l2_norm_gelu)",
           "router_index token subset selection (MoE mode)"
         ],
-        "typed_operations": ["matmul (scores = q·kᵀ × scale)", "matmul (output = norm(scores)·v)"]
+        "typed_operations": ["weighted_reduce (K1: dot score + map_normalize reducer over parameter_block)"]
       },
       "state": {},
       "cache": {}
@@ -26,6 +26,6 @@
   "coverage": {
     "level": "generic_model_integration",
     "validated": true,
-    "notes": "Layer parity vs the pinned Pattention module across all three normalizer variants and a non-unit scale in tests/test_architectures_pattention.py; parameter-token gradients flow through the contraction. NOT claimed (sweep blockers): the model-replacement role (Pattention substituting for QKV/output projections and the MLP), parameter-token construction/reparameterization, and any claim that one attention contraction equals MLP or MoE."
+    "notes": "Layer parity vs the pinned Pattention module across all three normalizer variants and a non-unit scale in tests/test_architectures_pattention.py, now through the public K1 weighted_reduce (map_normalize reducer); parameter-token gradients flow through the contraction. The descriptor validation and the reference-only decline contract are covered in tests/test_k1_provider_decline.py. NOT claimed (sweep blockers): the model-replacement role (Pattention substituting for QKV/output projections and the MLP), parameter-token construction/reparameterization, and any claim that one attention contraction equals MLP or MoE."
   }
 }

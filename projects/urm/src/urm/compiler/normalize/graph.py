@@ -27,6 +27,7 @@ from urm.ir.program import (
     K1ReducerLaw,
     K1ScaleRule,
     K1ScoreLaw,
+    K1ScoreMap,
     K2GateScope,
     K2ReadTiming,
     K2ScaleRule,
@@ -124,6 +125,15 @@ def _k1_descriptor(params: dict[str, Any], roles: tuple[tuple[str, str], ...]) -
         threshold_beta=params.get("threshold_beta"),
         relu_power=params.get("relu_power"),
         squared_sum_groups=params.get("squared_sum_groups"),
+        score_map=(
+            _enum(K1ScoreMap, params["score_map"], field="k1.score_map")
+            if params.get("score_map") is not None
+            else None
+        ),
+        normalizer_p=(
+            float(params["normalizer_p"]) if params.get("normalizer_p") is not None else None
+        ),
+        normalize_before_map=bool(params.get("normalize_before_map", False)),
         accumulation_dtype=DType.FLOAT32,
     )
 
@@ -138,6 +148,7 @@ _K1_PARAMS = frozenset(
         "threshold", "page_size", "capacity_policy", "deterministic", "causal",
         "scale_rule", "head_map", "group_size", "roles", "epilogue", "score_law",
         "reducer_law", "threshold_beta", "relu_power", "squared_sum_groups",
+        "score_map", "normalizer_p", "normalize_before_map",
     }
 )
 
