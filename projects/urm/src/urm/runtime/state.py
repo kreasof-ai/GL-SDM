@@ -109,7 +109,7 @@ class DiagonalDecodeSession:
         read_gate: Any = None,
     ) -> Any:
         """One single-token diagonal decode step, updating the state in place."""
-        from urm.backends.historical.triton_k2_diagonal import (
+        from urm.backends.triton.k2 import (
             execute_diagonal_decode_step,
         )
 
@@ -156,12 +156,12 @@ class SparseStateDecodeSession:
         self.write_width = write_width
         self.read_timing_before_update = read_timing_before_update
         batch, slots, value_dim = self.memory.shape
-        from urm.backends.historical.triton_k3_state_launcher import (
-            TritonSparseStateMixerBackend,
-        )
-        from urm.backends.historical.triton_k3_route_launcher import (
-            TritonSparseRouteBackend,
-        )
+        from urm.backends.triton.k3 import (
+    TritonSparseStateMixerBackend,
+)
+        from urm.backends.triton.k3 import (
+    TritonSparseRouteBackend,
+)
         from urm.ir.program import (
             DType,
             SparseReadTiming,
@@ -206,14 +206,16 @@ class SparseStateDecodeSession:
         ``read_scores``/``write_scores`` are the factorized route-score tables
         ``[B, 1, 2*sqrt(slots)]`` produced by the model's route scorer.
         """
-        from urm.backends.historical.triton_k3_state_launcher import (
-            CertifiedSparseStateRoutes,
-            SparseState,
-        )
-        from urm.backends.historical.triton_k3_route_launcher import (
-            CertifiedSparseRouteScores,
-            TritonSparseRouteBackend,
-        )
+        from urm.runtime.certification import (
+    CertifiedSparseStateRoutes,
+    SparseState,
+)
+        from urm.runtime.certification import (
+    CertifiedSparseRouteScores,
+)
+from urm.backends.triton.k3 import (
+    TritonSparseRouteBackend,
+)
         from urm.ir.program import (
             DType,
             SparseRouteSelectionSpec,
@@ -274,10 +276,10 @@ class SparseStateDecodeSession:
         well-formed (in-bounds, strictly increasing and unique within each token,
         finite nonnegative normalized weights).
         """
-        from urm.backends.historical.triton_k3_state_launcher import (
-            CertifiedSparseStateRoutes,
-            SparseState,
-        )
+        from urm.runtime.certification import (
+    CertifiedSparseStateRoutes,
+    SparseState,
+)
 
         batch = self.memory.shape[0]
         routes = CertifiedSparseStateRoutes.certify_trusted(

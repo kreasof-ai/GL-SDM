@@ -191,11 +191,8 @@ def test_k3_state_mixer_matches_independent_reference():
     import dataclasses
 
     from urm.backends.torch.k3 import torch_sparse_state_mixer
-    from urm.backends.historical.triton_k3_state_launcher import (
-        CertifiedSparseStateRoutes,
-        SparseState,
-        TritonSparseStateMixerBackend,
-    )
+    from urm.runtime.certification import CertifiedSparseStateRoutes, SparseState
+    from urm.backends.triton.k3 import TritonSparseStateMixerBackend
     from urm.ir.program import SparseReadTiming
 
     recipe = load_graph_recipe_file("recipes/kernels/sparse_delta_memory.json")

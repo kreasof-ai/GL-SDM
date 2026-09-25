@@ -1,38 +1,14 @@
-"""Backend packages: the single Provider contract plus per-family providers.
+"""Backend packages: the single Provider contract plus one directory per backend.
 
-Every backend — reference NumPy oracle, reference Torch, native Triton, or the
-trusted library tier — is a :class:`~urm.backends.contract.Provider` living in
-its family package (``providers/k1``, ``providers/k2``, ``providers/k3``). A
-future backend implements that one surface; there is no per-tier ad-hoc entry
-point. Imports are lazy where possible; the compiler owns candidate choice,
-cost and schedule decisions, not this package.
+Every backend — reference NumPy oracle, reference Torch, native Triton — lives
+in its own directory (``backends/<name>/``) and implements each family it
+supports in ``backends/<name>/<family>.py`` behind the uniform
+:class:`~urm.backends.contract.Provider` surface. The dispatch table is built by
+filesystem auto-discovery (:mod:`urm.backends.registry`); adding a backend is
+creating its directory. The compiler owns candidate choice, cost and schedule
+decisions; route/operand certification lives in :mod:`urm.runtime.certification`.
 """
 
 from __future__ import annotations
 
-__all__ = [
-    "TorchRoutedReductionBackend",
-    "TritonRoutedReductionBackend",
-    "TritonSparseRouteBackend",
-    "TritonSparseStateMixerBackend",
-]
-
-
-def __getattr__(name: str):
-    if name == "TorchRoutedReductionBackend":
-        from .historical.routed_torch import TorchRoutedReductionBackend
-
-        return TorchRoutedReductionBackend
-    if name == "TritonRoutedReductionBackend":
-        from .historical.triton_k1_routed_launcher import TritonRoutedReductionBackend
-
-        return TritonRoutedReductionBackend
-    if name == "TritonSparseRouteBackend":
-        from .historical.triton_k3_route_launcher import TritonSparseRouteBackend
-
-        return TritonSparseRouteBackend
-    if name == "TritonSparseStateMixerBackend":
-        from .historical.triton_k3_state_launcher import TritonSparseStateMixerBackend
-
-        return TritonSparseStateMixerBackend
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+__all__: list[str] = []

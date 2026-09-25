@@ -184,7 +184,7 @@ def _k2_diagonal_decode_kl(torch) -> list[dict]:
     the exact upstream sequential operator, on a single-token step."""
     from fla.ops.hgrn import fused_recurrent_hgrn
 
-    from urm.backends.historical.triton_k2_diagonal import (
+    from urm.backends.triton.k2 import (
         execute_diagonal_decode_step,
     )
 

@@ -14,9 +14,11 @@ pytest.importorskip("triton")
 if not torch.cuda.is_available():
     pytest.skip("CUDA is required", allow_module_level=True)
 
-from urm.backends.historical.triton_k3_state_launcher import (
+from urm.runtime.certification import (
     CertifiedSparseStateRoutes,
     SparseState,
+)
+from urm.backends.triton.k3 import (
     TritonSparseStateMixerBackend,
 )
 from urm.backends.torch.k3 import torch_sparse_state_mixer
@@ -623,7 +625,8 @@ def test_native_executes_in_process_with_upstream_checkout_absent() -> None:
 import importlib.util
 import torch
 assert importlib.util.find_spec('lingua') is None
-from urm.backends.historical.triton_k3_state_launcher import CertifiedSparseStateRoutes, SparseState, TritonSparseStateMixerBackend
+from urm.runtime.certification import CertifiedSparseStateRoutes, SparseState
+from urm.backends.triton.k3 import TritonSparseStateMixerBackend
 from urm.ir.program import DType, SparseReadTiming, SparseStateMixerSpec, SparseStateOperation
 spec = SparseStateMixerSpec(1, 1, 8, 7, 0, 1, DType.FLOAT32, SparseStateOperation.READ_ONLY, SparseReadTiming.CURRENT_STATE)
 indices = torch.tensor([[[3]]], device='cuda')

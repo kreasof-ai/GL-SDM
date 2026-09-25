@@ -22,8 +22,8 @@ Ownership
 ---------
 - Contract: `docs/kernels/sparse-delta.md`
 - Native implementations: `urm.backends.triton.k3`
-  (score-to-state pipeline), `urm.backends.historical.triton_k3_route_launcher`
-  (route production), and `urm.backends.historical.triton_k3_state_launcher`
+  (score-to-state pipeline), `urm.runtime.certification`
+  (route production), and `urm.runtime.certification`
   (certified route-state mixer). The executable plan binding lives in
   `urm.runtime.bind`.
 - Reference/oracle: `urm.backends.numpy.k3` (independent recurrence, chunked

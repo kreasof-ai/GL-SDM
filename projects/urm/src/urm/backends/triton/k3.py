@@ -16,6 +16,8 @@ from typing import Any, Callable, ContextManager
 
 PROFILE_RANGES = False
 
+NATIVE_SPARSE_ROUTE_NAME = "urm_native_sparse_route_selection_v0"
+
 # Injectable profiling hook. The backend never imports a profiler; a consumer
 # (e.g. benchmarks/profiling) installs one via ``set_state_profiler``. The hook
 # maps a phase name to a context manager; the default is a no-op.
@@ -847,11 +849,6 @@ def sparse_delta_state(
     policy. Routes are certified from the descriptor; the fused state kernels
     execute the ordered update + read. Returns ``(readings, updated_memory)``.
     """
-    from ..historical.triton_k3_state_launcher import (
-        CertifiedSparseStateRoutes,
-        SparseState,
-        TritonSparseStateMixerBackend,
-    )
 
     spec = _k3_runtime_spec(spec, {
         "values": values, "read_addresses": read_addresses,
@@ -1191,5 +1188,353 @@ class K3RouteNativeTritonProvider:
         )
         return {"addresses": addresses, "weights": weights}
 
+
+
+
+# ---------------------------------------------------------------------------
+# K3 native state-mixer backend (dispatch + state validation; certification
+# lives in urm.runtime.certification)
+# ---------------------------------------------------------------------------
+
+from urm.ir.k3 import (
+    FROZEN_V0_ENVELOPE,
+    NATIVE_SPARSE_STATE_MIXER_NAME,
+    sparse_state_launch_schedule,
+    sparse_state_spec_status,
+)
+from urm.ir.program import SparseReadTiming, SparseStateOperation
+import importlib.util
+
+from urm.runtime.certification import (
+    CertifiedSparseRouteScores,
+    CertifiedSparseStateOperands,
+    CertifiedSparseStateRoutes,
+    NativeSparseRouteOutput,
+    SparseRouteSupportStatus,
+    SparseState,
+    SparseStateSupportStatus,
+    _OPERAND_CERTIFICATE,
+    _ROUTE_OUTPUT_CERTIFICATE,
+    _dtype_name,
+    native_dependencies_available,
+)
+from urm.ir.program import DType, SparseRouteSelectionSpec, SparseStateMixerSpec
+
+# lives in urm.runtime.certification)
+# ---------------------------------------------------------------------------
+
+
+class TritonSparseStateMixerBackend:
+    """Native URM dispatch; no comparator package is imported or consulted."""
+
+    name = NATIVE_SPARSE_STATE_MIXER_NAME
+
+    def __init__(self, spec: SparseStateMixerSpec) -> None:
+        self.spec = spec
+        status = self.support_status(spec)
+        status.require()
+
+    @staticmethod
+    def support_status(spec: SparseStateMixerSpec) -> SparseStateSupportStatus:
+        if not native_dependencies_available():
+            return SparseStateSupportStatus.no(
+                "missing_dependency", "PyTorch and Triton are required"
+            )
+        import torch
+
+        if not torch.cuda.is_available():
+            return SparseStateSupportStatus.no(
+                "unsupported_hardware", "CUDA is unavailable"
+            )
+        return sparse_state_spec_status(
+            spec,
+            device_type="cuda",
+            compute_capability=torch.cuda.get_device_capability(),
+        )
+
+    def prepare(
+        self,
+        routes: CertifiedSparseStateRoutes,
+        *,
+        values: object | None = None,
+        beta: object | None = None,
+        log_decay: object | None = None,
+    ) -> CertifiedSparseStateOperands:
+        import torch
+
+        if routes.spec != self.spec:
+            raise ValueError("certified routes do not match backend semantics")
+        routes.require_intact()
+        supplied = (values, beta, log_decay)
+        if self.spec.operation is SparseStateOperation.READ_ONLY:
+            if any(item is not None for item in supplied):
+                raise ValueError("read-only operation does not accept update operands")
+            tensors = ()
+        else:
+            expected_value = (
+                self.spec.parallel,
+                self.spec.sequence,
+                self.spec.value_dim,
+            )
+            if values is None or tuple(values.shape) != expected_value:
+                raise ValueError(f"values must have shape {expected_value}")
+            expected_scalar = (self.spec.parallel, self.spec.sequence, 1)
+            if beta is None or tuple(beta.shape) != expected_scalar:
+                raise ValueError(f"beta must have shape {expected_scalar}")
+            if log_decay is None or tuple(log_decay.shape) != expected_scalar:
+                raise ValueError(f"log_decay must have shape {expected_scalar}")
+            tensors = supplied
+            route_device = routes.read_indices.device
+            if any(
+                not tensor.is_contiguous()
+                or tensor.device != route_device
+                or _dtype_name(tensor) != self.spec.dtype.value
+                for tensor in tensors
+            ):
+                raise ValueError(
+                    "update operands must be contiguous and match route device/dtype"
+                )
+            if not all(bool(torch.isfinite(tensor).all().item()) for tensor in tensors):
+                raise ValueError("update operands must be finite")
+        return CertifiedSparseStateOperands(
+            self.spec,
+            routes,
+            values,
+            beta,
+            log_decay,
+            tuple(tensor._version for tensor in tensors),
+            _OPERAND_CERTIFICATE,
+        )
+
+    def _prepare_generated_routes(
+        self,
+        routes: CertifiedSparseStateRoutes,
+        *,
+        values: object | None = None,
+        beta: object | None = None,
+        log_decay: object | None = None,
+    ) -> CertifiedSparseStateOperands:
+        """Internal cheap bridge for operands certified by a native pipeline."""
+        if routes.spec != self.spec:
+            raise ValueError("generated routes do not match backend semantics")
+        routes.require_intact()
+        tensors = tuple(
+            tensor for tensor in (values, beta, log_decay) if tensor is not None
+        )
+        return CertifiedSparseStateOperands(
+            self.spec,
+            routes,
+            values,
+            beta,
+            log_decay,
+            tuple(tensor._version for tensor in tensors),
+            _OPERAND_CERTIFICATE,
+        )
+
+    def _validate_state(self, state: SparseState) -> None:
+        import torch
+
+        memory = state.memory
+        expected = (
+            self.spec.parallel,
+            self.spec.slots_per_partition,
+            self.spec.value_dim,
+        )
+        if tuple(memory.shape) != expected:
+            raise ValueError(f"state memory must have shape {expected}")
+        if not memory.is_cuda or not memory.is_contiguous():
+            raise ValueError("state memory must be contiguous CUDA storage")
+        if _dtype_name(memory) != self.spec.dtype.value:
+            raise ValueError("state memory dtype does not match semantics")
+        runtime_status = sparse_state_spec_status(
+            self.spec,
+            device_type=memory.device.type,
+            compute_capability=torch.cuda.get_device_capability(memory.device),
+        )
+        runtime_status.require()
+        if not isinstance(state.sequence_length, int) or state.sequence_length < 0:
+            raise ValueError("state sequence length must be a non-negative integer")
+
+    def _validate_out(
+        self,
+        out: object | None,
+        state: SparseState,
+        prepared: CertifiedSparseStateOperands,
+    ) -> None:
+        """Reject unsafe preallocated outputs before importing a kernel wrapper."""
+        if out is None:
+            return
+        import torch
+
+        expected = (self.spec.parallel, self.spec.sequence, self.spec.value_dim)
+        if not isinstance(out, torch.Tensor) or tuple(out.shape) != expected:
+            raise ValueError(f"out must be a tensor with shape {expected}")
+        if not out.is_cuda or out.device != state.memory.device:
+            raise ValueError("out must be on the state CUDA device")
+        if out.dtype != state.memory.dtype:
+            raise ValueError("out dtype must match state dtype")
+        if not out.is_contiguous():
+            raise ValueError("out must be contiguous")
+        operands = (
+            state.memory,
+            prepared.routes.read_indices,
+            prepared.routes.read_weights,
+            prepared.routes.write_indices,
+            prepared.routes.write_weights,
+            prepared.values,
+            prepared.beta,
+            prepared.log_decay,
+        )
+        for operand in operands:
+            if operand is not None and torch._C._overlaps(out, operand):
+                raise ValueError(
+                    "out storage must not overlap state, routes, or operands"
+                )
+
+    def execute(
+        self,
+        state: SparseState,
+        prepared: CertifiedSparseStateOperands,
+        *,
+        out: object | None = None,
+    ) -> tuple[object, SparseState]:
+        if prepared.spec != self.spec:
+            raise ValueError("prepared operands do not match backend semantics")
+        prepared.require_intact()
+        self._validate_state(state)
+        if state.memory.device != prepared.routes.read_indices.device:
+            raise ValueError("state and routes must share one CUDA device")
+        self._validate_out(out, state, prepared)
+        from urm.backends.triton.k3 import sparse_state_read, sparse_state_update  # same module
+
+        if self.spec.operation is SparseStateOperation.READ_ONLY:
+            readings = sparse_state_read(
+                state.memory,
+                prepared.routes.read_indices,
+                prepared.routes.read_weights,
+                out=out,
+            )
+            return readings, state
+        readings, memory = sparse_state_update(
+            state.memory,
+            prepared.routes.write_indices,
+            prepared.routes.write_weights,
+            prepared.values,
+            prepared.beta,
+            prepared.log_decay,
+            prepared.routes.read_indices,
+            prepared.routes.read_weights,
+            read_before_update=self.spec.read_timing is SparseReadTiming.BEFORE_UPDATE,
+            out=out,
+        )
+        state.memory = memory
+        state.sequence_length += self.spec.sequence
+        return readings, state
+
+    @staticmethod
+    def capability() -> dict[str, object]:
+        envelope = FROZEN_V0_ENVELOPE
+        return {
+            "name": NATIVE_SPARSE_STATE_MIXER_NAME,
+            "schema_version": envelope.schema_version,
+            "native_urm_lowering": True,
+            "maximum_parallel": envelope.maximum_parallel,
+            "maximum_sequence": envelope.maximum_sequence,
+            "maximum_slots_per_partition": envelope.maximum_slots_per_partition,
+            "maximum_value_dim": envelope.maximum_value_dim,
+            "maximum_route_width": envelope.maximum_route_width,
+            "supported_dtypes": [dtype.value for dtype in envelope.supported_dtypes],
+            "supported_index_dtypes": list(envelope.supported_index_dtypes),
+            "minimum_compute_capability": list(envelope.minimum_compute_capability),
+        }
+
+    def launch_schedule(self) -> dict[str, str | int]:
+        return sparse_state_launch_schedule(self.spec)
+
+
+
+# K3 native route backend (dispatch; certification in runtime.certification)
+
+
+class TritonSparseRouteBackend:
+    """URM-native lowering for the frozen factorized additive top-k route."""
+
+    name = NATIVE_SPARSE_ROUTE_NAME
+
+    def __init__(self, spec: SparseRouteSelectionSpec) -> None:
+        self.spec = spec
+        self.support_status(spec).require()
+
+    @staticmethod
+    def support_status(spec: SparseRouteSelectionSpec) -> SparseRouteSupportStatus:
+        if (
+            importlib.util.find_spec("torch") is None
+            or importlib.util.find_spec("triton") is None
+        ):
+            return SparseRouteSupportStatus.no(
+                "missing_dependency", "PyTorch and Triton are required"
+            )
+        if spec.factor_extent > 256 or spec.route_width > 64:
+            return SparseRouteSupportStatus.no(
+                "unsupported_shape", "v0 requires factor extent <=256 and width <=64"
+            )
+        import torch
+
+        if not torch.cuda.is_available():
+            return SparseRouteSupportStatus.no(
+                "unsupported_hardware", "CUDA is unavailable"
+            )
+        return SparseRouteSupportStatus.yes()
+
+    def generate(self, certified: CertifiedSparseRouteScores):
+        import torch
+
+        if certified.spec != self.spec:
+            raise ValueError("certified scores do not match route semantics")
+        certified.require_intact()
+        device = certified.scores.device
+        if torch.cuda.get_device_capability(device) < (8, 0):
+            raise ValueError(
+                f"{NATIVE_SPARSE_ROUTE_NAME} declined [unsupported_hardware]: "
+                "v0 requires SM80 or newer"
+            )
+        from urm.backends.triton.k3 import sparse_route_selection  # same module
+
+        index_dtype = {
+            DType.INT32: torch.int32,
+            DType.INT64: torch.int64,
+        }[self.spec.output_index_dtype]
+        return sparse_route_selection(
+            certified.scores,
+            self.spec.source_extent,
+            self.spec.route_width,
+            index_dtype=index_dtype,
+        )
+
+    def generate_certified(
+        self, certified: CertifiedSparseRouteScores
+    ) -> NativeSparseRouteOutput:
+        addresses, weights = self.generate(certified)
+        return NativeSparseRouteOutput(
+            self.spec,
+            addresses,
+            weights,
+            (addresses._version, weights._version),
+            _ROUTE_OUTPUT_CERTIFICATE,
+        )
+
+    def launch_schedule(self) -> dict[str, int | str]:
+        import triton
+
+        half = self.spec.factor_extent
+        route = max(2, triton.next_power_of_2(self.spec.route_width))
+        return {
+            "schedule_family": "row_owned_factor_topk_canonical_softmax",
+            "block_half": triton.next_power_of_2(half),
+            "block_route": route,
+            "block_pair": route * route,
+            "num_warps": 8 if route * route >= 1024 else 4,
+            "num_stages": 2,
+        }
 
 PROVIDERS = (K3NativeTritonProvider(), K3RouteNativeTritonProvider())

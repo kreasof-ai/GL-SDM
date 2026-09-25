@@ -25,9 +25,11 @@ if not SUPPORT.supported:
         allow_module_level=True,
     )
 
-from urm.backends.historical.triton_k3_state_launcher import (
+from urm.runtime.certification import (
     CertifiedSparseStateRoutes,
     SparseState,
+)
+from urm.backends.triton.k3 import (
     TritonSparseStateMixerBackend,
 )
 from urm.backends.torch.k3 import torch_sparse_state_mixer

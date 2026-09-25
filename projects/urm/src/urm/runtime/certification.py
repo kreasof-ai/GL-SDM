@@ -1,4 +1,13 @@
-"""Capability-checked native backend for the URM SparseStateMixer v0 contract."""
+"""Route and operand certification for the K3 indexed-state family.
+
+This is value/provenance validation — the runtime's job per the runtime
+contract ("runtime owns tensor-value validation, state alias/lifetime checks,
+provider invocation"). It is deliberately free of kernel math: it certifies
+that routes and update operands are well-formed before a provider is invoked,
+and it never recomputes the equation. The native Triton schedule it certifies
+for lives in :mod:`urm.backends.triton.k3`; the capability decision lives in
+:mod:`urm.compiler.select`.
+"""
 
 from __future__ import annotations
 
@@ -20,6 +29,9 @@ from urm.ir.k3 import (
 )
 
 _ROUTE_CERTIFICATE = object()
+_SCORE_CERTIFICATE = object()
+_ROUTE_OUTPUT_CERTIFICATE = object()
+NATIVE_SPARSE_ROUTE_NAME = "urm_native_sparse_route_selection_v0"
 _OPERAND_CERTIFICATE = object()
 
 
@@ -32,6 +44,89 @@ def native_dependencies_available() -> bool:
 
 def _dtype_name(tensor: object) -> str:
     return str(tensor.dtype).removeprefix("torch.")
+
+
+@dataclass(frozen=True, slots=True)
+class SparseRouteSupportStatus:
+    supported: bool
+    code: str
+    reason: str | None = None
+
+    @classmethod
+    def yes(cls):
+        return cls(True, "supported")
+
+    @classmethod
+    def no(cls, code: str, reason: str):
+        return cls(False, code, reason)
+
+    def require(self) -> None:
+        if not self.supported:
+            raise ValueError(
+                f"{NATIVE_SPARSE_ROUTE_NAME} declined [{self.code}]: {self.reason}"
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class CertifiedSparseRouteScores:
+    """Static score contract certified without reading dynamic CUDA values."""
+
+    spec: SparseRouteSelectionSpec
+    scores: object
+    _version: int = field(default=-1, repr=False, compare=False)
+    _certificate: object = field(default=None, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if self._certificate is not _SCORE_CERTIFICATE:
+            raise ValueError("route scores must be created by certify()")
+
+    @classmethod
+    def certify(cls, spec: SparseRouteSelectionSpec, scores: object):
+        import torch
+
+        expected = (spec.parallel, spec.sequence, spec.score_width)
+        if not isinstance(scores, torch.Tensor) or tuple(scores.shape) != expected:
+            raise ValueError(f"scores must have shape {expected}")
+        expected_dtype = {
+            DType.FLOAT32: torch.float32,
+            DType.BFLOAT16: torch.bfloat16,
+        }[spec.dtype]
+        if scores.dtype != expected_dtype:
+            raise ValueError("score dtype must match route semantics")
+        if not scores.is_cuda or not scores.is_contiguous():
+            raise ValueError("scores must be contiguous CUDA storage")
+        return cls(spec, scores, scores._version, _SCORE_CERTIFICATE)
+
+    def require_intact(self) -> None:
+        import torch
+
+        if torch.compiler.is_compiling():
+            return
+        if self.scores._version != self._version:
+            raise ValueError("certified route scores were mutated")
+
+
+@dataclass(frozen=True, slots=True)
+class NativeSparseRouteOutput:
+    """Trusted result produced only by the URM route kernel."""
+
+    spec: SparseRouteSelectionSpec
+    addresses: object
+    weights: object
+    _versions: tuple[int, int] = field(default=(-1, -1), repr=False, compare=False)
+    _certificate: object = field(default=None, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if self._certificate is not _ROUTE_OUTPUT_CERTIFICATE:
+            raise ValueError("native routes must be produced by generate_certified()")
+
+    def require_intact(self) -> None:
+        import torch
+
+        if torch.compiler.is_compiling():
+            return
+        if (self.addresses._version, self.weights._version) != self._versions:
+            raise ValueError("native generated routes were mutated")
 
 
 @dataclass(frozen=True, slots=True)
@@ -215,7 +310,7 @@ class CertifiedSparseStateRoutes:
         write_output: object | None = None,
     ) -> CertifiedSparseStateRoutes:
         """Bridge only trusted URM route-kernel results without GPU value scans."""
-        from urm.backends.historical.triton_k3_route_launcher import NativeSparseRouteOutput
+        
 
         if not isinstance(read_output, NativeSparseRouteOutput):
             raise TypeError("read routes are not certified native route output")
@@ -324,243 +419,3 @@ class CertifiedSparseStateOperands:
 class SparseState:
     memory: object
     sequence_length: int = 0
-
-
-class TritonSparseStateMixerBackend:
-    """Native URM dispatch; no comparator package is imported or consulted."""
-
-    name = NATIVE_SPARSE_STATE_MIXER_NAME
-
-    def __init__(self, spec: SparseStateMixerSpec) -> None:
-        self.spec = spec
-        status = self.support_status(spec)
-        status.require()
-
-    @staticmethod
-    def support_status(spec: SparseStateMixerSpec) -> SparseStateSupportStatus:
-        if not native_dependencies_available():
-            return SparseStateSupportStatus.no(
-                "missing_dependency", "PyTorch and Triton are required"
-            )
-        import torch
-
-        if not torch.cuda.is_available():
-            return SparseStateSupportStatus.no(
-                "unsupported_hardware", "CUDA is unavailable"
-            )
-        return sparse_state_spec_status(
-            spec,
-            device_type="cuda",
-            compute_capability=torch.cuda.get_device_capability(),
-        )
-
-    def prepare(
-        self,
-        routes: CertifiedSparseStateRoutes,
-        *,
-        values: object | None = None,
-        beta: object | None = None,
-        log_decay: object | None = None,
-    ) -> CertifiedSparseStateOperands:
-        import torch
-
-        if routes.spec != self.spec:
-            raise ValueError("certified routes do not match backend semantics")
-        routes.require_intact()
-        supplied = (values, beta, log_decay)
-        if self.spec.operation is SparseStateOperation.READ_ONLY:
-            if any(item is not None for item in supplied):
-                raise ValueError("read-only operation does not accept update operands")
-            tensors = ()
-        else:
-            expected_value = (
-                self.spec.parallel,
-                self.spec.sequence,
-                self.spec.value_dim,
-            )
-            if values is None or tuple(values.shape) != expected_value:
-                raise ValueError(f"values must have shape {expected_value}")
-            expected_scalar = (self.spec.parallel, self.spec.sequence, 1)
-            if beta is None or tuple(beta.shape) != expected_scalar:
-                raise ValueError(f"beta must have shape {expected_scalar}")
-            if log_decay is None or tuple(log_decay.shape) != expected_scalar:
-                raise ValueError(f"log_decay must have shape {expected_scalar}")
-            tensors = supplied
-            route_device = routes.read_indices.device
-            if any(
-                not tensor.is_contiguous()
-                or tensor.device != route_device
-                or _dtype_name(tensor) != self.spec.dtype.value
-                for tensor in tensors
-            ):
-                raise ValueError(
-                    "update operands must be contiguous and match route device/dtype"
-                )
-            if not all(bool(torch.isfinite(tensor).all().item()) for tensor in tensors):
-                raise ValueError("update operands must be finite")
-        return CertifiedSparseStateOperands(
-            self.spec,
-            routes,
-            values,
-            beta,
-            log_decay,
-            tuple(tensor._version for tensor in tensors),
-            _OPERAND_CERTIFICATE,
-        )
-
-    def _prepare_generated_routes(
-        self,
-        routes: CertifiedSparseStateRoutes,
-        *,
-        values: object | None = None,
-        beta: object | None = None,
-        log_decay: object | None = None,
-    ) -> CertifiedSparseStateOperands:
-        """Internal cheap bridge for operands certified by a native pipeline."""
-        if routes.spec != self.spec:
-            raise ValueError("generated routes do not match backend semantics")
-        routes.require_intact()
-        tensors = tuple(
-            tensor for tensor in (values, beta, log_decay) if tensor is not None
-        )
-        return CertifiedSparseStateOperands(
-            self.spec,
-            routes,
-            values,
-            beta,
-            log_decay,
-            tuple(tensor._version for tensor in tensors),
-            _OPERAND_CERTIFICATE,
-        )
-
-    def _validate_state(self, state: SparseState) -> None:
-        import torch
-
-        memory = state.memory
-        expected = (
-            self.spec.parallel,
-            self.spec.slots_per_partition,
-            self.spec.value_dim,
-        )
-        if tuple(memory.shape) != expected:
-            raise ValueError(f"state memory must have shape {expected}")
-        if not memory.is_cuda or not memory.is_contiguous():
-            raise ValueError("state memory must be contiguous CUDA storage")
-        if _dtype_name(memory) != self.spec.dtype.value:
-            raise ValueError("state memory dtype does not match semantics")
-        runtime_status = sparse_state_spec_status(
-            self.spec,
-            device_type=memory.device.type,
-            compute_capability=torch.cuda.get_device_capability(memory.device),
-        )
-        runtime_status.require()
-        if not isinstance(state.sequence_length, int) or state.sequence_length < 0:
-            raise ValueError("state sequence length must be a non-negative integer")
-
-    def _validate_out(
-        self,
-        out: object | None,
-        state: SparseState,
-        prepared: CertifiedSparseStateOperands,
-    ) -> None:
-        """Reject unsafe preallocated outputs before importing a kernel wrapper."""
-        if out is None:
-            return
-        import torch
-
-        expected = (self.spec.parallel, self.spec.sequence, self.spec.value_dim)
-        if not isinstance(out, torch.Tensor) or tuple(out.shape) != expected:
-            raise ValueError(f"out must be a tensor with shape {expected}")
-        if not out.is_cuda or out.device != state.memory.device:
-            raise ValueError("out must be on the state CUDA device")
-        if out.dtype != state.memory.dtype:
-            raise ValueError("out dtype must match state dtype")
-        if not out.is_contiguous():
-            raise ValueError("out must be contiguous")
-        operands = (
-            state.memory,
-            prepared.routes.read_indices,
-            prepared.routes.read_weights,
-            prepared.routes.write_indices,
-            prepared.routes.write_weights,
-            prepared.values,
-            prepared.beta,
-            prepared.log_decay,
-        )
-        for operand in operands:
-            if operand is not None and torch._C._overlaps(out, operand):
-                raise ValueError(
-                    "out storage must not overlap state, routes, or operands"
-                )
-
-    def execute(
-        self,
-        state: SparseState,
-        prepared: CertifiedSparseStateOperands,
-        *,
-        out: object | None = None,
-    ) -> tuple[object, SparseState]:
-        if prepared.spec != self.spec:
-            raise ValueError("prepared operands do not match backend semantics")
-        prepared.require_intact()
-        self._validate_state(state)
-        if state.memory.device != prepared.routes.read_indices.device:
-            raise ValueError("state and routes must share one CUDA device")
-        self._validate_out(out, state, prepared)
-        from urm.backends.triton.k3 import (
-            sparse_state_read,
-            sparse_state_update,
-        )
-
-        if self.spec.operation is SparseStateOperation.READ_ONLY:
-            readings = sparse_state_read(
-                state.memory,
-                prepared.routes.read_indices,
-                prepared.routes.read_weights,
-                out=out,
-            )
-            return readings, state
-        readings, memory = sparse_state_update(
-            state.memory,
-            prepared.routes.write_indices,
-            prepared.routes.write_weights,
-            prepared.values,
-            prepared.beta,
-            prepared.log_decay,
-            prepared.routes.read_indices,
-            prepared.routes.read_weights,
-            read_before_update=self.spec.read_timing is SparseReadTiming.BEFORE_UPDATE,
-            out=out,
-        )
-        state.memory = memory
-        state.sequence_length += self.spec.sequence
-        return readings, state
-
-    @staticmethod
-    def capability() -> dict[str, object]:
-        envelope = FROZEN_V0_ENVELOPE
-        return {
-            "name": NATIVE_SPARSE_STATE_MIXER_NAME,
-            "schema_version": envelope.schema_version,
-            "native_urm_lowering": True,
-            "maximum_parallel": envelope.maximum_parallel,
-            "maximum_sequence": envelope.maximum_sequence,
-            "maximum_slots_per_partition": envelope.maximum_slots_per_partition,
-            "maximum_value_dim": envelope.maximum_value_dim,
-            "maximum_route_width": envelope.maximum_route_width,
-            "supported_dtypes": [dtype.value for dtype in envelope.supported_dtypes],
-            "supported_index_dtypes": list(envelope.supported_index_dtypes),
-            "minimum_compute_capability": list(envelope.minimum_compute_capability),
-        }
-
-    def launch_schedule(self) -> dict[str, str | int]:
-        return sparse_state_launch_schedule(self.spec)
-
-
-__all__ = [
-    "CertifiedSparseStateOperands",
-    "CertifiedSparseStateRoutes",
-    "SparseState",
-    "TritonSparseStateMixerBackend",
-    "native_dependencies_available",
-]

@@ -226,9 +226,11 @@ def _make_case(case, torch):
         MODE_TRAINING,
         UrmSparseDeltaMemoryAdapter,
     )
-    from urm.backends.historical.triton_k3_state_launcher import (
+    from urm.runtime.certification import (
         CertifiedSparseStateRoutes,
         SparseState,
+    )
+    from urm.backends.triton.k3 import (
         TritonSparseStateMixerBackend,
     )
     from urm.ir.program import (
@@ -442,7 +444,7 @@ def _correctness(bundle) -> dict[str, object]:
 def _backward_correctness(bundle) -> dict[str, object]:
     import torch
 
-    from urm.backends.historical.triton_k3_state_launcher import CertifiedSparseStateRoutes, SparseState
+    from urm.runtime.certification import CertifiedSparseStateRoutes, SparseState
     from urm.backends.torch.k3 import torch_sparse_state_mixer
 
     case, prepared = bundle["case"], bundle["prepared"]
@@ -624,7 +626,7 @@ def _forward_workloads(bundle):
 def _backward_workloads(bundle):
     import torch
 
-    from urm.backends.historical.triton_k3_state_launcher import CertifiedSparseStateRoutes, SparseState
+    from urm.runtime.certification import CertifiedSparseStateRoutes, SparseState
 
     prepared, memory = bundle["prepared"], bundle["memory"]
     tensors = (

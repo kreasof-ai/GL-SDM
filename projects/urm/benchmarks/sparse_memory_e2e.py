@@ -244,10 +244,10 @@ def _make_bundle(case, torch):
         MODE_TRAINING,
         UrmSparseDeltaMemoryAdapter,
     )
-    from urm.backends.historical.triton_k3_state_launcher import (
-        CertifiedSparseStateRoutes,
-        SparseState,
-    )
+    from urm.runtime.certification import (
+    CertifiedSparseStateRoutes,
+    SparseState,
+)
     from urm.runtime.bind import compile_sparse_memory_plan
     from urm.ir.program import (
         DType,
@@ -780,7 +780,7 @@ def _backward_memory(bundle, path, torch):
 
 def _training_graph_setup(bundle, path, torch):
     from benchmarks.comparators.sdm.reference import torch_product_key
-    from urm.backends.historical.triton_k3_state_launcher import CertifiedSparseStateRoutes
+    from urm.runtime.certification import CertifiedSparseStateRoutes
     from urm.backends.torch.k3 import torch_sparse_state_mixer
 
     spec = bundle["spec"]
@@ -1054,10 +1054,10 @@ def _route_backward_setup(bundle, path, torch):
 
 
 def _state_backward_setup(bundle, path, torch):
-    from urm.backends.historical.triton_k3_state_launcher import (
-        CertifiedSparseStateRoutes,
-        SparseState,
-    )
+    from urm.runtime.certification import (
+    CertifiedSparseStateRoutes,
+    SparseState,
+)
 
     spec = bundle["spec"]
     route = bundle["up_route"]
