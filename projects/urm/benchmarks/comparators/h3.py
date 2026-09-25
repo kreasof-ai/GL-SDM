@@ -55,8 +55,17 @@ def h3_source_identity() -> dict[str, str]:
 def _pinned_h3_class():
     identity = h3_source_identity()
     pin_root = str(PINS_DIR / "h3")
-    if pin_root not in sys.path:
-        sys.path.insert(0, pin_root)
+    # Other pinned checkouts (e.g. tucker) also ship a top-level `src` package;
+    # evict any pre-imported one and import with the h3 root first.
+    for name in [m for m in sys.modules if m == "src" or m.startswith("src.")]:
+        sys.modules.pop(name, None)
+    if pin_root in sys.path:
+        sys.path.remove(pin_root)
+    sys.path.insert(0, pin_root)
+    import src  # noqa: PLC0415 — rebind a possibly-namespace `src` package
+
+    if getattr(src, "__file__", None) is None:  # namespace package (no __init__)
+        src.__path__ = [str(PINS_DIR / "h3" / "src")]
     import src.models.ssm.h3 as pinned  # noqa: PLC0415
 
     if Path(pinned.__file__).resolve() != Path(identity["source_path"]):

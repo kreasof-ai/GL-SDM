@@ -20,35 +20,31 @@ EXPECTED_TUCKER_SOURCE_SHA256 = (
 
 @lru_cache(maxsize=1)
 def _tucker_operator():
-    import sys
+    import importlib.util
 
     identity = tucker_source_identity()
-    vit_root = str(Path(identity["source_path"]).resolve().parents[2])
-    if sys.path[0] != vit_root:
-        if vit_root in sys.path:
-            sys.path.remove(vit_root)
-        sys.path.insert(0, vit_root)
-    source = importlib.import_module("src.attn.triton.tucker_attn")
-    if str(Path(source.__file__).resolve()) != identity["source_path"]:
-        raise RuntimeError(
-            f"src.attn.triton.tucker_attn resolved to {source.__file__}, "
-            f"not the pinned {identity['source_path']}"
-        )
-    return source.FlashAttentionTucker(causal=False, attn_autotune=False)
+    # Load the pinned Triton kernel directly by absolute path — the file imports
+    # only torch/triton, so no `src.` package resolution (which collides with
+    # other pinned checkouts' namespace `src` packages) is involved.
+    spec = importlib.util.spec_from_file_location(
+        "tucker_attn_pinned", identity["source_path"]
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load pinned tucker source at {identity['source_path']}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.FlashAttentionTucker(causal=False, attn_autotune=False)
 
 
 @lru_cache(maxsize=1)
 def tucker_source_identity() -> dict[str, str]:
-    import sys
-
-    pin_vit = str(PINS_TUCKER_VIT)
-    if pin_vit not in sys.path:
-        sys.path.insert(0, pin_vit)
-    module = importlib.import_module("src.attn.triton.tucker_attn")
-    source = Path(module.__file__).resolve()
-    repository = next(
-        (parent for parent in source.parents if (parent / ".git").exists()), None
-    )
+    source = (PINS_TUCKER_VIT / "src" / "attn" / "triton" / "tucker_attn.py").resolve()
+    if not source.exists():
+        raise RuntimeError(
+            f"pinned tucker checkout missing at {source}; run "
+            "benchmarks/provision_comparators.py tucker"
+        )
+    repository = PINS_TUCKER_VIT.parent
     if repository is None:
         raise RuntimeError(f"could not identify Tucker source checkout for {source}")
     revision = subprocess.check_output(
