@@ -623,18 +623,35 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
         name="urm.unified.k2.state_reference.v1",
         backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
         supported_visitors=frozenset(),
+        # The Torch reference K2 executor dispatches every admitted contract:
+        # the canonical law plus the normalized, elementwise-gate, and
+        # generalized-transition (A8) forms.
+        semantic_contracts=frozenset(
+            {
+                "k2_canonical_linear_delta_v1",
+                "k2_normalized_v1",
+                "k2_elementwise_gate_v1",
+                "k2_generalized_transition_v1",
+            }
+        ),
     ),
+    # The native Triton K2 scan implements only the canonical law faithfully; the
+    # normalized denominator law, the elementwise gate, and the A8 generalized
+    # transitions diverge from the pinned reference, so the native anchors decline
+    # them via the equation-contract gate (they stay on the reference tier).
     ExecutionAnchor(
         kind=AnchorKind.RECURRENT_SCAN,
         name=NATIVE_DIAGONAL_RECURRENCE_ANCHOR_NAME,
         backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
         supported_visitors=frozenset(),
+        semantic_contracts=frozenset({"k2_canonical_linear_delta_v1"}),
     ),
     ExecutionAnchor(
         kind=AnchorKind.RECURRENT_SCAN,
         name=NATIVE_MATRIX_STATE_RECURRENCE_ANCHOR_NAME,
         backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
         supported_visitors=frozenset(),
+        semantic_contracts=frozenset({"k2_canonical_linear_delta_v1"}),
     ),
     ExecutionAnchor(
         kind=AnchorKind.GROUPED_GEMM,

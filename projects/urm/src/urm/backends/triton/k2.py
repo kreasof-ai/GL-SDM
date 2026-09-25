@@ -1159,6 +1159,15 @@ def linear_delta_state(
     oracle and Torch reference. The descriptor is decomposed into the native
     kernel's semantic knobs here — the only place that translation happens.
     """
+    if spec.normalized:
+        # The native kernel's normalizer reads y/max(q·z, ε); the pinned law is
+        # y/((scale·q·norm)+ε). The provider declines normalized specs before this
+        # point; this guard keeps direct callers honest too.
+        raise ValueError(
+            "native K2 does not implement the normalized variant (denominator law differs)"
+        )
+    if spec.gate_scope.value == "elementwise":
+        raise ValueError("native K2 does not implement the elementwise gate scope")
     gate = spec.gate_scope.value
     granularity = {
         "none": "none",
@@ -1198,34 +1207,61 @@ def linear_delta_state(
 
 
 class _K2NativeBase:
-    """Native K2 anchors share the typed request/result ABI. Until a qualified
-    Triton K2 schedule is admitted (Gate 2), the native tier executes the
-    reference recurrence so the public path stays fail-closed and honest."""
+    """Native K2 anchors run the fused Triton matrix-state recurrence.
+
+    The honest native envelope is the canonical law: the delta/additive update,
+    gate scopes ``none``/``scalar``/``head``/``channel``, and before/after read
+    timing — verified against the Torch reference and the pinned sources for
+    output and final state. The provider DECLINES the descriptor features whose
+    native kernel semantics diverge from the pinned law, so the native tier never
+    silently executes the wrong equation:
+
+    - ``normalized`` — the kernel reads ``y/max(q·z, ε)`` but the pinned law is
+      ``y/((scale·q·norm) + ε)`` (verified divergence); the reference tier owns it.
+    - ``elementwise`` gate scope — the per-element ``[K, V]`` Mamba-1 gate has no
+      native branch (single-client, reference-tier per the two-client rule).
+    - the A8 transition features (``erase_gate``/``write_gate``/``predict_key``/
+      ``low_rank``/``num_deltas > 1``) — the kernel's dual-gate/multi-delta forms
+      diverge from the pinned reference (verified); they stay on the reference tier
+      until a faithful native schedule is qualified.
+    """
 
     family = "k2"
     tier = "native"
 
     def decline(self, request) -> str | None:
-        from ...ir.program import LinearDeltaSpec
+        from ...ir.program import K2GateScope, LinearDeltaSpec
 
-        if not isinstance(request.descriptor, LinearDeltaSpec):
+        spec = request.descriptor
+        if not isinstance(spec, LinearDeltaSpec):
             return "K2 providers require a closed LinearDeltaSpec"
+        if request.accumulation_dtype != "float32":
+            return "native K2 requires float32 accumulation"
+        if spec.normalized:
+            return (
+                "native K2 declines the normalized variant: the kernel reads "
+                "y/max(q·z, ε) but the pinned law is y/((scale·q·norm)+ε)"
+            )
+        if spec.gate_scope is K2GateScope.ELEMENTWISE:
+            return (
+                "native K2 declines the elementwise gate scope: the per-element "
+                "[K,V] gate is reference-tier only (single-client, two-client rule)"
+            )
+        if spec.erase_gate or spec.write_gate or spec.predict_key or spec.low_rank or spec.num_deltas > 1:
+            return (
+                "native K2 declines the A8 transition features (erase/write/predict/"
+                "low_rank/multi-delta): the kernel forms diverge from the pinned law"
+            )
         return None
 
     def execute(self, request, operands):
-        from ..torch.k2 import linear_delta_state
-
         scale_op = operands.get("scale")
-        result = linear_delta_state(
+        out, final_state = linear_delta_state(
             operands["initial_state"], operands["key"], operands["query"],
-            operands["value"], operands["beta"], operands["log_decay"],
+            operands["value"], operands["beta"], operands.get("log_decay"),
             spec=request.descriptor,
             scale=None if scale_op is None else float(scale_op),
         )
-        if request.descriptor.normalized:
-            out, (final_state, denominator) = result
-            return {"output": out, "final_state": final_state, "final_denominator": denominator}
-        out, final_state = result
         return {"output": out, "final_state": final_state}
 
 

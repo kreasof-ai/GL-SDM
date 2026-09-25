@@ -536,6 +536,26 @@ def _equation_contract_for(op: SemanticNode) -> str | None:
             # native/SDPA softmax anchors decline rather than execute the wrong law.
             return f"k1_{k1.reducer_law.value}_v1"
         return "normalized_softmax_attention_v1"
+    if isinstance(op, LinearDeltaState):
+        # The canonical K2 law (delta/additive update, diagonal gate scopes
+        # none/scalar/head/channel, before/after read) is the baseline contract the
+        # native Triton scan and the reference both implement. The features whose
+        # native semantics diverge from the pinned law are distinct contracts so the
+        # native anchors decline them (rather than execute the wrong equation):
+        #   normalized       — kernel reads y/max(q·z,ε); pinned law is y/((scale·q·norm)+ε)
+        #   elementwise gate — the per-element [K,V] Mamba-1 gate (reference-tier only)
+        #   A8 transitions   — erase/write/predict/low_rank/multi-delta (kernel diverges)
+        spec = op.spec
+        if spec.normalized:
+            return "k2_normalized_v1"
+        if spec.gate_scope.value == "elementwise":
+            return "k2_elementwise_gate_v1"
+        if (
+            spec.erase_gate or spec.write_gate or spec.predict_key
+            or spec.low_rank or spec.num_deltas > 1
+        ):
+            return "k2_generalized_transition_v1"
+        return "k2_canonical_linear_delta_v1"
     return None
 
 
