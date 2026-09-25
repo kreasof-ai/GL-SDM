@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ...ir.program import K1Descriptor, K1ScaleRule, K1ScoreLaw
+from ...ir.program import K1Descriptor, K1ReducerLaw, K1ScaleRule, K1ScoreLaw
 
 
 def _torch() -> Any:
@@ -76,19 +76,54 @@ def k1_softmax_attention(
         scores = torch.matmul(q, k.transpose(-1, -2)) * resolved_scale
     if score_bias is not None:
         scores = scores + score_bias.to(torch.float32)
+    # Non-softmax reducers (threshold/squared) zero masked positions; softmax uses -inf.
+    mask_value = (
+        0.0 if descriptor.reducer_law is not K1ReducerLaw.SOFTMAX else float("-inf")
+    )
     if descriptor.causal:
         length_q, length_k = scores.shape[-2], scores.shape[-1]
         mask = torch.ones(length_q, length_k, dtype=torch.bool, device=scores.device).tril_(
             diagonal=length_k - length_q
         )
-        scores = scores.masked_fill(~mask, float("-inf"))
+        scores = scores.masked_fill(~mask, mask_value)
     if attention_mask is not None:
         mask = attention_mask
         if mask.dim() == 2:
             mask = mask.view(1, 1, *mask.shape)
         elif mask.dim() == 3:
             mask = mask.unsqueeze(1)
-        scores = scores.masked_fill(~mask, float("-inf"))
+        scores = scores.masked_fill(~mask, mask_value)
+    if descriptor.reducer_law is K1ReducerLaw.THRESHOLD_RELU_POWER:
+        # out = (ReLU(s − τ))^p @ V, no denominator. τ_i = β·sqrt(2·log(i+1)/d);
+        # the causal mask zeroes j>i before the threshold. i is the query position.
+        d = query.shape[-1]
+        i = torch.arange(1, scores.shape[-2] + 1, device=scores.device, dtype=torch.float32)
+        tau = descriptor.threshold_beta * torch.sqrt(2.0 * torch.log(i) / d)  # [Ti]
+        relu = torch.clamp(scores - tau.view(1, 1, -1, 1), min=0.0)
+        weights = relu.pow(descriptor.relu_power)
+        return torch.matmul(weights, v).transpose(1, 2).to(value.dtype)
+    if descriptor.reducer_law is K1ReducerLaw.SQUARED_SUM:
+        # A[t,s] = Σ_g (q_g·k_g)² over squared_sum_groups groups (the head splits
+        # into groups of E = D/M). o = (Σ_s A·v_s)/max(Σ_s A, 1) — a positive score
+        # with sum normalization, no softmax. Causal mask zeroed future scores above.
+        d = query.shape[-1]
+        M = descriptor.squared_sum_groups or 1
+        E = d // M
+        # Recompute the per-group dot from the un-squared q/k (scores holds the
+        # full masked dot only for M==1; for M>1 we need the group decomposition).
+        qg = q.view(*q.shape[:-1], M, E)                             # [B,H,Ti,M,E]
+        kg = k.view(*k.shape[:-1], M, E)                             # [B,H,Tj,M,E]
+        gd = torch.einsum("bhime,bhjme->bhijm", qg, kg) * resolved_scale
+        A = gd.pow(2.0).sum(-1)                                      # [B,H,Ti,Tj]
+        if descriptor.causal:
+            length_q, length_k = A.shape[-2], A.shape[-1]
+            mask = torch.ones(length_q, length_k, dtype=torch.bool, device=A.device).tril_(
+                diagonal=length_k - length_q
+            )
+            A = A.masked_fill(~mask, 0.0)
+        num = torch.matmul(A, v)                                     # [B,H,Ti,D]
+        den = A.sum(dim=-1, keepdim=True).clamp(min=1.0)             # 1-safe denominator
+        return (num / den).transpose(1, 2).to(value.dtype)
     probs = torch.softmax(scores, dim=-1)
     # Closed all-masked-row policy: a fully masked row returns zero.
     probs = torch.nan_to_num(probs, nan=0.0)

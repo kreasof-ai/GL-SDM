@@ -24,6 +24,7 @@ from urm.ir.program import (
     EpilogueSpec,
     K1Descriptor,
     K1HeadMap,
+    K1ReducerLaw,
     K1ScaleRule,
     K1ScoreLaw,
     K2GateScope,
@@ -116,6 +117,10 @@ def _k1_descriptor(params: dict[str, Any], roles: tuple[tuple[str, str], ...]) -
         score_bias="score_bias" in dict(roles),
         attention_mask="attention_mask" in dict(roles),
         score_law=_enum(K1ScoreLaw, params.get("score_law", "dot"), field="k1.score_law"),
+        reducer_law=_enum(K1ReducerLaw, params.get("reducer_law", "softmax"), field="k1.reducer_law"),
+        threshold_beta=params.get("threshold_beta"),
+        relu_power=params.get("relu_power"),
+        squared_sum_groups=params.get("squared_sum_groups"),
         accumulation_dtype=DType.FLOAT32,
     )
 
@@ -128,6 +133,7 @@ _K1_PARAMS = frozenset(
         "query_domain", "source_domain", "selection", "normalization", "top_k",
         "threshold", "page_size", "capacity_policy", "deterministic", "causal",
         "scale_rule", "head_map", "group_size", "roles", "epilogue", "score_law",
+        "reducer_law", "threshold_beta", "relu_power", "squared_sum_groups",
     }
 )
 

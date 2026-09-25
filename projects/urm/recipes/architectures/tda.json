@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "name": "tda",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.tda",
+    "notes": "arch-068 (A13 score/reducer). Threshold Rectified Attention: out = (ReLU(Q@K^T − τ))^p @ V with position-dependent threshold τ_i = β·sqrt(2·log(i+1)/d), causal mask zeroing j>i before the threshold, NO normalization denominator — the typed K1ReducerLaw.THRESHOLD_RELU_POWER reducer. Differential variant: optional cosine L2-normalization of q1/k1/q2/k2, two threshold-ReLU paths, out = out1 − clamp(λ,0,1)·out2 — the admitted Diff combinator (typed Merge). Verified against the pinned tda triton_threshold_attention.py. Layer module: architectures/tda.py."
+  },
+  "layers": [
+    {
+      "id": "tda_layer",
+      "operation": "weighted_reduce",
+      "external_component": "architectures.tda.TDALayer",
+      "params": {
+        "axis": "A13 score/reducer: THRESHOLD_RELU_POWER reducer (no denominator) + Diff combinator for the two-branch merge",
+        "external_stages": ["Q/K/V projections", "optional cosine L2-normalization", "λ clamp to [0,1]"],
+        "reducer_law": "threshold_relu_power",
+        "combinator": "Diff (differential variant): two K1 threshold calls + typed merge",
+        "causal": true
+      },
+      "state": {},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Single-path and differential parity vs the equation transcription (the pinned is a Triton kernel with no torch reference), the threshold-zeroing invariant (rows below τ are exactly zero), and gradients in tests/test_architectures_tda.py. The cosine L2-normalization flag, the exact source threshold gradient and any native threshold kernel are residual, not claimed."
+  }
+}

@@ -427,6 +427,21 @@ class K1ScoreLaw(StrEnum):
     CHANNEL_DECAY = "channel_decay"
 
 
+class K1ReducerLaw(StrEnum):
+    """The closed K1 reducer algebra (generality axis A13).
+
+    ``SOFTMAX``: softmax over the source domain. ``THRESHOLD_RELU_POWER``:
+    ``(ReLU(s − τ))^p`` with a position-dependent threshold ``τ_i = β·sqrt(2·
+    log(i+1)/d)`` and NO normalization denominator (TDA). ``SQUARED_SUM``: a
+    non-negative squared score ``A = Σ_g (scale·q_g·k_g)²`` with sum
+    normalization ``o = (Σ A·v)/max(Σ A, 1)`` (KATA).
+    """
+
+    SOFTMAX = "softmax"
+    THRESHOLD_RELU_POWER = "threshold_relu_power"
+    SQUARED_SUM = "squared_sum"
+
+
 @dataclass(frozen=True, slots=True)
 class K1Descriptor:
     """The closed softmax-attention equation contract for one K1 node.
@@ -445,6 +460,13 @@ class K1Descriptor:
     score_bias: bool = False
     attention_mask: bool = False
     score_law: K1ScoreLaw = K1ScoreLaw.DOT
+    reducer_law: K1ReducerLaw = K1ReducerLaw.SOFTMAX
+    # THRESHOLD_RELU_POWER parameters (closed semantic fields, never runtime math).
+    threshold_beta: float | None = None
+    relu_power: float | None = None
+    # SQUARED_SUM group count (KATA): the head splits into squared_sum_groups
+    # groups; A = Σ_g (scale·q_g·k_g)². None means the full dot squared.
+    squared_sum_groups: int | None = None
     masked_row: str = "zero"  # closed edge policy: fully masked rows return zero
     accumulation_dtype: DType = DType.FLOAT32
 
@@ -458,6 +480,16 @@ class K1Descriptor:
             raise ValueError("the only defined all-masked-row policy is 'zero'")
         if self.accumulation_dtype is not DType.FLOAT32:
             raise ValueError("K1 v1 requires float32 accumulation")
+        if self.reducer_law is K1ReducerLaw.THRESHOLD_RELU_POWER:
+            if self.threshold_beta is None or self.relu_power is None:
+                raise ValueError("threshold_relu_power requires threshold_beta and relu_power")
+        else:
+            if self.threshold_beta is not None or self.relu_power is not None:
+                raise ValueError("threshold_beta/relu_power are only legal with threshold_relu_power")
+        if self.reducer_law is not K1ReducerLaw.SOFTMAX and self.score_law is K1ScoreLaw.CHANNEL_DECAY:
+            raise ValueError("channel_decay score law is only defined with the softmax reducer")
+        if self.squared_sum_groups is not None and self.reducer_law is not K1ReducerLaw.SQUARED_SUM:
+            raise ValueError("squared_sum_groups is only legal with the squared_sum reducer")
 
 
 @dataclass(frozen=True, slots=True)
