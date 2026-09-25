@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "name": "moba",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.fla_k2",
+    "notes": "arch-006 (A2 indexed-K1). MoBA: sequence split into chunks (last chunk excluded for causality); gate score = q·mean_pool(k_block); top-(topk-1) blocks per (head, token) with the current block always chunk-local; selected-block tokens gathered and attended. The block-gating route is external; the mixer is the shared typed indexed-K1 call (architectures/indexed_attention.py). The chunk-local self-attention merge and the full MoBA layer are residual. Layer module: architectures/moba.py."
+  },
+  "layers": [{"id": "moba_layer", "operation": "weighted_reduce", "external_component": "architectures.moba.MoBALayer", "params": {"axis": "A2 indexed-K1: top-k block route + gather-attend", "external_stages": ["mean-pool block gate route", "block→token expansion + causality mask", "chunk-local self-attention merge"], "selection": "gathered (indexed)", "normalization": "softmax"}, "state": {}, "cache": {}}],
+  "coverage": {"level": "generic_model_integration", "validated": true, "notes": "Gather-attend parity vs the equation oracle, the route-causality invariant (no future token selected) in tests/test_architectures_a2_indexed.py. The chunk-local merge and the full layer are residual, not claimed."}
+}
