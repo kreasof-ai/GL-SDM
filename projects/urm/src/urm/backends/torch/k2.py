@@ -90,6 +90,10 @@ def linear_delta_state(
         norm = torch.zeros(m.shape[0], m.shape[1], m.shape[2], dtype=torch.float32, device=m.device)
 
     T = v.shape[2]
+    if spec.num_deltas > 1:
+        # k/v/beta carry R factors per token (T*R time axis); the token count is
+        # the query length.
+        T = q.shape[2]
     outs = []
     for t in range(T):
         if spec.gate_scope is K2GateScope.CHANNEL:
@@ -105,9 +109,24 @@ def linear_delta_state(
 
         # The generalized rank-1 transition (A8). The read/erase key may be gated
         # (erase_gate, GDN2 b), replaced by an independent predict key (Comba p),
-        # or augmented by an additive low-rank transition (alpha^T·S)⊗beta read off
-        # the PRE-decay state (IPLR/DPLR/RWKV-7).
-        if spec.low_rank:
+        # augmented by an additive low-rank transition (alpha^T·S)⊗beta read off
+        # the PRE-decay state (IPLR/DPLR/RWKV-7), or iterated as an ordered
+        # multi-delta (rank-R) product within the token (Gated DeltaProduct).
+        if spec.num_deltas > 1:
+            # Ordered multi-delta: R sequential delta updates starting from the
+            # decayed state z, each factor retrieving from the state the previous
+            # factor produced. k/v/beta carry R factors per token (T*R time axis).
+            m = z
+            for j in range(spec.num_deltas):
+                k_j = k[:, :, t * spec.num_deltas + j]
+                v_j = v[:, :, t * spec.num_deltas + j]
+                b_j = b[:, :, t * spec.num_deltas + j]
+                retr_j = torch.einsum("bhk,bhkv->bhv", k_j, m)
+                delta_j = b_j.unsqueeze(-1) * (v_j - retr_j)
+                m = m + k_j.unsqueeze(-1) * delta_j.unsqueeze(-2)
+            if norm is not None:
+                norm = norm + k[:, :, t * spec.num_deltas]
+        elif spec.low_rank:
             # Additive orientation: S_t = D_t·S_{t-1} + k_t⊗v_t + (α_tᵀS_{t-1})⊗β_t.
             # The low-rank read αᵀS uses the pre-decay state m.
             a = alpha.to(torch.float32)

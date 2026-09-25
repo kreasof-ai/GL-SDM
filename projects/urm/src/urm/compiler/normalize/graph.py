@@ -128,7 +128,7 @@ def _k1_descriptor(params: dict[str, Any], roles: tuple[tuple[str, str], ...]) -
 
 _K2_PARAMS = frozenset(
     {"delta", "gate_scope", "read_timing", "scale_rule", "normalized", "epsilon", "roles",
-     "erase_gate", "write_gate", "predict_key", "low_rank"}
+     "erase_gate", "write_gate", "predict_key", "low_rank", "num_deltas"}
 )
 _K1_PARAMS = frozenset(
     {
@@ -163,6 +163,7 @@ def _linear_delta_spec(params: dict[str, Any], roles: Any) -> LinearDeltaSpec:
         write_gate="write_gate" in role_names,
         predict_key="predict_key" in role_names,
         low_rank=bool(params.get("low_rank", False)),
+        num_deltas=int(params.get("num_deltas", 1)),
     )
 
 

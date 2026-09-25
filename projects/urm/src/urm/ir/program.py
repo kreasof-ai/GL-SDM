@@ -219,6 +219,11 @@ class LinearDeltaSpec:
     # low_rank: an additive rank-1 state transition (alpha^T S)⊗beta read off the
     # PRE-decay state (IPLR/DPLR/RWKV-7). Adds the alpha/beta roles.
     low_rank: bool = False
+    # num_deltas: the ordered multi-delta (rank-R) transition — R sequential delta
+    # updates within one token, each retrieving from the state the previous factor
+    # produced (Gated DeltaProduct). 1 is the canonical single delta. k/v/beta carry
+    # R factors per token in the time axis.
+    num_deltas: int = 1
     accumulation_dtype: DType = DType.FLOAT32
 
     def __post_init__(self) -> None:
@@ -230,6 +235,10 @@ class LinearDeltaSpec:
             raise ValueError("low_rank transition is the additive orientation; delta=True is the correction orientation")
         if self.predict_key and self.erase_gate:
             raise ValueError("predict_key and erase_gate both redefine the read key; use one")
+        if self.num_deltas < 1:
+            raise ValueError("num_deltas must be >= 1")
+        if self.num_deltas > 1 and (self.low_rank or self.predict_key or self.erase_gate or self.write_gate):
+            raise ValueError("the ordered multi-delta transition is not combined with low_rank/predict/erase/write gates")
 
 
 class SparseScoreComposition(StrEnum):
