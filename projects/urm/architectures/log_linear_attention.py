@@ -23,6 +23,10 @@ import math
 
 import torch
 
+from urm.compiler.normalize.graph import normalize_graph_document
+from urm.compiler.pipeline import CompilationIntent, compile_graph
+from urm.frontend.recipes import load_graph_recipe_document
+
 
 def segsum(x: torch.Tensor) -> torch.Tensor:
     """Cumulative segment sum: xs[i,j] = sum_{j<k<=i} x_k, masked lower-triangular."""
@@ -112,7 +116,11 @@ def log_linear_disjoint_reference(q, k, v, g, level_scales):
 
 
 class LogLinearAttentionLayer(torch.nn.Module):
-    """Log-linear attention mixer (full-matrix reference form of the hierarchical law)."""
+    """Log-linear attention mixer (full-matrix reference form of the hierarchical law).
+
+    Retained as the independent full-matrix comparator; the public banked path is
+    :class:`BankedLogLinearMixer`.
+    """
 
     def __init__(self, num_heads: int, head_dim: int):
         super().__init__()
@@ -126,8 +134,63 @@ class LogLinearAttentionLayer(torch.nn.Module):
         return torch.einsum("bhlc,bchp->blhp", M, v)
 
 
+class BankedLogLinearMixer(torch.nn.Module):
+    """The shared A4 hierarchical mixer routed through the public ``dyadic_banked_state`` op.
+
+    Both arch-009 (Log-linear attention) and arch-046 (LogLinearMamba2) use this:
+    the banked dyadic state law is identical; only the frontend differs (arch-046
+    adds the Mamba-2 discretization). ``log_linear_disjoint_reference`` and the
+    full-matrix :class:`LogLinearAttentionLayer` are retained as comparators.
+    """
+
+    def __init__(self, num_heads: int, head_dim: int, num_levels: int, *,
+                 target: str = "reference", intent: str = "inference"):
+        super().__init__()
+        self.num_heads = num_heads
+        self.head_dim = head_dim
+        self.num_levels = num_levels
+        H, D, L = num_heads, head_dim, num_levels
+        document = {
+            "schema_version": 2, "name": "log_linear_banked", "kind": "kernel_fragment",
+            "graph": {
+                "inputs": [
+                    {"name": "query", "dtype": "float32", "shape": ["B", "T", H, D]},
+                    {"name": "key", "dtype": "float32", "shape": ["B", "T", H, D]},
+                    {"name": "value", "dtype": "float32", "shape": ["B", "T", H, D]},
+                    {"name": "log_decay", "dtype": "float32", "shape": ["B", "T", H]},
+                    {"name": "level_scales", "dtype": "float32", "shape": ["B", "T", H, L]},
+                ],
+                "nodes": [
+                    {
+                        "id": "bank", "op": "dyadic_banked_state",
+                        "inputs": ["query", "key", "value", "log_decay", "level_scales"],
+                        "outputs": ["output"],
+                        "params": {
+                            "num_levels": L,
+                            "roles": {
+                                "query": "query", "key": "key", "value": "value",
+                                "log_decay": "log_decay", "level_scales": "level_scales",
+                            },
+                        },
+                    },
+                ],
+                "outputs": ["output"],
+            },
+        }
+        program = normalize_graph_document(load_graph_recipe_document(document).document)
+        self._plan = compile_graph(program, target=target, intent=CompilationIntent(intent))
+
+    def forward(self, q, k, v, g, level_scales):
+        """q/k/v [B,T,H,D]; g per-head log decay [B,T,H]; level_scales [B,T,H,L_levels]."""
+        return self._plan.execute(
+            query=q.float(), key=k.float(), value=v.float(),
+            log_decay=g.float(), level_scales=level_scales.float(),
+        )["output"]
+
+
 __all__ = [
     "LogLinearAttentionLayer",
+    "BankedLogLinearMixer",
     "construct_H_matrix",
     "segsum",
     "dyadic_level_of",

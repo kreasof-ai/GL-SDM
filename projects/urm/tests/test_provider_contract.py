@@ -42,6 +42,7 @@ def test_every_dispatch_entry_is_a_uniform_provider():
             ProviderFamily.K3_ROUTE,
             ProviderFamily.MERGE,
             ProviderFamily.TRIANGULAR_SOLVE,
+            ProviderFamily.DYADIC_BANKED_STATE,
         }
         assert provider.tier in {"reference", "native", "library"}
         assert callable(provider.decline)

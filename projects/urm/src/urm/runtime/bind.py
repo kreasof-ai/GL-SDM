@@ -22,6 +22,7 @@ from urm.backends.contract import ProviderFamily, ProviderRequest
 from urm.backends.registry import discover_providers
 from urm.compiler.pipeline import CompilationResult
 from urm.ir.program import (
+    DyadicBankedState,
     LinearDeltaState,
     Merge,
     ScoreNormalization,
@@ -105,6 +106,9 @@ def _family_and_descriptor(op: SemanticNode) -> tuple[str, Any, dict[str, Any]]:
     if isinstance(op, TriangularSolve):
         # Ordinary typed operator (strict-causal triangular operand correction, UT).
         return (ProviderFamily.TRIANGULAR_SOLVE, op, {})
+    if isinstance(op, DyadicBankedState):
+        # Ordinary typed operator (banked dyadic hierarchical state, A4).
+        return (ProviderFamily.DYADIC_BANKED_STATE, op, {})
     raise PlanBindingError(f"op {op.name!r} ({type(op).__name__}) has no provider family")
 
 
@@ -157,6 +161,12 @@ def _operands_for(
         # Bind the strict-lower probability operand, the per-token diagonal and
         # the right-hand side value by role (never by name).
         return _bind_roles(op, ("probs", "beta", "value"), (), tensors)
+    if family == ProviderFamily.DYADIC_BANKED_STATE:
+        # Bind the per-token q/k/v, the per-head log decay and the per-level
+        # output scales by role (never by name).
+        return _bind_roles(
+            op, ("query", "key", "value", "log_decay", "level_scales"), (), tensors
+        )
     raise PlanBindingError(f"unknown provider family {family!r}")
 
 

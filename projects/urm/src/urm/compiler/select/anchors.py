@@ -50,6 +50,9 @@ class AnchorKind(StrEnum):
     # Strict-causal triangular operand correction (UT) — the data-dependent
     # forward-substitution solve u = (I + diag(β)·strict_tril(P))^{-1}·v.
     TRIANGULAR_SOLVE = "triangular_solve"
+    # Banked dyadic hierarchical state (A4) — a bank of K2-matrix states with a
+    # carry-cascade promote/reset lifecycle (the log-linear mixer).
+    DYADIC_BANKED_STATE = "dyadic_banked_state"
 
 
 class VisitorKind(StrEnum):
@@ -572,6 +575,13 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
     ExecutionAnchor(
         kind=AnchorKind.TRIANGULAR_SOLVE,
         name="urm.unified.triangular_solve.reference.v1",
+        effect=ORDERED_STATE,
+        backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
+    ExecutionAnchor(
+        kind=AnchorKind.DYADIC_BANKED_STATE,
+        name="urm.unified.dyadic_banked_state.reference.v1",
         effect=ORDERED_STATE,
         backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
         supported_visitors=frozenset(),

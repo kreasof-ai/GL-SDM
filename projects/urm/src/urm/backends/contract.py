@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from urm.ir.program import (
+    DyadicBankedState,
     K1Descriptor,
     LinearDeltaSpec,
     Merge,
@@ -44,6 +45,7 @@ class ProviderFamily:
     K3_ROUTE = "k3_route"
     MERGE = "merge"
     TRIANGULAR_SOLVE = "triangular_solve"
+    DYADIC_BANKED_STATE = "dyadic_banked_state"
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,6 +66,7 @@ class ProviderRequest:
         | SparseRouteSelectionSpec
         | Merge
         | TriangularSolve
+        | DyadicBankedState
     )
     mode: str
     accumulation_dtype: str = "float32"

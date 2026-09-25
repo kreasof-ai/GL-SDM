@@ -738,6 +738,50 @@ class TriangularSolve(SemanticOp):
 
 
 @dataclass(frozen=True, slots=True)
+class DyadicBankedState(SemanticOp):
+    """Banked dyadic hierarchical state (generality axis A4).
+
+    A bank of ``num_levels−1`` additive K2-matrix states over the token axis with a
+    dyadic carry-cascade lifecycle. Slot ``S_m`` holds the aligned size-``2^m``
+    block of keys ending at the current position, decayed forward: each step decays
+    every slot by the per-head factor ``exp(g_t)``, reads, writes the rank-1
+    ``k_t v_tᵀ`` into slot 0, then promotes ``S_m → S_{m+1}`` (resetting ``S_m``) on
+    the carry bits ``(~t & (t+1)) − 1``. The output is
+    ``o_t = Σ_l level_scales[t,l] · q_tᵀ S_{l-1}`` (plus the level-0 diagonal
+    ``level_scales[t,0]·(q_t·k_t)·v_t``): each causal pair ``(t, j≤t)`` contributes
+    at exactly one dyadic level (the largest aligned block containing ``j``).
+
+    This is a *bank* of K2-matrix states with a conditional promote/reset lifecycle
+    — a different state structure from the single fixed-address K2 matrix, so it
+    cannot decompose into one ``LinearDeltaState`` scan (the K2 descriptor has no
+    conditional state routing). Log-linear attention (arch-009) and LogLinearMamba2
+    (arch-046) share this exact mixer (the Mamba-2 frontend differs; the banked law
+    is identical). Reference-tier: no native branch — the two-client physical gate
+    would require a structurally independent second family (CAT is the broader A4
+    candidate). Verified against the pinned ``naive_log_linear_attn`` and the
+    disjoint dyadic-block decomposition.
+
+    Roles: ``query``/``key``/``value`` (per-token operands), ``log_decay`` (per-head
+    log decay ``g``), ``level_scales`` (per-token per-level output scales).
+    """
+
+    # ``num_levels`` is a semantic field (the bank depth, = ceil(log2(T))+1 for a
+    # full-length hierarchy). The carry-cascade lifecycle and the per-level output
+    # combination are the closed equation.
+    num_levels: int = 0
+    roles: tuple[tuple[str, str], ...] = ()
+
+    def __post_init__(self) -> None:
+        SemanticOp.__post_init__(self)
+        if self.num_levels < 1:
+            raise ValueError("dyadic_banked_state requires num_levels >= 1")
+
+    @property
+    def effect(self) -> EffectSignature:
+        return ORDERED_STATE
+
+
+@dataclass(frozen=True, slots=True)
 class OrderedRecurrence(SemanticOp):
     """Ordered scan shell; the exact equation stays backend-owned.
 
@@ -856,6 +900,7 @@ SemanticNode = (
     | Matmul
     | Transform
     | TriangularSolve
+    | DyadicBankedState
     | OrderedRecurrence
     | LinearDeltaState
     | StateRead

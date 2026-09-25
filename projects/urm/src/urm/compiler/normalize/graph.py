@@ -21,6 +21,7 @@ from typing import Any
 from urm.ir.program import (
     CapacityPolicy,
     DType,
+    DyadicBankedState,
     EpilogueSpec,
     K1Descriptor,
     K1HeadMap,
@@ -86,6 +87,9 @@ _K2_ROLES = frozenset(
 # TriangularSolve (UT): the strict-lower probability operand, the per-token
 # diagonal, and the right-hand side value.
 _TRISOLVE_ROLES = frozenset({"probs", "beta", "value"})
+# DyadicBankedState (A4): the per-token q/k/v, the per-head log decay, and the
+# per-token per-level output scales.
+_BANKED_ROLES = frozenset({"query", "key", "value", "log_decay", "level_scales"})
 
 
 def _roles(
@@ -305,6 +309,28 @@ def _build_node(node: dict[str, Any], *, index: int) -> SemanticNode:
                 f"node {node_id!r}: triangular_solve is missing required roles {sorted(missing)}"
             )
         return TriangularSolve(name=node_id, inputs=inputs, outputs=outputs, roles=roles)
+    if op == "dyadic_banked_state":
+        # Role-bound (query/key/value/log_decay/level_scales) + the semantic
+        # num_levels field; no other params in v1.
+        _reject_unknown_params(params, frozenset({"roles", "num_levels"}), node_id)
+        roles = _roles(params.get("roles"), legal=_BANKED_ROLES, node_id=node_id)
+        role_names = set(dict(roles))
+        missing = _BANKED_ROLES - role_names
+        if missing:
+            raise NormalizeError(
+                f"node {node_id!r}: dyadic_banked_state is missing required roles {sorted(missing)}"
+            )
+        if "num_levels" not in params:
+            raise NormalizeError(
+                f"node {node_id!r}: dyadic_banked_state requires the num_levels semantic field"
+            )
+        return DyadicBankedState(
+            name=node_id,
+            inputs=inputs,
+            outputs=outputs,
+            num_levels=int(params["num_levels"]),
+            roles=roles,
+        )
     if op == "state_read":
         return StateRead(
             name=node_id,

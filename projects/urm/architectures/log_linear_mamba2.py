@@ -8,23 +8,26 @@ by the Mamba-2 frontend — the ``g`` log-decay comes from the Mamba-2
 ``-exp(A_log)·softplus(a_proj(x)+dt_bias)`` discretization and the per-level
 scales from the level transform.
 
-The hierarchical mixer (construct_H_matrix + the contraction) reuses
-architectures/log_linear_attention.py; the Mamba-2 frontend (A_log/dt_bias/a_proj,
-the level transform, conv short-circuit, norm/gate) is external. The chunked
-streaming kernel (LogLinearAttentionState with partial-chunk carry) is residual.
+The hierarchical mixer (the banked dyadic state law) reuses
+architectures/log_linear_attention.py — now routed through the public
+``dyadic_banked_state`` op via :class:`BankedLogLinearMixer`. The Mamba-2 frontend
+(A_log/dt_bias/a_proj, the level transform, conv short-circuit, norm/gate) is
+external. The chunked *streaming* kernel (the pinned LogLinearAttentionState with
+partial-chunk carry) is a native schedule — residual, not claimed.
 """
 
 from __future__ import annotations
 
 import torch
 
-from architectures.log_linear_attention import construct_H_matrix
+from architectures.log_linear_attention import BankedLogLinearMixer
 
 
 class LogLinearMamba2Layer(torch.nn.Module):
-    """LogLinearMamba2 mixer: Mamba-2 frontend (external) + the shared hierarchical law."""
+    """LogLinearMamba2 mixer: Mamba-2 frontend (external) + the shared public banked law."""
 
-    def __init__(self, hidden_size: int, num_heads: int, head_dim: int, num_levels: int):
+    def __init__(self, hidden_size: int, num_heads: int, head_dim: int, num_levels: int, *,
+                 target: str = "reference", intent: str = "inference"):
         super().__init__()
         self.hidden_size = hidden_size
         self.num_heads = num_heads
@@ -38,6 +41,9 @@ class LogLinearMamba2Layer(torch.nn.Module):
         self.k_proj = torch.nn.Linear(hidden_size, num_heads * head_dim, bias=False)
         self.v_proj = torch.nn.Linear(hidden_size, num_heads * head_dim, bias=False)
         self.level_proj = torch.nn.Linear(hidden_size, num_heads * num_levels, bias=False)
+        # The shared A4 banked mixer, executed through the public dyadic_banked_state op.
+        self._mixer = BankedLogLinearMixer(num_heads, head_dim, num_levels,
+                                           target=target, intent=intent)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         B, T, _ = hidden_states.shape
@@ -50,10 +56,8 @@ class LogLinearMamba2Layer(torch.nn.Module):
             self.a_proj(hidden_states) + self.dt_bias
         )  # [B,T,H]
         level_scales = self.level_proj(hidden_states).view(B, T, H, L)
-        # Shared hierarchical law (arch-009).
-        Hm = construct_H_matrix(g.permute(0, 2, 1), level_scales.permute(0, 2, 3, 1))
-        M = torch.einsum("bhlc,blhn,bchn->bhlc", Hm, q, k)
-        return torch.einsum("bhlc,bchp->blhp", M, v)
+        # Shared hierarchical law (arch-009), executed through the public banked op.
+        return self._mixer(q, k, v, g, level_scales)
 
 
 __all__ = ["LogLinearMamba2Layer"]

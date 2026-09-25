@@ -16,6 +16,7 @@ import pytest
 torch = pytest.importorskip("torch")
 
 from architectures.log_linear_attention import (
+    BankedLogLinearMixer,
     LogLinearAttentionLayer,
     log_linear_disjoint_reference,
 )
@@ -74,6 +75,48 @@ def test_log_linear_gradients_flow():
     g.requires_grad_(True)
     LogLinearAttentionLayer(H, D)(q, k, v, g, ls).square().sum().backward()
     assert g.grad is not None and g.grad.abs().sum().item() > 0
+
+
+def test_banked_public_op_matches_pinned_naive():
+    """The public dyadic_banked_state op reproduces the pinned naive (the banked
+    carry-cascade lifecycle derived to parity)."""
+    q, k, v, g, ls = _operands(seed=3)
+    L = ls.shape[-1]
+    mixer = BankedLogLinearMixer(H, D, L)
+    with torch.no_grad():
+        actual = mixer(q, k, v, g, ls)
+    from benchmarks.comparators.fla_k2 import fla_op
+    naive = fla_op("fla.ops.log_linear_attn.naive.naive_log_linear_attn")
+    expected = naive(q, k, v, g, ls)
+    err = (actual - expected).abs().max().item()
+    assert err < 1e-3, f"banked public op vs pinned naive: max abs err {err}"
+
+
+def test_banked_public_op_matches_disjoint_and_fullmatrix():
+    """The banked op matches both independent comparators across shapes (incl. partial
+    dyadic blocks at non-power-of-two T)."""
+    for (Tl, seed) in ((8, 21), (7, 22), (13, 23), (24, 24)):
+        torch.manual_seed(seed)
+        L = int(math.ceil(math.log2(Tl))) + 1
+        q = torch.randn(2, Tl, H, D); k = torch.randn(2, Tl, H, D); v = torch.randn(2, Tl, H, D)
+        g = torch.nn.functional.logsigmoid(torch.randn(2, Tl, H)); ls = torch.randn(2, Tl, H, L)
+        mixer = BankedLogLinearMixer(H, D, L)
+        with torch.no_grad():
+            banked = mixer(q, k, v, g, ls)
+            disjoint = log_linear_disjoint_reference(q, k, v, g, ls)
+            fullmatrix = LogLinearAttentionLayer(H, D)(q, k, v, g, ls)
+        assert (banked - disjoint).abs().max().item() < 1e-3, f"T={Tl}: banked vs disjoint"
+        assert (banked - fullmatrix).abs().max().item() < 1e-3, f"T={Tl}: banked vs full-matrix"
+
+
+def test_banked_gradients_flow():
+    q, k, v, g, ls = _operands(seed=25)
+    L = ls.shape[-1]
+    mixer = BankedLogLinearMixer(H, D, L)
+    q.requires_grad_(True); ls.requires_grad_(True)
+    mixer(q, k, v, g, ls).square().sum().backward()
+    assert q.grad is not None and q.grad.abs().sum().item() > 0
+    assert ls.grad is not None and ls.grad.abs().sum().item() > 0
 
 
 def test_disjoint_block_form_matches_pinned_naive():

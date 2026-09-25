@@ -80,6 +80,7 @@ from urm.ir.program import (
     StateUpdate,
     Transform,
     TriangularSolve,
+    DyadicBankedState,
     WeightedReduce,
 )
 
@@ -1552,6 +1553,10 @@ class UrmCompiler:
             # Ordinary typed operator (strict-causal triangular operand
             # correction, UT); dispatched through the triangular-solve anchor.
             return AnchorKind.TRIANGULAR_SOLVE, ()
+        if isinstance(op, DyadicBankedState):
+            # Ordinary typed operator (banked dyadic hierarchical state, A4);
+            # dispatched through the dyadic-banked-state anchor.
+            return AnchorKind.DYADIC_BANKED_STATE, ()
         if isinstance(op, Gather):
             return AnchorKind.ROUTED_REDUCTION, ()
         if isinstance(op, OrderedRecurrence):
@@ -1737,6 +1742,7 @@ _GRAPH_TARGETS: dict[str, frozenset[str]] = {
             "urm.unified.k3.sparse_delta_reference.v1",
             "torch.merge.linear_combination.v1",
             "urm.unified.triangular_solve.reference.v1",
+            "urm.unified.dyadic_banked_state.reference.v1",
         }
     ),
     "library": frozenset({"torch.nn.functional.scaled_dot_product_attention"}),

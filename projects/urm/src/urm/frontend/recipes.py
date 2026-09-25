@@ -139,6 +139,7 @@ GRAPH_OPERATIONS: frozenset[str] = frozenset(
         "linear_delta_state",
         "merge",
         "triangular_solve",
+        "dyadic_banked_state",
     }
 )
 
