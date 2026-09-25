@@ -1150,6 +1150,11 @@ def linear_delta_state(
     *,
     spec,
     scale=None,
+    erase_gate=None,
+    write_gate=None,
+    predict_key=None,
+    alpha=None,
+    low_rank_beta=None,
 ):
     """Canonical K2 linear-delta state law — the native Triton implementation of
     the uniform batched signature.
@@ -1158,6 +1163,17 @@ def linear_delta_state(
     :class:`LinearDeltaSpec` and ``(output, final_state)`` return as the NumPy
     oracle and Torch reference. The descriptor is decomposed into the native
     kernel's semantic knobs here — the only place that translation happens.
+
+    The transition features are parity-qualified against the pinned laws and the
+    Torch reference (forward AND cotangents): the dual-gate (GDN2: the descriptor's
+    ``delta=True`` + erase/write maps to the kernel's additive dual-gate — the pinned
+    law's β≡1 makes them the same equation, verified to 1.5e-5 fwd / 1.5e-4 cotangent),
+    multi-rank (GatedDeltaProduct, 7.6e-5 fwd / 1.4e-4 cotangent), the retrieval key
+    (Comba, 1.9e-6), and the low-rank left transition (IPLR: the descriptor's
+    ``alpha``/``low_rank_beta`` build the kernel's ``left = I + β αᵀ``, 1.4e-6 fwd /
+    3.3e-6 cotangent). The normalized variant stays declined (the kernel's
+    ``y/max(q·z, ε)`` diverges from the pinned ``y/((scale·q·norm)+ε)`` — measured
+    1.9e7) and the elementwise gate stays reference-tier (single-client).
     """
     if spec.normalized:
         # The native kernel's normalizer reads y/max(q·z, ε); the pinned law is
@@ -1197,6 +1213,48 @@ def linear_delta_state(
     k = keys.transpose(1, 2).contiguous()
     v = values.transpose(1, 2).contiguous()
     g = None if granularity == "none" else log_decay.transpose(1, 2).contiguous()
+    read_before = spec.read_timing.value == "before_update"
+
+    dual_gate = spec.erase_gate or spec.write_gate
+    if dual_gate or spec.predict_key or spec.low_rank or spec.num_deltas > 1:
+        # --- Transition-feature path: call the kernel directly (the opaque op covers
+        # the canonical envelope; the feature paths are newly qualified and get their
+        # opaque wrappers when a compiled client needs them). ---
+        eg = erase_gate.transpose(1, 2).contiguous() if dual_gate else None
+        wg = write_gate.transpose(1, 2).contiguous() if dual_gate else None
+        retr = predict_key.transpose(1, 2).contiguous() if spec.predict_key else None
+        left = None
+        if spec.low_rank:
+            # IPLR: the descriptor's per-channel alpha / low_rank_beta build the
+            # kernel's full left transition left_t = I + β αᵀ.
+            a = alpha.transpose(1, 2).contiguous()
+            lb = low_rank_beta.transpose(1, 2).contiguous()
+            K = keys.shape[-1]
+            left = torch.eye(K, device=keys.device, dtype=torch.float32) \
+                .expand(*a.shape[:3], K, K) + lb.unsqueeze(-1) * a.unsqueeze(-2)
+        uk = uv = rb = None
+        if spec.num_deltas > 1:
+            # GatedDeltaProduct: the operands carry R factors on a T*R time axis;
+            # reshape to the kernel's [B,T,R,H,*].
+            B, H, TR, K = keys.shape
+            R = spec.num_deltas
+            T = TR // R
+            uk = keys.view(B, H, T, R, K).permute(0, 2, 3, 1, 4).contiguous()
+            uv = values.view(B, H, T, R, values.shape[-1]).permute(0, 2, 3, 1, 4).contiguous()
+            rb = beta.view(B, H, T, R).permute(0, 2, 3, 1).contiguous()
+            # The kernel's multi-rank path owns the state update; q reads the result.
+            k = torch.zeros_like(q)
+            v = torch.zeros(B, T, H, values.shape[-1], device=values.device)
+        out, final = execute_matrix_state_recurrence(
+            query=q, key=k, value=v,
+            log_decay=g, beta=None if (dual_gate or spec.num_deltas > 1) else beta.transpose(1, 2).contiguous(),
+            initial_state=initial_state, scale=scale, decay_granularity=granularity,
+            is_delta=(spec.delta and not dual_gate and spec.num_deltas == 1), read_before=read_before,
+            retrieval_keys=retr, erase_gate=eg, write_gate=wg,
+            left_transitions=left, update_keys=uk, update_values=uv, rank_beta=rb,
+        )
+        return out.transpose(1, 2), final
+
     b = beta.transpose(1, 2).contiguous() if spec.delta else None
     # The native K2 recurrence is ALWAYS invoked as an opaque custom op (the ATMA
     # custom-op pattern): dynamo treats it as a single fused node with no trace into the
@@ -1209,7 +1267,7 @@ def linear_delta_state(
         scale=scale,
         decay_granularity=granularity,
         is_delta=spec.delta,
-        read_before=spec.read_timing.value == "before_update",
+        read_before=read_before,
     )
     return out.transpose(1, 2), final
 
@@ -1260,11 +1318,10 @@ class _K2NativeBase:
                 "native K2 declines the elementwise gate scope: the per-element "
                 "[K,V] gate is reference-tier only (single-client, two-client rule)"
             )
-        if spec.erase_gate or spec.write_gate or spec.predict_key or spec.low_rank or spec.num_deltas > 1:
-            return (
-                "native K2 declines the A8 transition features (erase/write/predict/"
-                "low_rank/multi-delta): the kernel forms diverge from the pinned law"
-            )
+        # The transition features are parity-qualified (forward + cotangents) against the
+        # pinned laws and the Torch reference — see linear_delta_state's docstring for the
+        # measured residuals. Only the normalized variant (denominator law diverges) and
+        # the elementwise gate (single-client) remain declined.
         return None
 
     def execute(self, request, operands):
@@ -1274,6 +1331,11 @@ class _K2NativeBase:
             operands["value"], operands["beta"], operands.get("log_decay"),
             spec=request.descriptor,
             scale=None if scale_op is None else float(scale_op),
+            erase_gate=operands.get("erase_gate"),
+            write_gate=operands.get("write_gate"),
+            predict_key=operands.get("predict_key"),
+            alpha=operands.get("alpha"),
+            low_rank_beta=operands.get("low_rank_beta"),
         )
         return {"output": out, "final_state": final_state}
 

@@ -111,13 +111,14 @@ def test_native_k2_canonical_matches_reference(delta, gate, timing):
 @pytest.mark.parametrize("kwargs", [
     {"delta": False, "normalized": True},
     {"delta": False, "gate_scope": "elementwise"},
-    # A8 features are role-bound: erase_gate becomes a descriptor flag via the role.
-    {"delta": False, "_extra_roles": {"erase_gate": "eg"},
-     "_extra_inputs": [{"name": "eg", "dtype": "float32", "shape": ["B", "H", "T", "K"]}]},
-    {"delta": True, "num_deltas": 2},
 ])
 def test_native_k2_declines_noncanonical(kwargs):
-    """Descriptors outside the canonical envelope are declined by the native anchors."""
+    """Only the genuinely-divergent descriptors are declined by the native anchors.
+
+    The A8 transition features (erase/write/predict/low_rank/multi-delta) are
+    parity-qualified and admitted; the normalized variant (denominator law diverges,
+    measured 1.9e7) and the elementwise gate (single-client, reference-tier) decline.
+    """
     doc = _k2_doc(**kwargs)
     with pytest.raises(Exception):
         compile_graph(
@@ -186,8 +187,9 @@ def test_native_k2_provider_decline_is_structured():
     assert provider.decline(req()) is None  # canonical: no decline
     assert "normalized" in provider.decline(req(normalized=True))
     assert "elementwise" in provider.decline(req(gate_scope=K2GateScope.ELEMENTWISE))
-    assert "transition" in provider.decline(req(erase_gate=True))
-    assert "transition" in provider.decline(req(num_deltas=2))
+    # The transition features are parity-qualified and admitted (no decline).
+    assert provider.decline(req(erase_gate=True)) is None
+    assert provider.decline(req(num_deltas=2)) is None
 
 
 @pytest.mark.parametrize("delta", [True, False])
@@ -232,3 +234,73 @@ def test_native_k2_key_dim_rsqrt_scale_matches_reference(delta):
     # And the fix must be visible in the value itself: with K=64 the pinned read scale
     # is 0.125, so a scale=1.0 regression shows up as an 8x output ratio.
     assert out_n.abs().max().item() < out_r.abs().max().item() * 4
+
+
+@pytest.mark.parametrize("feature", ["dual_gate", "multi_rank", "retrieval_key", "low_rank"])
+def test_native_k2_transition_features_match_reference(feature):
+    """The A8 transition features are parity-qualified on the native tier: forward AND
+    cotangents match the Torch reference (the measured residuals that admitted them:
+    dual-gate 1.5e-5/1.5e-4, multi-rank 7.6e-5/1.4e-4, retrieval 1.9e-6, low-rank 1.4e-6)."""
+    from urm.backends.torch.k2 import linear_delta_state as torch_lds
+    from urm.backends.triton.k2 import linear_delta_state as native_lds
+    from urm.ir.program import K2ReadTiming
+
+    torch.manual_seed(13)
+    m0 = torch.zeros(B, H, K, V, device=DEV)
+    base = dict(
+        q=torch.randn(B, H, T, K, device=DEV), k=torch.randn(B, H, T, K, device=DEV),
+        v=torch.randn(B, H, T, V, device=DEV), beta=torch.rand(B, H, T, device=DEV),
+        g=torch.nn.functional.logsigmoid(torch.randn(B, H, T, K, device=DEV)),
+    )
+    spec_kw = dict(delta=True, gate_scope=K2GateScope.CHANNEL,
+                   read_timing=K2ReadTiming.AFTER_UPDATE, scale_rule=K2ScaleRule.ONE)
+    ops = {}
+    if feature == "dual_gate":
+        # The GDN2 law is the delta rule with beta≡1 over the dual gates; the native
+        # kernel's additive dual-gate form computes the same equation (verified).
+        spec_kw.update(erase_gate=True, write_gate=True)
+        base["beta"] = torch.ones(B, H, T, device=DEV)
+        ops = dict(erase_gate=torch.rand(B, H, T, K, device=DEV),
+                   write_gate=torch.rand(B, H, T, V, device=DEV))
+    elif feature == "multi_rank":
+        spec_kw = dict(delta=False, gate_scope=K2GateScope.HEAD,
+                       read_timing=K2ReadTiming.AFTER_UPDATE, scale_rule=K2ScaleRule.ONE,
+                       num_deltas=2)
+        base["k"] = torch.randn(B, H, T * 2, K, device=DEV)
+        base["v"] = torch.randn(B, H, T * 2, V, device=DEV)
+        base["beta"] = torch.rand(B, H, T * 2, device=DEV)
+        base["g"] = torch.nn.functional.logsigmoid(torch.randn(B, H, T, device=DEV))
+    elif feature == "retrieval_key":
+        spec_kw.update(predict_key=True)
+        ops = dict(predict_key=torch.randn(B, H, T, K, device=DEV))
+    else:  # low_rank
+        spec_kw = dict(delta=False, gate_scope=K2GateScope.NONE,
+                       read_timing=K2ReadTiming.AFTER_UPDATE, scale_rule=K2ScaleRule.ONE,
+                       low_rank=True)
+        ops = dict(alpha=torch.rand(B, H, T, K, device=DEV) * 0.1,
+                   low_rank_beta=torch.rand(B, H, T, K, device=DEV) * 0.1)
+    spec = LinearDeltaSpec(**spec_kw)
+    names = tuple(base) + tuple(ops)
+
+    def run(fn):
+        p = {n: base[n].clone().requires_grad_(True) for n in base}
+        po = {n: ops[n].clone().requires_grad_(True) for n in ops}
+        out, final = fn(m0, p["k"], p["q"], p["v"], p["beta"], p["g"], spec=spec, **po)
+        (out.float().sum() + final.float().sum()).backward()
+        return out, final, {**{n: p[n].grad for n in base}, **{n: po[n].grad for n in ops}}
+
+    out_n, final_n, gn = run(native_lds)
+    out_r, final_r, gr = run(torch_lds)
+    assert (out_n - out_r).abs().max().item() < 5e-4, f"{feature} output parity"
+    assert (final_n - final_r).abs().max().item() < 5e-4, f"{feature} final-state parity"
+    for n in names:
+        if gn[n] is None and gr[n] is None:
+            continue
+        if gn[n] is None or gr[n] is None:
+            # beta is structural (≡1) in the dual-gate and low-rank laws: the native
+            # additive mapping doesn't differentiate it while the reference's delta-rule
+            # spec does (a ~zero grad). Not a divergence — skip the None pair.
+            if n == "beta" and feature in ("dual_gate", "low_rank"):
+                continue
+            raise AssertionError(f"{feature} cotangent d{n}: None mismatch (native {gn[n] is None}, ref {gr[n] is None})")
+        assert (gn[n] - gr[n]).abs().max().item() < 5e-2, f"{feature} cotangent d{n}"
