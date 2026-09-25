@@ -43,7 +43,7 @@ class PlanBindingError(RuntimeError):
 _PROVIDERS = discover_providers()
 
 
-_K1_OPTIONAL_ROLES = ("score_bias", "attention_mask", "scale", "channel_gate")
+_K1_OPTIONAL_ROLES = ("score_bias", "attention_mask", "scale", "channel_gate", "gather_indices")
 _K2_REQUIRED_ROLES = ("query", "key", "value", "beta", "log_decay", "initial_state")
 
 

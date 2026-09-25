@@ -31,6 +31,7 @@ def k1_softmax_attention(
     attention_mask: Any | None = None,
     scale: float | None = None,
     channel_gate: Any | None = None,
+    gather_indices: Any | None = None,
 ) -> Any:
     """Canonical K1 softmax attention over ``[B, T, H, D]`` operands.
 
@@ -58,6 +59,45 @@ def k1_softmax_attention(
         repeat = q.shape[1] // k.shape[1]
         k = k.repeat_interleave(repeat, dim=1)
         v = v.repeat_interleave(repeat, dim=1)
+    if descriptor.indexed:
+        # A2 indexed-K1: gather the per-query source set given by gather_indices
+        # [B, Hkv, T, W] (source positions, -1 = padding → masked), then attend
+        # over the gathered K/V. The route (indices) is external. gather_indices
+        # is per KV head; each query head maps to its shared KV head (GQA).
+        if gather_indices is None:
+            raise ValueError("indexed K1 requires a gather_indices operand")
+        idx = gather_indices.to(torch.long)                              # [B,Hkv,T,W]
+        valid = idx >= 0
+        idx_safe = idx.clamp(min=0)
+        B, Hkv, T, W = idx.shape
+        HQ = q.shape[1]
+        # Use the UN-expanded k/v ([B,Hkv,S,D]) — gather per KV head, then expand
+        # to query heads. (k/v here are pre-expansion only if the head map left
+        # them shared; with an equal map Hkv == HQ.)
+        kv = key.to(torch.float32).transpose(1, 2)                      # [B,Hkv,S,D]
+        vv = value.to(torch.float32).transpose(1, 2)
+        S_full = kv.shape[2]
+        gathered_k = torch.gather(
+            kv.unsqueeze(2).expand(B, Hkv, T, S_full, kv.shape[-1]),
+            3, idx_safe.unsqueeze(-1).expand(B, Hkv, T, W, kv.shape[-1]),
+        )                                                               # [B,Hkv,T,W,D]
+        gathered_v = torch.gather(
+            vv.unsqueeze(2).expand(B, Hkv, T, S_full, vv.shape[-1]),
+            3, idx_safe.unsqueeze(-1).expand(B, Hkv, T, W, vv.shape[-1]),
+        )
+        # Expand the gathered KV and the validity mask to the query heads (GQA).
+        if HQ != Hkv:
+            rep = HQ // Hkv
+            gathered_k = gathered_k.repeat_interleave(rep, dim=1)
+            gathered_v = gathered_v.repeat_interleave(rep, dim=1)
+            valid = valid.repeat_interleave(rep, dim=1)
+        # scores over the gathered set: [B,HQ,T,W]
+        scores = torch.einsum("bhtd,bhtwd->bhtw", q, gathered_k) * resolved_scale
+        scores = scores.masked_fill(~valid, float("-inf"))
+        probs = torch.softmax(scores, dim=-1)
+        probs = torch.nan_to_num(probs, nan=0.0)
+        out = torch.einsum("bhtw,bhtwd->bhtd", probs, gathered_v)
+        return out.transpose(1, 2).to(value.dtype)
     if descriptor.score_law is K1ScoreLaw.CHANNEL_DECAY:
         if channel_gate is None:
             raise ValueError("K1 channel_decay score law requires a channel_gate operand")
@@ -162,6 +202,7 @@ class K1TorchReferenceProvider:
             attention_mask=operands.get("attention_mask"),
             scale=None if operands.get("scale") is None else float(operands["scale"]),
             channel_gate=operands.get("channel_gate"),
+            gather_indices=operands.get("gather_indices"),
         )
         return {"output": out}
 

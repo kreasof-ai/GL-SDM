@@ -486,6 +486,12 @@ class K1Descriptor:
     attention_mask: bool = False
     score_law: K1ScoreLaw = K1ScoreLaw.DOT
     reducer_law: K1ReducerLaw = K1ReducerLaw.SOFTMAX
+    # A2 indexed-K1: when set, the source domain is a gathered per-query set given
+    # by the gather_indices operand ([B, H, T, W] source positions), NOT the full
+    # source axis. The route (the indices) is external; the K1 call attends over
+    # the gathered K/V. NSA's selected branch and Longformer's band∪global set are
+    # the clients.
+    indexed: bool = False
     # THRESHOLD_RELU_POWER parameters (closed semantic fields, never runtime math).
     threshold_beta: float | None = None
     relu_power: float | None = None
@@ -515,6 +521,8 @@ class K1Descriptor:
             raise ValueError("channel_decay score law is only defined with the softmax reducer")
         if self.squared_sum_groups is not None and self.reducer_law is not K1ReducerLaw.SQUARED_SUM:
             raise ValueError("squared_sum_groups is only legal with the squared_sum reducer")
+        if self.indexed and self.score_law is K1ScoreLaw.CHANNEL_DECAY:
+            raise ValueError("indexed K1 is defined with the dot score law")
 
 
 @dataclass(frozen=True, slots=True)

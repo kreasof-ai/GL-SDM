@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "name": "longformer",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.longformer",
+    "notes": "arch-071 (A2 indexed-K1). Longformer: softmax attention restricted to the per-query visible set band(i) ∪ {global} (dilated sliding band of width 2w+1 union the global token columns), softmaxed JOINTLY in fp32 — the typed K1 indexed call over the gathered band∪global set. The route (band/global indices), the dilation, the padding mask, and the separate global-token pass (separate q_global/k_global/v_global projections whose output overwrites the global rows, normalized separately) are external. Verified against the pinned longformer/longformer.py equation (the pinned module needs a legacy transformers stack; the oracle is the joint band∪global softmax transcription). Layer module: architectures/longformer.py."
+  },
+  "layers": [
+    {
+      "id": "longformer_layer",
+      "operation": "weighted_reduce",
+      "external_component": "architectures.longformer.LongformerLayer",
+      "params": {
+        "axis": "A2 indexed-K1: gather the per-query band ∪ global set, attend over the gathered sources (joint softmax)",
+        "external_stages": ["band/global route construction", "dilation", "padding mask", "separate global-output overwrite pass"],
+        "selection": "gathered (indexed)",
+        "normalization": "softmax (joint over band∪global)"
+      },
+      "state": {},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Band∪global joint-softmax parity vs the equation transcription, the global-in-every-row invariant, and gradients in tests/test_architectures_longformer.py. The pinned module's legacy transformers dependency, the dilation, and the global-output overwrite pass are residual, not claimed."
+  }
+}

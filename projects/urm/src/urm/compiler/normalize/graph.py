@@ -74,7 +74,8 @@ def _enum(enum_type: Any, value: Any, *, field: str) -> Any:
 
 
 _K1_ROLES = frozenset(
-    {"query", "key", "value", "score_bias", "attention_mask", "scale", "channel_gate"}
+    {"query", "key", "value", "score_bias", "attention_mask", "scale", "channel_gate",
+     "gather_indices"}
 )
 _K2_ROLES = frozenset(
     {"query", "key", "value", "beta", "log_decay", "initial_state", "scale",
@@ -119,6 +120,7 @@ def _k1_descriptor(params: dict[str, Any], roles: tuple[tuple[str, str], ...]) -
         attention_mask="attention_mask" in dict(roles),
         score_law=_enum(K1ScoreLaw, params.get("score_law", "dot"), field="k1.score_law"),
         reducer_law=_enum(K1ReducerLaw, params.get("reducer_law", "softmax"), field="k1.reducer_law"),
+        indexed="gather_indices" in dict(roles),
         threshold_beta=params.get("threshold_beta"),
         relu_power=params.get("relu_power"),
         squared_sum_groups=params.get("squared_sum_groups"),
