@@ -188,3 +188,47 @@ def test_native_k2_provider_decline_is_structured():
     assert "elementwise" in provider.decline(req(gate_scope=K2GateScope.ELEMENTWISE))
     assert "transition" in provider.decline(req(erase_gate=True))
     assert "transition" in provider.decline(req(num_deltas=2))
+
+
+@pytest.mark.parametrize("delta", [True, False])
+def test_native_k2_key_dim_rsqrt_scale_matches_reference(delta):
+    """The native tier resolves scale_rule=key_dim_rsqrt to K**-0.5 — never 1.0.
+
+    Regression: the native provider used to leave scale=None (→ 1.0) while the
+    reference resolved key_dim_rsqrt → K**-0.5, so GLA/DeltaNet/GDN-class laws ran at
+    K**0.5 × the pinned read scale on the native tier while every gate stayed green.
+    """
+    from urm.backends.torch.k2 import linear_delta_state as torch_lds
+    from urm.backends.triton.k2 import linear_delta_state as native_lds
+    from urm.ir.program import K2ReadTiming
+
+    torch.manual_seed(11)
+    spec = LinearDeltaSpec(
+        delta=delta, gate_scope=K2GateScope.CHANNEL,
+        read_timing=K2ReadTiming.AFTER_UPDATE, scale_rule=K2ScaleRule.KEY_DIM_RSQRT,
+    )
+    m0 = torch.zeros(B, H, K, V, device=DEV)
+    base = dict(
+        q=torch.randn(B, H, T, K, device=DEV), k=torch.randn(B, H, T, K, device=DEV),
+        v=torch.randn(B, H, T, V, device=DEV), beta=torch.rand(B, H, T, device=DEV),
+        g=torch.nn.functional.logsigmoid(torch.randn(B, H, T, K, device=DEV)),
+    )
+    names = ("q", "k", "v", "beta", "g")
+
+    def run(fn):
+        p = {n: base[n].clone().requires_grad_(True) for n in names}
+        out, final = fn(m0, p["k"], p["q"], p["v"], p["beta"], p["g"], spec=spec)
+        (out.float().sum() + final.float().sum()).backward()
+        return out, final, {n: p[n].grad for n in names}
+
+    out_n, final_n, gn = run(native_lds)
+    out_r, final_r, gr = run(torch_lds)
+    assert (out_n - out_r).abs().max().item() < 1e-4, "output parity at key_dim_rsqrt"
+    assert (final_n - final_r).abs().max().item() < 1e-4, "final-state parity"
+    for n in names:
+        if gn[n] is None and gr[n] is None:
+            continue
+        assert (gn[n] - gr[n]).abs().max().item() < 5e-2, f"cotangent d{n}"
+    # And the fix must be visible in the value itself: with K=64 the pinned read scale
+    # is 0.125, so a scale=1.0 regression shows up as an 8x output ratio.
+    assert out_n.abs().max().item() < out_r.abs().max().item() * 4

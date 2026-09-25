@@ -1175,6 +1175,20 @@ def linear_delta_state(
         "head": "head",
         "channel": "key_channel",
     }[gate]
+    # Resolve the scale rule exactly as the Torch reference does (urm/backends/torch/
+    # k2.py): ``one`` → 1.0, ``key_dim_rsqrt`` → K**-0.5, ``explicit_operand`` → the
+    # scale operand is required. The kernel itself only consumes a resolved float;
+    # leaving this to the kernel's None→1.0 default would silently run key_dim_rsqrt
+    # laws (GLA, DeltaNet, GDN, …) at 8× the pinned read scale — the reference tier
+    # owns the rule, the native tier must mirror it, never bypass it.
+    if spec.scale_rule.value == "one":
+        scale = 1.0
+    elif spec.scale_rule.value == "key_dim_rsqrt":
+        scale = float(keys.shape[-1]) ** -0.5
+    else:  # explicit_operand
+        if scale is None:
+            raise ValueError("scale_rule=explicit_operand requires a scale value")
+        scale = float(scale)
     # The native kernel consumes [B, T, H, *]; the canonical operands arrive
     # [B, H, T, *]. Transpose to the kernel layout, run, transpose back.
     import torch

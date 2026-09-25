@@ -364,7 +364,10 @@ def _kl_gate(cfg: TrainConfig, mixer: MixerSpec, model: URMDecoderLM, *,
     """
     if not mixer.has_reference_kernel or mixer.upstream is None:
         return None
-    comparator = _upstream_mixer_callable(mixer)
+    # The comparator must exercise the SAME tier the model trains with: a reference-tier
+    # comparator would certify the reference path while the native path trains — which is
+    # exactly how the native key_dim_rsqrt scale divergence hid behind a green KL.
+    comparator = _upstream_mixer_callable(mixer, target=cfg.target)
     if comparator is None:
         return None
     torch.manual_seed(4242)
@@ -383,7 +386,7 @@ def _kl_gate(cfg: TrainConfig, mixer: MixerSpec, model: URMDecoderLM, *,
     return _kl(urm_dist, upstream_dist)
 
 
-def _upstream_mixer_callable(mixer: MixerSpec):
+def _upstream_mixer_callable(mixer: MixerSpec, target: str = "reference"):
     """Map a registered mixer to a ``(q, k, v, device) -> (urm_out, upstream_out)`` oracle.
 
     Returns None where the upstream is not loadable here. The URM side runs the public-path
@@ -420,7 +423,7 @@ def _upstream_mixer_callable(mixer: MixerSpec):
             except Exception:
                 return None, None
             layer = GLALayer(H * D, num_heads=H, head_k_dim=D, head_v_dim=D,
-                             target="reference", intent="inference").to(device)
+                             target=target, intent="inference").to(device)
             gk = torch.nn.functional.logsigmoid(torch.randn(B, T, H, D, device=device))
             urm = layer._run_mixer({
                 "query": q.transpose(1, 2).float(), "key": k.transpose(1, 2).float(),
@@ -446,7 +449,7 @@ def _upstream_mixer_callable(mixer: MixerSpec):
             except Exception:
                 return None, None
             layer = DeltaNetLayer(H * D, num_heads=H, head_k_dim=D, head_v_dim=D,
-                                  target="reference", intent="inference").to(device)
+                                  target=target, intent="inference").to(device)
             # DeltaNet normalizes q/k; the pinned oracle does the same internally.
             qn = torch.nn.functional.normalize(q, dim=-1)
             kn = torch.nn.functional.normalize(k, dim=-1)
