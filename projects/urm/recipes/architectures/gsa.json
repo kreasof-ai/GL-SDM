@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "name": "gsa",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.fla_k2",
+    "notes": "arch-049. Same two-stage slot-summary shape as ABC but with an explicitly supplied per-slot log-decay g (the layer computes f = logsigmoid(f_proj(x))/gate_logit_normalizer, s = 1 − exp(f), passes g = f) — external. Verified against fla/ops/gsa/naive.py @ 864a87f6. Layer module: architectures/abc_gsa.py (GSALayer)."
+  },
+  "layers": [
+    {
+      "id": "gsa_layer",
+      "operation": "linear_delta_state",
+      "external_component": "architectures.abc_gsa.GSALayer",
+      "params": {
+        "combinator": "two additive per-slot-decayed accumulators + external interstage slot softmax",
+        "external_stages": ["stage-1 slot summary (column-axis slot decay, external recurrence)", "gate construction (f = logsigmoid(f_proj)/normalizer, s = 1 − exp(f))", "interstage slot softmax qv = softmax(ok)", "stage-2 value summary (typed K2 channel-gate, row-axis slot decay)"],
+        "structural_finding": "same gate-axis finding as arch-048: stage 1 external, stage 2 typed K2."
+      },
+      "state": {"hk": "[K, M]", "hv": "[M, V]"},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Parity vs the pinned naive_recurrent_abc with explicit g (fp32) in tests/test_architectures_abc_gsa.py; gradients through both stages. Chunked kernels and initial_state handling are residual external work, not claimed."
+  }
+}
