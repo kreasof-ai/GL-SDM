@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "name": "cat",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.cat_attention",
+    "notes": "arch-066. Verified in the sweep against fla/models/cat/modeling_cat.py @ 864a87f6: the decoder self-attention mixer is U1.S over the explicit CAT structural mask ((within_block | kv%block_size==0) & causal) with a GQA-capable head map; the chunk compressor, adaptive/separator tokens, rotary and Q/K/V projections are external. Layer module: architectures/cat_attention.py."
+  },
+  "layers": [
+    {
+      "id": "cat_decoder_attention",
+      "operation": "weighted_reduce",
+      "external_component": "architectures.cat_attention.CATDecoderAttention",
+      "params": {
+        "external_stages": [
+          "Q/K/V projections and output projection",
+          "rotary transform and optional qk-norm",
+          "CAT structural mask construction",
+          "CATCompressor chunk compression and architectural tokens (separate stage)"
+        ],
+        "normalization": "softmax",
+        "selection": "dense",
+        "causal": false,
+        "head_map": "equal|single|grouped (derived from num_heads/num_kv_heads)",
+        "attention_mask": "structural: (within_block | kv%block_size==0) & causal"
+      },
+      "state": {},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Layer parity vs the pinned CAT mask equation (eager oracle) and the structural mask cell-for-cell vs get_cat_mask_mod in tests/test_architectures_cat.py; gradients flow through all projections. Efficient sparse traversal of the structural mask is gated on B[indexed_K1_schedule]; the CATCompressor, architectural-token identity, rotary and cache/decode modes are residual external work, not claimed."
+  }
+}
