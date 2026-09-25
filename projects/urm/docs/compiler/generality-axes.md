@@ -5,7 +5,7 @@ This is a **typed semantic backlog**, not a list of implemented kernels. A descr
 | Axis | Closed semantic fields required | Independent clients / decisive gate |
 |---|---|---|
 | **A1: slot/channel** | Logical slot, key-channel and value domains; gate broadcast; per-domain state layout | GLA/KDA/Rodimus; preserve gate gradients and state shape |
-| **A2: locality** | Exact or approximate metric, route ties, capacity, geometric metadata | Foveal plus synthetic indexed K1; include route work and approximation quality separately |
+| **A2: locality / indexed K1** | Exact or approximate metric, route ties, capacity, geometric metadata; the indexed gather-attend schedule | Foveal plus synthetic indexed K1; include route work and approximation quality separately. **Admitted (partial):** `K1Descriptor.indexed` + the `gather_indices` operand — gather the external per-query source set, attend over the gathered K/V (GQA-aware). Verified clients: NSA selected branch (005), Longformer band∪global (071), MoBA top-k blocks (006), DSA lightning indexer top-k (007), Sparse Transformer static patterns (072). The routes stay external. External residual: Foveal (065, needs the polar reducer — a single-client A13 sub-law) |
 | **A3: coordinated routing** | Assignment, ownership, collision/merge, deterministic tie and return protocol | MoM and multi-head synthetic graph; conserve tokens/state and cost packing |
 | **A4: hierarchical chunks** | Architectural pooling versus schedule subdivisions, level identity and boundary state | Log-linear and CAT; no schedule-only substitution for model compression |
 | **A5: timescale banks** | Independent state instances, decay schedules and explicit weighted combination | RetNet and multi-state synthetic graph; both state VJPs |
