@@ -558,6 +558,41 @@ def _build_rwkv7(model_dim, num_heads, head_dim, intent, target="native"):
     return _RWKV7Adapter(model_dim, num_heads, head_dim, intent, target)
 
 
+class _DPLRAdapter(torch.nn.Module):
+    """DPLR: (q, k, v, alpha, beta, gk) all [B,H,T,*]; the adapter projects q/k/v and
+    derives the per-channel decay gk and the rank-1 factors alpha/beta from the input
+    (input-derived, deterministic, contractive at init)."""
+
+    def __init__(self, model_dim, num_heads, head_dim, intent, target):
+        super().__init__()
+        from architectures.dplr import DPLRLayer
+        self.num_heads, self.head_dim = num_heads, head_dim
+        self.q_proj = torch.nn.Linear(model_dim, num_heads * head_dim, bias=False)
+        self.k_proj = torch.nn.Linear(model_dim, num_heads * head_dim, bias=False)
+        self.v_proj = torch.nn.Linear(model_dim, num_heads * head_dim, bias=False)
+        self.gk_proj = torch.nn.Linear(model_dim, num_heads * head_dim, bias=True)
+        self.a_proj = torch.nn.Linear(model_dim, num_heads * head_dim, bias=True)
+        self.b_proj = torch.nn.Linear(model_dim, num_heads * head_dim, bias=True)
+        self.o_proj = torch.nn.Linear(num_heads * head_dim, model_dim, bias=False)
+        self._mixer = DPLRLayer(num_heads, head_dim, head_dim, target=target, intent=intent)
+
+    def forward(self, hidden):
+        B, T, _ = hidden.shape
+        H, D = self.num_heads, self.head_dim
+        q = self.q_proj(hidden).view(B, T, H, D).transpose(1, 2)
+        k = self.k_proj(hidden).view(B, T, H, D).transpose(1, 2)
+        v = self.v_proj(hidden).view(B, T, H, D).transpose(1, 2)
+        gk = F.logsigmoid(self.gk_proj(hidden)).view(B, T, H, D).transpose(1, 2)
+        alpha = torch.tanh(self.a_proj(hidden)).view(B, T, H, D).transpose(1, 2) * 0.1
+        beta = torch.tanh(self.b_proj(hidden)).view(B, T, H, D).transpose(1, 2) * 0.1
+        out, _ = self._mixer(q, k, v, alpha, beta, gk)
+        return self.o_proj(out.transpose(1, 2).reshape(B, T, H * D))
+
+
+def _build_dplr(model_dim, num_heads, head_dim, intent, target="native"):
+    return _DPLRAdapter(model_dim, num_heads, head_dim, intent, target)
+
+
 def _build_tda(model_dim, num_heads, head_dim, intent, target="reference"):
     from architectures.tda import TDALayer
     def factory(H, D):
@@ -666,6 +701,10 @@ MIXER_REGISTRY: dict[str, MixerSpec] = {
     # native K2 kernel (the composition order verified vs the pinned fla fused_recurrent_rwkv7
     # at 7.2e-7; tests/test_native_k2_rwkv7.py).
     "rwkv7": MixerSpec("rwkv7", _build_rwkv7, "fla.ops.rwkv7", True, True, tier="native"),
+    # dplr: the decay∘low-rank composition's second structurally independent client (the
+    # generalized-delta-rule DPLR law — the same composed native K2 branch as rwkv7,
+    # binding the pinned naive's (q,k,v,α,β,gk) operand set; tests/test_architectures_dplr.py).
+    "dplr": MixerSpec("dplr", _build_dplr, "fla.ops.generalized_delta_rule.dplr", True, True, tier="native"),
     "tda": MixerSpec("tda", _build_tda, None, False, False),
     "based_attention": MixerSpec("based_attention", _build_based, "fla.ops.based", True, True),
     # indexed_attention is the shared A2 gather-attend BASE (no forward of its own) —

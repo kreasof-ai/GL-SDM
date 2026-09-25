@@ -18,7 +18,7 @@ import pytest
 torch = pytest.importorskip("torch")
 
 from urm.backends.contract import ProviderFamily, ProviderRequest
-from urm.backends.torch.k3 import K3TorchReferenceProvider, validate_k3_route_provenance
+from urm.backends.torch.k3.sparse_state import K3TorchReferenceProvider, validate_k3_route_provenance
 from urm.compiler.normalize.graph import normalize_graph_document
 from urm.compiler.pipeline import CompilationIntent, compile_graph
 from urm.frontend.recipes import load_graph_recipe_document

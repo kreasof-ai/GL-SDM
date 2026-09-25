@@ -26,8 +26,8 @@ if not torch.cuda.is_available():
     pytest.skip("CUDA is required", allow_module_level=True)
 
 from urm.backends.contract import ProviderRequest
-from urm.backends.torch.k1 import k1_softmax_attention as torch_k1
-from urm.backends.triton.k1 import K1NativeIndexedTritonProvider, execute_indexed_k1
+from urm.backends.torch.k1.softmax import k1_softmax_attention as torch_k1
+from urm.backends.triton.k1.indexed import K1NativeIndexedTritonProvider, execute_indexed_k1
 from urm.ir.program import K1Descriptor, K1ReducerLaw, K1ScoreLaw
 
 DEV = "cuda"

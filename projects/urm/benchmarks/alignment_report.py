@@ -104,7 +104,7 @@ def _k1_decode_kl(torch) -> list[dict]:
     """K1 attention decode: KL between native and SDPA output distributions."""
     import torch.nn.functional as F
 
-    from urm.backends.triton.k1 import execute_online_softmax_decode
+    from urm.backends.triton.k1.online_softmax import execute_online_softmax_decode
 
     rows = []
     for dtype_name, dtype in (("bfloat16", torch.bfloat16), ("float16", torch.float16)):
@@ -139,7 +139,7 @@ def _k2_gated_delta_decode_kl(torch) -> list[dict]:
     exact upstream sequential operator, on a single-token step."""
     from fla.ops.gated_delta_rule import fused_recurrent_gated_delta_rule
 
-    from urm.backends.triton.k2 import (
+    from urm.backends.triton.k2.matrix_scan import (
         execute_matrix_state_decode_step,
     )
 
@@ -184,7 +184,7 @@ def _k2_diagonal_decode_kl(torch) -> list[dict]:
     the exact upstream sequential operator, on a single-token step."""
     from fla.ops.hgrn import fused_recurrent_hgrn
 
-    from urm.backends.triton.k2 import (
+    from urm.backends.triton.k2.diagonal import (
         execute_diagonal_decode_step,
     )
 

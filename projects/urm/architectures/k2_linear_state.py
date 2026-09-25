@@ -116,7 +116,7 @@ class K2LinearStateLayer(torch.nn.Module):
         # runs through plan.execute. The descriptor is fixed at construction, so the
         # direct provider call is the identical equation.
         if self._target == "native":
-            from urm.backends.triton.k2 import linear_delta_state
+            from urm.backends.triton.k2.matrix_scan import linear_delta_state
             from urm.ir.program import (
                 K2GateScope, K2ReadTiming, K2ScaleRule, LinearDeltaSpec,
             )

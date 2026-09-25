@@ -17,9 +17,9 @@ import pytest
 torch = pytest.importorskip("torch")
 
 from urm.backends.contract import ProviderFamily, ProviderRequest
-from urm.backends.numpy.k1 import K1NumpyProvider
-from urm.backends.numpy.k2 import K2NumpyProvider
-from urm.backends.numpy.k3 import K3NumpyProvider
+from urm.backends.numpy.k1.softmax import K1NumpyProvider
+from urm.backends.numpy.k2.linear_delta import K2NumpyProvider
+from urm.backends.numpy.k3.sparse_state import K3NumpyProvider
 from urm.runtime.bind import _PROVIDERS
 from urm.ir.program import (
     DType,
@@ -67,7 +67,7 @@ def test_numpy_and_torch_k1_agree_through_the_contract():
         family=ProviderFamily.K1, descriptor=K1Descriptor(causal=True), mode="inference"
     )
     np_out = K1NumpyProvider().execute(req, {"query": q, "key": k, "value": v})["output"]
-    from urm.backends.torch.k1 import torch_k1_softmax_attention
+    from urm.backends.torch.k1.softmax import torch_k1_softmax_attention
 
     t_out = torch_k1_softmax_attention(
         torch.tensor(q), torch.tensor(k), torch.tensor(v), descriptor=K1Descriptor(causal=True)
@@ -89,7 +89,7 @@ def test_numpy_and_torch_k2_agree_through_the_contract():
     np_out = K2NumpyProvider().execute(
         req, {"query": q2, "key": k2, "value": v2, "beta": b2, "log_decay": g2, "initial_state": m0}
     )
-    from urm.backends.torch.k2 import torch_linear_delta_state
+    from urm.backends.torch.k2.linear_delta import torch_linear_delta_state
 
     t_out, t_state = torch_linear_delta_state(
         torch.tensor(m0), torch.tensor(k2), torch.tensor(q2), torch.tensor(v2),
@@ -119,7 +119,7 @@ def test_numpy_and_torch_k3_share_address_operand_form():
                 "write_addresses": write_idx, "write_weights": ww, "values": vals,
                 "beta": beta, "log_decay": ld}
     np_out = K3NumpyProvider().execute(req, operands)
-    from urm.backends.torch.k3 import torch_sparse_state_mixer
+    from urm.backends.torch.k3.sparse_state import torch_sparse_state_mixer
 
     t_out, t_state = torch_sparse_state_mixer(
         torch.tensor(mem), torch.tensor(read_idx), torch.tensor(rw),

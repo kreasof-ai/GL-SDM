@@ -79,7 +79,7 @@ def test_json_authority_causal_toggle_changes_ir_and_output():
 
 def test_reference_parity_against_float64_numpy_oracle():
     torch, q, k, v = _tensors()
-    from urm.backends.numpy.k1 import attention
+    from urm.backends.numpy.k1.softmax import attention
 
     out = compile_graph(
         normalize_graph_document(_mha_document()), target="reference"
@@ -190,9 +190,9 @@ def test_k3_state_mixer_matches_independent_reference():
         pytest.skip("native K3 requires CUDA")
     import dataclasses
 
-    from urm.backends.torch.k3 import torch_sparse_state_mixer
+    from urm.backends.torch.k3.sparse_state import torch_sparse_state_mixer
     from urm.runtime.certification import CertifiedSparseStateRoutes, SparseState
-    from urm.backends.triton.k3 import TritonSparseStateMixerBackend
+    from urm.backends.triton.k3.sparse_state import TritonSparseStateMixerBackend
     from urm.ir.program import SparseReadTiming
 
     recipe = load_graph_recipe_file("recipes/kernels/sparse_delta_memory.json")

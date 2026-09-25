@@ -213,7 +213,7 @@ class K1NumpyProvider:
     tier = "reference"
 
     def decline(self, request) -> str | None:
-        from ...ir.program import K1Descriptor, K1ReducerLaw, K1ScoreLaw
+        from ....ir.program import K1Descriptor, K1ReducerLaw, K1ScoreLaw
 
         if not isinstance(request.descriptor, K1Descriptor):
             return "K1 NumPy provider requires a closed K1Descriptor"

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ...ir.program import K2GateScope, K2ReadTiming, LinearDeltaSpec
+from ....ir.program import K2GateScope, K2ReadTiming, LinearDeltaSpec
 
 
 def _torch() -> Any:

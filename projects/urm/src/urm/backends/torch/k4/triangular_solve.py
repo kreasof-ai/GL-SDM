@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ...ir.program import TriangularSolve  # noqa: F401  (descriptor type)
+from ....ir.program import TriangularSolve  # noqa: F401  (descriptor type)
 
 
 def triangular_solve_forward(probs: Any, beta: Any, value: Any) -> Any:

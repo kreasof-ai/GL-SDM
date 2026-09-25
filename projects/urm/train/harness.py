@@ -755,10 +755,10 @@ def _k3_parity_report(mixer: MixerSpec, *, heads: int, head_dim: int,
     """
     import torch as _t
 
-    from urm.backends.numpy.k3 import numpy_sparse_state_mixer
-    from urm.backends.torch.k3 import sparse_delta_state as ref_sds
-    from urm.backends.triton.k3 import sparse_delta_state as native_sds
-    from urm.backends.triton.k3 import sparse_route_selection
+    from urm.backends.numpy.k3.sparse_state import numpy_sparse_state_mixer
+    from urm.backends.torch.k3.sparse_state import sparse_delta_state as ref_sds
+    from urm.backends.triton.k3.sparse_state import sparse_delta_state as native_sds
+    from urm.backends.triton.k3.route_generation import sparse_route_selection
     from urm.ir.program import (
         DType, SparseReadTiming, SparseStateMixerSpec, SparseStateOperation,
     )

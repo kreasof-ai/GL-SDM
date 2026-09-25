@@ -230,7 +230,7 @@ def _make_case(case, torch):
         CertifiedSparseStateRoutes,
         SparseState,
     )
-    from urm.backends.triton.k3 import (
+    from urm.backends.triton.k3.sparse_state import (
         TritonSparseStateMixerBackend,
     )
     from urm.ir.program import (
@@ -357,8 +357,8 @@ def _max_abs(actual, expected) -> float:
 def _correctness(bundle) -> dict[str, object]:
     import torch
 
-    from urm.backends.torch.k3 import torch_sparse_state_mixer
-    from urm.backends.numpy.k3 import numpy_sparse_state_mixer
+    from urm.backends.torch.k3.sparse_state import torch_sparse_state_mixer
+    from urm.backends.numpy.k3.sparse_state import numpy_sparse_state_mixer
 
     case = bundle["case"]
     prepared = bundle["prepared"]
@@ -445,7 +445,7 @@ def _backward_correctness(bundle) -> dict[str, object]:
     import torch
 
     from urm.runtime.certification import CertifiedSparseStateRoutes, SparseState
-    from urm.backends.torch.k3 import torch_sparse_state_mixer
+    from urm.backends.torch.k3.sparse_state import torch_sparse_state_mixer
 
     case, prepared = bundle["case"], bundle["prepared"]
     if str(case["operation"]) != "training":

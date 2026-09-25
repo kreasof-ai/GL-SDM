@@ -279,7 +279,7 @@ class K3NumpyProvider:
     tier = "reference"
 
     def decline(self, request) -> str | None:
-        from ...ir.program import SparseStateMixerSpec
+        from ....ir.program import SparseStateMixerSpec
 
         if not isinstance(request.descriptor, SparseStateMixerSpec):
             return "K3 NumPy provider requires a closed SparseStateMixerSpec"

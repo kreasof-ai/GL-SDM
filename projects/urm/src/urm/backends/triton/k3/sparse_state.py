@@ -1,4 +1,4 @@
-"""URM-owned Triton kernels for the frozen SparseStateMixer v0 algebra.
+"""Native K3 sparse-state mixer ops (the frozen SparseStateMixer v0 algebra).
 
 The kernels consume certified partition-local routes. One program owns a
 partition/value fragment and traverses tokens sequentially, making ordered
@@ -16,7 +16,6 @@ from typing import Any, Callable, ContextManager
 
 PROFILE_RANGES = False
 
-NATIVE_SPARSE_ROUTE_NAME = "urm_native_sparse_route_selection_v0"
 NATIVE_SPARSE_STATE_MIXER_NAME = "urm_native_sparse_state_mixer_v0"
 
 # Injectable profiling hook. The backend never imports a profiler; a consumer
@@ -25,17 +24,31 @@ NATIVE_SPARSE_STATE_MIXER_NAME = "urm_native_sparse_state_mixer_v0"
 _STATE_PROFILER: Callable[[str], ContextManager[Any]] | None = None
 
 
+from urm.compiler.select.anchors import (
+    FROZEN_V0_ENVELOPE,
+    sparse_state_launch_schedule,
+    sparse_state_spec_status,
+)
+from urm.ir.program import SparseReadTiming, SparseStateOperation, SparseStateMixerSpec
+from urm.runtime.certification import (
+    CertifiedSparseStateOperands,
+    CertifiedSparseStateRoutes,
+    SparseState,
+    SparseStateSupportStatus,
+    _OPERAND_CERTIFICATE,
+    _dtype_name,
+    native_dependencies_available,
+)
+
 def set_state_profiler(profiler: Callable[[str], ContextManager[Any]] | None) -> None:
     """Install (or clear) the state-stage profiler hook used under PROFILE_RANGES."""
     global _STATE_PROFILER
     _STATE_PROFILER = profiler
 
-
 def _state_stage(phase: str) -> ContextManager[Any]:
     if _STATE_PROFILER is None:
         return nullcontext()
     return _STATE_PROFILER(phase)
-
 
 @triton.jit
 def _sparse_state_read_kernel(
@@ -65,7 +78,6 @@ def _sparse_state_read_kernel(
         accumulator += weight * selected
     output = (partition * SEQUENCE + token) * VALUE_DIM
     tl.store(readings + output + dimension, accumulator, mask=dimension_mask)
-
 
 @triton.jit
 def _sparse_state_update_kernel(
@@ -174,7 +186,6 @@ def _sparse_state_update_kernel(
                 mask=dimension_mask,
             )
 
-
 @triton.jit
 def _sparse_state_read_grad_weights_kernel(
     memory,
@@ -204,7 +215,6 @@ def _sparse_state_read_grad_weights_kernel(
         other=0.0,
     ).to(tl.float32)
     tl.store(grad_read_weights + route_linear, tl.sum(selected * grad, axis=0))
-
 
 @triton.jit
 def _sparse_state_read_grad_memory_kernel(
@@ -236,7 +246,6 @@ def _sparse_state_read_grad_memory_kernel(
         mask=mask,
         sem="relaxed",
     )
-
 
 @triton.jit
 def _sparse_state_update_backward_kernel(
@@ -399,12 +408,10 @@ def _sparse_state_update_backward_kernel(
                     mask=dimension_mask,
                 )
 
-
 def _launch_parameters(value_dim: int) -> tuple[int, int]:
     from urm.compiler.select.anchors import sparse_state_launch_parameters
 
     return sparse_state_launch_parameters(value_dim)
-
 
 def _sparse_state_read_forward(
     memory: torch.Tensor,
@@ -437,7 +444,6 @@ def _sparse_state_read_forward(
         num_warps=warps,
     )
     return out
-
 
 def _sparse_state_read_backward(
     memory: torch.Tensor,
@@ -482,7 +488,6 @@ def _sparse_state_read_backward(
         num_warps=warps,
     )
     return grad_memory_fp32.to(memory.dtype), grad_weights_fp32.to(read_weights.dtype)
-
 
 def _sparse_state_update_forward(
     memory: torch.Tensor,
@@ -548,7 +553,6 @@ def _sparse_state_update_forward(
     )
     return out, memory, saved_write_rows, saved_read_rows
 
-
 def _sparse_state_update_backward(
     grad_readings: torch.Tensor,
     grad_final_memory: torch.Tensor,
@@ -611,7 +615,6 @@ def _sparse_state_update_backward(
         grad_read_weights_fp32.to(read_weights.dtype),
     )
 
-
 class _SparseStateRead(torch.autograd.Function):
     @staticmethod
     def forward(ctx, memory, read_indices, read_weights):
@@ -625,7 +628,6 @@ class _SparseStateRead(torch.autograd.Function):
             memory, read_indices, read_weights, grad_readings
         )
         return grad_memory, None, grad_weights
-
 
 class _SparseStateUpdate(torch.autograd.Function):
     @staticmethod
@@ -735,7 +737,6 @@ class _SparseStateUpdate(torch.autograd.Function):
             None,
         )
 
-
 def sparse_state_read(
     memory: torch.Tensor,
     read_indices: torch.Tensor,
@@ -751,7 +752,6 @@ def sparse_state_read(
             raise ValueError("autograd execution does not accept a preallocated output")
         return _SparseStateRead.apply(memory, read_indices, read_weights)
     return _sparse_state_read_forward(memory, read_indices, read_weights, out=out)
-
 
 def sparse_state_update(
     memory: torch.Tensor,
@@ -798,23 +798,9 @@ def sparse_state_update(
     )
     return readings, state
 
-
 def launch_metadata(value_dim: int) -> dict[str, int]:
     block_d, warps = _launch_parameters(value_dim)
     return {"block_d": block_d, "num_warps": warps, "tokens_per_program": -1}
-
-
-__all__ = [
-    "launch_metadata",
-    "sparse_state_read",
-    "sparse_state_update",
-]
-
-
-# ---------------------------------------------------------------------------
-# Provider surface (auto-discovered by urm.backends.registry)
-# ---------------------------------------------------------------------------
-
 
 def _k3_runtime_spec(spec, operands):
     """Re-materialize the recipe-time batch dims from the operand shapes."""
@@ -828,7 +814,6 @@ def _k3_runtime_spec(spec, operands):
         parallel = int(operands["read_addresses"].shape[0])
         sequence = int(operands["read_addresses"].shape[1])
     return _replace(spec, parallel=parallel or spec.parallel, sequence=sequence or spec.sequence)
-
 
 def sparse_delta_state(
     memory,
@@ -869,14 +854,12 @@ def sparse_delta_state(
     readings, new_state = backend.execute(state, prepared)
     return readings, new_state.memory
 
-
 class K3NativeTritonProvider:
     name = "urm_native_sparse_state_mixer_v0"
     family = "k3"
     tier = "native"
 
     def decline(self, request) -> str | None:
-        from ...ir.program import SparseStateMixerSpec
 
         if not isinstance(request.descriptor, SparseStateMixerSpec):
             return "K3 providers require a closed SparseStateMixerSpec"
@@ -899,330 +882,6 @@ class K3NativeTritonProvider:
             spec=request.descriptor,
         )
         return {"readings": readings, "updated_memory": updated}
-
-
-
-
-
-# ---------------------------------------------------------------------------
-# K3 route generation (the pure product-key score-to-route operation)
-# ---------------------------------------------------------------------------
-
-
-@triton.jit
-def _ordered_float_key(value):
-    """Map finite fp32 values to monotonically ordered unsigned integers."""
-    bits = value.to(tl.uint32, bitcast=True)
-    return tl.where((bits >> 31) != 0, ~bits, bits ^ 0x80000000).to(tl.uint64)
-
-
-@triton.jit
-def _sparse_route_forward_kernel(
-    scores,
-    addresses,
-    weights,
-    score_stride,
-    route_stride,
-    HALF: tl.constexpr,
-    WIDTH: tl.constexpr,
-    BLOCK_HALF: tl.constexpr,
-    BLOCK_ROUTE: tl.constexpr,
-    BLOCK_PAIR: tl.constexpr,
-):
-    row = tl.program_id(0)
-    half_offsets = tl.arange(0, BLOCK_HALF)
-    valid_half = half_offsets < HALF
-    left = tl.load(
-        scores + row * score_stride + half_offsets,
-        mask=valid_half,
-        other=-float("inf"),
-    ).to(tl.float32)
-    right = tl.load(
-        scores + row * score_stride + HALF + half_offsets,
-        mask=valid_half,
-        other=-float("inf"),
-    ).to(tl.float32)
-
-    left_encoded = (_ordered_float_key(left) << 32) | half_offsets.to(tl.uint64)
-    right_encoded = (_ordered_float_key(right) << 32) | half_offsets.to(tl.uint64)
-    left_top = tl.topk(left_encoded, BLOCK_ROUTE)
-    right_top = tl.topk(right_encoded, BLOCK_ROUTE)
-    left_indices = (left_top & 0xFFFFFFFF).to(tl.int32)
-    right_indices = (right_top & 0xFFFFFFFF).to(tl.int32)
-
-    left_grid = tl.reshape(left_indices, (BLOCK_ROUTE, 1))
-    right_grid = tl.reshape(right_indices, (1, BLOCK_ROUTE))
-    pair_addresses = left_grid * HALF + right_grid
-    pair_scores = (
-        (
-            tl.load(scores + row * score_stride + left_grid).to(tl.float32)
-            + tl.load(scores + row * score_stride + HALF + right_grid).to(tl.float32)
-        )
-        .to(scores.dtype.element_ty)
-        .to(tl.float32)
-    )
-    pair_offsets = tl.arange(0, BLOCK_PAIR)
-    pair_addresses = tl.reshape(pair_addresses, (BLOCK_PAIR,))
-    pair_scores = tl.reshape(pair_scores, (BLOCK_PAIR,))
-    pair_valid = (pair_offsets // BLOCK_ROUTE < WIDTH) & (
-        pair_offsets % BLOCK_ROUTE < WIDTH
-    )
-    pair_scores = tl.where(pair_valid, pair_scores, -float("inf"))
-    pair_encoded = (_ordered_float_key(pair_scores) << 32) | pair_addresses.to(
-        tl.uint64
-    )
-    selected = tl.topk(pair_encoded, BLOCK_ROUTE)
-    selected_addresses = (selected & 0xFFFFFFFF).to(tl.int32)
-
-    route_offsets = tl.arange(0, BLOCK_ROUTE)
-    canonical_input = tl.where(route_offsets < WIDTH, selected_addresses, 0x7FFFFFFF)
-    canonical_addresses = tl.sort(canonical_input, descending=False)
-    selected_scores = (
-        (
-            tl.load(
-                scores + row * score_stride + canonical_addresses // HALF,
-                mask=route_offsets < WIDTH,
-                other=-float("inf"),
-            ).to(tl.float32)
-            + tl.load(
-                scores + row * score_stride + HALF + canonical_addresses % HALF,
-                mask=route_offsets < WIDTH,
-                other=-float("inf"),
-            ).to(tl.float32)
-        )
-        .to(scores.dtype.element_ty)
-        .to(tl.float32)
-    )
-    maximum = tl.max(selected_scores, axis=0)
-    exponentials = tl.exp(selected_scores - maximum)
-    denominator = tl.sum(exponentials, axis=0)
-    normalized = exponentials / denominator
-    route_ptr = row * route_stride + route_offsets
-    tl.store(addresses + route_ptr, canonical_addresses, mask=route_offsets < WIDTH)
-    tl.store(weights + route_ptr, normalized, mask=route_offsets < WIDTH)
-
-
-@triton.jit
-def _sparse_route_backward_kernel(
-    addresses,
-    weights,
-    grad_weights,
-    grad_scores,
-    score_stride,
-    route_stride,
-    HALF: tl.constexpr,
-    WIDTH: tl.constexpr,
-    BLOCK_HALF: tl.constexpr,
-    BLOCK_ROUTE: tl.constexpr,
-):
-    row = tl.program_id(0)
-    route_offsets = tl.arange(0, BLOCK_ROUTE)
-    route_mask = route_offsets < WIDTH
-    route_ptr = row * route_stride + route_offsets
-    route_addresses = tl.load(addresses + route_ptr, mask=route_mask, other=-1)
-    route_weights = tl.load(weights + route_ptr, mask=route_mask, other=0.0).to(
-        tl.float32
-    )
-    incoming = tl.load(grad_weights + route_ptr, mask=route_mask, other=0.0).to(
-        tl.float32
-    )
-    score_gradient = route_weights * (
-        incoming - tl.sum(incoming * route_weights, axis=0)
-    )
-
-    score_offsets = tl.arange(0, BLOCK_HALF)
-    score_grid = tl.reshape(score_offsets, (BLOCK_HALF, 1))
-    address_grid = tl.reshape(route_addresses, (1, BLOCK_ROUTE))
-    gradient_grid = tl.reshape(score_gradient, (1, BLOCK_ROUTE))
-    valid_grid = tl.reshape(route_mask, (1, BLOCK_ROUTE))
-    left = tl.sum(
-        tl.where(valid_grid & (address_grid // HALF == score_grid), gradient_grid, 0.0),
-        axis=1,
-    )
-    right = tl.sum(
-        tl.where(valid_grid & (address_grid % HALF == score_grid), gradient_grid, 0.0),
-        axis=1,
-    )
-    score_mask = score_offsets < HALF
-    tl.store(
-        grad_scores + row * score_stride + score_offsets,
-        left,
-        mask=score_mask,
-    )
-    tl.store(
-        grad_scores + row * score_stride + HALF + score_offsets,
-        right,
-        mask=score_mask,
-    )
-
-
-def _blocks(half: int, width: int) -> tuple[int, int, int]:
-    block_half = triton.next_power_of_2(half)
-    block_route = max(2, triton.next_power_of_2(width))
-    return block_half, block_route, block_route * block_route
-
-
-def _route_forward(
-    scores: torch.Tensor,
-    source_extent: int,
-    width: int,
-    *,
-    index_dtype: torch.dtype,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    half = round(source_extent**0.5)
-    block_half, block_route, block_pair = _blocks(half, width)
-    addresses = torch.empty(
-        (*scores.shape[:-1], width), device=scores.device, dtype=index_dtype
-    )
-    weights = torch.empty(
-        (*scores.shape[:-1], width), device=scores.device, dtype=scores.dtype
-    )
-    rows = scores.shape[0] * scores.shape[1]
-    _sparse_route_forward_kernel[(rows,)](
-        scores,
-        addresses,
-        weights,
-        scores.stride(1),
-        addresses.stride(1),
-        HALF=half,
-        WIDTH=width,
-        BLOCK_HALF=block_half,
-        BLOCK_ROUTE=block_route,
-        BLOCK_PAIR=block_pair,
-        num_warps=8 if block_pair >= 1024 else 4,
-        num_stages=2,
-    )
-    return addresses, weights
-
-
-class _SparseRouteSelection(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, scores, source_extent, width, index_dtype):
-        addresses, weights = _route_forward(
-            scores, source_extent, width, index_dtype=index_dtype
-        )
-        ctx.save_for_backward(addresses, weights)
-        ctx.source_extent = source_extent
-        ctx.width = width
-        return addresses, weights
-
-    @staticmethod
-    def backward(ctx, _grad_addresses, grad_weights):
-        addresses, weights = ctx.saved_tensors
-        if grad_weights is None:
-            return (
-                torch.zeros(
-                    (*weights.shape[:-1], 2 * round(ctx.source_extent**0.5)),
-                    device=weights.device,
-                    dtype=weights.dtype,
-                ),
-                None,
-                None,
-                None,
-            )
-        half = round(ctx.source_extent**0.5)
-        block_half, block_route, _ = _blocks(half, ctx.width)
-        grad_scores = torch.empty(
-            (*weights.shape[:-1], 2 * half),
-            device=weights.device,
-            dtype=weights.dtype,
-        )
-        rows = weights.shape[0] * weights.shape[1]
-        _sparse_route_backward_kernel[(rows,)](
-            addresses,
-            weights,
-            grad_weights.contiguous(),
-            grad_scores,
-            grad_scores.stride(1),
-            addresses.stride(1),
-            HALF=half,
-            WIDTH=ctx.width,
-            BLOCK_HALF=block_half,
-            BLOCK_ROUTE=block_route,
-            num_warps=4,
-            num_stages=2,
-        )
-        return grad_scores, None, None, None
-
-
-def sparse_route_selection(
-    scores: torch.Tensor,
-    source_extent: int,
-    width: int,
-    *,
-    index_dtype: torch.dtype = torch.int32,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """Generate canonical partition-local addresses and normalized weights."""
-    if torch.is_grad_enabled() and scores.requires_grad:
-        return _SparseRouteSelection.apply(scores, source_extent, width, index_dtype)
-    return _route_forward(scores, source_extent, width, index_dtype=index_dtype)
-
-
-__all__ = ["sparse_route_selection"]
-
-
-# ---------------------------------------------------------------------------
-# Provider surface (auto-discovered by urm.backends.registry)
-# ---------------------------------------------------------------------------
-
-
-class K3RouteNativeTritonProvider:
-    name = "urm_native_sparse_route_selection_v0"
-    family = "k3_route"
-    tier = "native"
-
-    def decline(self, request) -> str | None:
-        from ...ir.program import SparseRouteSelectionSpec
-
-        if not isinstance(request.descriptor, SparseRouteSelectionSpec):
-            return "K3 route providers require a closed SparseRouteSelectionSpec"
-        import torch
-
-        if not torch.cuda.is_available():
-            return "native K3 route selection requires CUDA"
-        return None
-
-    def execute(self, request, operands):
-        spec = request.descriptor
-        addresses, weights = sparse_route_selection(
-            operands["scores"], spec.source_extent, spec.route_width
-        )
-        return {"addresses": addresses, "weights": weights}
-
-
-
-
-# ---------------------------------------------------------------------------
-# K3 native state-mixer backend (dispatch + state validation; certification
-# lives in urm.runtime.certification)
-# ---------------------------------------------------------------------------
-
-from urm.compiler.select.anchors import (
-    FROZEN_V0_ENVELOPE,
-    sparse_state_launch_schedule,
-    sparse_state_spec_status,
-)
-from urm.ir.program import SparseReadTiming, SparseStateOperation
-import importlib.util
-
-from urm.runtime.certification import (
-    CertifiedSparseRouteScores,
-    CertifiedSparseStateOperands,
-    CertifiedSparseStateRoutes,
-    NativeSparseRouteOutput,
-    SparseRouteSupportStatus,
-    SparseState,
-    SparseStateSupportStatus,
-    _OPERAND_CERTIFICATE,
-    _ROUTE_OUTPUT_CERTIFICATE,
-    _dtype_name,
-    native_dependencies_available,
-)
-from urm.ir.program import DType, SparseRouteSelectionSpec, SparseStateMixerSpec
-
-# lives in urm.runtime.certification)
-# ---------------------------------------------------------------------------
-
 
 class TritonSparseStateMixerBackend:
     """Native URM dispatch; no comparator package is imported or consulted."""
@@ -1405,7 +1064,6 @@ class TritonSparseStateMixerBackend:
         if state.memory.device != prepared.routes.read_indices.device:
             raise ValueError("state and routes must share one CUDA device")
         self._validate_out(out, state, prepared)
-        from urm.backends.triton.k3 import sparse_state_read, sparse_state_update  # same module
 
         if self.spec.operation is SparseStateOperation.READ_ONLY:
             readings = sparse_state_read(
@@ -1450,91 +1108,3 @@ class TritonSparseStateMixerBackend:
 
     def launch_schedule(self) -> dict[str, str | int]:
         return sparse_state_launch_schedule(self.spec)
-
-
-
-# K3 native route backend (dispatch; certification in runtime.certification)
-
-
-class TritonSparseRouteBackend:
-    """URM-native lowering for the frozen factorized additive top-k route."""
-
-    name = NATIVE_SPARSE_ROUTE_NAME
-
-    def __init__(self, spec: SparseRouteSelectionSpec) -> None:
-        self.spec = spec
-        self.support_status(spec).require()
-
-    @staticmethod
-    def support_status(spec: SparseRouteSelectionSpec) -> SparseRouteSupportStatus:
-        if (
-            importlib.util.find_spec("torch") is None
-            or importlib.util.find_spec("triton") is None
-        ):
-            return SparseRouteSupportStatus.no(
-                "missing_dependency", "PyTorch and Triton are required"
-            )
-        if spec.factor_extent > 256 or spec.route_width > 64:
-            return SparseRouteSupportStatus.no(
-                "unsupported_shape", "v0 requires factor extent <=256 and width <=64"
-            )
-        import torch
-
-        if not torch.cuda.is_available():
-            return SparseRouteSupportStatus.no(
-                "unsupported_hardware", "CUDA is unavailable"
-            )
-        return SparseRouteSupportStatus.yes()
-
-    def generate(self, certified: CertifiedSparseRouteScores):
-        import torch
-
-        if certified.spec != self.spec:
-            raise ValueError("certified scores do not match route semantics")
-        certified.require_intact()
-        device = certified.scores.device
-        if torch.cuda.get_device_capability(device) < (8, 0):
-            raise ValueError(
-                f"{NATIVE_SPARSE_ROUTE_NAME} declined [unsupported_hardware]: "
-                "v0 requires SM80 or newer"
-            )
-        from urm.backends.triton.k3 import sparse_route_selection  # same module
-
-        index_dtype = {
-            DType.INT32: torch.int32,
-            DType.INT64: torch.int64,
-        }[self.spec.output_index_dtype]
-        return sparse_route_selection(
-            certified.scores,
-            self.spec.source_extent,
-            self.spec.route_width,
-            index_dtype=index_dtype,
-        )
-
-    def generate_certified(
-        self, certified: CertifiedSparseRouteScores
-    ) -> NativeSparseRouteOutput:
-        addresses, weights = self.generate(certified)
-        return NativeSparseRouteOutput(
-            self.spec,
-            addresses,
-            weights,
-            (addresses._version, weights._version),
-            _ROUTE_OUTPUT_CERTIFICATE,
-        )
-
-    def launch_schedule(self) -> dict[str, int | str]:
-        import triton
-
-        half = self.spec.factor_extent
-        route = max(2, triton.next_power_of_2(self.spec.route_width))
-        return {
-            "schedule_family": "row_owned_factor_topk_canonical_softmax",
-            "block_half": triton.next_power_of_2(half),
-            "block_route": route,
-            "block_pair": route * route,
-            "num_warps": 8 if route * route >= 1024 else 4,
-            "num_stages": 2,
-        }
-
-PROVIDERS = (K3NativeTritonProvider(), K3RouteNativeTritonProvider())

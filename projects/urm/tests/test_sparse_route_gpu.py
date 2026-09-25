@@ -18,7 +18,7 @@ from benchmarks.comparators.sdm.reference import torch_product_key_highest_addre
 from urm.runtime.certification import (
     CertifiedSparseRouteScores,
 )
-from urm.backends.triton.k3 import (
+from urm.backends.triton.k3.route_generation import (
     TritonSparseRouteBackend,
 )
 from urm.ir.program import DType, SparseRouteSelectionSpec

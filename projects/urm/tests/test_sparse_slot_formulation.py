@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from urm.backends.numpy.k3 import chunked, recurrent, recurrent_vjp
+from urm.backends.numpy.k3.sparse_state import chunked, recurrent, recurrent_vjp
 
 
 def sample(seed=3):

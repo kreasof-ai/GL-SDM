@@ -622,7 +622,7 @@ class URMDecoderLM(nn.Module):
         for mixer in self.sparse_mixers():
             mixer.profile_ranges = enabled
             if mixer.backend_name == "urm_native":
-                from urm.backends.triton.k3 import state as state_kernels
+                from urm.backends.triton.k3 import sparse_state as state_kernels
 
                 state_kernels.PROFILE_RANGES = enabled
                 if enabled:

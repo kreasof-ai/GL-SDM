@@ -22,7 +22,7 @@ if not torch.cuda.is_available():
 
 import torch.nn.functional as F
 
-from urm.backends.triton.k1 import execute_online_softmax
+from urm.backends.triton.k1.online_softmax import execute_online_softmax
 
 DEV = "cuda"
 LOG2E = 1.4426950408889634

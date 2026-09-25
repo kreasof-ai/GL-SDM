@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from ...ir.program import K2GateScope, K2ReadTiming, LinearDeltaSpec
+from ....ir.program import K2GateScope, K2ReadTiming, LinearDeltaSpec
 
 
 def _inputs(memory, keys, queries, values, beta, log_decay):
@@ -246,7 +246,7 @@ def linear_delta_state(
     ``beta``/``log_decay`` per gate scope. Runs in float64 (the oracle tier).
     Returns ``(out [B,H,T,V], final_state [B,H,K,V])``.
     """
-    from ...ir.program import K2GateScope as _GS
+    from ....ir.program import K2GateScope as _GS
 
     m0 = np.asarray(initial_state, dtype=np.float64)
     k = np.asarray(keys, dtype=np.float64)

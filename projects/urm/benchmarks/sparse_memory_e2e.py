@@ -484,7 +484,7 @@ def _make_bundle(case, torch):
 
 def _calls(bundle, torch):
     from benchmarks.comparators.sdm.reference import torch_product_key
-    from urm.backends.torch.k3 import torch_sparse_state_mixer
+    from urm.backends.torch.k3.sparse_state import torch_sparse_state_mixer
 
     spec = bundle["spec"]
     read_only = spec.operation.value == "read_only"
@@ -781,7 +781,7 @@ def _backward_memory(bundle, path, torch):
 def _training_graph_setup(bundle, path, torch):
     from benchmarks.comparators.sdm.reference import torch_product_key
     from urm.runtime.certification import CertifiedSparseStateRoutes
-    from urm.backends.torch.k3 import torch_sparse_state_mixer
+    from urm.backends.torch.k3.sparse_state import torch_sparse_state_mixer
 
     spec = bundle["spec"]
     base = (

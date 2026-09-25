@@ -18,9 +18,9 @@ from __future__ import annotations
 import pytest
 
 from urm.backends.contract import ProviderRequest
-from urm.backends.numpy.k1 import K1NumpyProvider
-from urm.backends.torch.k1 import K1SdpaLibraryProvider, K1TorchReferenceProvider
-from urm.backends.triton.k1 import K1NativeTritonProvider
+from urm.backends.numpy.k1.softmax import K1NumpyProvider
+from urm.backends.torch.k1.softmax import K1SdpaLibraryProvider, K1TorchReferenceProvider
+from urm.backends.triton.k1.online_softmax import K1NativeTritonProvider
 from urm.ir.program import (
     K1Descriptor,
     K1HeadMap,

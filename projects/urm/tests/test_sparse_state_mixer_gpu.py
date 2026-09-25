@@ -18,17 +18,17 @@ from urm.runtime.certification import (
     CertifiedSparseStateRoutes,
     SparseState,
 )
-from urm.backends.triton.k3 import (
+from urm.backends.triton.k3.sparse_state import (
     TritonSparseStateMixerBackend,
 )
-from urm.backends.torch.k3 import torch_sparse_state_mixer
+from urm.backends.torch.k3.sparse_state import torch_sparse_state_mixer
 from urm.ir.program import (
     DType,
     SparseReadTiming,
     SparseStateMixerSpec,
     SparseStateOperation,
 )
-from urm.backends.numpy.k3 import numpy_sparse_state_mixer
+from urm.backends.numpy.k3.sparse_state import numpy_sparse_state_mixer
 
 TOLERANCES = {
     torch.float32: {"atol": 2e-5, "rtol": 2e-5},
@@ -510,7 +510,7 @@ def test_preallocated_output_is_validated_before_dispatch(monkeypatch) -> None:
         torch.empty((1, 7, 3), device="cuda").transpose(1, 2),
         values,
     ]
-    import urm.backends.triton.k3 as kernels
+    import urm.backends.triton.k3.sparse_state as kernels
 
     launches = 0
 
@@ -652,7 +652,7 @@ import importlib.util
 import torch
 assert importlib.util.find_spec('lingua') is None
 from urm.runtime.certification import CertifiedSparseStateRoutes, SparseState
-from urm.backends.triton.k3 import TritonSparseStateMixerBackend
+from urm.backends.triton.k3.sparse_state import TritonSparseStateMixerBackend
 from urm.ir.program import DType, SparseReadTiming, SparseStateMixerSpec, SparseStateOperation
 spec = SparseStateMixerSpec(1, 1, 8, 7, 0, 1, DType.FLOAT32, SparseStateOperation.READ_ONLY, SparseReadTiming.CURRENT_STATE)
 indices = torch.tensor([[[3]]], device='cuda')

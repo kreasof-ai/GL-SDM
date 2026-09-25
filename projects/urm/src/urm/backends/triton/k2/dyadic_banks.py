@@ -377,7 +377,7 @@ class DyadicBankedStateNativeTritonProvider:
     tier = "native"
 
     def decline(self, request) -> str | None:
-        from ...ir.program import DyadicBankedState
+        from ....ir.program import DyadicBankedState
 
         if not isinstance(request.descriptor, DyadicBankedState):
             return "dyadic_banked_state providers require a DyadicBankedState op descriptor"

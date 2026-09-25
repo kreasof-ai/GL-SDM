@@ -30,9 +30,9 @@ pytest.importorskip("triton")
 if not torch.cuda.is_available():
     pytest.skip("CUDA is required", allow_module_level=True)
 
-from urm.backends.torch.k2 import linear_delta_state as torch_lds
-from urm.backends.triton.k2 import linear_delta_state as native_lds
-from urm.backends.triton.k2 import K2NativeMatrixProvider
+from urm.backends.torch.k2.linear_delta import linear_delta_state as torch_lds
+from urm.backends.triton.k2.matrix_scan import linear_delta_state as native_lds
+from urm.backends.triton.k2.matrix_scan import K2NativeMatrixProvider
 from urm.backends.contract import ProviderFamily, ProviderRequest
 from urm.ir.program import K2GateScope, K2ReadTiming, K2ScaleRule, LinearDeltaSpec
 

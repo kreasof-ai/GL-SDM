@@ -8,9 +8,9 @@ and the analytical adjoint must match finite differences of the chunked form.
 import numpy as np
 import pytest
 
-from urm.backends.numpy.k2 import chunked, recurrent, recurrent_vjp
-from urm.backends.numpy.k3 import chunked as sparse_chunked
-from urm.backends.numpy.k3 import recurrent as sparse_recurrent
+from urm.backends.numpy.k2.linear_delta import chunked, recurrent, recurrent_vjp
+from urm.backends.numpy.k3.sparse_state import chunked as sparse_chunked
+from urm.backends.numpy.k3.sparse_state import recurrent as sparse_recurrent
 
 
 def sample(seed=3, t=7, k=5, d=3):

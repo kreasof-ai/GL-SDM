@@ -23,7 +23,7 @@ if not torch.cuda.is_available():
     pytest.skip("CUDA is required", allow_module_level=True)
 
 from urm.backends.contract import ProviderFamily, ProviderRequest
-from urm.backends.triton.k2 import K2NativeMatrixProvider
+from urm.backends.triton.k2.matrix_scan import K2NativeMatrixProvider
 from urm.compiler.normalize.graph import normalize_graph_document
 from urm.compiler.pipeline import CompilationIntent, compile_graph
 from urm.frontend.recipes import load_graph_recipe_document
@@ -143,8 +143,8 @@ def test_native_k2_normalized_falls_back_to_reference_tier():
 @pytest.mark.parametrize("gate", ["head", "channel"])
 def test_native_k2_cotangents_match_reference(delta, gate):
     """Operand and final-state cotangents pass through the native reverse scan."""
-    from urm.backends.torch.k2 import linear_delta_state as torch_lds
-    from urm.backends.triton.k2 import linear_delta_state as native_lds
+    from urm.backends.torch.k2.linear_delta import linear_delta_state as torch_lds
+    from urm.backends.triton.k2.matrix_scan import linear_delta_state as native_lds
     from urm.ir.program import K2ReadTiming
 
     torch.manual_seed(5)
@@ -200,8 +200,8 @@ def test_native_k2_key_dim_rsqrt_scale_matches_reference(delta):
     reference resolved key_dim_rsqrt → K**-0.5, so GLA/DeltaNet/GDN-class laws ran at
     K**0.5 × the pinned read scale on the native tier while every gate stayed green.
     """
-    from urm.backends.torch.k2 import linear_delta_state as torch_lds
-    from urm.backends.triton.k2 import linear_delta_state as native_lds
+    from urm.backends.torch.k2.linear_delta import linear_delta_state as torch_lds
+    from urm.backends.triton.k2.matrix_scan import linear_delta_state as native_lds
     from urm.ir.program import K2ReadTiming
 
     torch.manual_seed(11)
@@ -241,8 +241,8 @@ def test_native_k2_transition_features_match_reference(feature):
     """The A8 transition features are parity-qualified on the native tier: forward AND
     cotangents match the Torch reference (the measured residuals that admitted them:
     dual-gate 1.5e-5/1.5e-4, multi-rank 7.6e-5/1.4e-4, retrieval 1.9e-6, low-rank 1.4e-6)."""
-    from urm.backends.torch.k2 import linear_delta_state as torch_lds
-    from urm.backends.triton.k2 import linear_delta_state as native_lds
+    from urm.backends.torch.k2.linear_delta import linear_delta_state as torch_lds
+    from urm.backends.triton.k2.matrix_scan import linear_delta_state as native_lds
     from urm.ir.program import K2ReadTiming
 
     torch.manual_seed(13)

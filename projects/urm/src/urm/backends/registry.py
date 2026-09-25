@@ -1,17 +1,19 @@
-"""Backend auto-discovery: one directory per backend, one file per family.
+"""Backend auto-discovery: one directory per backend, one per family, one file per op.
 
 The dispatch table is built from the filesystem, not from a central registry
 that a new backend must edit. Each backend lives in ``backends/<name>/`` and
-implements each family it supports in ``backends/<name>/<family>.py``. A family
-module exposes its canonical kernel functions (``forward``/``backward`` and the
-family's performance-axis form) and a ``PROVIDERS`` tuple of
-:class:`~urm.backends.contract.Provider` instances; the registry imports every
-``<name>/<family>.py`` and indexes the declared providers by anchor name.
+implements each family it supports in ``backends/<name>/<family>/`` — a family
+directory whose ``__init__.py`` re-exports the combined ``PROVIDERS`` tuple of its
+op modules (one op per file). Ordinary (non-recurrence) typed operators live in a
+flat ``<name>/<op>.py`` module at the backend root. The registry imports every
+``<name>/<family>/`` package and every flat ``<name>/<op>.py`` module and indexes
+the declared providers by anchor name.
 
-Adding a backend (e.g. ``tilelang``) is one new directory with ``k1.py`` /
-``k2.py`` / ``k3.py`` written to the same canonical signatures — no edit to any
-shared file. A backend that does not implement a family simply omits the file;
-its providers decline.
+Adding a backend (e.g. ``tilelang``) is one new directory with the family
+subdirectories it supports — no edit to any shared file. Adding an op to a family
+is one new file in the family directory plus a line in its ``__init__.py``. A
+backend that does not implement a family simply omits the directory; its providers
+decline.
 """
 
 from __future__ import annotations
@@ -45,25 +47,38 @@ def _live_backends() -> tuple[str, ...]:
 
 
 def discover_providers() -> dict[str, Provider]:
-    """Import every module in each live backend directory and index its providers.
+    """Import every family package and flat op module per backend, and index providers.
 
-    Every ``backends/<backend>/*.py`` module is scanned; any module exposing a
-    ``PROVIDERS`` tuple contributes its providers. Adding a backend is creating
-    its directory — no edit to any shared file. The mapping is anchor name →
-    provider; an anchor name collision across backends is an error.
+    Every ``backends/<backend>/<family>/`` package and every flat
+    ``backends/<backend>/<op>.py`` module is scanned; anything exposing a
+    ``PROVIDERS`` tuple contributes its providers. The walk is bounded — backend,
+    then family, then the family's op modules; no arbitrary-depth recursion. Adding
+    a backend is creating its directory; adding an op is adding one file to a family
+    directory. The mapping is anchor name → provider; an anchor name collision
+    across backends is an error.
     """
     providers: dict[str, Provider] = {}
+
+    def _index(module) -> None:
+        for provider in getattr(module, "PROVIDERS", ()):
+            if provider.name in providers:
+                raise ValueError(
+                    f"anchor name {provider.name!r} is provided by two backends"
+                )
+            providers[provider.name] = provider
+
     for backend in _live_backends():
         package = f"urm.backends.{backend}"
         package_module = importlib.import_module(package)
         for info in pkgutil.iter_modules(package_module.__path__):
-            module = importlib.import_module(f"{package}.{info.name}")
-            for provider in getattr(module, "PROVIDERS", ()):
-                if provider.name in providers:
-                    raise ValueError(
-                        f"anchor name {provider.name!r} is provided by two backends"
-                    )
-                providers[provider.name] = provider
+            if info.ispkg:
+                # Family directory: the family's __init__ re-exports the combined
+                # PROVIDERS of its op modules (one op per file, no deeper nesting).
+                _index(importlib.import_module(f"{package}.{info.name}"))
+            else:
+                # Flat module at the backend root: an ordinary (non-recurrence)
+                # typed operator or a not-yet-family-classified provider.
+                _index(importlib.import_module(f"{package}.{info.name}"))
     return providers
 
 

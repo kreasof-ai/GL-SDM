@@ -20,8 +20,8 @@ if not torch.cuda.is_available():
     pytest.skip("CUDA is required", allow_module_level=True)
 
 from urm.backends.contract import ProviderFamily, ProviderRequest
-from urm.backends.torch.triangular_solve import triangular_solve_forward
-from urm.backends.triton.triangular_solve import (
+from urm.backends.torch.k4.triangular_solve import triangular_solve_forward
+from urm.backends.triton.k4.triangular_solve import (
     TriangularSolveNativeTritonProvider,
     triangular_solve,
 )

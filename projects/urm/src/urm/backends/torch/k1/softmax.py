@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ...ir.program import K1Descriptor, K1ReducerLaw, K1ScaleRule, K1ScoreLaw, K1ScoreMap
+from ....ir.program import K1Descriptor, K1ReducerLaw, K1ScaleRule, K1ScoreLaw, K1ScoreMap
 
 
 def _torch() -> Any:

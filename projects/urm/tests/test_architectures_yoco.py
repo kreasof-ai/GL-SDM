@@ -56,7 +56,7 @@ def test_cross_decoder_matches_pinned_parallel_attn_cuda():
     # Reference: causal softmax attention of q (at offset) over the shared KV,
     # then o_proj. parallel_attn is self-attention over a single sequence, so
     # the cross-cache equation is verified against the K1 graph's own oracle.
-    from urm.backends.numpy.k1 import attention
+    from urm.backends.numpy.k1.softmax import attention
     import numpy as np
     q = layer.q_proj(hidden).view(B, T, H, DK)
     # Offset-causal oracle: query i attends to shared keys 0..S−T+i.

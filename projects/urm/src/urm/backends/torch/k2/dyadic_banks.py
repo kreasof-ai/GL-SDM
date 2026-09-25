@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ...ir.program import DyadicBankedState  # noqa: F401  (descriptor type)
+from ....ir.program import DyadicBankedState  # noqa: F401  (descriptor type)
 
 
 def dyadic_banked_state_forward(

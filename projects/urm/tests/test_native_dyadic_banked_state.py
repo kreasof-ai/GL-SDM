@@ -1,7 +1,7 @@
 """Gate: the native Triton DyadicBankedState tier (A4) matches the torch reference.
 
 The native provider (``urm_native_dyadic_banked_state_v1``,
-``urm.backends.triton.dyadic_banked_state``) runs the banked dyadic recurrence
+``urm.backends.triton.k2.dyadic_banks``) runs the banked dyadic recurrence
 in the decay-forward form with fp32 accumulation: one program owns a
 (batch·head, value-block) fragment and walks the token axis in order, keeping
 the ``num_levels−1`` bank slots in a program-exclusive fp32 global state buffer
@@ -33,8 +33,8 @@ if not torch.cuda.is_available():
 from architectures.log_linear_attention import BankedLogLinearMixer
 from architectures.log_linear_mamba2 import LogLinearMamba2Layer
 from urm.backends.contract import ProviderFamily, ProviderRequest
-from urm.backends.torch.dyadic_banked_state import dyadic_banked_state_forward
-from urm.backends.triton.dyadic_banked_state import (
+from urm.backends.torch.k2.dyadic_banks import dyadic_banked_state_forward
+from urm.backends.triton.k2.dyadic_banks import (
     NATIVE_DYADIC_BANKED_STATE_NAME,
     DyadicBankedStateNativeTritonProvider,
     dyadic_banked_state,

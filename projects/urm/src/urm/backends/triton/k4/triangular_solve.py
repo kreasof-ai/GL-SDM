@@ -22,7 +22,7 @@ import torch
 import triton
 import triton.language as tl
 
-from ...ir.program import TriangularSolve  # noqa: F401  (descriptor type)
+from ....ir.program import TriangularSolve  # noqa: F401  (descriptor type)
 
 NATIVE_TRIANGULAR_SOLVE_NAME = "urm_native_triangular_solve_v1"
 
