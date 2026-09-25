@@ -12,6 +12,7 @@ from typing import Any
 import torch
 
 EXPECTED_TUCKER_REVISION = "c3e3d3cec991f4303b824c7fb7cbb95e3748d5c7"
+PINS_TUCKER_VIT = Path("/tmp/urm-comparator-pins/tucker/ViT")
 EXPECTED_TUCKER_SOURCE_SHA256 = (
     "09ce13096d191d3171b94dad76a8eef3646861674bc7dba9daa88a07f9eadc8b"
 )
@@ -19,12 +20,30 @@ EXPECTED_TUCKER_SOURCE_SHA256 = (
 
 @lru_cache(maxsize=1)
 def _tucker_operator():
+    import sys
+
+    identity = tucker_source_identity()
+    vit_root = str(Path(identity["source_path"]).resolve().parents[2])
+    if sys.path[0] != vit_root:
+        if vit_root in sys.path:
+            sys.path.remove(vit_root)
+        sys.path.insert(0, vit_root)
     source = importlib.import_module("src.attn.triton.tucker_attn")
+    if str(Path(source.__file__).resolve()) != identity["source_path"]:
+        raise RuntimeError(
+            f"src.attn.triton.tucker_attn resolved to {source.__file__}, "
+            f"not the pinned {identity['source_path']}"
+        )
     return source.FlashAttentionTucker(causal=False, attn_autotune=False)
 
 
 @lru_cache(maxsize=1)
 def tucker_source_identity() -> dict[str, str]:
+    import sys
+
+    pin_vit = str(PINS_TUCKER_VIT)
+    if pin_vit not in sys.path:
+        sys.path.insert(0, pin_vit)
     module = importlib.import_module("src.attn.triton.tucker_attn")
     source = Path(module.__file__).resolve()
     repository = next(

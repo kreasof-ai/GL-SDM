@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "name": "tucker",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.tucker",
+    "notes": "arch-070. Verified in the sweep against ViT/src/attn/tucker.py @ c3e3d3ce: Q/K/V and the output are Tucker-factorized (Us_pre/Core_pre score core, Us_post/Core_post output folding) — all external; the mixer is softmax attention over the core-mixed scores (the pinned FlashAttentionTucker kernel computes t1 = Q̃·B_pre[h], scores = t1·K̃ᵀ/√R, online softmax over Ṽ). Layer module: architectures/tucker_attention.py."
+  },
+  "layers": [
+    {
+      "id": "tucker_attention_layer",
+      "operation": "weighted_reduce",
+      "external_component": "architectures.tucker_attention.TuckerAttentionLayer",
+      "params": {
+        "external_stages": [
+          "Tucker factor foldings: Q̃=x·Us_pre[0], K̃=x·Us_pre[2], Ṽ=x·Us_post[0], B_pre=Us_pre[1]·Core_pre",
+          "per-head effective queries q_eff[h] = Q̃·B_pre[h] (score core on the Q side)",
+          "output folding out = (y·(Us_post[1]·Core_post))·Us_post[2]ᵀ + bias_post"
+        ],
+        "normalization": "softmax",
+        "selection": "dense",
+        "causal": false,
+        "head_map": "equal"
+      },
+      "state": {},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Mixer parity vs the pinned FlashAttentionTucker Triton kernel (fp16, CUDA) in tests/test_architectures_tucker.py; external foldings transcribed from the pinned _tucker_foldings_* and gradients flow through all factor matrices. The pinned layer is noncausal (FlashAttentionTucker(causal=False)); the commented-out causal non-flash path is not part of the pinned contract."
+  }
+}
