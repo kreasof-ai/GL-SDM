@@ -156,7 +156,8 @@ class NSAFullLayer(torch.nn.Module):
         """Causal-token gather indices [B,T,H,W] → plan layout [B,H,T,W], float, -1 padded."""
         return idx.permute(0, 2, 1, 3).float()
 
-    def forward(self, hidden: torch.Tensor) -> torch.Tensor:
+    def forward(self, hidden: torch.Tensor,
+                block_indices: torch.Tensor | None = None) -> torch.Tensor:
         B, T, _ = hidden.shape
         H, D, BS, W = self.num_heads, self.head_dim, self.block_size, self.window_size
         device = hidden.device
@@ -170,8 +171,8 @@ class NSAFullLayer(torch.nn.Module):
         pad = n_blocks * BS - T
         k_pad = torch.nn.functional.pad(k, (0, 0, 0, 0, 0, pad))
         v_pad = torch.nn.functional.pad(v, (0, 0, 0, 0, 0, pad))
-        k_cmp = k_pad.view(B, n_blocks, BS, H, D).mean(dim=1)  # [B, C, H, D]
-        v_cmp = v_pad.view(B, n_blocks, BS, H, D).mean(dim=1)
+        k_cmp = k_pad.view(B, n_blocks, BS, H, D).mean(dim=2)  # [B, C, H, D]
+        v_cmp = v_pad.view(B, n_blocks, BS, H, D).mean(dim=2)
         # visible blocks for query t: c with (c+1)*BS - 1 <= t
         q_pos = torch.arange(T, device=device).view(T, 1)
         blk = torch.arange(n_blocks, device=device).view(1, -1)
@@ -182,11 +183,15 @@ class NSAFullLayer(torch.nn.Module):
                                        gather_indices=self._gather(cmp_idx))["output"]
 
         # -- selected: top-k blocks by mean compression score (external route) -------
-        with torch.no_grad():
-            scores = torch.einsum("bthd,bchd->bhtc", q.float(), k_cmp.float())
-            scores = scores.masked_fill(~cmp_visible.view(1, 1, T, n_blocks), float("-inf"))
-            top = scores.topk(min(self.topk, n_blocks), dim=-1).indices  # [B,H,T,topk]
-        top = top.permute(0, 2, 1, 3)  # [B,T,H,topk]
+        if block_indices is None:
+            with torch.no_grad():
+                scores = torch.einsum("bthd,bchd->bhtc", q.float(), k_cmp.float())
+                scores = scores.masked_fill(~cmp_visible.view(1, 1, T, n_blocks), float("-inf"))
+                top = scores.topk(min(self.topk, n_blocks), dim=-1).indices  # [B,H,T,topk]
+            top = top.permute(0, 2, 1, 3)  # [B,T,H,topk]
+        else:
+            # Pinned override: block_indices [B,T,H,S] bypass the computed route.
+            top = block_indices[..., : self.topk].long()
         tok = top.unsqueeze(-1) * BS + torch.arange(BS, device=device)   # [B,T,H,topk,BS]
         valid = (top.unsqueeze(-1) >= 0) & (tok <= q_pos.view(1, T, 1, 1, 1))
         slc_idx = torch.where(valid, tok, torch.full_like(tok, -1)).flatten(-2)
