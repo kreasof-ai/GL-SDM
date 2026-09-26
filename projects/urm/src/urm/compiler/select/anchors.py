@@ -586,6 +586,14 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
         backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
         supported_visitors=frozenset(),
     ),
+    # Native Triton merge: one fused pass over the flattened elements — no
+    # intermediate tensor materialization. Serves the same equation.
+    ExecutionAnchor(
+        kind=AnchorKind.MERGE,
+        name="urm_native_merge_linear_combination_v1",
+        backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+    ),
     ExecutionAnchor(
         kind=AnchorKind.TRIANGULAR_SOLVE,
         name="urm.unified.triangular_solve.reference.v1",

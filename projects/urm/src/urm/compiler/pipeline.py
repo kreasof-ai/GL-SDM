@@ -1782,6 +1782,7 @@ _GRAPH_TARGETS: dict[str, frozenset[str]] = {
             "urm_native_sparse_state_mixer_v0",
             "urm_native_triangular_solve_v1",
             "urm_native_dyadic_banked_state_v1",
+            "urm_native_merge_linear_combination_v1",
         }
     ),
 }
