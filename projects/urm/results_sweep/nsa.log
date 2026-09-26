@@ -1,12 +1,20 @@
+W0926 20:07:56.885000 212306 site-packages/torch/_dynamo/convert_frame.py:2008] [8/8] torch._dynamo hit config.recompile_limit (8)
+W0926 20:07:56.885000 212306 site-packages/torch/_dynamo/convert_frame.py:2008] [8/8]    function: 'torch_dynamo_resume_in_execute_indexed_k1_at_325' (/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k1/indexed.py:325)
+W0926 20:07:56.885000 212306 site-packages/torch/_dynamo/convert_frame.py:2008] [8/8]    last reason: 8/7: ___check_obj_id(___stack0, 94476648607296), type=<class 'urm.backends.triton.k1.indexed.execute_indexed_k1.<locals>._IndexedK1'>  # return _IndexedK1.apply(query, key, value, gather)  # ome/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k1/indexed.py:408 in torch_dynamo_resume_in_execute_indexed_k1_at_325
+W0926 20:07:56.885000 212306 site-packages/torch/_dynamo/convert_frame.py:2008] [8/8] User stack trace:
+W0926 20:07:56.885000 212306 site-packages/torch/_dynamo/convert_frame.py:2008] [8/8]   File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k1/indexed.py", line 408, in torch_dynamo_resume_in_execute_indexed_k1_at_325
+W0926 20:07:56.885000 212306 site-packages/torch/_dynamo/convert_frame.py:2008] [8/8]     return _IndexedK1.apply(query, key, value, gather)
+W0926 20:07:56.885000 212306 site-packages/torch/_dynamo/convert_frame.py:2008] [8/8] To log all recompilation reasons, use TORCH_LOGS="recompiles".
+W0926 20:07:56.885000 212306 site-packages/torch/_dynamo/convert_frame.py:2008] [8/8] To diagnose recompilation issues, see https://docs.pytorch.org/docs/main/user_guide/torch_compiler/compile/programming_model.recompilation.html
 {
   "mixer": "nsa",
   "steps": 10,
-  "final_loss": 8.181764602661133,
-  "mfu": 0.39969785674680164,
-  "params": 102742272,
-  "checkpoint_aligned": false,
+  "final_loss": 8.140562057495117,
+  "mfu": 0.2823644716426536,
+  "params": 102991104,
+  "checkpoint_aligned": true,
   "kl_divergence": null,
-  "wallclock_s": 1.8127018910017796,
-  "throughput_tokens_s": 45192.207503423175,
-  "peak_memory_gib": 5.593344688415527
+  "wallclock_s": 2.5721376479777973,
+  "throughput_tokens_s": 31848.995353885948,
+  "peak_memory_gib": 6.214391231536865
 }

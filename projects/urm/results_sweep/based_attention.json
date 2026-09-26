@@ -1,4 +1,0 @@
-{
-  "mixer": "based_attention",
-  "error": "exit 1 (see results_sweep/based_attention.log)"
-}

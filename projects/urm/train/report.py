@@ -75,29 +75,48 @@ def main() -> None:
 
     # ---- Upstream comparison ----
     if upstream:
-        lines.append("\n## Upstream fast-kernel comparison\n")
+        lines.append("\n## Upstream comparison\n")
         lines.append("Same 100M-class config; upstream rows run eager (the fla chunk "
                      "kernels fail torch.compile here; the URM rows compile through the "
-                     "opaque-op boundary).\n")
-        lines.append("| row | MFU (urm/up) | tok/s (urm/up) | peak GiB (urm/up) | "
-                     "params (urm/up) | KL |")
-        lines.append("|---|---|---|---|---|---|")
+                     "opaque-op boundary). Each baseline is labeled by tier: "
+                     "**prod** = the upstream's production kernel; **ref** = the upstream's "
+                     "reference/research implementation (or a transcription where the "
+                     "production kernel is environment-blocked: flash-attn absent, "
+                     "mamba_ssm wheel absent, SMEM/toolchain envelope). Granularity "
+                     "labels: mixer / schedule (interleaved hybrid) / block (full block) / "
+                     "residual (residual design).\n")
+        lines.append("| row | tier | granularity | MFU (urm/up) | tok/s (urm/up) | "
+                     "peak GiB (urm/up) | params (urm/up) | KL |")
+        lines.append("|---|---|---|---|---|---|---|---|")
+        n_prod = n_ref = 0
         for name in sorted(upstream):
             u = upstream[name]
             o = ours.get(name)
+            tier = u.get("baseline_tier", "?")
+            gran = u.get("granularity", "mixer")
+            tier_short = {"production-kernel": "prod",
+                          "reference-implementation": "ref"}.get(tier, tier)
             if "error" in u:
-                lines.append(f"| {name} | — / ERROR | — | — | — | — |")
+                lines.append(f"| {name} | {tier_short} | {gran} | — / ERROR | — | — | — | — |")
                 continue
+            if tier == "production-kernel":
+                n_prod += 1
+            else:
+                n_ref += 1
             o_mfu = _fmt(o['mfu']) if o and 'mfu' in o else "—"
             o_tps = _fmt(o['throughput_tokens_s'], '{:.0f}') if o and 'mfu' in o else "—"
             o_mem = _fmt(o['peak_memory_gib'], '{:.2f}') if o and 'mfu' in o else "—"
             o_par = f"{o['params']:,}" if o and 'params' in o else "—"
             kl = _fmt(o['kl_divergence'], '{:.2e}') if o and 'kl_divergence' in o else "—"
             lines.append(
-                f"| {name} | {o_mfu} / {_fmt(u['mfu'])} | {o_tps} / "
-                f"{_fmt(u['throughput_tokens_s'], '{:.0f}')} | {o_mem} / "
+                f"| {name} | {tier_short} | {gran} | {o_mfu} / {_fmt(u['mfu'])} | "
+                f"{o_tps} / {_fmt(u['throughput_tokens_s'], '{:.0f}')} | {o_mem} / "
                 f"{_fmt(u['peak_memory_gib'], '{:.2f}')} | {o_par} / {u['params']:,} | {kl} |"
             )
+        lines.append(f"\n_{n_prod + n_ref}/{len(upstream)} upstream baselines completed: "
+                     f"{n_prod} production-kernel, {n_ref} reference-implementation. "
+                     "The only native row without an upstream baseline is hla "
+                     "(empty pin — paper-only, no implementation exists)._\n")
 
     Path(args.out).write_text("\n".join(lines) + "\n")
     print(f"[report] wrote {args.out} ({n_ok} urm rows, {len(upstream)} upstream rows)")

@@ -1,12 +1,12 @@
 {
   "mixer": "samba_attention",
   "steps": 10,
-  "final_loss": 8.220251083374023,
-  "mfu": 0.39133154800886805,
-  "params": 102742272,
+  "final_loss": 7.987328052520752,
+  "mfu": 0.31269810094214495,
+  "params": 94432632,
   "checkpoint_aligned": true,
   "kl_divergence": null,
-  "wallclock_s": 1.8514557909802534,
-  "throughput_tokens_s": 44246.263075300034,
-  "peak_memory_gib": 5.51331901550293
+  "wallclock_s": 2.1304419209773187,
+  "throughput_tokens_s": 38452.11605788344,
+  "peak_memory_gib": 5.480044841766357
 }

@@ -532,6 +532,29 @@ UPSTREAM_STATEFUL_BUILDERS = {
     "sdm": lambda: _SDMUpstream,
 }
 
+# Baseline tier per row: "production-kernel" (the upstream's fused/chunk kernel) vs
+# "reference-implementation" (the upstream's shipped research code / a transcription
+# where the production kernel is environment-blocked). The report labels each row.
+UPSTREAM_TIER = {
+    # production kernels (fla chunk/layer, SDPA, pinned Triton/CUDA kernels)
+    **{r: "production-kernel" for r in (
+        "dense_attention", "gla", "gated_deltanet", "deltanet", "linear_attention",
+        "retnet", "simple_gla", "hgrn2", "kda", "comba", "gdn2", "gsa", "abc_gsa",
+        "gated_delta_product", "rwkv7", "based_attention", "forgetting_attention",
+        "lightning_attention", "tda", "lightnet", "mom", "mla_attention", "moba",
+        "deltaformer", "log_linear_mamba2", "bit_attention", "path_attention",
+        "rodimus", "raven", "yoco", "wall_attention", "dplr", "samba_attention",
+        "mamba2", "kata", "attnres", "pattention",
+    )},
+    # reference implementations (pinned research code / transcriptions where the
+    # production kernel is environment-blocked)
+    **{r: "reference-implementation" for r in (
+        "iplr", "log_linear_attention", "nsa", "differential_attention",
+        "hopfield_association", "longformer", "tucker_attention", "conformer_attention",
+        "dsa", "sparse_transformer", "tpa_attention", "cat_attention", "sdm",
+    )},
+}
+
 import sys as _sys
 if "/tmp/urm-comparator-pins/kata" not in _sys.path:
     _sys.path.insert(0, "/tmp/urm-comparator-pins/kata")
@@ -971,6 +994,8 @@ def _parse_args() -> argparse.Namespace:
 
 def _run_one(row: str, args: argparse.Namespace) -> dict:
     """Train one upstream row in-process (called directly or via --subprocess child)."""
+    rec_extra = {"baseline_tier": UPSTREAM_TIER.get(row, "unknown"),
+                 "granularity": UPSTREAM_GRANULARITY.get(row, "mixer")}
     granularity = UPSTREAM_GRANULARITY.get(row, "mixer")
     stateful = row in UPSTREAM_STATEFUL
     if granularity == "block":
@@ -996,11 +1021,15 @@ def _run_one(row: str, args: argparse.Namespace) -> dict:
     )
     data = data_generator("finewebedu10B/finewebedu_train_*.bin",
                           cfg.microbatch_tokens, cfg.sequence_length)
-    return train(cfg, spec, data, device="cuda").to_dict()
+    rec = train(cfg, spec, data, device="cuda").to_dict()
+    rec.update(rec_extra)
+    return rec
 
 
 def main() -> None:
     args = _parse_args()
+    # Record the baseline tier in each row's JSON for the report.
+    args._baseline_tier = UPSTREAM_TIER
     all_rows = sorted(set(UPSTREAM_BUILDERS) | set(UPSTREAM_BLOCK_BUILDERS)
                       | set(UPSTREAM_RESIDUAL_BUILDERS) | set(UPSTREAM_STATEFUL_BUILDERS))
     rows = ([r.strip() for r in args.rows.split(",") if r.strip()]
