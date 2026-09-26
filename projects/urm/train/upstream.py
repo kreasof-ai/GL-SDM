@@ -172,6 +172,15 @@ UPSTREAM_BUILDERS = {
     "deltaformer": _fla_builder("fla.layers.deltaformer.DeltaFormerAttention"),
     "log_linear_mamba2": _fla_builder("fla.layers.log_linear_mamba2.LogLinearMamba2"),
     "bit_attention": _fla_builder("fla.layers.bitattn.BitAttention"),
+    # Same-family matches verified to run (fwd+bwd) here. Excluded despite an fla class:
+    # wall_attention (fla's WallAttention is sliding-window — a DIFFERENT law from our
+    # channel-decay Wall) and nsa (fla's NativeSparseAttention is the full 3-branch NSA;
+    # our nsa row is the selected branch only — not apples-to-apples).
+    "path_attention": _fla_builder("fla.layers.path_attn.PaTHAttention"),
+    "rodimus": _fla_builder("fla.layers.rodimus.RodimusAttention"),
+    "raven": _fla_builder("fla.layers.raven.Raven"),
+    # Our yoco row is the YOCO self-decoder half → fla's YOCOGatedRetention.
+    "yoco": _fla_builder("fla.layers.yoco.YOCOGatedRetention"),
 }
 
 
