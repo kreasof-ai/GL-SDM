@@ -42,15 +42,26 @@ from train.data import data_generator, get_data
 
 
 class _FlaWrap(torch.nn.Module):
-    """Wrap an fla chunk-mode layer as a [B,T,C] -> [B,T,C] mixer (unwrap the tuple)."""
+    """Wrap an fla chunk-mode layer as a [B,T,C] -> [B,T,C] mixer (unwrap the tuple).
+
+    Several fla chunk kernels are dtype-strict (bf16-only: ``ChunkGatedDeltaProduct``,
+    comba's mixed-operand assertion). The harness's autocast does not always reach the
+    layer boundary, so cast the input to the layer's weight dtype (bf16 under the
+    benchmark's autocast init) and cast back."""
 
     def __init__(self, layer):
         super().__init__()
         self.layer = layer
 
     def forward(self, hidden):
-        out = self.layer(hidden)
-        return out[0] if isinstance(out, tuple) else out
+        try:
+            wdtype = next(self.layer.parameters()).dtype
+        except StopIteration:
+            wdtype = hidden.dtype
+        dtype = wdtype if wdtype in (torch.bfloat16, torch.float16) else hidden.dtype
+        out = self.layer(hidden.to(dtype))
+        out = out[0] if isinstance(out, tuple) else out
+        return out.to(hidden.dtype)
 
 
 class _TDAUpstream(torch.nn.Module):
@@ -104,6 +115,10 @@ class _FlaOpWrap(torch.nn.Module):
         k = self.k_proj(hidden).view(B, T, H, D)
         v = self.v_proj(hidden).view(B, T, H, D)
         extra = self._derive(self, hidden, q, k, v)
+        # Dtype-strict fla kernels: sigmoid/logsigmoid gates come out fp32 under
+        # autocast while q/k/v are bf16 — cast every operand to q's dtype.
+        extra = {k2: (t.to(q.dtype) if torch.is_tensor(t) else t)
+                 for k2, t in extra.items()}
         out = self._op(q, k, v, **extra)
         if isinstance(out, tuple):
             out = out[0]
@@ -533,7 +548,17 @@ UPSTREAM_BUILDERS = {
         _MLAUpstream(model_dim, num_heads, head_dim)
     ),
     "moba": _fla("fla.layers.moba.MoBA"),
-    "deltaformer": _fla("fla.layers.deltaformer.DeltaFormerAttention"),
+    # fla's DeltaFormerAttention layer hard-requires flash-attn; the baseline runs the
+    # pinned naive deltaformer op (triangular solve + causal attention, pure torch,
+    # autograd-friendly) — reference-implementation tier.
+    "deltaformer": lambda: (
+        lambda model_dim, num_heads, head_dim, intent, target="reference":
+        _FlaOpWrap(model_dim, num_heads, head_dim,
+                   "fla.ops.deltaformer.naive.naive_deltaformer_attn",
+                   lambda mod, hidden, q, k, v: {
+                       "beta": torch.sigmoid(mod.gate_proj(hidden)).view(
+                           hidden.shape[0], hidden.shape[1], mod.num_heads)})
+    ),
     "log_linear_mamba2": _fla("fla.layers.log_linear_mamba2.LogLinearMamba2"),
     # fla's BitAttention hard-requires flash-attn for its attention core; the pinned
     # fused-BitLinear kernels (production) + SDPA causal attention.
@@ -640,7 +665,7 @@ UPSTREAM_TIER = {
         "retnet", "simple_gla", "hgrn2", "kda", "comba", "gdn2", "gsa", "abc_gsa",
         "gated_delta_product", "rwkv7", "based_attention", "forgetting_attention",
         "lightning_attention", "tda", "lightnet", "mom", "moba",
-        "deltaformer", "log_linear_mamba2", "path_attention",
+        "log_linear_mamba2", "path_attention",
         "rodimus", "raven", "yoco", "wall_attention", "dplr", "samba_attention",
         "mamba2", "kata", "attnres", "pattention", "bit_attention",
     )},
@@ -650,7 +675,7 @@ UPSTREAM_TIER = {
         "iplr", "log_linear_attention", "nsa", "differential_attention",
         "hopfield_association", "longformer", "tucker_attention", "conformer_attention",
         "dsa", "sparse_transformer", "tpa_attention", "cat_attention", "sdm",
-        "mla_attention",
+        "mla_attention", "deltaformer",
     )},
 }
 
@@ -716,8 +741,14 @@ class _DifferentialUpstream(torch.nn.Module):
 
     def forward(self, hidden):
         B, T, C = hidden.shape
-        rel_pos = self._rotary(T, hidden.device, hidden.dtype)
-        return self._module(hidden, rel_pos)
+        # The pinned rotary Triton kernel asserts cos/sin match the ACTIVATION dtype,
+        # which autocast promotes inside the module — build the rotary against the
+        # module's compute dtype (bf16 under the harness's autocast), not the fp32 input.
+        compute_dtype = hidden.dtype
+        if torch.is_autocast_enabled("cuda"):
+            compute_dtype = torch.get_autocast_dtype("cuda")
+        rel_pos = self._rotary(T, hidden.device, compute_dtype)
+        return self._module(hidden.to(compute_dtype), rel_pos).to(hidden.dtype)
 
 
 class _HopfieldUpstream(torch.nn.Module):
@@ -838,10 +869,9 @@ class _ConformerUpstream(torch.nn.Module):
 
 
 class _DSAUpstream(torch.nn.Module):
-    """DeepSeek Sparse Attention per the pinned fla dsa law (lightning indexer +
-    selected attention); the fla fast kernel is indexer-coupled, so the baseline runs
-    the pinned naive op for the selection with SDPA over the gathered tokens.
-    Reference-implementation."""
+    """DeepSeek Sparse Attention via the pinned fla naive_dsa op (lightning indexer +
+    top-k selection + selected attention, GQA-capable) — the exact pinned law, and
+    memory-light (no O(T^2) gather materialization). Reference-implementation."""
 
     def __init__(self, model_dim, num_heads, head_dim, topk=8):
         super().__init__()
@@ -850,39 +880,26 @@ class _DSAUpstream(torch.nn.Module):
         self.k_proj = torch.nn.Linear(model_dim, num_heads * head_dim, bias=False)
         self.v_proj = torch.nn.Linear(model_dim, num_heads * head_dim, bias=False)
         self.o_proj = torch.nn.Linear(num_heads * head_dim, model_dim, bias=False)
-        # The lightning indexer: a single shared index head (MQA-style).
-        self.idx_q = torch.nn.Linear(model_dim, head_dim, bias=False)
+        # The lightning indexer's operands: q_idx [B,T,HI,DI], k_idx [B,T,DI] shared,
+        # w_idx [B,T,HI]. HI = num_heads indexer heads, DI = head_dim.
+        self.idx_q = torch.nn.Linear(model_dim, num_heads * head_dim, bias=False)
         self.idx_k = torch.nn.Linear(model_dim, head_dim, bias=False)
-        self.idx_w = torch.nn.Linear(model_dim, head_dim, bias=False)
+        self.idx_w = torch.nn.Linear(model_dim, num_heads, bias=False)
 
     def forward(self, hidden):
+        from fla.ops.dsa.naive import naive_dsa
         B, T, _ = hidden.shape
-        H, D, S = self.num_heads, self.head_dim, min(self.topk, T)
+        H, D = self.num_heads, self.head_dim
         q = self.q_proj(hidden).view(B, T, H, D)
         k = self.k_proj(hidden).view(B, T, H, D)
         v = self.v_proj(hidden).view(B, T, H, D)
-        # Lightning indexer: I[t,s] = sum_j w[t,j] * relu(q_idx[t,j] * k_idx[s,j]).
-        qi = self.idx_q(hidden)  # [B,T,D]
-        ki = self.idx_k(hidden)  # [B,T,D]
-        wi = self.idx_w(hidden)  # [B,T,D]
-        scores = torch.einsum("btd,bsd->bts", qi * wi, ki).relu()
-        causal = torch.ones(T, T, dtype=torch.bool, device=hidden.device).tril_()
-        scores = scores.masked_fill(~causal, float("-inf"))
-        idx = scores.topk(S, dim=-1).indices  # [B,T,S]
-        # Selected attention over gathered tokens: k [B,T,H,D] → per-query gather over
-        # the kv axis. k_hd [B,H,T,D] → [B,1,H,T,D] → [B,T,H,T,D], gather dim 3.
-        k_hd = k.transpose(1, 2)  # [B,H,T,D]
-        v_hd = v.transpose(1, 2)
-        k_exp = k_hd.unsqueeze(1).expand(B, T, H, T, D)
-        v_exp = v_hd.unsqueeze(1).expand(B, T, H, T, D)
-        tok = idx.view(B, T, 1, S, 1).expand(B, T, H, S, D)
-        k_g = torch.gather(k_exp, 3, tok)  # [B,T,H,S,D]
-        v_g = torch.gather(v_exp, 3, tok)
-        attn = torch.einsum("bthd,bthsd->bths", q, k_g) * (D ** -0.5)
-        attn = torch.softmax(attn.float(), dim=-1).to(hidden.dtype)
-        out = torch.einsum("bths,bthsd->bthd", attn, v_g)
+        q_idx = self.idx_q(hidden).view(B, T, H, D)
+        k_idx = self.idx_k(hidden)  # [B,T,D]
+        w_idx = self.idx_w(hidden)  # [B,T,H]
+        out = naive_dsa(q, k, v, q_idx, k_idx, w_idx, topk=min(self.topk, T))
+        if isinstance(out, tuple):
+            out = out[0]
         return self.o_proj(out.reshape(B, T, H * D))
-
 
 class _SparseTransformerUpstream(torch.nn.Module):
     """The pinned OpenAI sparse transformer law (fixed strided+local mask) via masked

@@ -1,0 +1,14 @@
+{
+  "mixer": "forgetting_attention",
+  "steps": 10,
+  "final_loss": 10.982831954956055,
+  "mfu": 0.2485968842717447,
+  "params": 102825324,
+  "checkpoint_aligned": true,
+  "kl_divergence": null,
+  "wallclock_s": 2.916835543990601,
+  "throughput_tokens_s": 28085.230985605398,
+  "peak_memory_gib": 8.017569541931152,
+  "baseline_tier": "production-kernel",
+  "granularity": "mixer"
+}

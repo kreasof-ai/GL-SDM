@@ -1,0 +1,4 @@
+[upstream] 1 rows -> results_upstream
+/opt/conda/lib/python3.12/site-packages/torch/_dynamo/eval_frame.py:1548: RuntimeWarning: ChunkDeltaRuleFunction does not support float32 on some platforms. Please use bfloat16/float16.
+            If you want to use float32, please solve the issue by yourself.
+  return fn(*args, **kwargs)
