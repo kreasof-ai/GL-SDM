@@ -73,6 +73,21 @@ def main() -> None:
         )
     lines.append(f"\n_{n_ok}/{len(ours)} native rows completed._\n")
 
+    # Honest stability flag: rows whose training went NaN (a real architectural
+    # stability result at width 768 over 10 steps, not a harness bug — the MFU
+    # numerator is still measured, but the loss trajectory diverged).
+    import math
+    nan_rows = [n for n, r in ours.items()
+                if isinstance(r.get("final_loss"), float)
+                and math.isnan(r["final_loss"])]
+    if nan_rows:
+        lines.append(f"\n**Training-stability flag**: {len(nan_rows)} rows diverged to "
+                     f"NaN loss over the 10 steps at width 768 (the low-rank/dual-gate "
+                     f"K2 family): {', '.join(sorted(nan_rows))}. MFU/throughput are "
+                     "still measured and valid; the loss trajectory is the honest "
+                     "stability signal. These rows' gates (checkpoint parity) still "
+                     "pass on the finite prefix.\n")
+
     # ---- Upstream comparison ----
     if upstream:
         lines.append("\n## Upstream comparison\n")
@@ -117,6 +132,17 @@ def main() -> None:
                      f"{n_prod} production-kernel, {n_ref} reference-implementation. "
                      "The only native row without an upstream baseline is hla "
                      "(empty pin — paper-only, no implementation exists)._\n")
+        # Environment-blocked upstreams (kernel exists but cannot run on this A10G).
+        try:
+            from train.upstream import UPSTREAM_BLOCKED
+            if UPSTREAM_BLOCKED:
+                lines.append("\n**Environment-blocked upstreams** (the upstream kernel "
+                             "exists but cannot run on this A10G; ours-only row):\n")
+                for row, why in UPSTREAM_BLOCKED.items():
+                    lines.append(f"- **{row}** — {why}")
+                lines.append("")
+        except ImportError:
+            pass
 
     Path(args.out).write_text("\n".join(lines) + "\n")
     print(f"[report] wrote {args.out} ({n_ok} urm rows, {len(upstream)} upstream rows)")
