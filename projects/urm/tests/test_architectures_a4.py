@@ -15,14 +15,70 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from architectures.log_linear_attention import (
-    BankedLogLinearMixer,
-    construct_H_matrix,
-    dyadic_level_of,
-)
+from architectures.log_linear_attention import BankedLogLinearMixer
 from architectures.log_linear_mamba2 import LogLinearMamba2Layer
 
 H, D, T = 2, 8, 8
+
+
+# --- Independent comparator helpers (the full-matrix / disjoint-block oracles) -------
+def segsum(x: torch.Tensor) -> torch.Tensor:
+    """Cumulative segment sum: xs[i,j] = sum_{j<k<=i} x_k, masked lower-triangular."""
+    T = x.size(-1)
+    xc = torch.cumsum(x, dim=-1)
+    xs = xc[..., :, None] - xc[..., None, :]
+    mask = torch.tril(torch.ones(T, T, device=x.device, dtype=torch.bool))
+    return xs.masked_fill(~mask, -torch.inf)
+
+def construct_level_mask(level: int, L: torch.Tensor) -> torch.Tensor:
+    """Dyadic level mask scaled by L[..., level, :]. L is [..., L_levels, T].
+
+    Transcribed from the pinned fla/ops/log_linear_attn/naive.py.
+    """
+    T = L.size(-1)
+    if level == 0:
+        return torch.diag_embed(L[..., level, :])
+    indices = torch.cartesian_prod(torch.arange(T), torch.arange(T)).to(L.device)
+    mask = torch.where(
+        torch.logical_and(
+            torch.logical_and(
+                indices[:, 0] % (1 << level) >= (1 << (level - 1)),
+                indices[:, 1] + (1 << (level - 1)) >= indices[:, 0] - (indices[:, 0] % (1 << (level - 1))),
+            ),
+            indices[:, 1] < indices[:, 0] - (indices[:, 0] % (1 << (level - 1))),
+        ),
+        1.0, 0.0,
+    ).view(T, T)
+    # Pinned: scale the mask by L[..., level, i] (indexed by the row/query index i).
+    scale = L[..., level, :].unsqueeze(-1).expand(*L.shape[:-2], T, T)
+    return mask.to(L.dtype) * scale
+
+def construct_H_matrix(a: torch.Tensor, L: torch.Tensor) -> torch.Tensor:
+    """H = Σ_level exp(segsum(a)) ∘ mask_level. a is [B,H,T]; L is [B,H,L_levels,T]."""
+    T = a.size(-1)
+    A = torch.exp(segsum(a))
+    H = torch.zeros_like(A)
+    for level in range(int(math.ceil(math.log2(T))) + 1):
+        H = H + A * construct_level_mask(level, L)
+    return H
+
+def dyadic_level_of(t: int, j: int, num_levels: int) -> int:
+    """The disjoint dyadic level owning the causal pair (t, j).
+
+    The pinned level masks partition the causal triangle so each (t, j≤t) pair belongs
+    to exactly ONE level: j == t is level 0 (the diagonal); otherwise the LARGEST l
+    whose aligned block ``[(t>>(l-1))<<(l-1) − 2^{l-1}, (t>>(l-1))<<(l-1))`` contains j.
+    Verified to reconstruct ``construct_H_matrix`` exactly (0.0).
+    """
+    if j == t:
+        return 0
+    best = 0
+    for l in range(1, num_levels):
+        half = 1 << (l - 1)
+        base = (t >> (l - 1)) << (l - 1)
+        if base - half <= j < base:
+            best = l
+    return best
 
 
 def log_linear_disjoint_reference(q, k, v, g, level_scales):
