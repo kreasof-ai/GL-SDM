@@ -627,9 +627,9 @@ MIXER_REGISTRY: dict[str, MixerSpec] = {
     "gdn2": MixerSpec("gdn2", _op("gdn2.GDN2Layer", extra=_gdn2_ops, gate_out_dim="heads_dim"),
                       "fla.ops.gdn2.naive.naive_recurrent_gdn2", True, True, tier="native"),
     "wall_attention": MixerSpec("wall_attention", _op("wall_attention.WallAttentionLayer", layout="bthd", extra=_wall_ops, gate_out_dim="heads_dim"),
-                                None, False, False),
+                                None, False, False, tier="native"),
     "kata": MixerSpec("kata", _op("kata.KATALayer", extra=_kata_ops, num_groups=4),
-                      None, False, False),
+                      None, False, False, tier="native"),
     "moba": MixerSpec("moba", _op("moba.MoBALayer", extra=_moba_ops, chunk_size=8, topk=2),
                       None, False, False, tier="native"),
     "nsa": MixerSpec("nsa", _op("nsa.NSASelectedLayer", layout="bthd", extra=_nsa_ops, block_size=8),
@@ -672,7 +672,7 @@ MIXER_REGISTRY: dict[str, MixerSpec] = {
     # generalized-delta-rule DPLR law — the same composed native K2 branch as rwkv7,
     # binding the pinned naive's (q,k,v,α,β,gk) operand set; tests/test_architectures_dplr.py).
     "dplr": MixerSpec("dplr", _build_dplr, "fla.ops.generalized_delta_rule.dplr", True, True, tier="native"),
-    "tda": MixerSpec("tda", _build_tda, None, False, False),
+    "tda": MixerSpec("tda", _build_tda, None, False, False, tier="native"),
     "based_attention": MixerSpec("based_attention", _build_based, "fla.ops.based", True, True),
     # indexed_attention is the shared A2 gather-attend BASE (no forward of its own) —
     # exercised through its clients (dsa, nsa, longformer, sparse_transformer). Not a

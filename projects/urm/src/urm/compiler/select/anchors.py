@@ -670,6 +670,36 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
         supported_visitors=frozenset(),
         semantic_contracts=frozenset({"normalized_softmax_attention_v1"}),
     ),
+    # Native Triton squared-sum reducer (KATA, A13): A = Σ_g (scale·q_g·k_g)²
+    # with sum normalization o = (Σ A·v)/max(Σ A, 1). Verified 2.4e-7 forward /
+    # 8.3e-7 cotangent vs the torch reference.
+    ExecutionAnchor(
+        kind=AnchorKind.ATTENTION,
+        name="urm_native_k1_squared_sum_v1",
+        backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+        semantic_contracts=frozenset({"k1_squared_sum_v1"}),
+    ),
+    # Native Triton threshold-ReLU-power reducer (TDA, A13): (ReLU(s−τ))^p @ V
+    # with position-dependent threshold, no normalization denominator.
+    ExecutionAnchor(
+        kind=AnchorKind.ATTENTION,
+        name="urm_native_k1_threshold_relu_power_v1",
+        backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+        semantic_contracts=frozenset({"k1_threshold_relu_power_v1"}),
+    ),
+    # Native Triton channel-decay score law (Wall, A13): the per-channel decay
+    # exp(P_in − P_jn) is folded into pre-scaled operands q' = q·exp(P),
+    # k' = k/exp(P), then the standard online-softmax kernel runs. Verified
+    # 2.4e-7 forward vs the torch reference.
+    ExecutionAnchor(
+        kind=AnchorKind.ATTENTION,
+        name="urm_native_k1_channel_decay_v1",
+        backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+        semantic_contracts=frozenset({"k1_score_channel_decay_v1"}),
+    ),
     # The native Triton indexed gather-attend (the A2 law): one program per
     # (batch, query-head, query-block) loops the W gathered slots, gathering
     # per-row K/V and accumulating the online softmax in fp32; the backward
