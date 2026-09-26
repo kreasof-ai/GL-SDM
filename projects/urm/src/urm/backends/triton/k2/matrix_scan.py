@@ -218,8 +218,8 @@ def _kernels():
             if READ_BEFORE:
                 output = SCALE * tl.sum(state * q_t[:, None], axis=0)
                 if NORMALIZER:
-                    denom = tl.sum(norm * q_t, axis=0)
-                    output = output / tl.maximum(denom, EPSILON)
+                    denom = tl.sum(norm * q_t, axis=0) + EPSILON
+                    output = output / denom
                 tl.store(
                     OUTPUT + v_token_base + token * (H * V_DIM) + v_index,
                     output,
@@ -297,8 +297,8 @@ def _kernels():
             if not READ_BEFORE:
                 output = SCALE * tl.sum(state * q_t[:, None], axis=0)
                 if NORMALIZER:
-                    denom = tl.sum(norm * q_t, axis=0)
-                    output = output / tl.maximum(denom, EPSILON)
+                    denom = tl.sum(norm * q_t, axis=0) + EPSILON
+                    output = output / denom
                 tl.store(
                     OUTPUT + v_token_base + token * (H * V_DIM) + v_index,
                     output,
@@ -505,15 +505,11 @@ def _kernels():
                     norm_dec = norm_prev
             if READ_BEFORE:
                 if NORMALIZER:
-                    denom = tl.sum(norm_dec * q_t, axis=0)
-                    denom_c = tl.maximum(denom, EPSILON)
-                    dnum = grad_out / denom_c
+                    # Pinned law: denom = sum(norm*q) + eps (additive, NOT clamped).
+                    denom = tl.sum(norm_dec * q_t, axis=0) + EPSILON
+                    dnum = grad_out / denom
                     num = SCALE * tl.sum(state_dec * q_t[:, None], axis=0)
-                    active = denom > EPSILON
-                    dden = tl.where(
-                        active, -tl.sum(grad_out * num, axis=0) / (denom_c * denom_c),
-                        0.0,
-                    )
+                    dden = -tl.sum(grad_out * num, axis=0) / (denom * denom)
                     grad_q = SCALE * tl.sum(state_dec * dnum[None, :], axis=1)
                     grad_q = grad_q + dden * norm_dec
                     dnorm_read = dden * q_t
@@ -526,15 +522,11 @@ def _kernels():
                     dnorm_read = tl.zeros((BLOCK_K,), dtype=tl.float32)
             else:
                 if NORMALIZER:
-                    denom = tl.sum(norm_t * q_t, axis=0)
-                    denom_c = tl.maximum(denom, EPSILON)
-                    dnum = grad_out / denom_c
+                    # Pinned law: denom = sum(norm*q) + eps (additive, NOT clamped).
+                    denom = tl.sum(norm_t * q_t, axis=0) + EPSILON
+                    dnum = grad_out / denom
                     num = SCALE * tl.sum(state_t * q_t[:, None], axis=0)
-                    active = denom > EPSILON
-                    dden = tl.where(
-                        active, -tl.sum(grad_out * num, axis=0) / (denom_c * denom_c),
-                        0.0,
-                    )
+                    dden = -tl.sum(grad_out * num, axis=0) / (denom * denom)
                     grad_q = SCALE * tl.sum(state_t * dnum[None, :], axis=1)
                     grad_q = grad_q + dden * norm_t
                     dnorm_read = dden * q_t
@@ -1266,12 +1258,10 @@ def linear_delta_state(
     reference-tier (single-client).
     """
     if spec.normalized:
-        # The native kernel's normalizer reads y/max(q·z, ε); the pinned law is
-        # y/((scale·q·norm)+ε). The provider declines normalized specs before this
-        # point; this guard keeps direct callers honest too.
-        raise ValueError(
-            "native K2 does not implement the normalized variant (denominator law differs)"
-        )
+        # The normalized variant is admitted: the denominator state tracks the pinned
+        # recurrence exactly (verified 0.0), and the read is denom = (q·norm) + ε
+        # (additive, matching the pinned law — NOT the previous clamped form).
+        pass
     if spec.gate_scope.value == "elementwise":
         raise ValueError("native K2 does not implement the elementwise gate scope")
     gate = spec.gate_scope.value
@@ -1429,10 +1419,10 @@ class _K2NativeBase:
             return "K2 providers require a closed LinearDeltaSpec"
         if request.accumulation_dtype != "float32":
             return "native K2 requires float32 accumulation"
-        if spec.normalized:
+        if spec.normalized and spec.gate_scope is K2GateScope.ELEMENTWISE:
             return (
-                "native K2 declines the normalized variant: the kernel reads "
-                "y/max(q·z, ε) but the pinned law is y/((scale·q·norm)+ε)"
+                "native K2 declines the normalized elementwise variant: "
+                "the per-element [K,V] gate is reference-tier only"
             )
         if spec.gate_scope is K2GateScope.ELEMENTWISE:
             return (

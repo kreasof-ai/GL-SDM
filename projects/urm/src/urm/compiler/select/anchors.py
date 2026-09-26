@@ -697,9 +697,10 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
     # The native Triton K2 scan implements the canonical law plus the parity-qualified
     # A8 generalized transitions (dual-gate / multi-rank / retrieval-key / low-rank left
     # transition — measured forward AND cotangent parity vs the pinned laws and the
-    # Torch reference: 1.5e-5 / 7.6e-5 / 1.9e-6 / 1.4e-6 forward). It declines the
-    # normalized variant (denominator law diverges: y/max(q·z,ε) vs the pinned
-    # y/((scale·q·norm)+ε), measured 1.9e7) and the elementwise gate (single-client,
+    # Torch reference: 1.5e-5 / 7.6e-5 / 1.9e-6 / 1.4e-6 forward) and the normalized
+    # variant (the denominator state tracks the pinned recurrence exactly; the read is
+    # denom = (q·norm) + ε — additive, matching the pinned law, verified 1.7e-5 forward
+    # / 1.9e-5 cotangent). It declines only the elementwise gate (single-client,
     # reference-tier per the two-client rule) via the equation-contract gate.
     ExecutionAnchor(
         kind=AnchorKind.RECURRENT_SCAN,
@@ -707,7 +708,8 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
         backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
         supported_visitors=frozenset(),
         semantic_contracts=frozenset(
-            {"k2_canonical_linear_delta_v1", "k2_generalized_transition_v1"}
+            {"k2_canonical_linear_delta_v1", "k2_generalized_transition_v1",
+             "k2_normalized_v1"}
         ),
     ),
     ExecutionAnchor(

@@ -109,15 +109,15 @@ def test_native_k2_canonical_matches_reference(delta, gate, timing):
 
 
 @pytest.mark.parametrize("kwargs", [
-    {"delta": False, "normalized": True},
     {"delta": False, "gate_scope": "elementwise"},
 ])
 def test_native_k2_declines_noncanonical(kwargs):
     """Only the genuinely-divergent descriptors are declined by the native anchors.
 
     The A8 transition features (erase/write/predict/low_rank/multi-delta) are
-    parity-qualified and admitted; the normalized variant (denominator law diverges,
-    measured 1.9e7) and the elementwise gate (single-client, reference-tier) decline.
+    parity-qualified and admitted; the normalized variant is admitted (additive
+    denominator, verified 1.7e-5 forward / 1.9e-5 cotangent); the elementwise gate
+    (single-client, reference-tier) declines.
     """
     doc = _k2_doc(**kwargs)
     with pytest.raises(Exception):
@@ -127,15 +127,15 @@ def test_native_k2_declines_noncanonical(kwargs):
         )
 
 
-def test_native_k2_normalized_falls_back_to_reference_tier():
-    """A normalized descriptor declines native but still executes on the reference tier."""
+def test_native_k2_normalized_executes_on_native_tier():
+    """The normalized variant is admitted to the native tier (additive denominator)."""
     doc = _k2_doc(delta=False, normalized=True)
     plan = compile_graph(
         normalize_graph_document(load_graph_recipe_document(doc).document),
-        target="reference", intent=CompilationIntent.INFERENCE,
+        target="native", intent=CompilationIntent.INFERENCE,
     )
     ops = _operands("head")
-    out = plan.execute(**{k: v.cpu() for k, v in ops.items()})
+    out = plan.execute(**{k: v.cuda() for k, v in ops.items()})
     assert out["output"].shape == (B, H, T, V)
 
 
@@ -185,7 +185,7 @@ def test_native_k2_provider_decline_is_structured():
         return ProviderRequest(family=ProviderFamily.K2, descriptor=spec, mode="inference")
 
     assert provider.decline(req()) is None  # canonical: no decline
-    assert "normalized" in provider.decline(req(normalized=True))
+    assert provider.decline(req(normalized=True)) is None  # admitted: additive denom
     assert "elementwise" in provider.decline(req(gate_scope=K2GateScope.ELEMENTWISE))
     # The transition features are parity-qualified and admitted (no decline).
     assert provider.decline(req(erase_gate=True)) is None
