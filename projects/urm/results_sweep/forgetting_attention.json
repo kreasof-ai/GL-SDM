@@ -8,5 +8,6 @@
   "kl_divergence": 0.0,
   "wallclock_s": 0.7623981939977966,
   "throughput_tokens_s": 26862.602982581553,
-  "peak_memory_gib": 7.194299221038818
+  "peak_memory_gib": 7.194299221038818,
+  "microbatch_fallback": 2048
 }

@@ -845,14 +845,18 @@ def _kernels():
                 + k_chunk,
                 den_part,
             )
+            # The per-token state history is T×rows×K×V fp32 — at Based's Taylor width
+            # (K=2145) and realistic T×rows that exceeds 2^31 elements, so the flat
+            # offset is int64 (int32 addressing overflows → illegal memory access).
+            state_hist_base = (token * num_rows + row).to(tl.int64) * (K_DIM * V_DIM)
             tl.store(
-                STATES + (token * num_rows + row) * (K_DIM * V_DIM)
+                STATES + state_hist_base
                 + k_index[:, None] * V_DIM + v_index[None, :],
                 state,
                 kv_mask,
             )
             tl.store(
-                NORM_STATES + (token * num_rows + row) * K_DIM + k_index,
+                NORM_STATES + (token * num_rows + row).to(tl.int64) * K_DIM + k_index,
                 norm,
                 k_mask,
             )
@@ -937,13 +941,13 @@ def _kernels():
             ).to(tl.float32)
             dden = tl.load(DDEN + (batch * T + token) * H + head).to(tl.float32)
             state_t = tl.load(
-                STATES + (token * num_rows + row) * (K_DIM * V_DIM)
+                STATES + (token * num_rows + row).to(tl.int64) * (K_DIM * V_DIM)
                 + k_index[:, None] * V_DIM + v_index[None, :],
                 kv_mask,
                 other=0.0,
             ).to(tl.float32)
             norm_t = tl.load(
-                NORM_STATES + (token * num_rows + row) * K_DIM + k_index,
+                NORM_STATES + (token * num_rows + row).to(tl.int64) * K_DIM + k_index,
                 k_mask,
                 other=0.0,
             ).to(tl.float32)

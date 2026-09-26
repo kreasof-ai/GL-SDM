@@ -160,6 +160,18 @@ UPSTREAM_BUILDERS = {
         lambda model_dim, num_heads, head_dim, intent, target="reference":
         _TDAUpstream(model_dim, num_heads, head_dim)
     ),
+    # fla-family throughput baselines for rows whose registry upstream is None (the
+    # project claims no pinned KL oracle for them, but fla ships a production kernel
+    # for the same architecture family — a legitimate throughput reference, clearly
+    # not the KL oracle). MFU numerators match the URM row (same mixer name → same
+    # flops bucket), noting the harness's 3-bucket flops accounting is coarse.
+    "lightnet": _fla_builder("fla.layers.lightnet.LightNetAttention"),
+    "mom": _fla_builder("fla.layers.mom.MomAttention"),
+    "mla_attention": _fla_builder("fla.layers.mla.MultiheadLatentAttention"),
+    "moba": _fla_builder("fla.layers.moba.MoBA"),
+    "deltaformer": _fla_builder("fla.layers.deltaformer.DeltaFormerAttention"),
+    "log_linear_mamba2": _fla_builder("fla.layers.log_linear_mamba2.LogLinearMamba2"),
+    "bit_attention": _fla_builder("fla.layers.bitattn.BitAttention"),
 }
 
 
