@@ -1,15 +1,14 @@
 [
   {
-    "mixer": "path_attention",
+    "mixer": "longformer",
     "steps": 10,
-    "final_loss": 8.468877792358398,
-    "mfu": 0.016428105596714752,
-    "params": 102908376,
+    "final_loss": 8.357345581054688,
+    "mfu": 0.2989976115553085,
+    "params": 102742272,
     "checkpoint_aligned": true,
     "kl_divergence": null,
-    "wallclock_s": 11.043564812018303,
-    "throughput_tokens_s": 1854.473654893787,
-    "peak_memory_gib": 8.87942886352539,
-    "microbatch_fallback": 2048
+    "wallclock_s": 2.4232068510027602,
+    "throughput_tokens_s": 33806.44123142036,
+    "peak_memory_gib": 5.595969200134277
   }
 ]

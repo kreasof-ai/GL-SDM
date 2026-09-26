@@ -216,6 +216,39 @@ class _SDPA(torch.nn.Module):
 
 # ---- Granularity-matched upstreams for the remodeled rows -------------------------------
 
+class _BitAttentionUpstream(torch.nn.Module):
+    """BitAttention: the pinned fla fused-BitLinear kernel (RMSNorm + quantized
+    linear, STE gradient — runs on CUDA) for the Q/K/V/O projections + SDPA causal
+    attention. fla's BitAttention layer hard-requires flash-attn for its attention
+    core (bypassed per the no-FA constraint); the BitLinear kernels are the pinned
+    production path. Mixed tier: production projections + SDPA attention."""
+
+    def __init__(self, model_dim, num_heads, head_dim):
+        super().__init__()
+        from benchmarks.comparators.fla_bitlinear import _pinned_fused_bitlinear
+        self._bitlinear = _pinned_fused_bitlinear()
+        self.num_heads, self.head_dim = num_heads, head_dim
+        inner = num_heads * head_dim
+        self.norm = torch.nn.Parameter(torch.ones(model_dim))
+        self.q_w = torch.nn.Parameter(torch.randn(inner, model_dim) * 0.02)
+        self.k_w = torch.nn.Parameter(torch.randn(inner, model_dim) * 0.02)
+        self.v_w = torch.nn.Parameter(torch.randn(inner, model_dim) * 0.02)
+        self.o_w = torch.nn.Parameter(torch.randn(model_dim, inner) * 0.02)
+
+    def _bl(self, x, weight):
+        return self._bitlinear.layer_norm_linear_quant_fn(
+            x, self.norm, None, weight, None, is_rms_norm=True)
+
+    def forward(self, hidden):
+        B, T, _ = hidden.shape
+        H, D = self.num_heads, self.head_dim
+        q = self._bl(hidden, self.q_w).view(B, T, H, D).transpose(1, 2)
+        k = self._bl(hidden, self.k_w).view(B, T, H, D).transpose(1, 2)
+        v = self._bl(hidden, self.v_w).view(B, T, H, D).transpose(1, 2)
+        out = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+        return self._bl(out.transpose(1, 2).reshape(B, T, H * D), self.o_w)
+
+
 class _MLAUpstream(torch.nn.Module):
     """The pinned MLA prefill equation (benchmarks.comparators.fla_mla.fl_mla_oracle's
     law) as a trainable module — fla's MultiheadLatentAttention hard-requires
@@ -473,7 +506,9 @@ UPSTREAM_BUILDERS = {
     "abc_gsa": _fla("fla.layers.abc.ABCAttention"),
     "gated_delta_product": _fla("fla.layers.gated_deltaproduct.GatedDeltaProduct"),
     "rwkv7": _fla("fla.layers.rwkv7.RWKV7Attention", extra={"num_hidden_layers": 9}),
-    "based_attention": _fla("fla.layers.based.BasedLinearAttention"),
+    # fla's based chunk backward requires even feature width (its Taylor K is odd);
+    # the pinned layer's default mode is "parallel" — use it (its own production path).
+    "based_attention": _fla("fla.layers.based.BasedLinearAttention", extra={"mode": "parallel"}),
     "forgetting_attention": _fla("fla.layers.forgetting_attn.ForgettingAttention"),
     # lightning_attention's pinned comparator IS simple_gla's kernel (same class).
     "lightning_attention": _fla("fla.layers.simple_gla.SimpleGatedLinearAttention"),
@@ -500,7 +535,12 @@ UPSTREAM_BUILDERS = {
     "moba": _fla("fla.layers.moba.MoBA"),
     "deltaformer": _fla("fla.layers.deltaformer.DeltaFormerAttention"),
     "log_linear_mamba2": _fla("fla.layers.log_linear_mamba2.LogLinearMamba2"),
-    "bit_attention": _fla("fla.layers.bitattn.BitAttention"),
+    # fla's BitAttention hard-requires flash-attn for its attention core; the pinned
+    # fused-BitLinear kernels (production) + SDPA causal attention.
+    "bit_attention": lambda: (
+        lambda model_dim, num_heads, head_dim, intent, target="reference":
+        _BitAttentionUpstream(model_dim, num_heads, head_dim)
+    ),
     # Same-family matches verified to run (fwd+bwd) here. wall_attention/nsa moved to
     # their own entries: fla's WallAttention IS our channel-decay law (window_size is
     # decode-cache chunking, not the law) — wired below via the parallel op; nsa is the
@@ -599,10 +639,10 @@ UPSTREAM_TIER = {
         "dense_attention", "gla", "gated_deltanet", "deltanet", "linear_attention",
         "retnet", "simple_gla", "hgrn2", "kda", "comba", "gdn2", "gsa", "abc_gsa",
         "gated_delta_product", "rwkv7", "based_attention", "forgetting_attention",
-        "lightning_attention", "tda", "lightnet", "mom", "mla_attention", "moba",
-        "deltaformer", "log_linear_mamba2", "bit_attention", "path_attention",
+        "lightning_attention", "tda", "lightnet", "mom", "moba",
+        "deltaformer", "log_linear_mamba2", "path_attention",
         "rodimus", "raven", "yoco", "wall_attention", "dplr", "samba_attention",
-        "mamba2", "kata", "attnres", "pattention",
+        "mamba2", "kata", "attnres", "pattention", "bit_attention",
     )},
     # reference implementations (pinned research code / transcriptions where the
     # production kernel is environment-blocked)
@@ -610,6 +650,7 @@ UPSTREAM_TIER = {
         "iplr", "log_linear_attention", "nsa", "differential_attention",
         "hopfield_association", "longformer", "tucker_attention", "conformer_attention",
         "dsa", "sparse_transformer", "tpa_attention", "cat_attention", "sdm",
+        "mla_attention",
     )},
 }
 

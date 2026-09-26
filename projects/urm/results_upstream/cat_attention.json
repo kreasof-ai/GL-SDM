@@ -1,0 +1,14 @@
+{
+  "mixer": "cat_attention",
+  "steps": 10,
+  "final_loss": 12.462379455566406,
+  "mfu": 0.26149119931588266,
+  "params": 102742272,
+  "checkpoint_aligned": true,
+  "kl_divergence": null,
+  "wallclock_s": 2.7707741700287443,
+  "throughput_tokens_s": 29565.744074750834,
+  "peak_memory_gib": 7.908634185791016,
+  "baseline_tier": "reference-implementation",
+  "granularity": "mixer"
+}

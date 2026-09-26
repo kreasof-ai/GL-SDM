@@ -1,0 +1,14 @@
+{
+  "mixer": "attnres",
+  "steps": 10,
+  "final_loss": 12.226821899414062,
+  "mfu": 0.16808122936822895,
+  "params": 102769920,
+  "checkpoint_aligned": true,
+  "kl_divergence": null,
+  "wallclock_s": 4.311767589009833,
+  "throughput_tokens_s": 18999.16874202683,
+  "peak_memory_gib": 13.0963134765625,
+  "baseline_tier": "production-kernel",
+  "granularity": "residual"
+}

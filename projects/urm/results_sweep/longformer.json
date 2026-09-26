@@ -1,12 +1,12 @@
 {
   "mixer": "longformer",
   "steps": 10,
-  "final_loss": 8.299524307250977,
-  "mfu": 0.35892648309780445,
+  "final_loss": 8.357345581054688,
+  "mfu": 0.2989976115553085,
   "params": 102742272,
-  "checkpoint_aligned": false,
+  "checkpoint_aligned": true,
   "kl_divergence": null,
-  "wallclock_s": 2.018611317005707,
-  "throughput_tokens_s": 40582.354468078316,
+  "wallclock_s": 2.4232068510027602,
+  "throughput_tokens_s": 33806.44123142036,
   "peak_memory_gib": 5.595969200134277
 }
