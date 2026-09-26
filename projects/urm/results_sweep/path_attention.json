@@ -1,0 +1,4 @@
+{
+  "mixer": "path_attention",
+  "error": "exit 1 (see results_sweep/path_attention.log)"
+}

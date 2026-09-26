@@ -1,0 +1,12 @@
+{
+  "mixer": "rodimus",
+  "steps": 10,
+  "final_loss": 8.012699127197266,
+  "mfu": 0.3794132240721651,
+  "params": 87038352,
+  "checkpoint_aligned": true,
+  "kl_divergence": null,
+  "wallclock_s": 1.6189857980061788,
+  "throughput_tokens_s": 50599.57913212488,
+  "peak_memory_gib": 5.410323619842529
+}

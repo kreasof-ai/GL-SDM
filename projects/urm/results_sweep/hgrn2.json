@@ -1,0 +1,12 @@
+{
+  "mixer": "hgrn2",
+  "steps": 10,
+  "final_loss": 8.167572021484375,
+  "mfu": 0.2843073764392495,
+  "params": 102742272,
+  "checkpoint_aligned": true,
+  "kl_divergence": 0.0,
+  "wallclock_s": 2.5484145709779114,
+  "throughput_tokens_s": 32145.476223895774,
+  "peak_memory_gib": 5.973288536071777
+}

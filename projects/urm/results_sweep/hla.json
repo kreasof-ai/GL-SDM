@@ -1,0 +1,12 @@
+{
+  "mixer": "hla",
+  "steps": 10,
+  "final_loss": 10.834495544433594,
+  "mfu": 0.19785134379916577,
+  "params": 102742272,
+  "checkpoint_aligned": true,
+  "kl_divergence": null,
+  "wallclock_s": 3.662007276987424,
+  "throughput_tokens_s": 22370.245006009944,
+  "peak_memory_gib": 6.090353965759277
+}

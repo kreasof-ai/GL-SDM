@@ -1,0 +1,12 @@
+{
+  "mixer": "linear_attention",
+  "steps": 10,
+  "final_loss": 8.163443565368652,
+  "mfu": 0.29063387974755744,
+  "params": 102742272,
+  "checkpoint_aligned": true,
+  "kl_divergence": 1.991529163802852e-11,
+  "wallclock_s": 2.4929408140014857,
+  "throughput_tokens_s": 32860.78816628944,
+  "peak_memory_gib": 5.751852989196777
+}

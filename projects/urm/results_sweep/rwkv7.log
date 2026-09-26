@@ -1,0 +1,12 @@
+{
+  "mixer": "rwkv7",
+  "steps": 10,
+  "final_loss": NaN,
+  "mfu": 0.3176382159293718,
+  "params": 118688256,
+  "checkpoint_aligned": true,
+  "kl_divergence": null,
+  "wallclock_s": 2.633503030985594,
+  "throughput_tokens_s": 31106.856166913647,
+  "peak_memory_gib": 21.111515522003174
+}

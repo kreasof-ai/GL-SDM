@@ -1,0 +1,4 @@
+{
+  "mixer": "log_linear_attention",
+  "error": "exit 1 (see results_sweep/log_linear_attention.log)"
+}

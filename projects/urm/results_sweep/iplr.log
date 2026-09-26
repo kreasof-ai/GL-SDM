@@ -1,5 +1,5 @@
-[W926 16:45:28.653776776 CUDACachingAllocator.cpp:3934] memory allocation failed with OOM on device 0 while trying to allocate 3221225472 bytes (free: 540475392, total: 23686938624).
-[W926 16:45:28.653981800 CUDACachingAllocator.cpp:3934] memory allocation failed with OOM on device 0 while trying to allocate 3221225472 bytes (free: 540475392, total: 23686938624).
+[W926 17:03:53.871351469 CUDACachingAllocator.cpp:3934] memory allocation failed with OOM on device 0 while trying to allocate 1610612736 bytes (free: 632750080, total: 23686938624).
+[W926 17:03:53.871540443 CUDACachingAllocator.cpp:3934] memory allocation failed with OOM on device 0 while trying to allocate 1610612736 bytes (free: 632750080, total: 23686938624).
 Traceback (most recent call last):
   File "<frozen runpy>", line 198, in _run_module_as_main
   File "<frozen runpy>", line 88, in _run_code
@@ -53,9 +53,9 @@ Traceback (most recent call last):
   File "/opt/conda/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1794, in _call_impl
     return forward_call(*args, **kwargs)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/sagemaker-user/GL-SDM/projects/urm/train/registry.py", line 411, in forward
-    out = self._mixer(q, k, v, g, beta, float(D) ** -0.5)
-          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/urm/train/adapters.py", line 68, in forward
+    out = self._mixer(q, k, v, **extras)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/opt/conda/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1783, in _wrapped_call_impl
     return self._call_impl(*args, **kwargs)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -65,7 +65,7 @@ Traceback (most recent call last):
   File "/opt/conda/lib/python3.12/site-packages/torch/_dynamo/eval_frame.py", line 1548, in _fn
     return fn(*args, **kwargs)
            ^^^^^^^^^^^^^^^^^^^
-  File "/home/sagemaker-user/GL-SDM/projects/urm/architectures/gated_delta_product.py", line 73, in forward
+  File "/home/sagemaker-user/GL-SDM/projects/urm/architectures/iplr.py", line 75, in forward
     return self._plan.execute(
            ^^^^^^^^^^^^^^^^^^^
   File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/runtime/bind.py", line 264, in execute
@@ -77,12 +77,7 @@ Traceback (most recent call last):
   File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k2/matrix_scan.py", line 1918, in execute
     out, final_state = linear_delta_state(
                        ^^^^^^^^^^^^^^^^^^^
-  File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k2/matrix_scan.py", line 1778, in linear_delta_state
-    out, final = execute_matrix_state_recurrence(
-                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k2/matrix_scan.py", line 1377, in execute_matrix_state_recurrence
-    return _MatrixState.apply(
-           ^^^^^^^^^^^^^^^^^^^
-  File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k2/matrix_scan.py", line 1263, in forward
-    torch.empty(
-torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 3.00 GiB. GPU 0 has a total capacity of 22.06 GiB of which 515.44 MiB is free. Including non-PyTorch memory, this process has 21.55 GiB memory in use. Of the allocated memory 21.23 GiB is allocated by PyTorch, and 23.33 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)
+  File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k2/matrix_scan.py", line 1757, in linear_delta_state
+    left = torch.eye(K, device=keys.device, dtype=torch.float32) \
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 1.50 GiB. GPU 0 has a total capacity of 22.06 GiB of which 603.44 MiB is free. Including non-PyTorch memory, this process has 21.46 GiB memory in use. Of the allocated memory 20.85 GiB is allocated by PyTorch, and 13.97 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)

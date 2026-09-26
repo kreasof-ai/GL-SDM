@@ -1,0 +1,12 @@
+{
+  "mixer": "kda",
+  "steps": 10,
+  "final_loss": 8.121659278869629,
+  "mfu": 0.2708604530748949,
+  "params": 108140652,
+  "checkpoint_aligned": true,
+  "kl_divergence": 0.0,
+  "wallclock_s": 2.814877306984272,
+  "throughput_tokens_s": 29102.511785057253,
+  "peak_memory_gib": 6.379506587982178
+}

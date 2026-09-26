@@ -1,0 +1,12 @@
+{
+  "mixer": "mamba2",
+  "steps": 10,
+  "final_loss": 8.578025817871094,
+  "mfu": 0.2606838866088856,
+  "params": 87784920,
+  "checkpoint_aligned": true,
+  "kl_divergence": null,
+  "wallclock_s": 2.3764675929851364,
+  "throughput_tokens_s": 34471.33057560376,
+  "peak_memory_gib": 5.459531307220459
+}

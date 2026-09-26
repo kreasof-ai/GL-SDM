@@ -1,5 +1,5 @@
-[W926 16:45:28.653776776 CUDACachingAllocator.cpp:3934] memory allocation failed with OOM on device 0 while trying to allocate 3221225472 bytes (free: 540475392, total: 23686938624).
-[W926 16:45:28.653981800 CUDACachingAllocator.cpp:3934] memory allocation failed with OOM on device 0 while trying to allocate 3221225472 bytes (free: 540475392, total: 23686938624).
+[W926 17:06:11.551928073 CUDACachingAllocator.cpp:3934] memory allocation failed with OOM on device 0 while trying to allocate 4831838208 bytes (free: 2153185280, total: 23686938624).
+[W926 17:06:11.552164708 CUDACachingAllocator.cpp:3934] memory allocation failed with OOM on device 0 while trying to allocate 4831838208 bytes (free: 2153185280, total: 23686938624).
 Traceback (most recent call last):
   File "<frozen runpy>", line 198, in _run_module_as_main
   File "<frozen runpy>", line 88, in _run_code
@@ -53,9 +53,9 @@ Traceback (most recent call last):
   File "/opt/conda/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1794, in _call_impl
     return forward_call(*args, **kwargs)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/sagemaker-user/GL-SDM/projects/urm/train/registry.py", line 411, in forward
-    out = self._mixer(q, k, v, g, beta, float(D) ** -0.5)
-          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/urm/train/adapters.py", line 68, in forward
+    out = self._mixer(q, k, v, **extras)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/opt/conda/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1783, in _wrapped_call_impl
     return self._call_impl(*args, **kwargs)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -65,7 +65,7 @@ Traceback (most recent call last):
   File "/opt/conda/lib/python3.12/site-packages/torch/_dynamo/eval_frame.py", line 1548, in _fn
     return fn(*args, **kwargs)
            ^^^^^^^^^^^^^^^^^^^
-  File "/home/sagemaker-user/GL-SDM/projects/urm/architectures/gated_delta_product.py", line 73, in forward
+  File "/home/sagemaker-user/GL-SDM/projects/urm/architectures/log_linear_attention.py", line 79, in forward
     return self._plan.execute(
            ^^^^^^^^^^^^^^^^^^^
   File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/runtime/bind.py", line 264, in execute
@@ -74,15 +74,15 @@ Traceback (most recent call last):
   File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/runtime/bind.py", line 198, in _execute_node
     return provider.execute(request, operands)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k2/matrix_scan.py", line 1918, in execute
-    out, final_state = linear_delta_state(
-                       ^^^^^^^^^^^^^^^^^^^
-  File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k2/matrix_scan.py", line 1778, in linear_delta_state
-    out, final = execute_matrix_state_recurrence(
-                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k2/matrix_scan.py", line 1377, in execute_matrix_state_recurrence
-    return _MatrixState.apply(
-           ^^^^^^^^^^^^^^^^^^^
-  File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k2/matrix_scan.py", line 1263, in forward
-    torch.empty(
-torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 3.00 GiB. GPU 0 has a total capacity of 22.06 GiB of which 515.44 MiB is free. Including non-PyTorch memory, this process has 21.55 GiB memory in use. Of the allocated memory 21.23 GiB is allocated by PyTorch, and 23.33 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)
+  File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k2/dyadic_banks.py", line 391, in execute
+    out = dyadic_banked_state(
+          ^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k2/dyadic_banks.py", line 361, in dyadic_banked_state
+    return _DyadicBankedState.apply(*operands, int(num_levels))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k2/dyadic_banks.py", line 317, in forward
+    out, saved = _dyadic_banked_forward(
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k2/dyadic_banks.py", line 233, in _dyadic_banked_forward
+    torch.empty((B * H, T, nbank, D, D), device=value.device, dtype=torch.float32)
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 4.50 GiB. GPU 0 has a total capacity of 22.06 GiB of which 2.01 GiB is free. Including non-PyTorch memory, this process has 20.05 GiB memory in use. Of the allocated memory 19.74 GiB is allocated by PyTorch, and 8.14 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)

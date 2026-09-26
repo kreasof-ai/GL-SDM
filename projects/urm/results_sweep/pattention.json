@@ -1,0 +1,12 @@
+{
+  "mixer": "pattention",
+  "steps": 10,
+  "final_loss": 8.233733177185059,
+  "mfu": 0.4440362808468122,
+  "params": 92134656,
+  "checkpoint_aligned": false,
+  "kl_divergence": null,
+  "wallclock_s": 1.4639556270267349,
+  "throughput_tokens_s": 55957.9802062566,
+  "peak_memory_gib": 5.257266044616699
+}

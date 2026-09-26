@@ -1,0 +1,4 @@
+{
+  "mixer": "gated_delta_product",
+  "error": "exit 1 (see results_sweep/gated_delta_product.log)"
+}

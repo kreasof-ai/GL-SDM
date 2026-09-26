@@ -73,20 +73,36 @@ class _SDPA(torch.nn.Module):
 
 
 def _fla_builder(cls_path, extra=None):
+    """Build an fla fast-kernel layer, passing only the kwargs its constructor takes.
+
+    The fla layer classes differ (``head_dim`` vs ``feature_dim``, ``mode`` present or
+    not, low-rank dims, …), so the builder inspects the signature and filters the
+    candidate kwargs — a constructor mismatch records an error row rather than a crash.
+    """
     module_name, class_name = cls_path.rsplit(".", 1)
 
     def build(model_dim, num_heads, head_dim, intent, target="reference"):
+        import inspect
         module = __import__(module_name, fromlist=[class_name])
         cls = getattr(module, class_name)
-        kwargs = dict(hidden_size=model_dim, num_heads=num_heads, mode="chunk")
+        params = inspect.signature(cls.__init__).parameters
+        candidates = dict(
+            hidden_size=model_dim, d_model=model_dim, num_heads=num_heads,
+            head_dim=head_dim, feature_dim=head_dim, mode="chunk", layer_idx=0,
+        )
         if extra:
-            kwargs.update(extra)
+            candidates.update(extra)
+        kwargs = {k: v for k, v in candidates.items() if k in params}
         return _FlaWrap(cls(**kwargs))
     return build
 
 
 # The fast upstream kernels, keyed by the URM row they baseline. The mixer name in the
 # MixerSpec is the URM row's name so model_flops_per_step's numerator is identical.
+# Coverage: every native-tier row whose registry upstream has a FAST kernel. Excluded:
+# - mamba2 — mamba_ssm's fused kernel needs a compiled CUDA extension not built here.
+# - dplr — its pinned upstream is an op (fla.ops.generalized_delta_rule.dplr), not a
+#   standalone layer; the GatedDeltaNet layer already represents that kernel family.
 UPSTREAM_BUILDERS = {
     "dense_attention": lambda: (
         lambda model_dim, num_heads, head_dim, intent, target="reference":
@@ -100,6 +116,17 @@ UPSTREAM_BUILDERS = {
     "simple_gla": _fla_builder("fla.layers.simple_gla.SimpleGatedLinearAttention"),
     "hgrn2": _fla_builder("fla.layers.hgrn2.HGRN2Attention"),
     "kda": _fla_builder("fla.layers.kda.KimiDeltaAttention"),
+    # Extended set: the remaining native rows with a fast upstream kernel.
+    "comba": _fla_builder("fla.layers.comba.Comba"),
+    "gdn2": _fla_builder("fla.layers.gdn2.GatedDeltaNet2"),
+    "gsa": _fla_builder("fla.layers.gsa.GatedSlotAttention"),
+    "abc_gsa": _fla_builder("fla.layers.abc.ABCAttention"),
+    "gated_delta_product": _fla_builder("fla.layers.gated_deltaproduct.GatedDeltaProduct"),
+    "rwkv7": _fla_builder("fla.layers.rwkv7.RWKV7Attention"),
+    "based_attention": _fla_builder("fla.layers.based.BasedLinearAttention"),
+    "forgetting_attention": _fla_builder("fla.layers.forgetting_attn.ForgettingAttention"),
+    # lightning_attention's pinned comparator IS simple_gla's kernel (same class).
+    "lightning_attention": _fla_builder("fla.layers.simple_gla.SimpleGatedLinearAttention"),
 }
 
 

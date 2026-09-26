@@ -1,0 +1,12 @@
+{
+  "mixer": "gated_deltanet",
+  "steps": 10,
+  "final_loss": 8.132314682006836,
+  "mfu": 0.2697321086320617,
+  "params": 102908952,
+  "checkpoint_aligned": true,
+  "kl_divergence": 0.0,
+  "wallclock_s": 2.690459967008792,
+  "throughput_tokens_s": 30448.325195143967,
+  "peak_memory_gib": 6.18870735168457
+}

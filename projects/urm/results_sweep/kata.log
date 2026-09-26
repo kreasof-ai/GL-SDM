@@ -1,0 +1,12 @@
+{
+  "mixer": "kata",
+  "steps": 10,
+  "final_loss": 8.151183128356934,
+  "mfu": 0.46026231072477686,
+  "params": 102742272,
+  "checkpoint_aligned": true,
+  "kl_divergence": null,
+  "wallclock_s": 1.5741742129903287,
+  "throughput_tokens_s": 52039.983455441914,
+  "peak_memory_gib": 5.645102500915527
+}

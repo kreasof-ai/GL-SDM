@@ -1,0 +1,12 @@
+{
+  "mixer": "mom",
+  "steps": 10,
+  "final_loss": 8.481836318969727,
+  "mfu": 0.01774325722930354,
+  "params": 252766656,
+  "checkpoint_aligned": true,
+  "kl_divergence": null,
+  "wallclock_s": 100.20490590398549,
+  "throughput_tokens_s": 817.5248433294698,
+  "peak_memory_gib": 9.916324138641357
+}

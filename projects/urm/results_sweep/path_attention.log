@@ -1,0 +1,28 @@
+W0926 17:13:28.375000 194875 site-packages/torch/_dynamo/convert_frame.py:2008] [10/8] torch._dynamo hit config.recompile_limit (8)
+W0926 17:13:28.375000 194875 site-packages/torch/_dynamo/convert_frame.py:2008] [10/8]    function: 'torch_dynamo_resume_in_execute_online_softmax_at_901' (/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k1/online_softmax.py:901)
+W0926 17:13:28.375000 194875 site-packages/torch/_dynamo/convert_frame.py:2008] [10/8]    last reason: 10/7: ___check_obj_id(___stack0, 94286050535072), type=<class 'urm.backends.triton.k1.online_softmax.execute_online_softmax.<locals>._OnlineSoftmax'>  # return _OnlineSoftmax.apply(query, key, value, mask, bias)  # ome/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k1/online_softmax.py:1036 in torch_dynamo_resume_in_execute_online_softmax_at_901
+W0926 17:13:28.375000 194875 site-packages/torch/_dynamo/convert_frame.py:2008] [10/8] User stack trace:
+W0926 17:13:28.375000 194875 site-packages/torch/_dynamo/convert_frame.py:2008] [10/8]   File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k1/online_softmax.py", line 1036, in torch_dynamo_resume_in_execute_online_softmax_at_901
+W0926 17:13:28.375000 194875 site-packages/torch/_dynamo/convert_frame.py:2008] [10/8]     return _OnlineSoftmax.apply(query, key, value, mask, bias)
+W0926 17:13:28.375000 194875 site-packages/torch/_dynamo/convert_frame.py:2008] [10/8] To log all recompilation reasons, use TORCH_LOGS="recompiles".
+W0926 17:13:28.375000 194875 site-packages/torch/_dynamo/convert_frame.py:2008] [10/8] To diagnose recompilation issues, see https://docs.pytorch.org/docs/main/user_guide/torch_compiler/compile/programming_model.recompilation.html
+[W926 17:14:09.780494774 CUDACachingAllocator.cpp:3934] memory allocation failed with OOM on device 0 while trying to allocate 824180736 bytes (free: 265748480, total: 23686938624).
+[W926 17:14:09.780656318 CUDACachingAllocator.cpp:3934] memory allocation failed with OOM on device 0 while trying to allocate 824180736 bytes (free: 265748480, total: 23686938624).
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/sagemaker-user/GL-SDM/projects/urm/train/run.py", line 71, in <module>
+    main()
+  File "/home/sagemaker-user/GL-SDM/projects/urm/train/run.py", line 62, in main
+    result = train(cfg, mixer, data, device="cuda" if torch.cuda.is_available() else "cpu")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/urm/train/harness.py", line 293, in train
+    (loss / cfg.grad_accum).backward()
+  File "/opt/conda/lib/python3.12/site-packages/torch/_tensor.py", line 623, in backward
+    torch.autograd.backward(
+  File "/opt/conda/lib/python3.12/site-packages/torch/autograd/__init__.py", line 395, in backward
+    _engine_run_backward(
+  File "/opt/conda/lib/python3.12/site-packages/torch/autograd/graph.py", line 1072, in _engine_run_backward
+    return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 786.00 MiB. GPU 0 has a total capacity of 22.06 GiB of which 253.44 MiB is free. Including non-PyTorch memory, this process has 21.80 GiB memory in use. Of the allocated memory 20.11 GiB is allocated by PyTorch, and 568.78 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)
