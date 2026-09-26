@@ -127,11 +127,6 @@ def _build_mamba1_k2(model_dim, num_heads, head_dim, intent, target="reference")
     return Mamba1K2Layer(model_dim, 16, target=target, intent=intent)
 
 
-def _build_mamba1_external(model_dim, num_heads, head_dim, intent, target="reference"):
-    from architectures.mamba import Mamba1Layer
-    return Mamba1Layer(model_dim, 16)
-
-
 def _build_mom(model_dim, num_heads, head_dim, intent, target="reference"):
     from architectures.mom import MoMLayer
     return MoMLayer(model_dim, num_heads, head_dim, head_dim, 8, 2, target=target, intent=intent)
@@ -185,31 +180,6 @@ def _build_differential(model_dim, num_heads, head_dim, intent, target="referenc
 def _build_lightnet(model_dim, num_heads, head_dim, intent, target="native"):
     from architectures.lightnet import LightNetLayer
     return LightNetLayer(model_dim, num_heads, head_dim, head_dim, target=target, intent=intent)
-
-
-def _build_h3(model_dim, num_heads, head_dim, intent, target="reference"):
-    return _H3Adapter(model_dim, num_heads, head_dim)
-
-
-def _build_hyena(model_dim, num_heads, head_dim, intent, target="reference"):
-    from architectures.hyena_operator import HyenaOperatorLayer
-    return HyenaOperatorLayer(model_dim, 512)
-
-
-class _H3Adapter(torch.nn.Module):
-    """H3's forward takes the S4D/shift SSM kernels as external operands (the pinned
-    design); the adapter learns them as parameters (the trainable form)."""
-
-    def __init__(self, model_dim, num_heads, head_dim, seq_len=512):
-        super().__init__()
-        from architectures.h3_mixer import H3MixerLayer
-        self._mixer = H3MixerLayer(model_dim, head_dim)
-        h = model_dim // head_dim
-        self.ssm_kernel = torch.nn.Parameter(torch.randn(h, 2 * seq_len) * 0.02)
-        self.ssm_k_kernel = torch.nn.Parameter(torch.randn(model_dim, 2 * seq_len) * 0.02)
-
-    def forward(self, hidden):
-        return self._mixer(hidden, self.ssm_kernel, self.ssm_k_kernel)
 
 
 class _LogLinearMamba2Adapter(torch.nn.Module):
@@ -692,9 +662,6 @@ MIXER_REGISTRY: dict[str, MixerSpec] = {
     # --- external plain-torch compositions (public_path=False) ---
     "mom": MixerSpec("mom", _build_mom, None, False, False, public_path=False),
     "raven": MixerSpec("raven", _build_raven, None, False, False, public_path=False),
-    "h3_mixer": MixerSpec("h3_mixer", _build_h3, None, False, False, public_path=False),
-    "hyena_operator": MixerSpec("hyena_operator", _build_hyena, None, False, False, public_path=False),
-    "mamba1_external": MixerSpec("mamba1_external", _build_mamba1_external, None, False, False, public_path=False),
     # --- admitted late: rwkv7 (low-rank left transition, native-qualified), tda/based
     # (reference tier — threshold reducer / feature map not native) ---
     # rwkv7: the low-rank left transition COMPOSED with pointwise decay — admitted to the

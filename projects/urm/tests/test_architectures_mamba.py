@@ -16,9 +16,7 @@ torch = pytest.importorskip("torch")
 
 from architectures.mamba import (
     Mamba1K2Layer,
-    Mamba1Layer,
     Mamba2K2Layer,
-    Mamba2Layer,
     selective_scan_diag,
 )
 
@@ -90,21 +88,6 @@ def test_mamba2_core_routes_through_public_k2():
     assert err < 2e-3, f"Mamba2 public-K2 vs pinned chunked SSD: max abs err {err}"
 
 
-def test_mamba2_k2_matches_diagonal_scan_layer():
-    """The public-K2 Mamba-2 core == the diagonal-scan layer on shared weights."""
-    torch.manual_seed(7)
-    d_model = H * P
-    k2 = Mamba2K2Layer(d_model, H, P, N)
-    diag = Mamba2Layer(d_model, H, P, N)
-    with torch.no_grad():
-        diag.in_proj.weight.copy_(k2.in_proj.weight)
-        diag.A_log.copy_(k2.A_log)
-        diag.dt_bias.copy_(k2.dt_bias)
-        x = torch.randn(2, 5, d_model)
-        err = (k2(x) - diag(x)).abs().max().item()
-    assert err < 1e-4, f"Mamba2 public-K2 vs diagonal-scan: max abs err {err}"
-
-
 def test_mamba1_selective_scan_matches_pinned_ref():
     torch.manual_seed(5)
     B = 2
@@ -131,17 +114,6 @@ def test_mamba1_selectivity_is_active():
     assert (out1 - out2).abs().max().item() > 1e-3
 
 
-def test_mamba1_layer_composition_and_gradients():
-    torch.manual_seed(9)
-    d_model = D
-    layer = Mamba1Layer(d_model, N)
-    x = torch.randn(2, L, d_model)
-    out = layer(x)
-    assert out.shape == (2, L, d_model)
-    out.square().sum().backward()
-    assert layer.in_proj.weight.grad is not None
-
-
 def test_mamba2_recurrence_matches_pinned_chunked_ref():
     """Mamba-2's chunked semiseparable form reduces to the diagonal SSM recurrence."""
     import sys
@@ -165,15 +137,3 @@ def test_mamba2_recurrence_matches_pinned_chunked_ref():
         actual = rearrange(actual, "b (h p) l -> b l h p", h=Hh, p=Pp)
     err = (actual - expected).abs().max().item()
     assert err < 2e-3, f"mamba2 chunked-ref vs recurrent: max abs err {err}"
-
-
-def test_mamba2_layer_composition_and_gradients():
-    torch.manual_seed(11)
-    d_model = H * P
-    layer = Mamba2Layer(d_model, H, P, N)
-    x = torch.randn(2, L, d_model)
-    out = layer(x)
-    assert out.shape == (2, L, d_model)
-    out.square().sum().backward()
-    assert layer.in_proj.weight.grad is not None
-    assert layer.A_log.grad is not None
