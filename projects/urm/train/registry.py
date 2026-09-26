@@ -160,6 +160,14 @@ def _build_samba(layer_idx, model_dim, num_heads, head_dim, intent, target="refe
     return SambaAttentionLayer(model_dim, num_heads, head_dim, target=target, intent=intent)
 
 
+def _build_nsa_full(model_dim, num_heads, head_dim, intent, target="reference"):
+    """Full three-branch NSA (compressed + selected + sliding, gate-merged) — the
+    pinned fla law, not the selected branch alone."""
+    from architectures.nsa import NSAFullLayer
+    return NSAFullLayer(model_dim, num_heads, head_dim, block_size=8, topk=2,
+                        window_size=16, target=target, intent=intent)
+
+
 def _build_attnres(model_dim, layers, intent, target="reference"):
     """The AttnRes residual design (depth-domain aggregation, granularity='residual').
     Sub-layers 2*layers (attn+mlp per block); sources grow by one per block boundary:
@@ -661,8 +669,7 @@ MIXER_REGISTRY: dict[str, MixerSpec] = {
                       None, False, False, tier="native"),
     "moba": MixerSpec("moba", _op("moba.MoBALayer", extra=_moba_ops, chunk_size=8, topk=2),
                       None, False, False, tier="native"),
-    "nsa": MixerSpec("nsa", _op("nsa.NSASelectedLayer", layout="bthd", extra=_nsa_ops, block_size=8),
-                     None, False, False, tier="native"),
+    "nsa": MixerSpec("nsa", _build_nsa_full, "fla.ops.nsa", True, False, tier="native"),
     "dsa": MixerSpec("dsa", _op("dsa.DSALayer", layout="bthd", extra=_dsa_ops),
                      None, False, False, tier="native"),
     "longformer": MixerSpec("longformer", _op("longformer.LongformerLayer", layout="bthd", extra=_longformer_ops, window=8),
