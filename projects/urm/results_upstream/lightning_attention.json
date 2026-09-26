@@ -1,0 +1,14 @@
+{
+  "mixer": "lightning_attention",
+  "steps": 10,
+  "final_loss": 8.71717643737793,
+  "mfu": 0.1750695982595786,
+  "params": 108217260,
+  "checkpoint_aligned": true,
+  "kl_divergence": null,
+  "wallclock_s": 4.358134535024874,
+  "throughput_tokens_s": 18797.033304418732,
+  "peak_memory_gib": 8.702469825744629,
+  "baseline_tier": "production-kernel",
+  "granularity": "mixer"
+}

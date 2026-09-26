@@ -1,0 +1,14 @@
+{
+  "mixer": "lightnet",
+  "steps": 10,
+  "final_loss": 8.879000663757324,
+  "mfu": 0.17514930176489749,
+  "params": 115135488,
+  "checkpoint_aligned": true,
+  "kl_divergence": null,
+  "wallclock_s": 4.633502242999384,
+  "throughput_tokens_s": 17679.931011961937,
+  "peak_memory_gib": 10.772995471954346,
+  "baseline_tier": "production-kernel",
+  "granularity": "mixer"
+}

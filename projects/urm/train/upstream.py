@@ -348,6 +348,56 @@ def _samba_upstream_layer(layer_idx, model_dim, num_heads, head_dim, intent,
     return _SDPASlidingWindow(model_dim, num_heads, head_dim, window=512)
 
 
+class _MoBAUpstream(torch.nn.Module):
+    """MoBA (Mixture of Block Attention) via a block-sparse SDPA mask: chunk-local
+    self-attention always on, plus the top-(topk-1) blocks per (head, token) by the
+    q·mean_pool(k_block) gate, causal. The pinned parallel kernel needs flash-attn
+    (bypassed per the no-FA constraint). Reference-implementation."""
+
+    def __init__(self, model_dim, num_heads, head_dim, chunk_size=8, topk=2):
+        super().__init__()
+        self.num_heads, self.head_dim = num_heads, head_dim
+        self.chunk_size, self.topk = chunk_size, topk
+        self.q_proj = torch.nn.Linear(model_dim, num_heads * head_dim, bias=False)
+        self.k_proj = torch.nn.Linear(model_dim, num_heads * head_dim, bias=False)
+        self.v_proj = torch.nn.Linear(model_dim, num_heads * head_dim, bias=False)
+        self.o_proj = torch.nn.Linear(num_heads * head_dim, model_dim, bias=False)
+
+    def forward(self, hidden):
+        B, T, _ = hidden.shape
+        H, D, CS = self.num_heads, self.head_dim, self.chunk_size
+        q = self.q_proj(hidden).view(B, T, H, D)
+        k = self.k_proj(hidden).view(B, T, H, D)
+        v = self.v_proj(hidden).view(B, T, H, D)
+        n_blocks = (T + CS - 1) // CS
+        pad = n_blocks * CS - T
+        k_pad = F.pad(k, (0, 0, 0, 0, 0, pad))
+        block_means = k_pad.view(B, n_blocks, CS, H, D).mean(dim=2)  # [B,NB,H,D]
+        # Gate scores: q · mean_pool(k_block), per head — [B,T,H,NB]
+        scores = torch.einsum("bthd,bnhd->bthn", q.float(), block_means.float())
+        t_idx = torch.arange(T, device=hidden.device)
+        own_block = t_idx // CS
+        # Causal: only blocks at or before the query's own block are candidates.
+        cand = torch.arange(n_blocks, device=hidden.device).view(1, 1, 1, -1)
+        allowed = cand <= own_block.view(1, T, 1, 1)
+        scores = scores.masked_fill(~allowed, float("-inf"))
+        top = scores.topk(min(self.topk, n_blocks), dim=-1).indices  # [B,T,H,topk]
+        # Build the block-sparse mask: token j visible to query t iff j in a selected
+        # block (or in t's own chunk — always on) and j <= t.
+        sel = torch.zeros(B, T, H, n_blocks, dtype=torch.bool, device=hidden.device)
+        sel.scatter_(3, top, True)
+        sel[:, :, :, 0] |= True  # defensive: first block
+        block_of_j = torch.arange(n_blocks * CS, device=hidden.device) // CS  # [NB*CS]
+        j_visible = sel[:, :, :, block_of_j]  # [B,T,H,NB*CS]
+        causal = (torch.arange(n_blocks * CS, device=hidden.device).view(1, 1, 1, -1)
+                  <= t_idx.view(1, T, 1, 1))
+        allow = (j_visible & causal)[:, :, :, :T]  # [B,T,H,T]
+        out = F.scaled_dot_product_attention(
+            q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2),
+            attn_mask=allow.permute(0, 2, 1, 3))  # SDPA wants [B,H,T,S]
+        return self.o_proj(out.transpose(1, 2).reshape(B, T, H * D))
+
+
 class _NSANaiveUpstream(torch.nn.Module):
     """fla's FAST NSA (parallel_nsa) requires flash-attn for its sliding-window
     sub-branch — bypassed per the no-FA constraint, so the production kernel is
@@ -547,7 +597,13 @@ UPSTREAM_BUILDERS = {
         lambda model_dim, num_heads, head_dim, intent, target="reference":
         _MLAUpstream(model_dim, num_heads, head_dim)
     ),
-    "moba": _fla("fla.layers.moba.MoBA"),
+    # fla's parallel_moba requires flash-attn; the baseline transcribes the pinned law
+    # (chunk-local attention always on + top-k blocks by the q·mean_pool(k_block) gate)
+    # as a block-sparse SDPA mask. Reference-implementation.
+    "moba": lambda: (
+        lambda model_dim, num_heads, head_dim, intent, target="reference":
+        _MoBAUpstream(model_dim, num_heads, head_dim)
+    ),
     # fla's DeltaFormerAttention layer hard-requires flash-attn; the baseline runs the
     # pinned naive deltaformer op (triangular solve + causal attention, pure torch,
     # autograd-friendly) — reference-implementation tier.
@@ -664,7 +720,7 @@ UPSTREAM_TIER = {
         "dense_attention", "gla", "gated_deltanet", "deltanet", "linear_attention",
         "retnet", "simple_gla", "hgrn2", "kda", "comba", "gdn2", "gsa", "abc_gsa",
         "gated_delta_product", "rwkv7", "based_attention", "forgetting_attention",
-        "lightning_attention", "tda", "lightnet", "mom", "moba",
+        "lightning_attention", "tda", "lightnet", "mom",
         "log_linear_mamba2", "path_attention",
         "rodimus", "raven", "yoco", "wall_attention", "dplr", "samba_attention",
         "mamba2", "kata", "attnres", "pattention", "bit_attention",
@@ -675,7 +731,7 @@ UPSTREAM_TIER = {
         "iplr", "log_linear_attention", "nsa", "differential_attention",
         "hopfield_association", "longformer", "tucker_attention", "conformer_attention",
         "dsa", "sparse_transformer", "tpa_attention", "cat_attention", "sdm",
-        "mla_attention", "deltaformer",
+        "mla_attention", "deltaformer", "moba",
     )},
 }
 
@@ -793,11 +849,20 @@ class _LongformerUpstream(torch.nn.Module):
         from benchmarks.comparators.longformer import longformer_attention_adapter
         B, T, _ = hidden.shape
         H, D = self.num_heads, self.head_dim
+        # The pinned kernel requires T % (2*window) == 0; the harness trains on
+        # tokens[:, :-1] (T = seq_len − 1), so pad up and slice back (the pinned
+        # pad_to_window_size policy).
+        T_orig = T
+        mult = 2 * self.window
+        if T % mult:
+            pad = mult - (T % mult)
+            hidden = F.pad(hidden, (0, 0, 0, pad))
+            T = hidden.shape[1]
         q = self.q_proj(hidden).view(B, T, H, D)
         k = self.k_proj(hidden).view(B, T, H, D)
         v = self.v_proj(hidden).view(B, T, H, D)
         out, _ = longformer_attention_adapter(q, k, v, self.window)
-        return self.o_proj(out.reshape(B, T, H * D))
+        return self.o_proj(out.reshape(B, T, H * D))[:, :T_orig]
 
 
 class _TuckerUpstream(torch.nn.Module):
