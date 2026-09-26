@@ -659,6 +659,7 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
                 "k1_threshold_relu_power_v1",
                 "k1_squared_sum_v1",
                 "k1_map_normalize_v1",
+                "k1_score_channel_decay_v1",
             }
         ),
     ),

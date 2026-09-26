@@ -64,6 +64,7 @@ from urm.ir.program import (
     CollectiveExchange,
     Gather,
     K1ReducerLaw,
+    K1ScoreLaw,
     LinearDeltaState,
     LogicalDomain,
     Matmul,
@@ -535,6 +536,11 @@ def _equation_contract_for(op: SemanticNode) -> str | None:
             # anchor that declares it (the Torch reference) is selectable, so the
             # native/SDPA softmax anchors decline rather than execute the wrong law.
             return f"k1_{k1.reducer_law.value}_v1"
+        if k1 is not None and k1.score_law is not K1ScoreLaw.DOT:
+            # A non-DOT K1 score law is a distinct equation contract (the channel-
+            # decay score is not expressible as an additive bias); only an anchor
+            # that declares it is selectable.
+            return f"k1_score_{k1.score_law.value}_v1"
         if k1 is not None and k1.indexed:
             # The A2 indexed gather-attend is the softmax law over an externally
             # routed per-query source set — a distinct contract so the dense
