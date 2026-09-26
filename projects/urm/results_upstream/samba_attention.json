@@ -1,0 +1,15 @@
+{
+  "mixer": "samba_attention",
+  "steps": 10,
+  "final_loss": 11.091341972351074,
+  "mfu": 0.0016785555152763253,
+  "params": 116084992,
+  "checkpoint_aligned": true,
+  "kl_divergence": null,
+  "wallclock_s": 121.86398080701474,
+  "throughput_tokens_s": 168.056220257833,
+  "peak_memory_gib": 7.832991123199463,
+  "baseline_tier": "production-kernel",
+  "granularity": "schedule",
+  "microbatch_fallback": 2048
+}

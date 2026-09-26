@@ -1,0 +1,14 @@
+{
+  "mixer": "nsa",
+  "steps": 10,
+  "final_loss": 12.757587432861328,
+  "mfu": 0.0005922650385763874,
+  "params": 102991104,
+  "checkpoint_aligned": true,
+  "kl_divergence": null,
+  "wallclock_s": 1226.2758067050017,
+  "throughput_tokens_s": 66.8038948106778,
+  "peak_memory_gib": 13.055421829223633,
+  "baseline_tier": "reference-implementation",
+  "granularity": "mixer"
+}

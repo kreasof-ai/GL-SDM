@@ -59,7 +59,7 @@ class _FlaWrap(torch.nn.Module):
         force_fp32 = self.layer.__class__.__name__ == "LogLinearMamba2"
         if force_fp32:
             with torch.autocast("cuda", enabled=False):
-                out = self.layer(hidden.float())
+                out = self.layer(hidden.float().contiguous())
         else:
             try:
                 wdtype = next(self.layer.parameters()).dtype
@@ -570,6 +570,8 @@ def _fla_builder(cls_path, extra=None):
     The fla layer classes differ (``head_dim`` vs ``feature_dim``, ``mode`` present or
     not, low-rank dims, …), so the builder inspects the signature and filters the
     candidate kwargs — a constructor mismatch records an error row rather than a crash.
+    ``_force_dtype`` in ``extra`` casts the constructed layer (the dtype-strict chunk
+    kernels need the whole module bf16, not just the input cast).
     """
     module_name, class_name = cls_path.rsplit(".", 1)
 
@@ -582,10 +584,15 @@ def _fla_builder(cls_path, extra=None):
             hidden_size=model_dim, d_model=model_dim, num_heads=num_heads,
             head_dim=head_dim, feature_dim=head_dim, mode="chunk", layer_idx=0,
         )
+        force_dtype = None
         if extra:
-            candidates.update(extra)
+            force_dtype = extra.get("_force_dtype")
+            candidates.update({k: v for k, v in extra.items() if k != "_force_dtype"})
         kwargs = {k: v for k, v in candidates.items() if k in params}
-        return _FlaWrap(cls(**kwargs))
+        layer = cls(**kwargs)
+        if force_dtype is not None:
+            layer = layer.to(force_dtype)
+        return _FlaWrap(layer)
     return build
 
 
@@ -609,11 +616,14 @@ UPSTREAM_BUILDERS = {
     "hgrn2": _fla("fla.layers.hgrn2.HGRN2Attention"),
     "kda": _fla("fla.layers.kda.KimiDeltaAttention"),
     # Extended set: the remaining native rows with a fast upstream kernel.
-    "comba": _fla("fla.layers.comba.Comba"),
+    # comba / gated_delta_product: the chunk kernels are bf16-strict (their internal
+    # gates come out fp32 under autocast and trip the kernel's dtype assertion) —
+    # construct the layer in bf16 so the whole call is bf16.
+    "comba": _fla("fla.layers.comba.Comba", extra={"_force_dtype": torch.bfloat16}),
     "gdn2": _fla("fla.layers.gdn2.GatedDeltaNet2"),
     "gsa": _fla("fla.layers.gsa.GatedSlotAttention"),
     "abc_gsa": _fla("fla.layers.abc.ABCAttention"),
-    "gated_delta_product": _fla("fla.layers.gated_deltaproduct.GatedDeltaProduct"),
+    "gated_delta_product": _fla("fla.layers.gated_deltaproduct.GatedDeltaProduct", extra={"_force_dtype": torch.bfloat16}),
     # fla's RWKV7 chunk kernel exceeds the A10G SMEM limit at head_dim=64 (131KB >
     # 101KB — hardware envelope, recorded); fused_recurrent is inference-only (no
     # autograd). The baseline transcribes the pinned naive recurrence (the RWKV7(Goose)
@@ -664,9 +674,13 @@ UPSTREAM_BUILDERS = {
                    "fla.ops.deltaformer.naive.naive_deltaformer_attn",
                    lambda mod, hidden, q, k, v: {
                        "beta": torch.sigmoid(mod.gate_proj(hidden)).view(
-                           hidden.shape[0], hidden.shape[1], mod.num_heads)})
+                           hidden.shape[0], hidden.shape[1], mod.num_heads, mod.head_dim
+                           ).mean(-1)})
     ),
-    "log_linear_mamba2": _fla("fla.layers.log_linear_mamba2.LogLinearMamba2"),
+    # log_linear_mamba2: fla's layer is chunk-kernel-only and exceeds the A10G SMEM
+    # limit at the benchmark config (196KB > 101KB, hardware envelope); fla ships no
+    # naive/reference variant for the mamba2-banked law — recorded as
+    # environment-blocked (see UPSTREAM_BLOCKED), no baseline fabricated.
     # fla's BitAttention hard-requires flash-attn for its attention core; the pinned
     # fused-BitLinear kernels (production) + SDPA causal attention.
     "bit_attention": lambda: (
@@ -772,7 +786,7 @@ UPSTREAM_TIER = {
         "retnet", "simple_gla", "hgrn2", "kda", "comba", "gdn2", "gsa", "abc_gsa",
         "gated_delta_product", "based_attention", "forgetting_attention",
         "lightning_attention", "tda", "lightnet", "mom",
-        "log_linear_mamba2", "path_attention",
+        "path_attention",
         "rodimus", "raven", "yoco", "wall_attention", "dplr", "samba_attention",
         "mamba2", "kata", "attnres", "bit_attention",
     )},
@@ -1181,6 +1195,15 @@ class _TPAUpstream(torch.nn.Module):
         o = torch.einsum("bnmh,bme->bnhe", o, bv)
         return self.o_proj(o.reshape(B, T, H * E))
 
+
+# Upstream baselines that are environment-blocked (recorded, not fabricated):
+# the upstream kernel exists but cannot run on this A10G (SMEM envelope) and no
+# reference variant ships. The report lists ours-only for these rows.
+UPSTREAM_BLOCKED = {
+    # fla's LogLinearMamba2 chunk kernel needs 196KB SMEM at the benchmark config
+    # (hardware limit 101KB); no naive/reference variant ships in the pin.
+    "log_linear_mamba2": "upstream chunk kernel exceeds A10G SMEM (196KB > 101KB); no reference variant in the pin",
+}
 
 # Rows whose upstream runs at a non-mixer granularity (the MixerSpec must carry it so the
 # surround model builds the same structure both arms).

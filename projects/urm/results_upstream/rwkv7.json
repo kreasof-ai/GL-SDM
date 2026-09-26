@@ -1,0 +1,15 @@
+{
+  "mixer": "rwkv7",
+  "steps": 10,
+  "final_loss": 9.350894927978516,
+  "mfu": 0.002067698552644918,
+  "params": 118688256,
+  "checkpoint_aligned": true,
+  "kl_divergence": null,
+  "wallclock_s": 101.13916307297768,
+  "throughput_tokens_s": 202.49327142664322,
+  "peak_memory_gib": 10.098134517669678,
+  "baseline_tier": "reference-implementation",
+  "granularity": "mixer",
+  "microbatch_fallback": 2048
+}
