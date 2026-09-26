@@ -16,9 +16,10 @@ honestly (``tier``):
 comparable kernel exists); ``has_reference_kernel`` / ``has_decode_kernel`` record the
 upstream's envelope honestly; ``stateful`` marks persistent memory (SDM). Exact
 trainable-parameter counts are reported per config (they vary — the mixers' projection
-structures differ). attnres is intentionally excluded: it is a depth-residual
-combination op, not a per-block sequence mixer, and registering it would fake the
-architecture.
+structures differ). Rows are registered at their faithful HF-modeling granularity
+(``MixerSpec.granularity``): attnres is a depth-domain residual design
+(``granularity="residual"``, dense-attention base blocks), samba a per-layer mamba/
+attention schedule — neither is flattened into a per-block mixer row.
 """
 
 from __future__ import annotations
@@ -147,9 +148,26 @@ def _build_mla(model_dim, num_heads, head_dim, intent, target="reference"):
     return MLALayer(model_dim, num_heads, 16, 32, head_dim, 48, target=target, intent=intent)
 
 
-def _build_samba(model_dim, num_heads, head_dim, intent, target="reference"):
+def _build_samba(layer_idx, model_dim, num_heads, head_dim, intent, target="reference"):
+    """Samba's per-layer mixer CHOICE (the architecture is the interleave, not a branch):
+    mamba state-space branch on even layers, sliding-window attention branch on odd —
+    the pinned lit_gpt/fla hybrid schedule. The mamba branch is our native Mamba2 K2
+    (the mamba2-generation state space; mamba1 stays reference-tier charter debt)."""
+    from architectures.mamba import Mamba2K2Layer
     from architectures.samba_attention import SambaAttentionLayer
+    if layer_idx % 2 == 0:
+        return Mamba2K2Layer(model_dim, num_heads, head_dim, 64, target=target, intent=intent)
     return SambaAttentionLayer(model_dim, num_heads, head_dim, target=target, intent=intent)
+
+
+def _build_attnres(model_dim, layers, intent, target="reference"):
+    """The AttnRes residual design (depth-domain aggregation, granularity='residual').
+    Sub-layers 2*layers (attn+mlp per block); sources grow by one per block boundary:
+    at sub-layer s the source count is s//2 + 2, capped by the first-layer bypass."""
+    from architectures.attnres import AttnResDesign
+    num_sublayers = 2 * layers
+    max_sources = layers + 1  # block-i sub-layers see i+1 (attn) / i+2 (mlp) sources
+    return AttnResDesign(model_dim, num_sublayers, max_sources, target=target, intent=intent)
 
 
 def _build_tpa(model_dim, num_heads, head_dim, intent, target="reference"):
@@ -604,11 +622,16 @@ MIXER_REGISTRY: dict[str, MixerSpec] = {
     "hla": MixerSpec("hla", _build_hla, None, False, False, tier="native"),
     # --- K3 native (persistent state; pinned router tie policy not claimed) ---
     "sdm": MixerSpec("sdm", _build_sdm, None, False, True, stateful=True, tier="native"),
+    # --- residual design (depth-domain AttnRes aggregation; not a sequence mixer —
+    # registered at its faithful granularity per the HF-modeling convention) ---
+    "attnres": MixerSpec("attnres", _build_attnres, "fla.ops.attnres", True, False,
+                         tier="native", granularity="residual"),
     # --- public-path sequence mixers, native ---
     "mamba2": MixerSpec("mamba2", _build_mamba2_k2, "mamba_ssm", True, True, tier="native"),
     "lightnet": MixerSpec("lightnet", _build_lightnet, None, False, False, tier="native"),
     "rodimus": MixerSpec("rodimus", _build_rodimus, None, False, False, tier="native"),
-    "samba_attention": MixerSpec("samba_attention", _build_samba, None, False, False, tier="native"),
+    "samba_attention": MixerSpec("samba_attention", _build_samba, "fla.models.samba", True, True,
+                                 tier="native", granularity="schedule"),
     "tpa_attention": MixerSpec("tpa_attention", _build_tpa, None, False, False, tier="native"),
     "yoco": MixerSpec("yoco", _k2("yoco.YOCOSelfDecoder"), None, False, False, tier="native"),
     "bit_attention": MixerSpec("bit_attention", _build_bit_attention, None, False, False, tier="native"),

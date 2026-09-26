@@ -131,4 +131,57 @@ class AttnResLayer(torch.nn.Module):
         return o.to(stacked.dtype)
 
 
-__all__ = ["AttnResLayer"]
+class AttnResDesign(torch.nn.Module):
+    """The AttnRes residual design for a stack of decoder blocks (model-side half).
+
+    Owns, per sub-layer (attention and MLP of every block), the pseudo-query
+    projection (a [1, D] row, zero-initialized per paper §5) and the source-key
+    RMSNorm; :meth:`aggregate` runs the verified :class:`AttnResLayer` aggregation
+    over the current residual sources with the following prenorm folded in
+    (``output_rms_weight``) — the pinned fla ``fused_attnres`` call pattern.
+    """
+
+    def __init__(
+        self,
+        model_dim: int,
+        num_sublayers: int,
+        max_sources: int,
+        *,
+        rms_eps: float = 1e-6,
+        target: str = "reference",
+        intent: str = "inference",
+    ) -> None:
+        super().__init__()
+        self.num_sublayers = num_sublayers
+        self.rms_eps = rms_eps
+        # Per-sub-layer parameter rows: query [1, D] (zero-init) and key RMSNorm [D].
+        self.query = torch.nn.Parameter(torch.zeros(num_sublayers, 1, model_dim))
+        self.rms_weight = torch.nn.Parameter(torch.ones(num_sublayers, model_dim))
+        self._layers = torch.nn.ModuleList(
+            AttnResLayer(s, target=target, intent=intent)
+            for s in range(1, max_sources + 1)
+        )
+
+    def rezero_(self) -> None:
+        """The query projections keep zero init even under a blanket model init."""
+        torch.nn.init.zeros_(self.query)
+
+    def aggregate(
+        self,
+        sublayer_idx: int,
+        residuals: list[torch.Tensor],
+        output_rms_weight: torch.Tensor,
+    ) -> torch.Tensor:
+        if not (0 <= sublayer_idx < self.num_sublayers):
+            raise ValueError(f"sublayer {sublayer_idx} out of range")
+        layer = self._layers[len(residuals) - 1]
+        return layer(
+            query=self.query[sublayer_idx, 0],
+            residuals=residuals,
+            rms_weight=self.rms_weight[sublayer_idx],
+            output_rms_weight=output_rms_weight,
+            rms_eps=self.rms_eps,
+        )
+
+
+__all__ = ["AttnResLayer", "AttnResDesign"]
