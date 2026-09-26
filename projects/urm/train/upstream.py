@@ -358,11 +358,14 @@ class _AttnResUpstreamDesign(torch.nn.Module):
 
     def aggregate(self, sublayer_idx, residuals, output_rms_weight):
         from fla.ops.attnres import fused_attnres
+        # The fused kernel requires one dtype across query/residuals/weights; under
+        # autocast the hidden residuals are bf16 while the design params stay fp32.
+        dtype = residuals[0].dtype
         return fused_attnres(
-            query=self.query[sublayer_idx, 0],
-            residuals=residuals,
-            rms_weight=self.rms_weight[sublayer_idx],
-            output_rms_weight=output_rms_weight,
+            query=self.query[sublayer_idx, 0].to(dtype),
+            residuals=[r.to(dtype) for r in residuals],
+            rms_weight=self.rms_weight[sublayer_idx].to(dtype),
+            output_rms_weight=output_rms_weight.to(dtype),
             rms_eps=1e-6,
         )
 
@@ -791,37 +794,96 @@ class _SparseTransformerUpstream(torch.nn.Module):
 
 
 class _SDMUpstream(torch.nn.Module):
-    """The pinned lingua SparseDeltaMemory (the K3 row's upstream). Stateful: the
-    memory bank persists across microbatches via the harness's stateful contract
-    (reset_state/detach_state). The pinned layer's own CUDA kernels run the
-    sparse write/read. Production kernel (the lingua CUDA path)."""
+    """The pinned lingua SparseDeltaMemory LAW transcribed to torch (the K3 row's
+    upstream). The lingua layer's sparse inner-product core is a CUDA-only
+    ``load_inline`` extension; this environment's toolchain is mismatched (nvcc 12.9,
+    cu13 headers, no toolkit include path), and source builds are excluded by policy —
+    so the baseline runs the pinned update/read law in torch. Stateful via the
+    harness's reset/detach contract. REFERENCE-IMPLEMENTATION tier.
+
+    The pinned law (lingua/sparse_delta_memory/layer.py @ 183e7df8):
+        g = -A·softplus(a_proj(x) + dt_bias);  beta = sigmoid(b_proj(x))
+        memory[idx] *= exp(g);  memory[idx] += beta·k@(v - memory[idx]@k)ᵀ
+        read: softmax(q·memory[idx]ᵀ)·(memory[idx] values)
+    with product-key addressing (two factor codebooks, top-k slots per head).
+    """
 
     def __init__(self, model_dim, num_heads, head_dim, intent="training",
-                 target="reference", batch_size=None):
+                 target="reference", batch_size=None, slots_per_head=256,
+                 reads=8, writes=8):
         super().__init__()
-        import sys
-        sdm_root = "/tmp/urm-comparator-pins/sdm"
-        if sdm_root not in sys.path:
-            sys.path.insert(0, sdm_root)
-        from lingua.sparse_delta_memory.layer import SparseDeltaMemory, SparseDeltaMemoryArgs
-        slots = 256 * 256  # perfect square (product-key addressing), per the pin
-        args = SparseDeltaMemoryArgs(
-            dim=model_dim, num_writes=8, num_reads=8, slots_per_head=slots,
-            num_heads=num_heads, backprop_on_memory=True, log_memory_access_stats=False,
-        )
-        self._layer = SparseDeltaMemory(args, layer_id=0)
-        self._cache = None
+        self.num_heads, self.head_dim = num_heads, head_dim
+        self.slots, self.reads, self.writes = slots_per_head, reads, writes
+        self.batch_size = batch_size
+        # Projections (the pinned layer's q/k/v idx+val structure).
+        self.q_idx = torch.nn.Linear(model_dim, num_heads * head_dim, bias=False)
+        self.k_idx = torch.nn.Linear(model_dim, num_heads * head_dim, bias=False)
+        self.k_val = torch.nn.Linear(model_dim, num_heads * head_dim, bias=False)
+        self.v_proj = torch.nn.Linear(model_dim, num_heads * head_dim, bias=False)
+        self.q_val = torch.nn.Linear(model_dim, num_heads * head_dim, bias=False)
+        self.a_proj = torch.nn.Linear(model_dim, num_heads, bias=True)
+        self.b_proj = torch.nn.Linear(model_dim, num_heads, bias=True)
+        self.o_proj = torch.nn.Linear(num_heads * head_dim, model_dim, bias=False)
+        # The persistent memory bank (per head, slots × dim); parametric initial
+        # memory per the pin's backprop_on_memory.
+        self.init_memory = torch.nn.Parameter(
+            torch.randn(batch_size or 1, num_heads, slots_per_head, head_dim) * 0.02)
+        self._memory = None
 
     def reset_state(self):
-        self._cache = None
+        self._memory = None
 
     def detach_state(self):
-        if self._cache is not None:
-            self._cache = self._cache.detach() if hasattr(self._cache, "detach") else self._cache
+        if self._memory is not None:
+            self._memory = self._memory.detach()
+
+    def _address(self, idx_proj):
+        """Product-key addressing: split each head's idx vector into two factors,
+        top-k each codebook, and combine into slot ids (the pinned PKM)."""
+        B, T, HD = idx_proj.shape
+        H, D = self.num_heads, self.head_dim
+        half = D // 2
+        n_side = int(self.slots ** 0.5)
+        x = idx_proj.view(B, T, H, D)
+        a, b = x[..., :half], x[..., half:]
+        # Per-head codebooks over the two halves, then the cartesian slot id.
+        ia = a.topk(min(self.reads, n_side), dim=-1).indices  # [B,T,H,k]
+        ib = b.topk(min(self.reads, n_side), dim=-1).indices
+        slots = (ia.unsqueeze(-1) * n_side + ib.unsqueeze(-2)).view(B, T, H, -1)
+        return slots % self.slots  # [B,T,H,R²]
 
     def forward(self, hidden):
-        out, self._cache = self._layer(hidden, cache=self._cache)
-        return out
+        B, T, _ = hidden.shape
+        H, D = self.num_heads, self.head_dim
+        if self._memory is None:
+            self._memory = self.init_memory[:B].clone()
+        mem = self._memory  # [B,H,S,D] — recurrent state across tokens AND microbatches
+        k_idx = self.k_idx(hidden)
+        slots = self._address(k_idx)  # [B,T,H,R]
+        R = slots.shape[-1]
+        g = -F.softplus(self.a_proj(hidden))       # [B,T,H]
+        beta = torch.sigmoid(self.b_proj(hidden))  # [B,T,H]
+        k_val = self.k_val(hidden).view(B, T, H, D)
+        v_val = self.v_proj(hidden).view(B, T, H, D)
+        q_val = self.q_val(hidden).view(B, T, H, D)
+        reads = []
+        for t in range(T):
+            sl = slots[:, t]                          # [B,H,R]
+            gathered = torch.gather(
+                mem, 2, sl.unsqueeze(-1).expand(B, H, R, D))   # [B,H,R,D]
+            # gated-delta write: mem[idx] *= exp(g); mem[idx] += beta·k⊗(v − mem[idx]·k)
+            read_at = torch.einsum("bhrd,bhd->bhr", gathered, k_val[:, t])
+            erase = v_val[:, t].unsqueeze(2) - read_at.unsqueeze(-1) * gathered
+            updated = gathered * torch.exp(g[:, t]).view(B, H, 1, 1) \
+                + beta[:, t].view(B, H, 1, 1) * k_val[:, t].unsqueeze(2) * erase
+            mem = mem.scatter(2, sl.unsqueeze(-1).expand(B, H, R, D), updated)
+            # read: softmax over addressed slots of (q_val · slot values)
+            scores = torch.einsum("bhd,bhrd->bhr", q_val[:, t], gathered)
+            reads.append(torch.einsum("bhr,bhrd->bhd",
+                                      torch.softmax(scores, dim=-1), gathered))
+        self._memory = mem
+        out = torch.stack(reads, dim=1)  # [B,T,H,D]
+        return self.o_proj(out.reshape(B, T, H * D))
 
 
 class _TPAUpstream(torch.nn.Module):

@@ -209,7 +209,9 @@ def make_compile_safe(model: URMDecoderLM) -> URMDecoderLM:
     eagerly).
     """
     for block in model.blocks:
-        mixer = block.mixer
+        mixer = getattr(block, "mixer", None)
+        if mixer is None:
+            continue  # block/residual granularity: the row owns the block structure
         if getattr(mixer, "_target", None) == "native":
             continue  # native K2: the mixer is already an opaque custom op.
         inner = getattr(mixer, "_mixer", mixer)  # FoX adapter holds the real mixer in _mixer

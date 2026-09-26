@@ -209,7 +209,8 @@ class URMDecoderLM(nn.Module):
     def reset_state(self) -> None:
         """Zero persistent mixer state (stateful mixers only; no-op otherwise)."""
         for block in self.blocks:
-            reset = getattr(block.mixer, "reset_state", None)
+            inner = getattr(block, "mixer", block)  # block-granularity rows own the block
+            reset = getattr(inner, "reset_state", None)
             if callable(reset):
                 reset()
 
@@ -221,7 +222,8 @@ class URMDecoderLM(nn.Module):
         stateful-recurrence problem K1/K2 mixers don't have).
         """
         for block in self.blocks:
-            detach = getattr(block.mixer, "detach_state", None)
+            inner = getattr(block, "mixer", block)
+            detach = getattr(inner, "detach_state", None)
             if callable(detach):
                 detach()
 
