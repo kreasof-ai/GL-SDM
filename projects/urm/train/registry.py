@@ -647,7 +647,7 @@ MIXER_REGISTRY: dict[str, MixerSpec] = {
     "log_linear_attention": MixerSpec("log_linear_attention", _op("log_linear_attention.BankedLogLinearMixer", layout="bthd", extra=_log_linear_ops, num_levels=4, gate_out_dim="heads_dim"),
                                       None, False, False, tier="native"),
     "hopfield_association": MixerSpec("hopfield_association", _build_hopfield, None, False, False, tier="native"),
-    "pattention": MixerSpec("pattention", _build_pattention, None, False, False),
+    "pattention": MixerSpec("pattention", _build_pattention, None, False, False, tier="native"),
     "conformer_attention": MixerSpec("conformer_attention", _build_conformer, None, False, False, tier="native"),
     "mamba1": MixerSpec("mamba1", _build_mamba1_k2, "mamba_ssm", True, True),
     "log_linear_mamba2": MixerSpec("log_linear_mamba2", _build_log_linear_mamba2, None, False, False, tier="native"),

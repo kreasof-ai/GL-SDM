@@ -700,6 +700,17 @@ TRUSTED_ANCHORS: tuple[ExecutionAnchor, ...] = (
         supported_visitors=frozenset(),
         semantic_contracts=frozenset({"k1_score_channel_decay_v1"}),
     ),
+    # Native Triton map-normalize reducer (PAttention/TokenFormer, A13): an
+    # elementwise score map composed with an Lp normalization, scaled by
+    # count^(1/p). Forward 2.9e-6, backward ≤ 1.4e-6 (torch backward on the
+    # recomputed scores — the source domain is small parameter tokens).
+    ExecutionAnchor(
+        kind=AnchorKind.ATTENTION,
+        name="urm_native_k1_map_normalize_v1",
+        backward_verified_dtypes=frozenset({"float32", "float16", "bfloat16"}),
+        supported_visitors=frozenset(),
+        semantic_contracts=frozenset({"k1_map_normalize_v1"}),
+    ),
     # The native Triton indexed gather-attend (the A2 law): one program per
     # (batch, query-head, query-block) loops the W gathered slots, gathering
     # per-row K/V and accumulating the online softmax in fp32; the backward
