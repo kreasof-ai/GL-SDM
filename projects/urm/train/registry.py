@@ -455,7 +455,13 @@ class _PattentionAdapter(torch.nn.Module):
 
 
 def _build_pattention(model_dim, num_heads, head_dim, intent, target="reference"):
-    return _PattentionAdapter(model_dim, num_heads, head_dim, intent, target)
+    """Tokenformer full block (granularity='block'): every linear map — the Q/K/V/O
+    projections and the MLP — is a Pattention over learned parameter tokens
+    (pinned ParallelTokenformerLayer); the sequence mixing is standard causal
+    attention over the projected heads."""
+    from architectures.pattention import TokenformerBlock
+    return TokenformerBlock(model_dim, num_heads, head_dim, ffn_slots=256, qkv_slots=64,
+                            target=target, intent=intent)
 
 
 class _HopfieldAdapter(torch.nn.Module):
@@ -670,7 +676,8 @@ MIXER_REGISTRY: dict[str, MixerSpec] = {
     "log_linear_attention": MixerSpec("log_linear_attention", _op("log_linear_attention.BankedLogLinearMixer", layout="bthd", extra=_log_linear_ops, num_levels=4, gate_out_dim="heads_dim"),
                                       None, False, False, tier="native"),
     "hopfield_association": MixerSpec("hopfield_association", _build_hopfield, None, False, False, tier="native"),
-    "pattention": MixerSpec("pattention", _build_pattention, None, False, False, tier="native"),
+    "pattention": MixerSpec("pattention", _build_pattention, None, False, False,
+                            tier="native", granularity="block"),
     "conformer_attention": MixerSpec("conformer_attention", _build_conformer, None, False, False, tier="native"),
     "mamba1": MixerSpec("mamba1", _build_mamba1_k2, "mamba_ssm", True, True),
     "log_linear_mamba2": MixerSpec("log_linear_mamba2", _build_log_linear_mamba2, None, False, False, tier="native"),

@@ -152,4 +152,102 @@ class PattentionLayer(torch.nn.Module):
         return out.to(inputs.dtype)
 
 
-__all__ = ["PattentionLayer"]
+class _RMSNorm(torch.nn.Module):
+    def __init__(self, dim: int):
+        super().__init__()
+        self.weight = torch.nn.Parameter(torch.ones(dim))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return F.rms_norm(x, (x.shape[-1],), weight=self.weight)
+
+
+class TokenformerBlock(torch.nn.Module):
+    """The full Tokenformer decoder block (granularity="block"), per the pinned
+    ``ParallelTokenformerLayer`` + ``ParallelSelfAttention`` (megatron/model/
+    tokenformer.py @ 4d56c73f): EVERY linear map is a Pattention — the Q/K/V/output
+    projections (each over ``qkv_slot_num`` parameter tokens) and the MLP (over
+    ``ffn_slot_num`` parameter tokens). The sequence mixing itself is standard
+    multi-head causal attention over the projected heads:
+
+        h = LN1(x); q,k,v = Pattn_q(h), Pattn_k(h), Pattn_v(h)
+        x = x + Pattn_o(CausalAttention(q, k, v))
+        x = x + Pattn_mlp(LN2(x))
+
+    No dense Linear anywhere; the pinned ``norm_activation_type`` maps onto the K1
+    MAP_NORMALIZE reducer fields per the layer-level docstring above.
+    """
+
+    def __init__(
+        self,
+        model_dim: int,
+        num_heads: int,
+        head_dim: int,
+        ffn_slots: int,
+        qkv_slots: int,
+        *,
+        norm_activation_type: str = "softmax",
+        target: str = "reference",
+        intent: str = "inference",
+    ) -> None:
+        super().__init__()
+        self.num_heads, self.head_dim = num_heads, head_dim
+        self.norm1 = _RMSNorm(model_dim)
+        self.norm2 = _RMSNorm(model_dim)
+        pattn = lambda out_dim, slots: PattentionLayer(  # noqa: E731 — ctor shorthand
+            model_dim, out_dim, param_token_num=slots,
+            norm_activation_type=norm_activation_type, target=target, intent=intent)
+        self.query = pattn(model_dim, qkv_slots)
+        self.key = pattn(model_dim, qkv_slots)
+        self.value = pattn(model_dim, qkv_slots)
+        self.proj = pattn(model_dim, qkv_slots)
+        self.mlp = pattn(model_dim, ffn_slots)
+        # The pin overwrites the ``torch.rand`` parameter-token init with neox's
+        # small-normal ``init_method`` — required here because FIVE pattentions
+        # cascade per block (uniform-positive keys × RMSNorm'd queries overflow the
+        # exp score map at depth). Matches the pinned runtime init.
+        for module in (self.query, self.key, self.value, self.proj, self.mlp):
+            torch.nn.init.normal_(module.key_param_tokens, mean=0.0, std=0.02)
+            torch.nn.init.normal_(module.value_param_tokens, mean=0.0, std=0.02)
+        # The sequence mixing: standard multi-head causal softmax attention over the
+        # pattention-projected heads — the typed K1 call, projections stripped (they
+        # are the pattentions above, per the pinned source).
+        document = {
+            "schema_version": 2, "name": "tokenformer_causal_attn", "kind": "kernel_fragment",
+            "graph": {
+                "inputs": [
+                    {"name": "query", "dtype": "float32", "shape": ["B", "T", num_heads, head_dim]},
+                    {"name": "key", "dtype": "float32", "shape": ["B", "S", num_heads, head_dim]},
+                    {"name": "value", "dtype": "float32", "shape": ["B", "S", num_heads, head_dim]},
+                ],
+                "nodes": [{
+                    "id": "attend", "op": "weighted_reduce",
+                    "inputs": ["query", "key", "value"], "outputs": ["output"],
+                    "params": {
+                        "query_domain": "sequence", "source_domain": "sequence",
+                        "selection": "dense", "normalization": "softmax",
+                        "capacity_policy": "dropless", "deterministic": True,
+                        "causal": True, "head_map": "equal",
+                        "roles": {"query": "query", "key": "key", "value": "value"},
+                    },
+                }],
+                "outputs": ["output"],
+            },
+        }
+        recipe = load_graph_recipe_document(document)
+        program = normalize_graph_document(recipe.document)
+        self._attn_plan = compile_graph(program, target=target, intent=CompilationIntent(intent))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        B, T, C = x.shape
+        H, D = self.num_heads, self.head_dim
+        h = self.norm1(x)
+        q = self.query(h).view(B, T, H, D)
+        k = self.key(h).view(B, T, H, D)
+        v = self.value(h).view(B, T, H, D)
+        ctx = self._attn_plan.execute(query=q, key=k, value=v)["output"].reshape(B, T, C)
+        x = x + self.proj(ctx)
+        x = x + self.mlp(self.norm2(x))
+        return x
+
+
+__all__ = ["PattentionLayer", "TokenformerBlock"]
