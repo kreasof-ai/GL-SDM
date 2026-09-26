@@ -44,22 +44,20 @@ def _online_softmax_forward_tiled(
     BLOCK_D: tl.constexpr,
     BLOCK_V: tl.constexpr,
 ):
+    # BLOCK_D is the D-chunk tile width (always ≤ the SMEM-safe cap); when D exceeds
+    # it, the channel axis is chunked: scores accumulate partial dot products over
+    # NUM_D_CHUNKS = cdiv(D, BLOCK_D) chunks. The chunked schedule keeps the q/k tiles
+    # at [BLOCK_M/N, BLOCK_D] regardless of the head width.
     batch = tl.program_id(0)
     query_head = tl.program_id(1)
     query_start = tl.program_id(2) * BLOCK_M
     key_head = query_head // (HQ // HK)
+    NUM_D_CHUNKS: tl.constexpr = (D + BLOCK_D - 1) // BLOCK_D
     query_offsets = query_start + tl.arange(0, BLOCK_M)
     key_offsets = tl.arange(0, BLOCK_N)
     key_dims = tl.arange(0, BLOCK_D)
     value_dims = tl.arange(0, BLOCK_V)
     query_valid = query_offsets < TQ
-    query = tl.load(
-        Q
-        + ((batch * TQ + query_offsets[:, None]) * HQ + query_head) * D
-        + key_dims[None, :],
-        query_valid[:, None] & (key_dims[None, :] < D),
-        other=0.0,
-    )
     LOG2E: tl.constexpr = 1.4426950408889634
     running_max = tl.full((BLOCK_M,), float("-inf"), tl.float32)
     running_sum = tl.zeros((BLOCK_M,), tl.float32)
@@ -74,18 +72,33 @@ def _online_softmax_forward_tiled(
     for key_start in range(key_blocks):
         keys = key_start * BLOCK_N + key_offsets
         key_valid = keys < TK
-        key = tl.load(
-            K
-            + ((batch * TK + keys[:, None]) * HK + key_head) * D
-            + key_dims[None, :],
-            key_valid[:, None] & (key_dims[None, :] < D),
-            other=0.0,
-        )
-        scores = tl.dot(
-            query,
-            tl.trans(key),
-            input_precision="ieee" if INPUT_FP32 else "tf32",
-        ) * (SCALE * LOG2E)
+        # Chunked-D score accumulation: scores = Σ_c dot(q_c, k_c^T) over D-chunks.
+        # The query chunk is re-loaded per key block (SMEM-bounded; the tile is
+        # [BLOCK_M, BLOCK_D] regardless of D).
+        scores = tl.zeros((BLOCK_M, BLOCK_N), tl.float32)
+        for d_chunk in tl.static_range(NUM_D_CHUNKS):
+            d_offs = d_chunk * BLOCK_D + key_dims
+            d_valid = d_offs < D
+            q_chunk = tl.load(
+                Q
+                + ((batch * TQ + query_offsets[:, None]) * HQ + query_head) * D
+                + d_offs[None, :],
+                query_valid[:, None] & d_valid[None, :],
+                other=0.0,
+            )
+            k_chunk = tl.load(
+                K
+                + ((batch * TK + keys[:, None]) * HK + key_head) * D
+                + d_offs[None, :],
+                key_valid[:, None] & d_valid[None, :],
+                other=0.0,
+            )
+            scores += tl.dot(
+                q_chunk,
+                tl.trans(k_chunk),
+                input_precision="ieee" if INPUT_FP32 else "tf32",
+            )
+        scores = scores * (SCALE * LOG2E)
         score_valid = query_valid[:, None] & key_valid[None, :]
         scores = tl.where(score_valid, scores, float("-inf"))
         if HAS_MASK:
@@ -281,17 +294,11 @@ def _online_softmax_backward_dq(
     query_head = tl.program_id(1)
     query_start = tl.program_id(2) * BLOCK_M
     key_head = query_head // (HQ // HK)
+    NUM_D_CHUNKS: tl.constexpr = (D + BLOCK_D - 1) // BLOCK_D
     query_offsets = query_start + tl.arange(0, BLOCK_M)
     key_offsets = tl.arange(0, BLOCK_N)
     key_dims = tl.arange(0, BLOCK_D)
     query_valid = query_offsets < TQ
-    query = tl.load(
-        Q
-        + ((batch * TQ + query_offsets[:, None]) * HQ + query_head) * D
-        + key_dims[None, :],
-        query_valid[:, None] & (key_dims[None, :] < D),
-        other=0.0,
-    )
     grad_output = tl.load(
         GRAD_OUTPUT
         + ((batch * TQ + query_offsets[:, None]) * HQ + query_head) * DV
@@ -311,7 +318,12 @@ def _online_softmax_backward_dq(
     )
     row_valid = logsumexp != float("-inf")
     safe_logsumexp = tl.where(row_valid, logsumexp, 0.0)
-    grad_query = tl.zeros((BLOCK_M, BLOCK_D), tl.float32)
+    # Chunked-D: the full score (all D-chunks summed) is needed for the softmax
+    # probabilities; grad_query accumulates per-chunk via dot(grad_scores, k_chunk).
+    # The accumulators are separate register tiles (one per D-chunk), unrolled via
+    # tl.static_range — NUM_D_CHUNKS is a constexpr so the unrolling is static.
+    grad_query_0 = tl.zeros((BLOCK_M, BLOCK_D), tl.float32)
+    grad_query_1 = tl.zeros((BLOCK_M, BLOCK_D), tl.float32)
     if CAUSAL:
         last_visible = query_start + BLOCK_M - 1 + (TK - TQ)
         key_blocks = tl.cdiv(tl.minimum(last_visible + 1, TK), BLOCK_N)
@@ -320,13 +332,30 @@ def _online_softmax_backward_dq(
     for key_start in range(key_blocks):
         keys = key_start * BLOCK_N + key_offsets
         key_valid = keys < TK
-        key = tl.load(
-            K
-            + ((batch * TK + keys[:, None]) * HK + key_head) * D
-            + key_dims[None, :],
-            key_valid[:, None] & (key_dims[None, :] < D),
-            other=0.0,
-        )
+        # Full score: accumulate partial dot products over D-chunks.
+        scores = tl.zeros((BLOCK_M, BLOCK_N), tl.float32)
+        for d_chunk in tl.static_range(NUM_D_CHUNKS):
+            d_offs = d_chunk * BLOCK_D + key_dims
+            d_valid = d_offs < D
+            q_chunk = tl.load(
+                Q
+                + ((batch * TQ + query_offsets[:, None]) * HQ + query_head) * D
+                + d_offs[None, :],
+                query_valid[:, None] & d_valid[None, :],
+                other=0.0,
+            )
+            k_chunk = tl.load(
+                K
+                + ((batch * TK + keys[:, None]) * HK + key_head) * D
+                + d_offs[None, :],
+                key_valid[:, None] & d_valid[None, :],
+                other=0.0,
+            )
+            scores += tl.dot(
+                q_chunk, tl.trans(k_chunk),
+                input_precision="ieee" if INPUT_FP32 else "tf32",
+            )
+        scores = scores * SCALE
         value = tl.load(
             V
             + ((batch * TK + keys[:, None]) * HK + key_head) * DV
@@ -334,9 +363,6 @@ def _online_softmax_backward_dq(
             key_valid[:, None] & (tl.arange(0, BLOCK_V)[None, :] < DV),
             other=0.0,
         )
-        scores = tl.dot(
-            query, tl.trans(key), input_precision="ieee" if INPUT_FP32 else "tf32"
-        ) * SCALE
         score_valid = query_valid[:, None] & key_valid[None, :]
         scores = tl.where(score_valid, scores, float("-inf"))
         if HAS_MASK:
@@ -382,9 +408,25 @@ def _online_softmax_backward_dq(
         )
         grad_scores = probabilities * (grad_probabilities - delta[:, None])
         grad_scores = tl.where(row_valid[:, None] & score_valid, grad_scores, 0.0)
-        grad_query += tl.dot(
-            grad_scores.to(query.dtype), key, input_precision="ieee" if INPUT_FP32 else "tf32"
-        ) * SCALE
+        # Per-D-chunk grad_query accumulation: dot(grad_scores, k_chunk) per chunk.
+        for d_chunk in tl.static_range(NUM_D_CHUNKS):
+            d_offs = d_chunk * BLOCK_D + key_dims
+            d_valid = d_offs < D
+            k_chunk = tl.load(
+                K
+                + ((batch * TK + keys[:, None]) * HK + key_head) * D
+                + d_offs[None, :],
+                key_valid[:, None] & d_valid[None, :],
+                other=0.0,
+            )
+            contribution = tl.dot(
+                grad_scores.to(k_chunk.dtype), k_chunk,
+                input_precision="ieee" if INPUT_FP32 else "tf32",
+            ) * SCALE
+            if d_chunk == 0:
+                grad_query_0 += contribution
+            elif d_chunk == 1:
+                grad_query_1 += contribution
         if NEED_GRAD_MASK:
             grad_mask_offset = (
                 batch * GRAD_MASK_SB
@@ -411,14 +453,25 @@ def _online_softmax_backward_dq(
                 score_valid,
                 sem="relaxed",
             )
-    grad_query_offset = (
-        (batch * TQ + query_offsets[:, None]) * HQ + query_head
-    ) * D + key_dims[None, :]
-    tl.store(
-        GRAD_Q + grad_query_offset,
-        grad_query,
-        query_valid[:, None] & (key_dims[None, :] < D),
-    )
+    # Store grad_query per D-chunk.
+    for d_chunk in tl.static_range(NUM_D_CHUNKS):
+        d_offs = d_chunk * BLOCK_D + key_dims
+        d_valid = d_offs < D
+        grad_query_offset = (
+            (batch * TQ + query_offsets[:, None]) * HQ + query_head
+        ) * D + d_offs[None, :]
+        if d_chunk == 0:
+            tl.store(
+                GRAD_Q + grad_query_offset,
+                grad_query_0,
+                query_valid[:, None] & d_valid[None, :],
+            )
+        elif d_chunk == 1:
+            tl.store(
+                GRAD_Q + grad_query_offset,
+                grad_query_1,
+                query_valid[:, None] & d_valid[None, :],
+            )
 
 
 @triton.jit
@@ -472,20 +525,19 @@ def _online_softmax_backward_kv_tiled(
     batch = tl.program_id(0)
     key_head = tl.program_id(1)
     key_start = tl.program_id(2) * BLOCK_N
+    NUM_D_CHUNKS: tl.constexpr = (D + BLOCK_D - 1) // BLOCK_D
     key_offsets = key_start + tl.arange(0, BLOCK_N)
     query_offsets = tl.arange(0, BLOCK_M)
     key_dims = tl.arange(0, BLOCK_D)
     value_dims = tl.arange(0, BLOCK_V)
     key_valid = key_offsets < TK
-    key = tl.load(
-        K + ((batch * TK + key_offsets[:, None]) * HK + key_head) * D + key_dims[None, :],
-        key_valid[:, None] & (key_dims[None, :] < D), other=0.0,
-    )
     value = tl.load(
         V + ((batch * TK + key_offsets[:, None]) * HK + key_head) * DV + value_dims[None, :],
         key_valid[:, None] & (value_dims[None, :] < DV), other=0.0,
     )
-    grad_key = tl.zeros((BLOCK_N, BLOCK_D), tl.float32)
+    # Chunked-D: grad_key accumulates per-chunk via dot(grad_scores, q_chunk).
+    grad_key_0 = tl.zeros((BLOCK_N, BLOCK_D), tl.float32)
+    grad_key_1 = tl.zeros((BLOCK_N, BLOCK_D), tl.float32)
     grad_value = tl.zeros((BLOCK_N, BLOCK_V), tl.float32)
     if CAUSAL:
         first_query = key_start - (TK - TQ)
@@ -500,10 +552,6 @@ def _online_softmax_backward_kv_tiled(
         query_valid = qoff < TQ
         for qhead_in_group in range(HQ // HK):
             query_head = key_head * (HQ // HK) + qhead_in_group
-            query = tl.load(
-                Q + ((batch * TQ + qoff[:, None]) * HQ + query_head) * D + key_dims[None, :],
-                query_valid[:, None] & (key_dims[None, :] < D), other=0.0,
-            )
             grad_output = tl.load(
                 GRAD_OUTPUT + ((batch * TQ + qoff[:, None]) * HQ + query_head) * DV + value_dims[None, :],
                 query_valid[:, None] & (value_dims[None, :] < DV), other=0.0,
@@ -514,9 +562,24 @@ def _online_softmax_backward_kv_tiled(
             delta = tl.load(
                 DELTA + (batch * HQ + query_head) * TQ + qoff, query_valid, other=0.0
             )
-            scores = tl.dot(
-                key, tl.trans(query), input_precision="ieee" if INPUT_FP32 else "tf32"
-            ) * SCALE
+            # Full score: accumulate partial dot products over D-chunks.
+            scores = tl.zeros((BLOCK_N, BLOCK_M), tl.float32)
+            for d_chunk in tl.static_range(NUM_D_CHUNKS):
+                d_offs = d_chunk * BLOCK_D + key_dims
+                d_valid = d_offs < D
+                k_chunk = tl.load(
+                    K + ((batch * TK + key_offsets[:, None]) * HK + key_head) * D + d_offs[None, :],
+                    key_valid[:, None] & d_valid[None, :], other=0.0,
+                )
+                q_chunk = tl.load(
+                    Q + ((batch * TQ + qoff[:, None]) * HQ + query_head) * D + d_offs[None, :],
+                    query_valid[:, None] & d_valid[None, :], other=0.0,
+                )
+                scores += tl.dot(
+                    k_chunk, tl.trans(q_chunk),
+                    input_precision="ieee" if INPUT_FP32 else "tf32",
+                )
+            scores = scores * SCALE
             score_valid = key_valid[:, None] & query_valid[None, :]
             if CAUSAL:
                 visible = key_offsets[:, None] <= qoff[None, :] + TK - TQ
@@ -560,17 +623,40 @@ def _online_softmax_backward_kv_tiled(
             )
             grad_scores = probabilities * (grad_probabilities - delta[None, :])
             grad_scores = tl.where(score_valid, grad_scores, 0.0)
-            grad_key += tl.dot(
-                grad_scores.to(query.dtype), query, input_precision="ieee" if INPUT_FP32 else "tf32"
-            ) * SCALE
+            # Per-D-chunk grad_key accumulation: dot(grad_scores, q_chunk) per chunk.
+            for d_chunk in tl.static_range(NUM_D_CHUNKS):
+                d_offs = d_chunk * BLOCK_D + key_dims
+                d_valid = d_offs < D
+                q_chunk = tl.load(
+                    Q + ((batch * TQ + qoff[:, None]) * HQ + query_head) * D + d_offs[None, :],
+                    query_valid[:, None] & d_valid[None, :], other=0.0,
+                )
+                contribution = tl.dot(
+                    grad_scores.to(q_chunk.dtype), q_chunk,
+                    input_precision="ieee" if INPUT_FP32 else "tf32",
+                ) * SCALE
+                if d_chunk == 0:
+                    grad_key_0 += contribution
+                elif d_chunk == 1:
+                    grad_key_1 += contribution
             grad_value += tl.dot(
                 probabilities.to(grad_output.dtype), grad_output,
                 input_precision="ieee" if INPUT_FP32 else "tf32",
             )
-    tl.store(
-        GRAD_K + ((batch * TK + key_offsets[:, None]) * HK + key_head) * D + key_dims[None, :],
-        grad_key, key_valid[:, None] & (key_dims[None, :] < D),
-    )
+    # Store grad_key per D-chunk.
+    for d_chunk in tl.static_range(NUM_D_CHUNKS):
+        d_offs = d_chunk * BLOCK_D + key_dims
+        d_valid = d_offs < D
+        if d_chunk == 0:
+            tl.store(
+                GRAD_K + ((batch * TK + key_offsets[:, None]) * HK + key_head) * D + d_offs[None, :],
+                grad_key_0, key_valid[:, None] & d_valid[None, :],
+            )
+        elif d_chunk == 1:
+            tl.store(
+                GRAD_K + ((batch * TK + key_offsets[:, None]) * HK + key_head) * D + d_offs[None, :],
+                grad_key_1, key_valid[:, None] & d_valid[None, :],
+            )
     tl.store(
         GRAD_V + ((batch * TK + key_offsets[:, None]) * HK + key_head) * DV + value_dims[None, :],
         grad_value, key_valid[:, None] & (value_dims[None, :] < DV),
@@ -760,30 +846,33 @@ def execute_online_softmax(
     mask_strides = _broadcast_strides_4d(attention_mask, target)
     bias_strides = _broadcast_strides_4d(score_bias, target)
     query, key, value = query.contiguous(), key.contiguous(), value.contiguous()
-    # The forward kernel loads the full channel axis in one tile (block_d covers
-    # key_dim), so the A10G's 101KB SMEM caps head widths at 64 (D=128 needs 114KB,
-    # measured). Decline wider heads loudly — never launch into a CUDA OOM.
-    if key_dim > 64 or value_dim > 64:
-        raise ValueError(
-            f"native K1 online softmax supports head widths <= 64 on this device "
-            f"(SMEM limit); got key_dim={key_dim}, value_dim={value_dim} — "
-            f"the reference tier owns wider heads"
-        )
     mask = attention_mask if attention_mask is not None else torch.empty((0,), device=query.device)
     bias = score_bias if score_bias is not None else torch.empty((0,), device=query.device)
-    # The forward kernel holds [BLOCK_M, BLOCK_D] q + [BLOCK_N, BLOCK_D] k + [BLOCK_N,
-    # BLOCK_V] v + [BLOCK_M, BLOCK_N] score fp32 tiles; at block_m=128 with 3-stage
-    # pipelining that exceeds the A10G's 101KB SMEM (measured 131072 required at
-    # T>=128, D=64). block_m=64 with stages=2 stays under the limit (measured ~74KB)
-    # without a measurable throughput cost on this GPU.
+    # The forward kernel holds [BLOCK_M, BLOCK_D_CHUNK] q + [BLOCK_N, BLOCK_D_CHUNK] k
+    # + [BLOCK_N, BLOCK_V] v + [BLOCK_M, BLOCK_N] score fp32 tiles. The channel axis is
+    # chunked at BLOCK_D_CHUNK = min(next_power_of_2(D), 64), so the SMEM budget is
+    # independent of the head width — wide heads (MLA key_dim=80, Tucker >64,
+    # differential value_dim=128) run natively. block_m=64 with stages=2 stays under
+    # the A10G's 101KB SMEM (measured ~74KB at D_CHUNK=64, BLOCK_V=64).
     block_m = 64 if query_length >= 64 else max(16, triton.next_power_of_2(query_length))
     block_n = 64
-    # block_d/block_v must cover the full head width (the kernel loads the whole channel
-    # axis in one tile for tl.dot — they are NOT chunked). The A10G's SMEM therefore caps
-    # the native K1 forward at head_dim <= 64 (D=128 needs 114KB > 101KB, measured); the
-    # provider declines wider heads (they stay reference-tier).
-    block_d = max(16, triton.next_power_of_2(key_dim))
+    block_d = min(max(16, triton.next_power_of_2(key_dim)), 64)
+    # Chunked-D covers key_dim ≤ 128 (2 chunks of 64); wider heads need a deeper
+    # unroll (residual work). BLOCK_V is NOT chunked (the value width is the output
+    # width); decline wider value dims honestly.
+    if key_dim > 128:
+        raise ValueError(
+            f"native K1 online softmax supports key widths <= 128 on this device "
+            f"(chunked-D schedule, 2 chunks of 64); got key_dim={key_dim} — "
+            f"the reference tier owns wider heads"
+        )
     block_v = max(16, triton.next_power_of_2(value_dim))
+    if value_dim > 64:
+        raise ValueError(
+            f"native K1 online softmax supports value widths <= 64 on this device "
+            f"(SMEM limit); got value_dim={value_dim} — "
+            f"the reference tier owns wider value heads"
+        )
     num_warps = 8 if block_m >= 128 else 4
     num_stages = 2
     # The backward kernels hold [BLOCK_M, BLOCK_N/D/V] fp32 tiles; at block_m=128 with

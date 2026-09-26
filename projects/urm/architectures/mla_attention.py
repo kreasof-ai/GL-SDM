@@ -81,7 +81,7 @@ class MLALayer(torch.nn.Module):
                     {"name": "key", "dtype": "float32",
                      "shape": ["B", "S", num_heads, self.qk_head_dim]},
                     {"name": "value", "dtype": "float32",
-                     "shape": ["B", "S", num_heads, self.qk_head_dim]},
+                     "shape": ["B", "S", num_heads, self.v_head_dim]},
                 ],
                 "nodes": [
                     {
@@ -140,12 +140,10 @@ class MLALayer(torch.nn.Module):
 
         q = torch.cat((q_pass, q_rot), dim=-1)
         k = torch.cat((k_pass, k_rot), dim=-1)
-        # Pad v to qk_head_dim for the mixer; crop back to v_head_dim after.
-        if self.qk_head_dim != self.v_head_dim:
-            v = F.pad(v, [0, self.qk_head_dim - self.v_head_dim])
+        # v stays at its natural v_head_dim — the K1 kernel handles key_dim ≠
+        # value_dim natively (the pinned zero-padding is a semantic no-op).
 
         out = self._plan.execute(query=q, key=k, value=v)["output"]
-        out = out[..., : self.v_head_dim]
         return self.o_proj(out.reshape(B, T, self.num_heads * self.v_head_dim))
 
 
