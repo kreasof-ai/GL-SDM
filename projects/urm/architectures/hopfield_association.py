@@ -139,8 +139,14 @@ class HopfieldAssociationLayer(torch.nn.Module):
         is applied to the query first, pre-divided so the composed scale equals
         the pinned source's per-head β.
         """
-        scaled_q = query * (self.scaling * (self.head_dim ** 0.5)).view(1, 1, -1, 1)
-        return self._plan.execute(query=scaled_q, key=keys, value=values)["output"]
+        # The native K1 kernel requires one floating-point dtype across q/k/v.
+        # Under autocast the fp32 `scaling` parameter promotes the query to fp32 —
+        # cast the scaled query back to the projection dtype.
+        dtype = query.dtype
+        scaled_q = (query * (self.scaling * (self.head_dim ** 0.5)).view(1, 1, -1, 1)).to(dtype)
+        return self._plan.execute(
+            query=scaled_q, key=keys.to(dtype), value=values.to(dtype),
+        )["output"]
 
     def forward(
         self,

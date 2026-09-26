@@ -141,11 +141,13 @@ class ConformerRelPosAttention(torch.nn.Module):
 
         # Mixer: q carries pos_bias_u; the K1 key-dim scale completes 1/√d.
         # The pinned mask is "True = masked out"; the K1 attention_mask role is
-        # "True = visible", so invert it here.
-        q_with_bias_u = q + self.pos_bias_u
+        # "True = visible", so invert it here. The native K1 kernel requires one
+        # dtype across q/k/v and score_bias in fp32 — cast accordingly.
+        q_with_bias_u = (q + self.pos_bias_u).to(q.dtype)
         visible = ~mask if mask is not None else None
         out = self._plan.execute(
-            query=q_with_bias_u, key=k, value=v, score_bias=score_bias,
+            query=q_with_bias_u, key=k, value=v,
+            score_bias=score_bias.float(),
             attention_mask=visible,
         )["output"]
         return self.linear_out(out.reshape(B, T1, self.num_heads * self.d_k))

@@ -646,9 +646,9 @@ MIXER_REGISTRY: dict[str, MixerSpec] = {
                      "fla.ops.gsa", True, True, tier="native"),
     "log_linear_attention": MixerSpec("log_linear_attention", _op("log_linear_attention.BankedLogLinearMixer", layout="bthd", extra=_log_linear_ops, num_levels=4, gate_out_dim="heads_dim"),
                                       None, False, False, tier="native"),
-    "hopfield_association": MixerSpec("hopfield_association", _build_hopfield, None, False, False),
+    "hopfield_association": MixerSpec("hopfield_association", _build_hopfield, None, False, False, tier="native"),
     "pattention": MixerSpec("pattention", _build_pattention, None, False, False),
-    "conformer_attention": MixerSpec("conformer_attention", _build_conformer, None, False, False),
+    "conformer_attention": MixerSpec("conformer_attention", _build_conformer, None, False, False, tier="native"),
     "mamba1": MixerSpec("mamba1", _build_mamba1_k2, "mamba_ssm", True, True),
     "log_linear_mamba2": MixerSpec("log_linear_mamba2", _build_log_linear_mamba2, None, False, False, tier="native"),
     "mla_attention": MixerSpec("mla_attention", _build_mla, None, False, False),
@@ -660,8 +660,8 @@ MIXER_REGISTRY: dict[str, MixerSpec] = {
     "forgetting_attention": MixerSpec("forgetting_attention", _build_fox,
                                       "fla.ops.forgetting_attn.naive.naive_forgetting_attn", True, True, tier="native"),
     # --- external plain-torch compositions (public_path=False) ---
-    "mom": MixerSpec("mom", _build_mom, None, False, False, public_path=False),
-    "raven": MixerSpec("raven", _build_raven, None, False, False, public_path=False),
+    "mom": MixerSpec("mom", _build_mom, None, False, False, public_path=False, tier="native"),
+    "raven": MixerSpec("raven", _build_raven, None, False, False, public_path=False, tier="native"),
     # --- admitted late: rwkv7 (low-rank left transition, native-qualified), tda/based
     # (reference tier — threshold reducer / feature map not native) ---
     # rwkv7: the low-rank left transition COMPOSED with pointwise decay — admitted to the
