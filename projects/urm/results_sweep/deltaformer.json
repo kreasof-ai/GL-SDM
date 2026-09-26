@@ -1,0 +1,12 @@
+{
+  "mixer": "deltaformer",
+  "steps": 10,
+  "final_loss": 8.196178436279297,
+  "mfu": 0.030676128856805818,
+  "params": 102908376,
+  "checkpoint_aligned": true,
+  "kl_divergence": null,
+  "wallclock_s": 23.656811424007174,
+  "throughput_tokens_s": 3462.850446398991,
+  "peak_memory_gib": 9.02750015258789
+}

@@ -1,0 +1,12 @@
+{
+  "mixer": "dplr",
+  "steps": 10,
+  "final_loss": NaN,
+  "mfu": 0.31736050875013194,
+  "params": 118688256,
+  "checkpoint_aligned": true,
+  "kl_divergence": null,
+  "wallclock_s": 2.635807484999532,
+  "throughput_tokens_s": 31079.659825768555,
+  "peak_memory_gib": 21.043522357940674
+}

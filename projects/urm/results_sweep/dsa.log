@@ -1,0 +1,12 @@
+{
+  "mixer": "dsa",
+  "steps": 10,
+  "final_loss": 8.37486457824707,
+  "mfu": 0.43528405565288125,
+  "params": 102742272,
+  "checkpoint_aligned": true,
+  "kl_divergence": null,
+  "wallclock_s": 1.664506317989435,
+  "throughput_tokens_s": 49215.79396523502,
+  "peak_memory_gib": 5.566733360290527
+}

@@ -1,0 +1,12 @@
+{
+  "mixer": "cat_attention",
+  "steps": 10,
+  "final_loss": 8.142070770263672,
+  "mfu": 0.3290011068959681,
+  "params": 102742272,
+  "checkpoint_aligned": true,
+  "kl_divergence": null,
+  "wallclock_s": 2.2022207389818504,
+  "throughput_tokens_s": 37198.81415605683,
+  "peak_memory_gib": 5.774313926696777
+}

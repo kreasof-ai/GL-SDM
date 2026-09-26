@@ -1,0 +1,12 @@
+{
+  "mixer": "abc_gsa",
+  "steps": 10,
+  "final_loss": 8.105165481567383,
+  "mfu": 0.20712744830250096,
+  "params": 104071104,
+  "checkpoint_aligned": true,
+  "kl_divergence": null,
+  "wallclock_s": 3.543054024979938,
+  "throughput_tokens_s": 23121.295758526816,
+  "peak_memory_gib": 7.413515090942383
+}

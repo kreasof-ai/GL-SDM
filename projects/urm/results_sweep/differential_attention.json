@@ -1,0 +1,12 @@
+{
+  "mixer": "differential_attention",
+  "steps": 10,
+  "final_loss": 8.16616153717041,
+  "mfu": 0.5346016714420482,
+  "params": 123979392,
+  "checkpoint_aligned": true,
+  "kl_divergence": null,
+  "wallclock_s": 1.6342149609990884,
+  "throughput_tokens_s": 50128.04432405738,
+  "peak_memory_gib": 5.582964897155762
+}

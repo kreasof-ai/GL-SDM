@@ -1,0 +1,12 @@
+{
+  "mixer": "dense_attention",
+  "steps": 10,
+  "final_loss": 8.196539878845215,
+  "mfu": 0.4344059200996756,
+  "params": 102742272,
+  "checkpoint_aligned": true,
+  "kl_divergence": 1.012592121263367e-09,
+  "wallclock_s": 1.775127250002697,
+  "throughput_tokens_s": 46148.804261708865,
+  "peak_memory_gib": 5.750144004821777
+}

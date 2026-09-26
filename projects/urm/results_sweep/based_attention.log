@@ -1,0 +1,166 @@
+W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0] Graph break from `Tensor.item()`, consider setting:
+W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]     torch._dynamo.config.capture_scalar_outputs = True
+W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0] or:
+W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]     env TORCHDYNAMO_CAPTURE_SCALAR_OUTPUTS=1
+W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0] to include these operations in the captured graph.
+W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0] 
+W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0] Graph break: from user code at:
+W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]   File "/home/sagemaker-user/GL-SDM/projects/urm/train/model.py", line 123, in forward
+W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]     logits = self.lm_head(self._hidden(tokens))
+W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]                           ^^^^^^^^^^^^^^^^^^^^^
+W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]   File "/home/sagemaker-user/GL-SDM/projects/urm/train/model.py", line 119, in _hidden
+W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]     x = block(x)
+W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]         ^^^^^^^^
+W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]   File "/home/sagemaker-user/GL-SDM/projects/urm/train/model.py", line 71, in forward
+W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]     x = x + self.mixer(self.norm1(x))
+W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]             ^^^^^^^^^^^^^^^^^^^^^^^^^
+W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]   File "/home/sagemaker-user/GL-SDM/projects/urm/architectures/based_attention.py", line 77, in forward
+W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]     out = self._run_mixer({
+W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]           ^^^^^^^^^^^^^^^^^
+W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]   File "/home/sagemaker-user/GL-SDM/projects/urm/architectures/k2_linear_state.py", line 129, in _run_mixer
+W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]     out, final = linear_delta_state(
+W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]                  ^^^^^^^^^^^^^^^^^^^
+W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]   File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k2/matrix_scan.py", line 1711, in linear_delta_state
+W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]     scale = float(scale)
+W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]             ^^^^^^^^^^^^
+W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0] 
+W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0] 
+[W926 16:40:48.152572849 CUDACachingAllocator.cpp:3934] memory allocation failed with OOM on device 0 while trying to allocate 53980692480 bytes (free: 20615135232, total: 23686938624).
+[W926 16:40:48.153363936 CUDACachingAllocator.cpp:3934] memory allocation failed with OOM on device 0 while trying to allocate 53980692480 bytes (free: 20615135232, total: 23686938624).
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/sagemaker-user/GL-SDM/projects/urm/train/run.py", line 71, in <module>
+    main()
+  File "/home/sagemaker-user/GL-SDM/projects/urm/train/run.py", line 62, in main
+    result = train(cfg, mixer, data, device="cuda" if torch.cuda.is_available() else "cpu")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/urm/train/harness.py", line 277, in train
+    loss = _step_loss(inputs, targets)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/urm/train/harness.py", line 254, in _step_loss
+    _, loss = model(inputs, targets)
+              ^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/torch/_dynamo/eval_frame.py", line 563, in __call__
+    return super().__call__(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1783, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1794, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/torch/_dynamo/eval_frame.py", line 1261, in compile_wrapper
+    result = fn(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1783, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1794, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/urm/train/model.py", line 123, in forward
+    logits = self.lm_head(self._hidden(tokens))
+                          ^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/urm/train/model.py", line 119, in _hidden
+    x = block(x)
+        ^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1783, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1794, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/urm/train/model.py", line 71, in forward
+    x = x + self.mixer(self.norm1(x))
+            ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1783, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1794, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/urm/architectures/based_attention.py", line 77, in forward
+    out = self._run_mixer({
+          ^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/urm/architectures/k2_linear_state.py", line 129, in _run_mixer
+    out, final = linear_delta_state(
+                 ^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k2/matrix_scan.py", line 1711, in linear_delta_state
+    scale = float(scale)
+  File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k2/matrix_scan.py", line 1738, in torch_dynamo_resume_in_linear_delta_state_at_1711
+    out, final = _chunked_k_normalized_recurrence(q, k, v, initial_state, scale)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k2/matrix_scan.py", line 1632, in _chunked_k_normalized_recurrence
+    chunked = opacify(
+  File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k2/matrix_scan.py", line 1632, in torch_dynamo_resume_in__chunked_k_normalized_recurrence_at_1632
+    chunked = opacify(
+  File "/opt/conda/lib/python3.12/site-packages/torch/_dynamo/eval_frame.py", line 1548, in _fn
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/torch/_functorch/aot_autograd.py", line 1289, in forward
+    return compiled_fn(full_args)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 1189, in runtime_wrapper
+    result = _codegen_runtime_wrapper(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/torch/_functorch/_aot_autograd/codegen.py:codegen(runtime_wrapper_orchestration)", line 12, in _runtime_wrapper
+  File "/opt/conda/lib/python3.12/site-packages/torch/_functorch/_aot_autograd/utils.py", line 118, in g
+    return f(*args)
+           ^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 3521, in forward
+    return CompiledFunction._fwd_fn(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/torch/_functorch/_aot_autograd/codegen.py:codegen(compiled_function_forward)", line 3, in _compiled_forward
+  File "/opt/conda/lib/python3.12/site-packages/torch/_inductor/output_code.py", line 828, in __call__
+    return self.current_callable(inputs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/torchinductor_sagemaker-user/55/c55wn7erucrprwvle7i5da6zmkpvcoogadh52sq3wcmu2w3l4ubo.py", line 60, in call
+    buf0 = torch.ops.urm.k2_recurrence_chunked_k_normalized_fwd.default(primals_1, primals_2, primals_3, primals_4, 1.0)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/torch/_ops.py", line 916, in __call__
+    return self._op(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/torch/_library/autograd.py", line 147, in autograd_impl
+    result = redispatch_no_grad(keyset, args, keyword_only_args)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/torch/_library/autograd.py", line 43, in redispatch_no_grad
+    result = op.redispatch(keyset & _C._after_autograd_keyset, *args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/torch/_ops.py", line 925, in redispatch
+    return pyobj_dispatcher.redispatch(keyset, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/torch/_compile.py", line 54, in inner
+    return disable_fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/torch/_dynamo/eval_frame.py", line 1548, in _fn
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 477, in __torch_dispatch__
+    res = func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/torch/_ops.py", line 916, in __call__
+    return self._op(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/torch/_library/custom_ops.py", line 442, in backend_impl
+    result = self._backend_fns[device_type](*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/torch/_compile.py", line 54, in inner
+    return disable_fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/torch/_dynamo/eval_frame.py", line 1548, in _fn
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/torch/_library/custom_ops.py", line 503, in wrapped_fn
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/runtime/opaque.py", line 113, in fwd_impl
+    return forward(**kwargs)
+           ^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k2/matrix_scan.py", line 1624, in _fwd
+    return _ChunkedKNormalized.apply(query, key, value, initial_state, scale)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k2/matrix_scan.py", line 1511, in forward
+    states = torch.empty(
+             ^^^^^^^^^^^^
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 50.27 GiB. GPU 0 has a total capacity of 22.06 GiB of which 19.20 GiB is free. Process 188208 has 744.00 MiB memory in use. Including non-PyTorch memory, this process has 2.12 GiB memory in use. Of the allocated memory 1.78 GiB is allocated by PyTorch, and 40.99 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)

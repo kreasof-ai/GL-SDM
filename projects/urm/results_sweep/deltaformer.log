@@ -1,0 +1,20 @@
+W0926 16:42:35.090000 188632 site-packages/torch/_dynamo/convert_frame.py:2008] [10/8] torch._dynamo hit config.recompile_limit (8)
+W0926 16:42:35.090000 188632 site-packages/torch/_dynamo/convert_frame.py:2008] [10/8]    function: 'torch_dynamo_resume_in_execute_online_softmax_at_901' (/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k1/online_softmax.py:901)
+W0926 16:42:35.090000 188632 site-packages/torch/_dynamo/convert_frame.py:2008] [10/8]    last reason: 10/7: ___check_obj_id(___stack0, 94352189811168), type=<class 'urm.backends.triton.k1.online_softmax.execute_online_softmax.<locals>._OnlineSoftmax'>  # return _OnlineSoftmax.apply(query, key, value, mask, bias)  # ome/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k1/online_softmax.py:1036 in torch_dynamo_resume_in_execute_online_softmax_at_901
+W0926 16:42:35.090000 188632 site-packages/torch/_dynamo/convert_frame.py:2008] [10/8] User stack trace:
+W0926 16:42:35.090000 188632 site-packages/torch/_dynamo/convert_frame.py:2008] [10/8]   File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k1/online_softmax.py", line 1036, in torch_dynamo_resume_in_execute_online_softmax_at_901
+W0926 16:42:35.090000 188632 site-packages/torch/_dynamo/convert_frame.py:2008] [10/8]     return _OnlineSoftmax.apply(query, key, value, mask, bias)
+W0926 16:42:35.090000 188632 site-packages/torch/_dynamo/convert_frame.py:2008] [10/8] To log all recompilation reasons, use TORCH_LOGS="recompiles".
+W0926 16:42:35.090000 188632 site-packages/torch/_dynamo/convert_frame.py:2008] [10/8] To diagnose recompilation issues, see https://docs.pytorch.org/docs/main/user_guide/torch_compiler/compile/programming_model.recompilation.html
+{
+  "mixer": "deltaformer",
+  "steps": 10,
+  "final_loss": 8.196178436279297,
+  "mfu": 0.030676128856805818,
+  "params": 102908376,
+  "checkpoint_aligned": true,
+  "kl_divergence": null,
+  "wallclock_s": 23.656811424007174,
+  "throughput_tokens_s": 3462.850446398991,
+  "peak_memory_gib": 9.02750015258789
+}

@@ -1,0 +1,43 @@
+[W926 16:45:15.958759939 CUDACachingAllocator.cpp:3934] memory allocation failed with OOM on device 0 while trying to allocate 824180736 bytes (free: 540475392, total: 23686938624).
+[W926 16:45:15.018818485 CUDACachingAllocator.cpp:3934] memory allocation failed with OOM on device 0 while trying to allocate 824180736 bytes (free: 542572544, total: 23686938624).
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/sagemaker-user/GL-SDM/projects/urm/train/run.py", line 71, in <module>
+    main()
+  File "/home/sagemaker-user/GL-SDM/projects/urm/train/run.py", line 62, in main
+    result = train(cfg, mixer, data, device="cuda" if torch.cuda.is_available() else "cpu")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/urm/train/harness.py", line 293, in train
+    (loss / cfg.grad_accum).backward()
+  File "/opt/conda/lib/python3.12/site-packages/torch/_tensor.py", line 623, in backward
+    torch.autograd.backward(
+  File "/opt/conda/lib/python3.12/site-packages/torch/autograd/__init__.py", line 395, in backward
+    _engine_run_backward(
+  File "/opt/conda/lib/python3.12/site-packages/torch/autograd/graph.py", line 1072, in _engine_run_backward
+    return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/torch/autograd/function.py", line 374, in apply_boxed
+    return self._get_user_fn()(self, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 3532, in backward
+    return CompiledFunction._bwd_fn(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/torch/_functorch/_aot_autograd/codegen.py:codegen(compiled_function_backward)", line 16, in _compiled_backward
+  File "/opt/conda/lib/python3.12/site-packages/torch/_functorch/_aot_autograd/codegen.py:codegen(compiled_function_backward)", line 10, in impl_fn
+  File "/opt/conda/lib/python3.12/site-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 3613, in _backward_impl
+    return call_func_at_runtime_with_args(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/torch/_functorch/_aot_autograd/utils.py", line 151, in call_func_at_runtime_with_args
+    out = normalize_as_list(f(args))
+                            ^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/torch/_dynamo/eval_frame.py", line 1548, in _fn
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/torch/_inductor/output_code.py", line 828, in __call__
+    return self.current_callable(inputs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/torchinductor_sagemaker-user/eo/ceoxdb6thogqqqtdudj4jyw6neg2ncuv4v564cy33vjn4dqls4w5.py", line 292, in call
+    buf1 = empty_strided_cuda((16, 512, 50304), (25755648, 50304, 1), torch.bfloat16)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 786.00 MiB. GPU 0 has a total capacity of 22.06 GiB of which 517.44 MiB is free. Including non-PyTorch memory, this process has 21.55 GiB memory in use. Of the allocated memory 20.52 GiB is allocated by PyTorch, and 731.43 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)
