@@ -216,6 +216,52 @@ class _SDPA(torch.nn.Module):
 
 # ---- Granularity-matched upstreams for the remodeled rows -------------------------------
 
+class _MLAUpstream(torch.nn.Module):
+    """The pinned MLA prefill equation (benchmarks.comparators.fla_mla.fl_mla_oracle's
+    law) as a trainable module — fla's MultiheadLatentAttention hard-requires
+    flash-attn (bypassed per the no-FA constraint), so the baseline is the pinned
+    equation in torch. Reference-implementation. Dims match our mla row."""
+
+    def __init__(self, model_dim, num_heads, head_dim):
+        super().__init__()
+        qk_nope, qk_rope, v_dim = 16, 32, 48  # our mla row's MLALayer dims
+        self.num_heads, self.v_dim = num_heads, v_dim
+        self.qk_nope, self.qk_rope = qk_nope, qk_rope
+        qk_head_dim = qk_nope + qk_rope
+        self.q_proj = torch.nn.Linear(model_dim, num_heads * qk_head_dim, bias=False)
+        self.kv_proj = torch.nn.Linear(model_dim, num_heads * (qk_nope + v_dim), bias=False)
+        self.k_rope = torch.nn.Linear(model_dim, qk_rope, bias=False)
+        self.o_proj = torch.nn.Linear(num_heads * v_dim, model_dim, bias=False)
+
+    def _rotary(self, x, base=10000.0):
+        B, T, H, D = x.shape
+        theta = 1.0 / (base ** (torch.arange(0, D, 2, device=x.device).float() / D))
+        idx = torch.outer(torch.arange(T, device=x.device).float(), theta)
+        cos, sin = idx.cos()[None, :, None, :], idx.sin()[None, :, None, :]
+        x1, x2 = x[..., ::2], x[..., 1::2]
+        out = torch.stack([-x2, x1], dim=-1).flatten(-2)
+        return x * cos + out * sin
+
+    def forward(self, hidden):
+        B, T, _ = hidden.shape
+        H = self.num_heads
+        qk_head_dim = self.qk_nope + self.qk_rope
+        q_states = self.q_proj(hidden).view(B, T, H, qk_head_dim)
+        q_pass, q_rot = torch.split(q_states, [self.qk_nope, self.qk_rope], dim=-1)
+        k_pass = self.kv_proj(hidden).view(B, T, H, self.qk_nope + self.v_dim)
+        k_pass, v = torch.split(k_pass, [self.qk_nope, self.v_dim], dim=-1)
+        k_rot = self._rotary(self.k_rope(hidden).view(B, T, 1, self.qk_rope))
+        q = torch.cat((q_pass, self._rotary(q_rot)), dim=-1)
+        k = torch.cat((k_pass, k_rot.expand(B, T, H, self.qk_rope)), dim=-1)
+        v = F.pad(v, [0, qk_head_dim - self.v_dim])
+        qf, kf, vf = (t.float().transpose(1, 2) for t in (q, k, v))
+        scores = torch.matmul(qf, kf.transpose(-1, -2)) * (qk_head_dim ** -0.5)
+        mask = torch.ones(T, T, dtype=torch.bool, device=scores.device).tril_()
+        scores = scores.masked_fill(~mask, float("-inf"))
+        out = torch.matmul(torch.softmax(scores, dim=-1), vf).transpose(1, 2)[..., :self.v_dim]
+        return self.o_proj(out.reshape(B, T, H * self.v_dim).to(hidden.dtype))
+
+
 class _SDPASlidingWindow(torch.nn.Module):
     """Sliding-window causal attention via SDPA with an explicit window mask — the
     samba attention branch's upstream (fla's layer requires flash-attn; bypassed to
@@ -370,6 +416,12 @@ class _AttnResUpstreamDesign(torch.nn.Module):
         )
 
 
+def _fla(cls_path, extra=None):
+    """Nullary factory wrapping _fla_builder so UPSTREAM_BUILDERS[row]() yields the
+    (dim, heads, head_dim, intent, target) -> module builder."""
+    return lambda: _fla_builder(cls_path, extra)
+
+
 def _fla_builder(cls_path, extra=None):
     """Build an fla fast-kernel layer, passing only the kwargs its constructor takes.
 
@@ -406,25 +458,25 @@ UPSTREAM_BUILDERS = {
         lambda model_dim, num_heads, head_dim, intent, target="reference":
         _SDPA(model_dim, num_heads, head_dim)
     ),
-    "gla": _fla_builder("fla.layers.gla.GatedLinearAttention"),
-    "gated_deltanet": _fla_builder("fla.layers.gated_deltanet.GatedDeltaNet"),
-    "deltanet": _fla_builder("fla.layers.delta_net.DeltaNet"),
-    "linear_attention": _fla_builder("fla.layers.linear_attn.LinearAttention"),
-    "retnet": _fla_builder("fla.layers.multiscale_retention.MultiScaleRetention"),
-    "simple_gla": _fla_builder("fla.layers.simple_gla.SimpleGatedLinearAttention"),
-    "hgrn2": _fla_builder("fla.layers.hgrn2.HGRN2Attention"),
-    "kda": _fla_builder("fla.layers.kda.KimiDeltaAttention"),
+    "gla": _fla("fla.layers.gla.GatedLinearAttention"),
+    "gated_deltanet": _fla("fla.layers.gated_deltanet.GatedDeltaNet"),
+    "deltanet": _fla("fla.layers.delta_net.DeltaNet"),
+    "linear_attention": _fla("fla.layers.linear_attn.LinearAttention"),
+    "retnet": _fla("fla.layers.multiscale_retention.MultiScaleRetention"),
+    "simple_gla": _fla("fla.layers.simple_gla.SimpleGatedLinearAttention"),
+    "hgrn2": _fla("fla.layers.hgrn2.HGRN2Attention"),
+    "kda": _fla("fla.layers.kda.KimiDeltaAttention"),
     # Extended set: the remaining native rows with a fast upstream kernel.
-    "comba": _fla_builder("fla.layers.comba.Comba"),
-    "gdn2": _fla_builder("fla.layers.gdn2.GatedDeltaNet2"),
-    "gsa": _fla_builder("fla.layers.gsa.GatedSlotAttention"),
-    "abc_gsa": _fla_builder("fla.layers.abc.ABCAttention"),
-    "gated_delta_product": _fla_builder("fla.layers.gated_deltaproduct.GatedDeltaProduct"),
-    "rwkv7": _fla_builder("fla.layers.rwkv7.RWKV7Attention"),
-    "based_attention": _fla_builder("fla.layers.based.BasedLinearAttention"),
-    "forgetting_attention": _fla_builder("fla.layers.forgetting_attn.ForgettingAttention"),
+    "comba": _fla("fla.layers.comba.Comba"),
+    "gdn2": _fla("fla.layers.gdn2.GatedDeltaNet2"),
+    "gsa": _fla("fla.layers.gsa.GatedSlotAttention"),
+    "abc_gsa": _fla("fla.layers.abc.ABCAttention"),
+    "gated_delta_product": _fla("fla.layers.gated_deltaproduct.GatedDeltaProduct"),
+    "rwkv7": _fla("fla.layers.rwkv7.RWKV7Attention", extra={"num_hidden_layers": 9}),
+    "based_attention": _fla("fla.layers.based.BasedLinearAttention"),
+    "forgetting_attention": _fla("fla.layers.forgetting_attn.ForgettingAttention"),
     # lightning_attention's pinned comparator IS simple_gla's kernel (same class).
-    "lightning_attention": _fla_builder("fla.layers.simple_gla.SimpleGatedLinearAttention"),
+    "lightning_attention": _fla("fla.layers.simple_gla.SimpleGatedLinearAttention"),
     # tda's pin ships a fused Triton kernel (fwd+bwd) — a genuine fast baseline, unlike
     # the research-code pins (tucker/tpa/samba/kata/…) which are plain-torch references.
     "tda": lambda: (
@@ -436,22 +488,28 @@ UPSTREAM_BUILDERS = {
     # for the same architecture family — a legitimate throughput reference, clearly
     # not the KL oracle). MFU numerators match the URM row (same mixer name → same
     # flops bucket), noting the harness's 3-bucket flops accounting is coarse.
-    "lightnet": _fla_builder("fla.layers.lightnet.LightNetAttention"),
-    "mom": _fla_builder("fla.layers.mom.MomAttention"),
-    "mla_attention": _fla_builder("fla.layers.mla.MultiheadLatentAttention"),
-    "moba": _fla_builder("fla.layers.moba.MoBA"),
-    "deltaformer": _fla_builder("fla.layers.deltaformer.DeltaFormerAttention"),
-    "log_linear_mamba2": _fla_builder("fla.layers.log_linear_mamba2.LogLinearMamba2"),
-    "bit_attention": _fla_builder("fla.layers.bitattn.BitAttention"),
+    "lightnet": _fla("fla.layers.lightnet.LightNetAttention"),
+    "mom": _fla("fla.layers.mom.MomAttention"),
+    # fla's MultiheadLatentAttention hard-requires flash-attn (raises at construction);
+    # bypassed per the no-FA constraint — the baseline runs the pinned MLA equation
+    # in torch (reference-implementation tier).
+    "mla_attention": lambda: (
+        lambda model_dim, num_heads, head_dim, intent, target="reference":
+        _MLAUpstream(model_dim, num_heads, head_dim)
+    ),
+    "moba": _fla("fla.layers.moba.MoBA"),
+    "deltaformer": _fla("fla.layers.deltaformer.DeltaFormerAttention"),
+    "log_linear_mamba2": _fla("fla.layers.log_linear_mamba2.LogLinearMamba2"),
+    "bit_attention": _fla("fla.layers.bitattn.BitAttention"),
     # Same-family matches verified to run (fwd+bwd) here. wall_attention/nsa moved to
     # their own entries: fla's WallAttention IS our channel-decay law (window_size is
     # decode-cache chunking, not the law) — wired below via the parallel op; nsa is the
     # full 3-branch layer, wired with the remodeled full-NSA row.
-    "path_attention": _fla_builder("fla.layers.path_attn.PaTHAttention"),
-    "rodimus": _fla_builder("fla.layers.rodimus.RodimusAttention"),
-    "raven": _fla_builder("fla.layers.raven.Raven"),
+    "path_attention": _fla("fla.layers.path_attn.PaTHAttention"),
+    "rodimus": _fla("fla.layers.rodimus.RodimusAttention"),
+    "raven": _fla("fla.layers.raven.Raven"),
     # Our yoco row is the YOCO self-decoder half → fla's YOCOGatedRetention.
-    "yoco": _fla_builder("fla.layers.yoco.YOCOGatedRetention"),
+    "yoco": _fla("fla.layers.yoco.YOCOGatedRetention"),
     # Op-level fast baselines (no fla layer class; the pinned chunk/parallel OP wrapped
     # with our own projections/operand derivation — same kernel family as the row's law):
     "wall_attention": lambda: _wall_upstream,       # parallel_wall_attn (same law — verified)

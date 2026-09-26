@@ -24,7 +24,9 @@ from pathlib import Path
 # The benchmark configuration: ~100M-param class (dense = 102.7M; exact per-row
 # counts are in each result JSON — the mixers' projection structures differ).
 PRIMARY_MICROBATCH = 8192     # B=16 at T=512 — puts efficient rows in the 40-50% MFU band
-FALLBACK_MICROBATCH = 2048    # B=4 — the largest the chunked-K Based state history fits
+FALLBACK_MICROBATCH = 2048    # B=4 — first OOM fallback
+FALLBACK2_MICROBATCH = 1024   # B=2 — the chunked-K Based state history (states+backward
+                              # ≈ 2× tokens×H×2145×64×4B) fits only here at width 768
 TIMEOUT_S = 1500              # per-row wallclock cap (compile + train + gates)
 
 
@@ -107,7 +109,8 @@ def main() -> None:
             continue
         t0 = time.time()
         rec: dict = {"mixer": row}
-        for attempt, mb in enumerate((PRIMARY_MICROBATCH, FALLBACK_MICROBATCH)):
+        ladder = (PRIMARY_MICROBATCH, FALLBACK_MICROBATCH, FALLBACK2_MICROBATCH)
+        for attempt, mb in enumerate(ladder):
             try:
                 rec = _run_row(row, args, mb, out_file, log_file)
                 if attempt:
@@ -118,12 +121,11 @@ def main() -> None:
                 rec = {"mixer": row, "error": f"timeout after {args.timeout}s"}
                 break
             except _CudaOOM:
-                if attempt == 0:
-                    print(f"[sweep] {row}: OOM at {PRIMARY_MICROBATCH}, "
-                          f"retrying at {FALLBACK_MICROBATCH}", flush=True)
+                if attempt < len(ladder) - 1:
+                    print(f"[sweep] {row}: OOM at {mb}, retrying at "
+                          f"{ladder[attempt + 1]}", flush=True)
                     continue
-                rec = {"mixer": row, "error": f"CUDA OOM at both "
-                                              f"{PRIMARY_MICROBATCH} and {FALLBACK_MICROBATCH}"}
+                rec = {"mixer": row, "error": f"CUDA OOM at all of {ladder}"}
                 break
             except Exception as e:  # noqa: BLE001 — record and continue the sweep
                 rec = {"mixer": row, "error": str(e)}

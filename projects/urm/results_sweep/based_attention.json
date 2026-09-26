@@ -1,0 +1,13 @@
+{
+  "mixer": "based_attention",
+  "steps": 10,
+  "final_loss": 8.19637680053711,
+  "mfu": 0.012159659428735477,
+  "params": 102742272,
+  "checkpoint_aligned": true,
+  "kl_divergence": null,
+  "wallclock_s": 7.4481224679911975,
+  "throughput_tokens_s": 1374.8431291251027,
+  "peak_memory_gib": 9.298429012298584,
+  "microbatch_fallback": 1024
+}
