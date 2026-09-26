@@ -582,6 +582,7 @@ def _fla_builder(cls_path, extra=None):
         params = inspect.signature(cls.__init__).parameters
         candidates = dict(
             hidden_size=model_dim, d_model=model_dim, num_heads=num_heads,
+            num_key_value_heads=num_heads, num_kv_heads=num_heads,
             head_dim=head_dim, feature_dim=head_dim, mode="chunk", layer_idx=0,
         )
         force_dtype = None

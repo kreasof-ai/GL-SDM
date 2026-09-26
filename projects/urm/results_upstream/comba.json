@@ -1,0 +1,14 @@
+{
+  "mixer": "comba",
+  "steps": 10,
+  "final_loss": 9.052053451538086,
+  "mfu": 0.17970514918551253,
+  "params": 124254000,
+  "checkpoint_aligned": true,
+  "kl_divergence": null,
+  "wallclock_s": 4.872327100980328,
+  "throughput_tokens_s": 16813.321089119287,
+  "peak_memory_gib": 9.148951053619385,
+  "baseline_tier": "production-kernel",
+  "granularity": "mixer"
+}
