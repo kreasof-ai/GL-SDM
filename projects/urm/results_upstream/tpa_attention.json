@@ -1,0 +1,14 @@
+{
+  "mixer": "tpa_attention",
+  "steps": 10,
+  "final_loss": 12.13003921508789,
+  "mfu": 0.1342417429292708,
+  "params": 92070144,
+  "checkpoint_aligned": true,
+  "kl_divergence": null,
+  "wallclock_s": 4.839004715991905,
+  "throughput_tokens_s": 16929.10108751732,
+  "peak_memory_gib": 12.671294212341309,
+  "baseline_tier": "reference-implementation",
+  "granularity": "mixer"
+}

@@ -1,0 +1,512 @@
+[
+  {
+    "mixer": "abc_gsa",
+    "steps": 10,
+    "final_loss": 9.24028205871582,
+    "mfu": 0.20100810294343155,
+    "params": 105397056,
+    "checkpoint_aligned": true,
+    "kl_divergence": null,
+    "wallclock_s": 3.6972350099822506,
+    "throughput_tokens_s": 22157.098420528393,
+    "peak_memory_gib": 8.918870449066162,
+    "baseline_tier": "production-kernel",
+    "granularity": "mixer"
+  },
+  {
+    "mixer": "attnres",
+    "steps": 10,
+    "final_loss": 12.226821899414062,
+    "mfu": 0.16808122936822895,
+    "params": 102769920,
+    "checkpoint_aligned": true,
+    "kl_divergence": null,
+    "wallclock_s": 4.311767589009833,
+    "throughput_tokens_s": 18999.16874202683,
+    "peak_memory_gib": 13.0963134765625,
+    "baseline_tier": "production-kernel",
+    "granularity": "residual"
+  },
+  {
+    "mixer": "based_attention",
+    "error": "exit 1 (see results_upstream/based_attention.log)"
+  },
+  {
+    "mixer": "bit_attention",
+    "error": "exit 1 (see results_upstream/bit_attention.log)"
+  },
+  {
+    "mixer": "cat_attention",
+    "steps": 10,
+    "final_loss": 12.462379455566406,
+    "mfu": 0.26149119931588266,
+    "params": 102742272,
+    "checkpoint_aligned": true,
+    "kl_divergence": null,
+    "wallclock_s": 2.7707741700287443,
+    "throughput_tokens_s": 29565.744074750834,
+    "peak_memory_gib": 7.908634185791016,
+    "baseline_tier": "reference-implementation",
+    "granularity": "mixer"
+  },
+  {
+    "mixer": "comba",
+    "error": "exit 1 (see results_upstream/comba.log)"
+  },
+  {
+    "mixer": "conformer_attention",
+    "steps": 10,
+    "final_loss": 11.944479942321777,
+    "mfu": 0.15793314051856597,
+    "params": 108092160,
+    "checkpoint_aligned": true,
+    "kl_divergence": null,
+    "wallclock_s": 4.8254498280002736,
+    "throughput_tokens_s": 16976.655632113092,
+    "peak_memory_gib": 12.689091682434082,
+    "baseline_tier": "reference-implementation",
+    "granularity": "mixer"
+  },
+  {
+    "mixer": "deltaformer",
+    "error": "exit 1 (see results_upstream/deltaformer.log)"
+  },
+  {
+    "mixer": "deltanet",
+    "steps": 10,
+    "final_loss": 9.345903396606445,
+    "mfu": 0.17111351941515168,
+    "params": 102908736,
+    "checkpoint_aligned": true,
+    "kl_divergence": null,
+    "wallclock_s": 4.241055446007522,
+    "throughput_tokens_s": 19315.94647674755,
+    "peak_memory_gib": 8.548033714294434,
+    "baseline_tier": "production-kernel",
+    "granularity": "mixer"
+  },
+  {
+    "mixer": "dense_attention",
+    "steps": 10,
+    "final_loss": 13.773659706115723,
+    "mfu": 0.2877170026494465,
+    "params": 102742272,
+    "checkpoint_aligned": true,
+    "kl_divergence": null,
+    "wallclock_s": 2.6801536900165956,
+    "throughput_tokens_s": 30565.41134381467,
+    "peak_memory_gib": 7.904239654541016,
+    "baseline_tier": "production-kernel",
+    "granularity": "mixer"
+  },
+  {
+    "mixer": "differential_attention",
+    "error": "exit 1 (see results_upstream/differential_attention.log)"
+  },
+  {
+    "mixer": "dplr",
+    "steps": 10,
+    "final_loss": 8.626562118530273,
+    "mfu": 0.22347978561849055,
+    "params": 113372928,
+    "checkpoint_aligned": true,
+    "kl_divergence": null,
+    "wallclock_s": 3.5760661200038157,
+    "throughput_tokens_s": 22907.85384021719,
+    "peak_memory_gib": 8.849340438842773,
+    "baseline_tier": "production-kernel",
+    "granularity": "mixer"
+  },
+  {
+    "mixer": "dsa",
+    "error": "exit 1 (see results_upstream/dsa.log)"
+  },
+  {
+    "mixer": "forgetting_attention",
+    "steps": 10,
+    "final_loss": 10.982831954956055,
+    "mfu": 0.2485968842717447,
+    "params": 102825324,
+    "checkpoint_aligned": true,
+    "kl_divergence": null,
+    "wallclock_s": 2.916835543990601,
+    "throughput_tokens_s": 28085.230985605398,
+    "peak_memory_gib": 8.017569541931152,
+    "baseline_tier": "production-kernel",
+    "granularity": "mixer"
+  },
+  {
+    "mixer": "gated_delta_product",
+    "error": "exit 1 (see results_upstream/gated_delta_product.log)"
+  },
+  {
+    "mixer": "gated_deltanet",
+    "steps": 10,
+    "final_loss": 8.874798774719238,
+    "mfu": 0.181019694067081,
+    "params": 124253784,
+    "checkpoint_aligned": true,
+    "kl_divergence": null,
+    "wallclock_s": 4.836936424981104,
+    "throughput_tokens_s": 16936.3400306259,
+    "peak_memory_gib": 9.606404304504395,
+    "baseline_tier": "production-kernel",
+    "granularity": "mixer"
+  },
+  {
+    "mixer": "gdn2",
+    "steps": 10,
+    "final_loss": 8.966974258422852,
+    "mfu": 0.14251449583941816,
+    "params": 115226028,
+    "checkpoint_aligned": true,
+    "kl_divergence": null,
+    "wallclock_s": 5.699002223002026,
+    "throughput_tokens_s": 14374.44605116289,
+    "peak_memory_gib": 10.266016960144043,
+    "baseline_tier": "production-kernel",
+    "granularity": "mixer"
+  },
+  {
+    "mixer": "gla",
+    "steps": 10,
+    "final_loss": 8.63831615447998,
+    "mfu": 0.2183390142729084,
+    "params": 102912192,
+    "checkpoint_aligned": true,
+    "kl_divergence": null,
+    "wallclock_s": 3.3238502649764996,
+    "throughput_tokens_s": 24646.116241514625,
+    "peak_memory_gib": 8.54951286315918,
+    "baseline_tier": "production-kernel",
+    "granularity": "mixer"
+  },
+  {
+    "mixer": "gsa",
+    "steps": 10,
+    "final_loss": 12.658868789672852,
+    "mfu": 0.21602252632849614,
+    "params": 108057600,
+    "checkpoint_aligned": true,
+    "kl_divergence": null,
+    "wallclock_s": 3.5267422719916794,
+    "throughput_tokens_s": 23228.235488196533,
+    "peak_memory_gib": 9.537521839141846,
+    "baseline_tier": "production-kernel",
+    "granularity": "mixer"
+  },
+  {
+    "mixer": "hgrn2",
+    "steps": 10,
+    "final_loss": 9.57876205444336,
+    "mfu": 0.24128587323985715,
+    "params": 102749184,
+    "checkpoint_aligned": true,
+    "kl_divergence": null,
+    "wallclock_s": 3.0030004869913682,
+    "throughput_tokens_s": 27279.38285553647,
+    "peak_memory_gib": 8.535202503204346,
+    "baseline_tier": "production-kernel",
+    "granularity": "mixer"
+  },
+  {
+    "mixer": "hopfield_association",
+    "steps": 10,
+    "final_loss": 10.526403427124023,
+    "mfu": 0.2648293023004957,
+    "params": 347226624,
+    "checkpoint_aligned": true,
+    "kl_divergence": null,
+    "wallclock_s": 9.218135253991932,
+    "throughput_tokens_s": 8886.829900279927,
+    "peak_memory_gib": 15.749567031860352,
+    "baseline_tier": "reference-implementation",
+    "granularity": "mixer"
+  },
+  {
+    "mixer": "iplr",
+    "error": "exit 1 (see results_upstream/iplr.log)"
+  },
+  {
+    "mixer": "kata",
+    "steps": 10,
+    "final_loss": 12.20022964477539,
+    "mfu": 0.2514723201090947,
+    "params": 102742848,
+    "checkpoint_aligned": true,
+    "kl_divergence": null,
+    "wallclock_s": 2.8811803420248907,
+    "throughput_tokens_s": 28432.79152127864,
+    "peak_memory_gib": 8.540722846984863,
+    "baseline_tier": "production-kernel",
+    "granularity": "mixer"
+  },
+  {
+    "mixer": "kda",
+    "steps": 10,
+    "final_loss": 8.905269622802734,
+    "mfu": 0.14278122218292455,
+    "params": 104692140,
+    "checkpoint_aligned": true,
+    "kl_divergence": null,
+    "wallclock_s": 5.170319075987209,
+    "throughput_tokens_s": 15844.283262993471,
+    "peak_memory_gib": 9.113521575927734,
+    "baseline_tier": "production-kernel",
+    "granularity": "mixer"
+  },
+  {
+    "mixer": "lightnet",
+    "steps": 10,
+    "final_loss": 8.879000663757324,
+    "mfu": 0.17514930176489749,
+    "params": 115135488,
+    "checkpoint_aligned": true,
+    "kl_divergence": null,
+    "wallclock_s": 4.633502242999384,
+    "throughput_tokens_s": 17679.931011961937,
+    "peak_memory_gib": 10.772995471954346,
+    "baseline_tier": "production-kernel",
+    "granularity": "mixer"
+  },
+  {
+    "mixer": "lightning_attention",
+    "steps": 10,
+    "final_loss": 8.71717643737793,
+    "mfu": 0.1750695982595786,
+    "params": 108217260,
+    "checkpoint_aligned": true,
+    "kl_divergence": null,
+    "wallclock_s": 4.358134535024874,
+    "throughput_tokens_s": 18797.033304418732,
+    "peak_memory_gib": 8.702469825744629,
+    "baseline_tier": "production-kernel",
+    "granularity": "mixer"
+  },
+  {
+    "mixer": "linear_attention",
+    "steps": 10,
+    "final_loss": 9.217588424682617,
+    "mfu": 0.2138572254914547,
+    "params": 102892608,
+    "checkpoint_aligned": true,
+    "kl_divergence": null,
+    "wallclock_s": 3.3928649150184356,
+    "throughput_tokens_s": 24144.786795779306,
+    "peak_memory_gib": 8.64494800567627,
+    "baseline_tier": "production-kernel",
+    "granularity": "mixer"
+  },
+  {
+    "mixer": "log_linear_attention",
+    "error": "exit 1 (see results_upstream/log_linear_attention.log)"
+  },
+  {
+    "mixer": "log_linear_mamba2",
+    "error": "exit 1 (see results_upstream/log_linear_mamba2.log)"
+  },
+  {
+    "mixer": "longformer",
+    "error": "exit 1 (see results_upstream/longformer.log)"
+  },
+  {
+    "mixer": "mamba2",
+    "error": "exit 1 (see results_upstream/mamba2.log)"
+  },
+  {
+    "mixer": "mla_attention",
+    "error": "exit 1 (see results_upstream/mla_attention.log)"
+  },
+  {
+    "mixer": "moba",
+    "error": "exit 1 (see results_upstream/moba.log)"
+  },
+  {
+    "mixer": "mom",
+    "steps": 10,
+    "final_loss": 8.929079055786133,
+    "mfu": 0.12022883721246662,
+    "params": 236947032,
+    "checkpoint_aligned": true,
+    "kl_divergence": null,
+    "wallclock_s": 13.864232407999225,
+    "throughput_tokens_s": 5908.7295703968975,
+    "peak_memory_gib": 14.322306632995605,
+    "baseline_tier": "production-kernel",
+    "granularity": "mixer"
+  },
+  {
+    "mixer": "nsa",
+    "error": "timeout after 1500s"
+  },
+  {
+    "mixer": "path_attention",
+    "steps": 10,
+    "final_loss": 13.337190628051758,
+    "mfu": 0.1786110065563809,
+    "params": 103288428,
+    "checkpoint_aligned": true,
+    "kl_divergence": null,
+    "wallclock_s": 4.077957042987691,
+    "throughput_tokens_s": 20088.490176929816,
+    "peak_memory_gib": 8.557976722717285,
+    "baseline_tier": "production-kernel",
+    "granularity": "mixer"
+  },
+  {
+    "mixer": "pattention",
+    "error": "exit 1 (see results_upstream/pattention.log)"
+  },
+  {
+    "mixer": "raven",
+    "steps": 10,
+    "final_loss": 11.677664756774902,
+    "mfu": 0.1904064041880392,
+    "params": 108141912,
+    "checkpoint_aligned": false,
+    "kl_divergence": null,
+    "wallclock_s": 4.004317991988501,
+    "throughput_tokens_s": 20457.915720953875,
+    "peak_memory_gib": 10.506755352020264,
+    "baseline_tier": "production-kernel",
+    "granularity": "mixer"
+  },
+  {
+    "mixer": "retnet",
+    "steps": 10,
+    "final_loss": 8.875985145568848,
+    "mfu": 0.26200351335822,
+    "params": 123977088,
+    "checkpoint_aligned": true,
+    "kl_divergence": null,
+    "wallclock_s": 3.33445097898948,
+    "throughput_tokens_s": 24567.762584060005,
+    "peak_memory_gib": 8.851705551147461,
+    "baseline_tier": "production-kernel",
+    "granularity": "mixer"
+  },
+  {
+    "mixer": "rodimus",
+    "steps": 10,
+    "final_loss": 8.970706939697266,
+    "mfu": 0.1848961509562444,
+    "params": 117452160,
+    "checkpoint_aligned": true,
+    "kl_divergence": null,
+    "wallclock_s": 4.477225118986098,
+    "throughput_tokens_s": 18297.0473502908,
+    "peak_memory_gib": 9.554787635803223,
+    "baseline_tier": "production-kernel",
+    "granularity": "mixer"
+  },
+  {
+    "mixer": "rwkv7",
+    "error": "exit 1 (see results_upstream/rwkv7.log)"
+  },
+  {
+    "mixer": "samba_attention",
+    "error": "exit 1 (see results_upstream/samba_attention.log)"
+  },
+  {
+    "mixer": "sdm",
+    "error": "exit 1 (see results_upstream/sdm.log)"
+  },
+  {
+    "mixer": "simple_gla",
+    "steps": 10,
+    "final_loss": 8.71717643737793,
+    "mfu": 0.17445305803377037,
+    "params": 108217260,
+    "checkpoint_aligned": true,
+    "kl_divergence": null,
+    "wallclock_s": 4.373536760016577,
+    "throughput_tokens_s": 18730.83604759492,
+    "peak_memory_gib": 8.701859474182129,
+    "baseline_tier": "production-kernel",
+    "granularity": "mixer"
+  },
+  {
+    "mixer": "sparse_transformer",
+    "steps": 10,
+    "final_loss": 13.308314323425293,
+    "mfu": 0.2614546064682044,
+    "params": 102742272,
+    "checkpoint_aligned": true,
+    "kl_divergence": null,
+    "wallclock_s": 2.771161963988561,
+    "throughput_tokens_s": 29561.606670615427,
+    "peak_memory_gib": 7.908023834228516,
+    "baseline_tier": "reference-implementation",
+    "granularity": "mixer"
+  },
+  {
+    "mixer": "tda",
+    "steps": 10,
+    "final_loss": 13.699036598205566,
+    "mfu": 0.25076459750764163,
+    "params": 102742272,
+    "checkpoint_aligned": false,
+    "kl_divergence": null,
+    "wallclock_s": 2.8892956500058062,
+    "throughput_tokens_s": 28352.930929666327,
+    "peak_memory_gib": 8.219050407409668,
+    "baseline_tier": "production-kernel",
+    "granularity": "mixer"
+  },
+  {
+    "mixer": "tpa_attention",
+    "steps": 10,
+    "final_loss": 12.13003921508789,
+    "mfu": 0.1342417429292708,
+    "params": 92070144,
+    "checkpoint_aligned": true,
+    "kl_divergence": null,
+    "wallclock_s": 4.839004715991905,
+    "throughput_tokens_s": 16929.10108751732,
+    "peak_memory_gib": 12.671294212341309,
+    "baseline_tier": "reference-implementation",
+    "granularity": "mixer"
+  },
+  {
+    "mixer": "tucker_attention",
+    "steps": 10,
+    "final_loss": 12.32513427734375,
+    "mfu": 0.22462429031811051,
+    "params": 230146848,
+    "checkpoint_aligned": true,
+    "kl_divergence": null,
+    "wallclock_s": 7.208176772983279,
+    "throughput_tokens_s": 11364.871115126027,
+    "peak_memory_gib": 14.402992248535156,
+    "baseline_tier": "reference-implementation",
+    "granularity": "mixer"
+  },
+  {
+    "mixer": "wall_attention",
+    "steps": 10,
+    "final_loss": 12.724275588989258,
+    "mfu": 0.25638192566424656,
+    "params": 113372928,
+    "checkpoint_aligned": true,
+    "kl_divergence": null,
+    "wallclock_s": 3.1171405230124947,
+    "throughput_tokens_s": 26280.49630589966,
+    "peak_memory_gib": 8.400432109832764,
+    "baseline_tier": "production-kernel",
+    "granularity": "mixer"
+  },
+  {
+    "mixer": "yoco",
+    "steps": 10,
+    "final_loss": 8.725396156311035,
+    "mfu": 0.24352018185874946,
+    "params": 108133632,
+    "checkpoint_aligned": true,
+    "kl_divergence": null,
+    "wallclock_s": 3.130704176001018,
+    "throughput_tokens_s": 26166.637086944418,
+    "peak_memory_gib": 8.38437795639038,
+    "baseline_tier": "production-kernel",
+    "granularity": "mixer"
+  }
+]

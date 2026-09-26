@@ -348,6 +348,43 @@ def _samba_upstream_layer(layer_idx, model_dim, num_heads, head_dim, intent,
     return _SDPASlidingWindow(model_dim, num_heads, head_dim, window=512)
 
 
+class _RWKV7NaiveUpstream(torch.nn.Module):
+    """RWKV-7 via the pinned naive recurrence (fla's RWKV7(Goose).md reference, from
+    the RWKV-v7 demo): state·exp(−exp(w)) + S·a⊗b + k⊗v, read o = q·S. The chunk
+    kernel exceeds the A10G SMEM envelope; reference-implementation tier."""
+
+    def __init__(self, model_dim, num_heads, head_dim):
+        super().__init__()
+        self.num_heads, self.head_dim = num_heads, head_dim
+        self.q_proj = torch.nn.Linear(model_dim, num_heads * head_dim, bias=False)
+        self.k_proj = torch.nn.Linear(model_dim, num_heads * head_dim, bias=False)
+        self.v_proj = torch.nn.Linear(model_dim, num_heads * head_dim, bias=False)
+        self.w_proj = torch.nn.Linear(model_dim, num_heads * head_dim, bias=True)
+        self.a_proj = torch.nn.Linear(model_dim, num_heads * head_dim, bias=True)
+        self.b_proj = torch.nn.Linear(model_dim, num_heads * head_dim, bias=True)
+        self.o_proj = torch.nn.Linear(num_heads * head_dim, model_dim, bias=False)
+
+    def forward(self, hidden):
+        B, T, _ = hidden.shape
+        H, D = self.num_heads, self.head_dim
+        r = self.q_proj(hidden).view(B, H, T, D).float()
+        k = self.k_proj(hidden).view(B, H, T, D).float()
+        v = self.v_proj(hidden).view(B, H, T, D).float()
+        w = F.logsigmoid(self.w_proj(hidden)).view(B, H, T, D).float()
+        a = torch.tanh(self.a_proj(hidden)).view(B, H, T, D).float() * 0.1
+        b = torch.tanh(self.b_proj(hidden)).view(B, H, T, D).float() * 0.1
+        state = torch.zeros(B, H, D, D, dtype=torch.float32, device=hidden.device)
+        outs = []
+        scale = D ** -0.5
+        for t in range(T):
+            sab = torch.einsum('bhik,bhk,bhj->bhij', state, a[:, :, t], b[:, :, t])
+            state = state * torch.exp(-torch.exp(w[:, :, t, None, :])) + sab \
+                + torch.einsum('bhj,bhi->bhij', k[:, :, t], v[:, :, t])
+            outs.append(torch.einsum('bhj,bhij->bhi', r[:, :, t] * scale, state))
+        out = torch.stack(outs, dim=2)  # [B,H,T,D]
+        return self.o_proj(out.transpose(1, 2).reshape(B, T, H * D).to(hidden.dtype))
+
+
 class _MoBAUpstream(torch.nn.Module):
     """MoBA (Mixture of Block Attention) via a block-sparse SDPA mask: chunk-local
     self-attention always on, plus the top-(topk-1) blocks per (head, token) by the
@@ -567,7 +604,14 @@ UPSTREAM_BUILDERS = {
     "gsa": _fla("fla.layers.gsa.GatedSlotAttention"),
     "abc_gsa": _fla("fla.layers.abc.ABCAttention"),
     "gated_delta_product": _fla("fla.layers.gated_deltaproduct.GatedDeltaProduct"),
-    "rwkv7": _fla("fla.layers.rwkv7.RWKV7Attention", extra={"num_hidden_layers": 9}),
+    # fla's RWKV7 chunk kernel exceeds the A10G SMEM limit at head_dim=64 (131KB >
+    # 101KB — hardware envelope, recorded); fused_recurrent is inference-only (no
+    # autograd). The baseline transcribes the pinned naive recurrence (the RWKV7(Goose)
+    # reference in the fla docs) — reference-implementation tier.
+    "rwkv7": lambda: (
+        lambda model_dim, num_heads, head_dim, intent, target="reference":
+        _RWKV7NaiveUpstream(model_dim, num_heads, head_dim)
+    ),
     # fla's based chunk backward requires even feature width (its Taylor K is odd);
     # the pinned layer's default mode is "parallel" — use it (its own production path).
     "based_attention": _fla("fla.layers.based.BasedLinearAttention", extra={"mode": "parallel"}),
@@ -716,7 +760,7 @@ UPSTREAM_TIER = {
     **{r: "production-kernel" for r in (
         "dense_attention", "gla", "gated_deltanet", "deltanet", "linear_attention",
         "retnet", "simple_gla", "hgrn2", "kda", "comba", "gdn2", "gsa", "abc_gsa",
-        "gated_delta_product", "rwkv7", "based_attention", "forgetting_attention",
+        "gated_delta_product", "based_attention", "forgetting_attention",
         "lightning_attention", "tda", "lightnet", "mom",
         "log_linear_mamba2", "path_attention",
         "rodimus", "raven", "yoco", "wall_attention", "dplr", "samba_attention",
@@ -727,7 +771,7 @@ UPSTREAM_TIER = {
     **{r: "reference-implementation" for r in (
         "iplr", "log_linear_attention", "nsa", "differential_attention",
         "hopfield_association", "longformer", "tucker_attention", "conformer_attention",
-        "dsa", "sparse_transformer", "tpa_attention", "cat_attention", "sdm",
+        "dsa", "sparse_transformer", "tpa_attention", "cat_attention", "sdm", "rwkv7",
         "mla_attention", "deltaformer", "moba", "pattention",
     )},
 }
@@ -1010,7 +1054,7 @@ class _SDMUpstream(torch.nn.Module):
     """
 
     def __init__(self, model_dim, num_heads, head_dim, intent="training",
-                 target="reference", batch_size=None, slots_per_head=256,
+                 target="reference", batch_size=None, slots_per_head=100,
                  reads=8, writes=8):
         super().__init__()
         self.num_heads, self.head_dim = num_heads, head_dim

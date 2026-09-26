@@ -1,0 +1,14 @@
+{
+  "mixer": "tucker_attention",
+  "steps": 10,
+  "final_loss": 12.32513427734375,
+  "mfu": 0.22462429031811051,
+  "params": 230146848,
+  "checkpoint_aligned": true,
+  "kl_divergence": null,
+  "wallclock_s": 7.208176772983279,
+  "throughput_tokens_s": 11364.871115126027,
+  "peak_memory_gib": 14.402992248535156,
+  "baseline_tier": "reference-implementation",
+  "granularity": "mixer"
+}
