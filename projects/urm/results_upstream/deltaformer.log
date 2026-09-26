@@ -2,15 +2,14 @@
 Traceback (most recent call last):
   File "<frozen runpy>", line 198, in _run_module_as_main
   File "<frozen runpy>", line 88, in _run_code
-  File "/home/sagemaker-user/GL-SDM/projects/urm/train/upstream.py", line 1154, in <module>
-    "--out-dir", str(out_dir), "--steps", str(args.steps),
-
-  File "/home/sagemaker-user/GL-SDM/projects/urm/train/upstream.py", line 1104, in main
-    has_reference_kernel=False, has_decode_kernel=False,
+  File "/home/sagemaker-user/GL-SDM/projects/urm/train/upstream.py", line 1331, in <module>
+    main()
+  File "/home/sagemaker-user/GL-SDM/projects/urm/train/upstream.py", line 1266, in main
+    rec = _run_one(rows[0], args)
           ^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/sagemaker-user/GL-SDM/projects/urm/train/upstream.py", line 1084, in _run_one
-    help="run each row in its own process (CUDA memory isolation)")
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/urm/train/upstream.py", line 1246, in _run_one
+    rec = train(cfg, spec, data, device="cuda").to_dict()
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/home/sagemaker-user/GL-SDM/projects/urm/train/harness.py", line 279, in train
     loss = _step_loss(inputs, targets)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -44,18 +43,10 @@ Traceback (most recent call last):
   File "/opt/conda/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1794, in _call_impl
     return forward_call(*args, **kwargs)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/sagemaker-user/GL-SDM/projects/urm/train/upstream.py", line 52, in forward
-    out = self.layer(hidden)
-          ^^^^^^^^^^^^^^^^^^
-  File "/opt/conda/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1783, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/conda/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1794, in _call_impl
-    return forward_call(*args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/tmp/urm-comparator-pins/fla/fla/layers/deltaformer.py", line 137, in forward
-    o = deltaformer_attn(
-        ^^^^^^^^^^^^^^^^^
-  File "/tmp/urm-comparator-pins/fla/fla/ops/deltaformer/parallel.py", line 729, in deltaformer_attn
-    raise ImportError("Please install Flash Attention via `pip install flash-attn --no-build-isolation` first")
-ImportError: Please install Flash Attention via `pip install flash-attn --no-build-isolation` first
+  File "/home/sagemaker-user/GL-SDM/projects/urm/train/upstream.py", line 117, in forward
+    extra = self._derive(self, hidden, q, k, v)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/urm/train/upstream.py", line 656, in <lambda>
+    "beta": torch.sigmoid(mod.gate_proj(hidden)).view(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: shape '[16, 512, 12]' is invalid for input of size 6291456

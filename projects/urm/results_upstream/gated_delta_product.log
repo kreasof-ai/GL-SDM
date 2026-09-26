@@ -2,12 +2,12 @@
 Traceback (most recent call last):
   File "<frozen runpy>", line 198, in _run_module_as_main
   File "<frozen runpy>", line 88, in _run_code
-  File "/home/sagemaker-user/GL-SDM/projects/urm/train/upstream.py", line 1193, in <module>
+  File "/home/sagemaker-user/GL-SDM/projects/urm/train/upstream.py", line 1331, in <module>
     main()
-  File "/home/sagemaker-user/GL-SDM/projects/urm/train/upstream.py", line 1143, in main
+  File "/home/sagemaker-user/GL-SDM/projects/urm/train/upstream.py", line 1266, in main
     rec = _run_one(rows[0], args)
           ^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/sagemaker-user/GL-SDM/projects/urm/train/upstream.py", line 1123, in _run_one
+  File "/home/sagemaker-user/GL-SDM/projects/urm/train/upstream.py", line 1246, in _run_one
     rec = train(cfg, spec, data, device="cuda").to_dict()
           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/home/sagemaker-user/GL-SDM/projects/urm/train/harness.py", line 312, in train
@@ -46,9 +46,9 @@ Traceback (most recent call last):
   File "/opt/conda/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1794, in _call_impl
     return forward_call(*args, **kwargs)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/sagemaker-user/GL-SDM/projects/urm/train/upstream.py", line 52, in forward
-    out = self.layer(hidden)
-          ^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/urm/train/upstream.py", line 62, in forward
+    out = self.layer(hidden.to(dtype))
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/opt/conda/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1783, in _wrapped_call_impl
     return self._call_impl(*args, **kwargs)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -54,12 +54,19 @@ class _FlaWrap(torch.nn.Module):
         self.layer = layer
 
     def forward(self, hidden):
-        try:
-            wdtype = next(self.layer.parameters()).dtype
-        except StopIteration:
-            wdtype = hidden.dtype
-        dtype = wdtype if wdtype in (torch.bfloat16, torch.float16) else hidden.dtype
-        out = self.layer(hidden.to(dtype))
+        # fla's log_linear_mamba2 mixes explicit .float() ops with the activation
+        # dtype (an upstream mixed-precision bug); run it in fp32 — slow but honest.
+        force_fp32 = self.layer.__class__.__name__ == "LogLinearMamba2"
+        if force_fp32:
+            with torch.autocast("cuda", enabled=False):
+                out = self.layer(hidden.float())
+        else:
+            try:
+                wdtype = next(self.layer.parameters()).dtype
+            except StopIteration:
+                wdtype = hidden.dtype
+            dtype = wdtype if wdtype in (torch.bfloat16, torch.float16) else hidden.dtype
+            out = self.layer(hidden.to(dtype))
         out = out[0] if isinstance(out, tuple) else out
         return out.to(hidden.dtype)
 
@@ -282,13 +289,16 @@ class _MLAUpstream(torch.nn.Module):
         self.o_proj = torch.nn.Linear(num_heads * v_dim, model_dim, bias=False)
 
     def _rotary(self, x, base=10000.0):
+        # Non-interleaved rotary, transcribed from the pinned comparator path.
         B, T, H, D = x.shape
-        theta = 1.0 / (base ** (torch.arange(0, D, 2, device=x.device).float() / D))
-        idx = torch.outer(torch.arange(T, device=x.device).float(), theta)
-        cos, sin = idx.cos()[None, :, None, :], idx.sin()[None, :, None, :]
-        x1, x2 = x[..., ::2], x[..., 1::2]
-        out = torch.stack([-x2, x1], dim=-1).flatten(-2)
-        return x * cos + out * sin
+        d = D // 2
+        inv_freq = 1.0 / (base ** (torch.arange(0, D, 2, device=x.device).float() / D))
+        t = torch.arange(T, device=x.device)
+        freqs = torch.outer(t, inv_freq)
+        cos = freqs.cos()[None, :, None, :].to(x.dtype)
+        sin = freqs.sin()[None, :, None, :].to(x.dtype)
+        x1, x2 = x[..., :d], x[..., d:]
+        return torch.cat([x1 * cos - x2 * sin, x1 * sin + x2 * cos], dim=-1)
 
     def forward(self, hidden):
         B, T, _ = hidden.shape

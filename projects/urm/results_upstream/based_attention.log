@@ -1,42 +1,48 @@
 [upstream] 1 rows -> results_upstream
-/opt/conda/lib/python3.12/site-packages/torch/_dynamo/eval_frame.py:1548: UserWarning: torch.utils.checkpoint: the use_reentrant parameter should be passed explicitly. Starting in PyTorch 2.9, calling checkpoint without use_reentrant will raise an exception. use_reentrant=False is recommended, but if you need to preserve the current default behavior, you can pass use_reentrant=True. Refer to docs for more details on the differences between the two variants.
-  return fn(*args, **kwargs)
 Traceback (most recent call last):
   File "<frozen runpy>", line 198, in _run_module_as_main
   File "<frozen runpy>", line 88, in _run_code
-  File "/home/sagemaker-user/GL-SDM/projects/urm/train/upstream.py", line 1152, in <module>
+  File "/home/sagemaker-user/GL-SDM/projects/urm/train/upstream.py", line 1331, in <module>
     main()
-  File "/home/sagemaker-user/GL-SDM/projects/urm/train/upstream.py", line 1102, in main
+  File "/home/sagemaker-user/GL-SDM/projects/urm/train/upstream.py", line 1266, in main
     rec = _run_one(rows[0], args)
           ^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/sagemaker-user/GL-SDM/projects/urm/train/upstream.py", line 1082, in _run_one
+  File "/home/sagemaker-user/GL-SDM/projects/urm/train/upstream.py", line 1246, in _run_one
     rec = train(cfg, spec, data, device="cuda").to_dict()
           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/sagemaker-user/GL-SDM/projects/urm/train/harness.py", line 280, in train
-    (loss / cfg.grad_accum).backward()
-  File "/opt/conda/lib/python3.12/site-packages/torch/_tensor.py", line 623, in backward
-    torch.autograd.backward(
-  File "/opt/conda/lib/python3.12/site-packages/torch/autograd/__init__.py", line 395, in backward
-    _engine_run_backward(
-  File "/opt/conda/lib/python3.12/site-packages/torch/autograd/graph.py", line 1072, in _engine_run_backward
-    return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/conda/lib/python3.12/site-packages/torch/autograd/function.py", line 366, in apply
-    return user_fn(self, *args)
+  File "/home/sagemaker-user/GL-SDM/projects/urm/train/harness.py", line 312, in train
+    checkpoint_aligned = _check_checkpoint_alignment(cfg, mixer, data_iter, device=device)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/urm/train/harness.py", line 402, in _check_checkpoint_alignment
+    uninterrupted = run_with_checkpoint(None)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/urm/train/harness.py", line 362, in run_with_checkpoint
+    model = build_model(small, mixer, device=device, target=gate_target)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/urm/train/harness.py", line 191, in build_model
+    model = URMDecoderLM(
+            ^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/urm/train/model.py", line 137, in __init__
+    self.blocks = nn.ModuleList(
+                  ^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/torch/nn/modules/container.py", line 370, in __init__
+    self += modules
+  File "/opt/conda/lib/python3.12/site-packages/torch/nn/modules/container.py", line 419, in __iadd__
+    return self.extend(modules)
            ^^^^^^^^^^^^^^^^^^^^
-  File "/tmp/urm-comparator-pins/fla/fla/utils/_decorators.py", line 152, in wrapper
-    return fn(*processed_args, **processed_kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/conda/lib/python3.12/site-packages/torch/amp/autocast_mode.py", line 527, in decorate_bwd
-    return bwd(*args, **kwargs)  # pyrefly: ignore [not-callable]
-           ^^^^^^^^^^^^^^^^^^^^
-  File "/tmp/urm-comparator-pins/fla/fla/ops/simple_gla/chunk.py", line 209, in backward
-    dq, dk, dv, dg, dh0 = chunk_simple_gla_bwd(
-                          ^^^^^^^^^^^^^^^^^^^^^
-  File "/tmp/urm-comparator-pins/fla/fla/ops/simple_gla/chunk.py", line 123, in chunk_simple_gla_bwd
-    dv = chunk_bwd_dv(
-         ^^^^^^^^^^^^^
-  File "/tmp/urm-comparator-pins/fla/fla/ops/common/chunk_o.py", line 613, in chunk_bwd_dv
-    assert K % 2 == 0 and V % 2 == 0, \
-           ^^^^^^^^^^^^^^^^^^^^^^^^^
-AssertionError: chunk_bwd_dv requires even K and V for torch.bfloat16, got K=2145, V=64
+  File "/opt/conda/lib/python3.12/site-packages/torch/nn/modules/container.py", line 504, in extend
+    for i, module in enumerate(modules):
+                     ^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/urm/train/model.py", line 138, in <genexpr>
+    DecoderBlock(width, _build(i), mlp_ratio)
+                        ^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/urm/train/model.py", line 118, in _build
+    return mixer.builder(width, num_heads, head_dim, intent, target)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/urm/train/upstream.py", line 578, in build
+    return _FlaWrap(cls(**kwargs))
+                    ^^^^^^^^^^^^^
+  File "/tmp/urm-comparator-pins/fla/fla/layers/based.py", line 61, in __init__
+    assert num_heads == num_key_value_heads, "num_heads must equal num_key_value_heads."
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: num_heads must equal num_key_value_heads.

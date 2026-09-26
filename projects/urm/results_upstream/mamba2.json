@@ -1,0 +1,15 @@
+{
+  "mixer": "mamba2",
+  "steps": 10,
+  "final_loss": 9.462825775146484,
+  "mfu": 0.010823291472733643,
+  "params": 115389576,
+  "checkpoint_aligned": true,
+  "kl_divergence": null,
+  "wallclock_s": 18.78677151899319,
+  "throughput_tokens_s": 1090.128763172266,
+  "peak_memory_gib": 16.56462860107422,
+  "baseline_tier": "production-kernel",
+  "granularity": "mixer",
+  "microbatch_fallback": 2048
+}
