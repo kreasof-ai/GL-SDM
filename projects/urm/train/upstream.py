@@ -457,11 +457,8 @@ class _TokenformerUpstreamBlock(torch.nn.Module):
     """The pinned megatron tokenformer block, AST-extracted by the comparator package
     (benchmarks.comparators.pattention) — the exact upstream module, block granularity."""
 
-    def __init__(self, model_dim, num_heads, head_dim):
+    def __init__(self, model_dim, num_heads, head_dim, intent="training", target="reference"):
         super().__init__()
-        # The pinned Pattention equation, re-hosted on our projector-free block shell
-        # (the megatron class needs neox_args/mpu; the comparator's adapter extracts
-        # the Pattention equation — we compose it per ParallelTokenformerLayer).
         from architectures.pattention import PattentionLayer
         self.norm1 = torch.nn.RMSNorm(model_dim)
         self.norm2 = torch.nn.RMSNorm(model_dim)
@@ -723,7 +720,7 @@ UPSTREAM_TIER = {
         "lightning_attention", "tda", "lightnet", "mom",
         "log_linear_mamba2", "path_attention",
         "rodimus", "raven", "yoco", "wall_attention", "dplr", "samba_attention",
-        "mamba2", "kata", "attnres", "pattention", "bit_attention",
+        "mamba2", "kata", "attnres", "bit_attention",
     )},
     # reference implementations (pinned research code / transcriptions where the
     # production kernel is environment-blocked)
@@ -731,7 +728,7 @@ UPSTREAM_TIER = {
         "iplr", "log_linear_attention", "nsa", "differential_attention",
         "hopfield_association", "longformer", "tucker_attention", "conformer_attention",
         "dsa", "sparse_transformer", "tpa_attention", "cat_attention", "sdm",
-        "mla_attention", "deltaformer", "moba",
+        "mla_attention", "deltaformer", "moba", "pattention",
     )},
 }
 

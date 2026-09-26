@@ -1,0 +1,14 @@
+{
+  "mixer": "retnet",
+  "steps": 10,
+  "final_loss": 8.875985145568848,
+  "mfu": 0.26200351335822,
+  "params": 123977088,
+  "checkpoint_aligned": true,
+  "kl_divergence": null,
+  "wallclock_s": 3.33445097898948,
+  "throughput_tokens_s": 24567.762584060005,
+  "peak_memory_gib": 8.851705551147461,
+  "baseline_tier": "production-kernel",
+  "granularity": "mixer"
+}

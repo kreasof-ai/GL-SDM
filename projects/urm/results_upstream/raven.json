@@ -1,0 +1,14 @@
+{
+  "mixer": "raven",
+  "steps": 10,
+  "final_loss": 11.677664756774902,
+  "mfu": 0.1904064041880392,
+  "params": 108141912,
+  "checkpoint_aligned": false,
+  "kl_divergence": null,
+  "wallclock_s": 4.004317991988501,
+  "throughput_tokens_s": 20457.915720953875,
+  "peak_memory_gib": 10.506755352020264,
+  "baseline_tier": "production-kernel",
+  "granularity": "mixer"
+}
