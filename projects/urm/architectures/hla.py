@@ -25,9 +25,8 @@ outside K2 — residual here. Decay γ (Eq. 4.1) and ridge λ (Alg. 1 line 7) ar
 explicitly NOT claimed (sweep verdict). VJP through the pair is by torch autograd
 through the two K2 reference calls.
 
-``hla_serial_reference`` is retained as the independent comparator (the direct
-transcription of Algorithm 1's serial recurrence) that the parity gate checks the
-public two-K2 graph against.
+The independent serial-recurrence comparator (the direct transcription of
+Algorithm 1) lives in the parity-gate test (``tests/test_architectures_hla.py``).
 """
 
 from __future__ import annotations
@@ -39,31 +38,6 @@ from urm.compiler.pipeline import CompilationIntent, compile_graph
 from urm.frontend.recipes import load_graph_recipe_document
 
 
-def hla_serial_reference(query, key, value):
-    """Independent comparator: the pinned Algorithm 1 serial recurrence.
-
-    ``query``/``key`` ``[B,H,T,K]``, ``value`` ``[B,H,T,V]`` → ``[B,H,T,V]``.
-    Per-token ΔS = k kᵀ, ΔC = q vᵀ; exclusive-prefix G correction
-    ``G_t += ΔS_t·C_{t-1}``; ``o_t = q_tᵀ(S_t C_t − G_t)`` (γ=1, no ridge/normalize).
-    """
-    B, H, T, K = key.shape
-    V = value.shape[-1]
-    device, dtype = key.device, torch.float32
-    q = query.to(dtype)
-    k = key.to(dtype)
-    v = value.to(dtype)
-    S = torch.zeros(B, H, K, K, device=device, dtype=dtype)
-    C = torch.zeros(B, H, K, V, device=device, dtype=dtype)
-    G = torch.zeros(B, H, K, V, device=device, dtype=dtype)
-    outs = []
-    for t in range(T):
-        dS = torch.einsum("bhk,bhl->bhkl", k[:, :, t], k[:, :, t])
-        dC = torch.einsum("bhk,bhv->bhkv", q[:, :, t], v[:, :, t])
-        G = G + torch.einsum("bhkl,bhlv->bhkv", dS, C)   # exclusive C_{t-1}
-        S = S + dS
-        C = C + dC
-        outs.append(torch.einsum("bhk,bhkv->bhv", q[:, :, t], S @ C - G))
-    return torch.stack(outs, dim=2)
 
 
 class HLALayer(torch.nn.Module):
@@ -146,4 +120,4 @@ class HLALayer(torch.nn.Module):
         return out["output"]
 
 
-__all__ = ["HLALayer", "hla_serial_reference"]
+__all__ = ["HLALayer"]

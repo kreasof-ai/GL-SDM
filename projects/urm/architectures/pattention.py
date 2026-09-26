@@ -26,9 +26,8 @@ external; "one attention contraction equals MLP/MoE" is explicitly not claimed
 the reference tier executes it (a native schedule is residual, pending a second
 client per the two-client physical-branch rule).
 
-``nonlinear_norm_func`` is retained as the independent pinned comparator (the
-source equation transcription) that the parity gate checks the public K1 path
-against.
+The independent pinned comparator (the source equation transcription) lives in
+the parity-gate test (``tests/test_architectures_pattention.py``).
 """
 
 from __future__ import annotations
@@ -41,21 +40,6 @@ import torch.nn.functional as F
 from urm.compiler.normalize.graph import normalize_graph_document
 from urm.compiler.pipeline import CompilationIntent, compile_graph
 from urm.frontend.recipes import load_graph_recipe_document
-
-
-def nonlinear_norm_func(inputs: torch.Tensor, normalize_type: str, dim: int = -1) -> torch.Tensor:
-    """Transcribed from the pinned tokenformer.py nonlinear_norm_func (comparator)."""
-    if normalize_type == "softmax":
-        # Pinned: softmax = exp then L1-normalize scaled by the domain count.
-        nonlinear_outputs = torch.exp(inputs)
-        return nonlinear_outputs / torch.norm(nonlinear_outputs, p=1, dim=dim, keepdim=True) * inputs.shape[dim]
-    if normalize_type == "gelu_l2_norm":
-        nonlinear_outputs = F.gelu(inputs)
-        return nonlinear_outputs / torch.norm(nonlinear_outputs, p=2, dim=dim, keepdim=True) * math.sqrt(nonlinear_outputs.shape[dim])
-    if normalize_type == "l2_norm_gelu":
-        norm_outputs = inputs / torch.norm(inputs, p=2, dim=dim, keepdim=True) * math.sqrt(inputs.shape[dim])
-        return F.gelu(norm_outputs)
-    raise NotImplementedError(f"unknown normalize_type {normalize_type!r}")
 
 
 # Closed mapping from the pinned normalize_type to the K1 MAP_NORMALIZE fields.
@@ -168,4 +152,4 @@ class PattentionLayer(torch.nn.Module):
         return out.to(inputs.dtype)
 
 
-__all__ = ["PattentionLayer", "nonlinear_norm_func"]
+__all__ = ["PattentionLayer"]

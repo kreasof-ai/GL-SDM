@@ -90,57 +90,13 @@ def dyadic_level_of(t: int, j: int, num_levels: int) -> int:
     return best
 
 
-def log_linear_disjoint_reference(q, k, v, g, level_scales):
-    """The disjoint dyadic-block reference form of the hierarchical law (exact oracle).
-
-    Equivalent to ``construct_H_matrix`` + the contraction, but computed as a sum over
-    the disjoint dyadic blocks — each key j contributes to query t at exactly one level
-    with decay ``exp(gcum[t]−gcum[j])`` (gcum the per-head prefix cumsum of g) and the
-    per-level scale ``level_scales[t, level]``. Verified against the pinned
-    ``naive_log_linear_attn`` and the full-matrix form at 0.0. This is the honest
-    reference oracle; the banked recurrent form (the pinned chunked kernel's
-    ``LogLinearAttentionState`` with the carry-cascade promote/reset and within-chunk
-    decay) is the residual schedule, not yet derived to parity.
-    """
-    B, T, H, D = q.shape
-    num_levels = level_scales.shape[-1]
-    gcum = g.permute(0, 2, 1).cumsum(-1)                      # [B,H,T]
-    out = torch.zeros(B, T, H, D, dtype=torch.float32)
-    for t in range(T):
-        for j in range(t + 1):
-            l = dyadic_level_of(t, j, num_levels)
-            aij = torch.exp(gcum[..., t] - gcum[..., j])       # [B,H]
-            score = (q[:, t].float() * k[:, j].float()).sum(-1)  # [B,H]
-            out[:, t] += (level_scales[:, t, :, l].float() * aij * score).unsqueeze(-1) * v[:, j].float()
-    return out.to(q.dtype)
-
-
-class LogLinearAttentionLayer(torch.nn.Module):
-    """Log-linear attention mixer (full-matrix reference form of the hierarchical law).
-
-    Retained as the independent full-matrix comparator; the public banked path is
-    :class:`BankedLogLinearMixer`.
-    """
-
-    def __init__(self, num_heads: int, head_dim: int):
-        super().__init__()
-        self.num_heads = num_heads
-        self.head_dim = head_dim
-
-    def forward(self, q, k, v, g, level_scales):
-        """q/k/v [B,T,H,D]; g per-head log decay [B,T,H]; level_scales [B,T,H,L_levels]."""
-        H = construct_H_matrix(g.permute(0, 2, 1), level_scales.permute(0, 2, 3, 1))  # [B,H,T,T]
-        M = torch.einsum("bhlc,blhn,bchn->bhlc", H, q, k)
-        return torch.einsum("bhlc,bchp->blhp", M, v)
-
-
 class BankedLogLinearMixer(torch.nn.Module):
     """The shared A4 hierarchical mixer routed through the public ``dyadic_banked_state`` op.
 
     Both arch-009 (Log-linear attention) and arch-046 (LogLinearMamba2) use this:
     the banked dyadic state law is identical; only the frontend differs (arch-046
-    adds the Mamba-2 discretization). ``log_linear_disjoint_reference`` and the
-    full-matrix :class:`LogLinearAttentionLayer` are retained as comparators.
+    adds the Mamba-2 discretization). The disjoint dyadic-block and full-matrix
+    reference oracles live in the parity-gate test (``tests/test_architectures_a4.py``).
     """
 
     def __init__(self, num_heads: int, head_dim: int, num_levels: int, *,
@@ -189,10 +145,8 @@ class BankedLogLinearMixer(torch.nn.Module):
 
 
 __all__ = [
-    "LogLinearAttentionLayer",
     "BankedLogLinearMixer",
     "construct_H_matrix",
     "segsum",
     "dyadic_level_of",
-    "log_linear_disjoint_reference",
 ]

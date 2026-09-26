@@ -186,4 +186,4 @@ class Mamba2K2Layer(K2LinearStateLayer):
         return out.permute(0, 2, 1, 3).reshape(B, L, D)
 
 
-__all__ = ["Mamba1Layer", "Mamba1K2Layer", "Mamba2Layer", "Mamba2K2Layer", "selective_scan_diag"]
+__all__ = ["Mamba1K2Layer", "Mamba2K2Layer", "selective_scan_diag"]

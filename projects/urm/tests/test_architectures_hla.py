@@ -15,9 +15,36 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from architectures.hla import HLALayer, hla_serial_reference
+from architectures.hla import HLALayer
 
 H, K, V, T = 2, 8, 6, 7
+
+
+def hla_serial_reference(query, key, value):
+    """Independent comparator: the pinned Algorithm 1 serial recurrence.
+
+    ``query``/``key`` ``[B,H,T,K]``, ``value`` ``[B,H,T,V]`` → ``[B,H,T,V]``.
+    Per-token ΔS = k kᵀ, ΔC = q vᵀ; exclusive-prefix G correction
+    ``G_t += ΔS_t·C_{t-1}``; ``o_t = q_tᵀ(S_t C_t − G_t)`` (γ=1, no ridge/normalize).
+    """
+    B, H, T, K = key.shape
+    V = value.shape[-1]
+    device, dtype = key.device, torch.float32
+    q = query.to(dtype)
+    k = key.to(dtype)
+    v = value.to(dtype)
+    S = torch.zeros(B, H, K, K, device=device, dtype=dtype)
+    C = torch.zeros(B, H, K, V, device=device, dtype=dtype)
+    G = torch.zeros(B, H, K, V, device=device, dtype=dtype)
+    outs = []
+    for t in range(T):
+        dS = torch.einsum("bhk,bhl->bhkl", k[:, :, t], k[:, :, t])
+        dC = torch.einsum("bhk,bhv->bhkv", q[:, :, t], v[:, :, t])
+        G = G + torch.einsum("bhkl,bhlv->bhkv", dS, C)   # exclusive C_{t-1}
+        S = S + dS
+        C = C + dC
+        outs.append(torch.einsum("bhk,bhkv->bhv", q[:, :, t], S @ C - G))
+    return torch.stack(outs, dim=2)
 
 
 def test_two_k2_graph_matches_serial_recurrence():
