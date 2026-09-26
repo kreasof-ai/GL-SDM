@@ -1,0 +1,12 @@
+{
+  "mixer": "tda",
+  "steps": 10,
+  "final_loss": 8.342843055725098,
+  "mfu": 0.5483614735353937,
+  "params": 102742272,
+  "checkpoint_aligned": true,
+  "kl_divergence": null,
+  "wallclock_s": 1.3212690820218995,
+  "throughput_tokens_s": 62000.996704350495,
+  "peak_memory_gib": 4.921736717224121
+}

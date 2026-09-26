@@ -1,0 +1,12 @@
+{
+  "mixer": "wall_attention",
+  "steps": 10,
+  "final_loss": 8.12038516998291,
+  "mfu": 0.43679231631018756,
+  "params": 113372928,
+  "checkpoint_aligned": true,
+  "kl_divergence": null,
+  "wallclock_s": 1.8296532700187527,
+  "throughput_tokens_s": 44773.51055654407,
+  "peak_memory_gib": 5.738414764404297
+}

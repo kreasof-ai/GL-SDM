@@ -65,8 +65,17 @@ def _run_row(row: str, args: argparse.Namespace, microbatch_tokens: int,
         proc = subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT,
                               env=env, timeout=args.timeout)
     if proc.returncode != 0:
+        # The OOM text lives in the subprocess log, not the exit path — sniff the log
+        # so the microbatch fallback actually triggers on CUDA OOM.
+        log_text = log_file.read_text() if log_file.exists() else ""
+        if "out of memory" in log_text.lower():
+            raise _CudaOOM(f"CUDA OOM at this microbatch (see {log_file})")
         raise RuntimeError(f"exit {proc.returncode} (see {log_file})")
     return json.loads(out_file.read_text())
+
+
+class _CudaOOM(Exception):
+    """CUDA out-of-memory in the row's subprocess (triggers the microbatch fallback)."""
 
 
 def main() -> None:
@@ -108,13 +117,16 @@ def main() -> None:
             except subprocess.TimeoutExpired:
                 rec = {"mixer": row, "error": f"timeout after {args.timeout}s"}
                 break
-            except Exception as e:  # noqa: BLE001 — record and continue the sweep
-                msg = str(e)
-                if "out of memory" in msg.lower() and attempt == 0:
+            except _CudaOOM:
+                if attempt == 0:
                     print(f"[sweep] {row}: OOM at {PRIMARY_MICROBATCH}, "
                           f"retrying at {FALLBACK_MICROBATCH}", flush=True)
                     continue
-                rec = {"mixer": row, "error": msg}
+                rec = {"mixer": row, "error": f"CUDA OOM at both "
+                                              f"{PRIMARY_MICROBATCH} and {FALLBACK_MICROBATCH}"}
+                break
+            except Exception as e:  # noqa: BLE001 — record and continue the sweep
+                rec = {"mixer": row, "error": str(e)}
                 break
         if "error" in rec:
             out_file.write_text(json.dumps(rec, indent=2))

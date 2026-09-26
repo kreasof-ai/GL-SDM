@@ -1,32 +1,30 @@
-W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0] Graph break from `Tensor.item()`, consider setting:
-W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]     torch._dynamo.config.capture_scalar_outputs = True
-W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0] or:
-W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]     env TORCHDYNAMO_CAPTURE_SCALAR_OUTPUTS=1
-W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0] to include these operations in the captured graph.
-W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0] 
-W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0] Graph break: from user code at:
-W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]   File "/home/sagemaker-user/GL-SDM/projects/urm/train/model.py", line 123, in forward
-W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]     logits = self.lm_head(self._hidden(tokens))
-W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]                           ^^^^^^^^^^^^^^^^^^^^^
-W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]   File "/home/sagemaker-user/GL-SDM/projects/urm/train/model.py", line 119, in _hidden
-W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]     x = block(x)
-W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]         ^^^^^^^^
-W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]   File "/home/sagemaker-user/GL-SDM/projects/urm/train/model.py", line 71, in forward
-W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]     x = x + self.mixer(self.norm1(x))
-W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]             ^^^^^^^^^^^^^^^^^^^^^^^^^
-W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]   File "/home/sagemaker-user/GL-SDM/projects/urm/architectures/based_attention.py", line 77, in forward
-W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]     out = self._run_mixer({
-W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]           ^^^^^^^^^^^^^^^^^
-W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]   File "/home/sagemaker-user/GL-SDM/projects/urm/architectures/k2_linear_state.py", line 129, in _run_mixer
-W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]     out, final = linear_delta_state(
-W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]                  ^^^^^^^^^^^^^^^^^^^
-W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]   File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k2/matrix_scan.py", line 1711, in linear_delta_state
-W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]     scale = float(scale)
-W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]             ^^^^^^^^^^^^
-W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0] 
-W0926 16:40:44.464000 188279 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0] 
-[W926 16:40:48.152572849 CUDACachingAllocator.cpp:3934] memory allocation failed with OOM on device 0 while trying to allocate 53980692480 bytes (free: 20615135232, total: 23686938624).
-[W926 16:40:48.153363936 CUDACachingAllocator.cpp:3934] memory allocation failed with OOM on device 0 while trying to allocate 53980692480 bytes (free: 20615135232, total: 23686938624).
+W0926 17:38:57.853000 199293 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0] Graph break from `Tensor.item()`, consider setting:
+W0926 17:38:57.853000 199293 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]     torch._dynamo.config.capture_scalar_outputs = True
+W0926 17:38:57.853000 199293 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0] or:
+W0926 17:38:57.853000 199293 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]     env TORCHDYNAMO_CAPTURE_SCALAR_OUTPUTS=1
+W0926 17:38:57.853000 199293 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0] to include these operations in the captured graph.
+W0926 17:38:57.853000 199293 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0] 
+W0926 17:38:57.853000 199293 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0] Graph break: from user code at:
+W0926 17:38:57.853000 199293 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]   File "/home/sagemaker-user/GL-SDM/projects/urm/train/model.py", line 123, in forward
+W0926 17:38:57.853000 199293 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]     logits = self.lm_head(self._hidden(tokens))
+W0926 17:38:57.853000 199293 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]                           ^^^^^^^^^^^^^^^^^^^^^
+W0926 17:38:57.853000 199293 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]   File "/home/sagemaker-user/GL-SDM/projects/urm/train/model.py", line 119, in _hidden
+W0926 17:38:57.853000 199293 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]     x = block(x)
+W0926 17:38:57.853000 199293 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]         ^^^^^^^^
+W0926 17:38:57.853000 199293 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]   File "/home/sagemaker-user/GL-SDM/projects/urm/train/model.py", line 71, in forward
+W0926 17:38:57.853000 199293 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]     x = x + self.mixer(self.norm1(x))
+W0926 17:38:57.853000 199293 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]             ^^^^^^^^^^^^^^^^^^^^^^^^^
+W0926 17:38:57.853000 199293 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]   File "/home/sagemaker-user/GL-SDM/projects/urm/architectures/based_attention.py", line 77, in forward
+W0926 17:38:57.853000 199293 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]     out = self._run_mixer({
+W0926 17:38:57.853000 199293 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]           ^^^^^^^^^^^^^^^^^
+W0926 17:38:57.853000 199293 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]   File "/home/sagemaker-user/GL-SDM/projects/urm/architectures/k2_linear_state.py", line 129, in _run_mixer
+W0926 17:38:57.853000 199293 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]     out, final = linear_delta_state(
+W0926 17:38:57.853000 199293 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]                  ^^^^^^^^^^^^^^^^^^^
+W0926 17:38:57.853000 199293 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]   File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k2/matrix_scan.py", line 1711, in linear_delta_state
+W0926 17:38:57.853000 199293 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]     scale = float(scale)
+W0926 17:38:57.853000 199293 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]             ^^^^^^^^^^^^
+W0926 17:38:57.853000 199293 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0] 
+W0926 17:38:57.853000 199293 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0] 
 Traceback (most recent call last):
   File "<frozen runpy>", line 198, in _run_module_as_main
   File "<frozen runpy>", line 88, in _run_code
@@ -115,7 +113,7 @@ Traceback (most recent call last):
   File "/opt/conda/lib/python3.12/site-packages/torch/_inductor/output_code.py", line 828, in __call__
     return self.current_callable(inputs)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/tmp/torchinductor_sagemaker-user/55/c55wn7erucrprwvle7i5da6zmkpvcoogadh52sq3wcmu2w3l4ubo.py", line 60, in call
+  File "/tmp/torchinductor_sagemaker-user/s3/cs3cuha53fbgal4gnx2quno6ihu3wetdpaos6fbp6uo52f2odqfi.py", line 60, in call
     buf0 = torch.ops.urm.k2_recurrence_chunked_k_normalized_fwd.default(primals_1, primals_2, primals_3, primals_4, 1.0)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/opt/conda/lib/python3.12/site-packages/torch/_ops.py", line 916, in __call__
@@ -160,7 +158,11 @@ Traceback (most recent call last):
   File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k2/matrix_scan.py", line 1624, in _fwd
     return _ChunkedKNormalized.apply(query, key, value, initial_state, scale)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k2/matrix_scan.py", line 1511, in forward
-    states = torch.empty(
-             ^^^^^^^^^^^^
-torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 50.27 GiB. GPU 0 has a total capacity of 22.06 GiB of which 19.20 GiB is free. Process 188208 has 744.00 MiB memory in use. Including non-PyTorch memory, this process has 2.12 GiB memory in use. Of the allocated memory 1.78 GiB is allocated by PyTorch, and 40.99 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)
+  File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k2/matrix_scan.py", line 1532, in forward
+    num = num_partial.sum(dim=3)
+          ^^^^^^^^^^^^^^^^^^^^^^
+torch.AcceleratorError: CUDA error: an illegal memory access was encountered
+Search for `cudaErrorIllegalAddress' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+

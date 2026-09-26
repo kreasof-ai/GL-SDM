@@ -1,0 +1,12 @@
+{
+  "mixer": "yoco",
+  "steps": 10,
+  "final_loss": 8.253545761108398,
+  "mfu": 0.28925874832637954,
+  "params": 102825216,
+  "checkpoint_aligned": true,
+  "kl_divergence": null,
+  "wallclock_s": 2.506805668002926,
+  "throughput_tokens_s": 32679.03892417096,
+  "peak_memory_gib": 5.542672634124756
+}

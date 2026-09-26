@@ -51,6 +51,33 @@ class _FlaWrap(torch.nn.Module):
         return out[0] if isinstance(out, tuple) else out
 
 
+class _TDAUpstream(torch.nn.Module):
+    """The pinned TDA Triton kernel (threshold ReLU² attention) as a [B,T,C] mixer.
+
+    Unlike the research-code pins, tda's pin ships a fused FlashAttention-style kernel
+    (fwd+bwd), so it is a legitimate fast upstream baseline, not just a parity oracle.
+    """
+
+    def __init__(self, model_dim, num_heads, head_dim):
+        super().__init__()
+        sys.path.insert(0, "/tmp/urm-comparator-pins/tda")
+        self.num_heads, self.head_dim = num_heads, head_dim
+        self.q_proj = torch.nn.Linear(model_dim, num_heads * head_dim, bias=False)
+        self.k_proj = torch.nn.Linear(model_dim, num_heads * head_dim, bias=False)
+        self.v_proj = torch.nn.Linear(model_dim, num_heads * head_dim, bias=False)
+        self.o_proj = torch.nn.Linear(num_heads * head_dim, model_dim, bias=False)
+
+    def forward(self, hidden):
+        from triton_threshold_attention import threshold_rela_triton
+        B, T, _ = hidden.shape
+        H, D = self.num_heads, self.head_dim
+        q = self.q_proj(hidden).view(B, T, H, D).transpose(1, 2)
+        k = self.k_proj(hidden).view(B, T, H, D).transpose(1, 2)
+        v = self.v_proj(hidden).view(B, T, H, D).transpose(1, 2)
+        out = threshold_rela_triton(q, k, v, beta=1.0, relu_power=2.0)
+        return self.o_proj(out.transpose(1, 2).reshape(B, T, H * D))
+
+
 class _SDPA(torch.nn.Module):
     """torch SDPA causal attention as a [B,T,C] mixer (the K1 family's practical upstream)."""
 
@@ -127,6 +154,12 @@ UPSTREAM_BUILDERS = {
     "forgetting_attention": _fla_builder("fla.layers.forgetting_attn.ForgettingAttention"),
     # lightning_attention's pinned comparator IS simple_gla's kernel (same class).
     "lightning_attention": _fla_builder("fla.layers.simple_gla.SimpleGatedLinearAttention"),
+    # tda's pin ships a fused Triton kernel (fwd+bwd) — a genuine fast baseline, unlike
+    # the research-code pins (tucker/tpa/samba/kata/…) which are plain-torch references.
+    "tda": lambda: (
+        lambda model_dim, num_heads, head_dim, intent, target="reference":
+        _TDAUpstream(model_dim, num_heads, head_dim)
+    ),
 }
 
 
