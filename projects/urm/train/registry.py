@@ -673,7 +673,7 @@ MIXER_REGISTRY: dict[str, MixerSpec] = {
     # binding the pinned naive's (q,k,v,α,β,gk) operand set; tests/test_architectures_dplr.py).
     "dplr": MixerSpec("dplr", _build_dplr, "fla.ops.generalized_delta_rule.dplr", True, True, tier="native"),
     "tda": MixerSpec("tda", _build_tda, None, False, False, tier="native"),
-    "based_attention": MixerSpec("based_attention", _build_based, "fla.ops.based", True, True),
+    "based_attention": MixerSpec("based_attention", _build_based, "fla.ops.based", True, True, tier="native"),
     # indexed_attention is the shared A2 gather-attend BASE (no forward of its own) —
     # exercised through its clients (dsa, nsa, longformer, sparse_transformer). Not a
     # standalone mixer; recorded excluded like attnres.

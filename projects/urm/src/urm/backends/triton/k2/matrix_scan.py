@@ -46,6 +46,8 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Any
 
+import torch
+
 _DECAY_NONE = 0
 _DECAY_HEAD = 1
 _DECAY_KEY_CHANNEL = 2
@@ -762,6 +764,218 @@ def _kernels():
             )
 
     @triton.jit
+    def chunked_k_normalized_forward_kernel(
+        Q,
+        K,
+        V,
+        INITIAL,
+        NUM_PARTIAL,
+        DEN_PARTIAL,
+        STATES,
+        NORM_STATES,
+        FINAL,
+        FINAL_NORM,
+        H: tl.constexpr,
+        T: tl.constexpr,
+        K_DIM: tl.constexpr,
+        V_DIM: tl.constexpr,
+        SCALE: tl.constexpr,
+        HAS_INITIAL: tl.constexpr,
+        BLOCK_K: tl.constexpr,
+        BLOCK_V: tl.constexpr,
+    ):
+        """Chunked-K schedule for the normalized additive law (wide feature widths).
+
+        One program per (batch, head, k-chunk): the state/norm slices are carried in
+        registers, so the register budget is BLOCK_K×BLOCK_V regardless of K_DIM (the
+        fused kernel's BLOCK_K=next_pow2(K_DIM)=4096 tile at the Based Taylor width
+        2145 exceeds the register file — it hangs the compiler, measured). The law's
+        read is linear in the state, so numerator and denominator decompose over
+        chunks: each program stores its partial (SCALE·q·state_chunk, q·norm_chunk)
+        per token and the torch epilogue sums and divides. The STATES/NORM_STATES
+        slices (same layout as the fused kernel) feed the reverse-scan backward.
+
+        Supported envelope ONLY: additive update, no decay, normalized, after-update
+        read, identity feature map — the wide-K client (Based) matches it exactly;
+        other configurations stay on the fused kernel (or the reference tier).
+        """
+        row = tl.program_id(0)
+        k_chunk = tl.program_id(1)
+        batch = row // H
+        head = row % H
+        num_rows = tl.num_programs(0)
+        num_chunks = tl.num_programs(1)
+        k_index = k_chunk * BLOCK_K + tl.arange(0, BLOCK_K)
+        v_index = tl.arange(0, BLOCK_V)
+        k_mask = k_index < K_DIM
+        v_mask = v_index < V_DIM
+        kv_mask = k_mask[:, None] & v_mask[None, :]
+        state_base = ((batch * H + head) * K_DIM) * V_DIM
+        if HAS_INITIAL:
+            state = tl.load(
+                INITIAL + state_base + k_index[:, None] * V_DIM + v_index[None, :],
+                kv_mask,
+                other=0.0,
+            ).to(tl.float32)
+        else:
+            state = tl.zeros((BLOCK_K, BLOCK_V), dtype=tl.float32)
+        norm = tl.zeros((BLOCK_K,), dtype=tl.float32)
+        qk_token_base = batch * (T * H * K_DIM) + head * K_DIM
+        v_token_base = batch * (T * H * V_DIM) + head * V_DIM
+        for token in range(T):
+            k_t = tl.load(
+                K + qk_token_base + token * (H * K_DIM) + k_index, k_mask, other=0.0
+            ).to(tl.float32)
+            v_t = tl.load(
+                V + v_token_base + token * (H * V_DIM) + v_index, v_mask, other=0.0
+            ).to(tl.float32)
+            q_t = tl.load(
+                Q + qk_token_base + token * (H * K_DIM) + k_index, k_mask, other=0.0
+            ).to(tl.float32)
+            # Additive update, then the after-update read (partials).
+            state = state + k_t[:, None] * v_t[None, :]
+            norm = norm + k_t
+            num_part = SCALE * tl.sum(state * q_t[:, None], axis=0)
+            den_part = tl.sum(norm * q_t, axis=0)
+            part_v_base = (((batch * T + token) * H + head) * num_chunks + k_chunk) * V_DIM
+            tl.store(NUM_PARTIAL + part_v_base + v_index, num_part, v_mask)
+            tl.store(
+                DEN_PARTIAL
+                + ((batch * T + token) * H + head) * num_chunks
+                + k_chunk,
+                den_part,
+            )
+            tl.store(
+                STATES + (token * num_rows + row) * (K_DIM * V_DIM)
+                + k_index[:, None] * V_DIM + v_index[None, :],
+                state,
+                kv_mask,
+            )
+            tl.store(
+                NORM_STATES + (token * num_rows + row) * K_DIM + k_index,
+                norm,
+                k_mask,
+            )
+        tl.store(FINAL + state_base + k_index[:, None] * V_DIM + v_index[None, :], state, kv_mask)
+        tl.store(FINAL_NORM + (batch * H + head) * K_DIM + k_index, norm, k_mask)
+
+    @triton.jit
+    def chunked_k_normalized_backward_kernel(
+        Q,
+        K,
+        V,
+        INITIAL,
+        STATES,
+        NORM_STATES,
+        DNUM,
+        DDEN,
+        GRAD_FINAL,
+        GRAD_FINAL_NORM,
+        GRAD_Q,
+        GRAD_K,
+        GRAD_V_PARTIAL,
+        GRAD_INITIAL,
+        H: tl.constexpr,
+        T: tl.constexpr,
+        K_DIM: tl.constexpr,
+        V_DIM: tl.constexpr,
+        SCALE: tl.constexpr,
+        HAS_INITIAL: tl.constexpr,
+        HAS_GRAD_FINAL: tl.constexpr,
+        BLOCK_K: tl.constexpr,
+        BLOCK_V: tl.constexpr,
+    ):
+        """Reverse scan for the chunked-K normalized additive law.
+
+        The epilogue (sum over chunks + divide) supplies the chunk-shared score
+        cotangents: ``DNUM`` = ∂L/∂num (identical per chunk, since the chunk
+        partials sum linearly) and ``DDEN`` = ∂L/∂den. grad_v sums over K across
+        chunks, so each program stores its partial and the host reduces over the
+        chunk axis (fixed order — deterministic).
+        """
+        row = tl.program_id(0)
+        k_chunk = tl.program_id(1)
+        batch = row // H
+        head = row % H
+        num_rows = tl.num_programs(0)
+        num_chunks = tl.num_programs(1)
+        k_index = k_chunk * BLOCK_K + tl.arange(0, BLOCK_K)
+        v_index = tl.arange(0, BLOCK_V)
+        k_mask = k_index < K_DIM
+        v_mask = v_index < V_DIM
+        kv_mask = k_mask[:, None] & v_mask[None, :]
+        state_base = ((batch * H + head) * K_DIM) * V_DIM
+        qk_token_base = batch * (T * H * K_DIM) + head * K_DIM
+        v_token_base = batch * (T * H * V_DIM) + head * V_DIM
+        if HAS_GRAD_FINAL:
+            dstate = tl.load(
+                GRAD_FINAL + state_base + k_index[:, None] * V_DIM + v_index[None, :],
+                kv_mask,
+                other=0.0,
+            ).to(tl.float32)
+            dnorm = tl.load(
+                GRAD_FINAL_NORM + (batch * H + head) * K_DIM + k_index,
+                k_mask,
+                other=0.0,
+            ).to(tl.float32)
+        else:
+            dstate = tl.zeros((BLOCK_K, BLOCK_V), dtype=tl.float32)
+            dnorm = tl.zeros((BLOCK_K,), dtype=tl.float32)
+        for reverse_index in range(T):
+            token = T - reverse_index - 1
+            k_t = tl.load(
+                K + qk_token_base + token * (H * K_DIM) + k_index, k_mask, other=0.0
+            ).to(tl.float32)
+            v_t = tl.load(
+                V + v_token_base + token * (H * V_DIM) + v_index, v_mask, other=0.0
+            ).to(tl.float32)
+            q_t = tl.load(
+                Q + qk_token_base + token * (H * K_DIM) + k_index, k_mask, other=0.0
+            ).to(tl.float32)
+            dnum = tl.load(
+                DNUM + v_token_base + token * (H * V_DIM) + v_index, v_mask, other=0.0
+            ).to(tl.float32)
+            dden = tl.load(DDEN + (batch * T + token) * H + head).to(tl.float32)
+            state_t = tl.load(
+                STATES + (token * num_rows + row) * (K_DIM * V_DIM)
+                + k_index[:, None] * V_DIM + v_index[None, :],
+                kv_mask,
+                other=0.0,
+            ).to(tl.float32)
+            norm_t = tl.load(
+                NORM_STATES + (token * num_rows + row) * K_DIM + k_index,
+                k_mask,
+                other=0.0,
+            ).to(tl.float32)
+            # Read adjoints (after-update normalized read): the num/den cotangents
+            # arrive pre-divided from the epilogue.
+            grad_q = SCALE * tl.sum(state_t * dnum[None, :], axis=1) + dden * norm_t
+            dnorm_read = dden * q_t
+            dstate_t = dstate + SCALE * q_t[:, None] * dnum[None, :]
+            # Additive write adjoints.
+            grad_v_part = tl.sum(dstate_t * k_t[:, None], axis=0)
+            grad_k = tl.sum(dstate_t * v_t[None, :], axis=1)
+            # Norm write adjoint: z_t = z_{t-1} + k_t takes the carried cotangent
+            # (later tokens' reads) plus this token's read.
+            grad_k = grad_k + dnorm + dnorm_read
+            dnorm = dnorm + dnorm_read
+            dstate = dstate_t
+            tl.store(
+                GRAD_Q + qk_token_base + token * (H * K_DIM) + k_index, grad_q, k_mask
+            )
+            tl.store(
+                GRAD_K + qk_token_base + token * (H * K_DIM) + k_index, grad_k, k_mask
+            )
+            part_v_base = (((batch * T + token) * H + head) * num_chunks + k_chunk) * V_DIM
+            tl.store(GRAD_V_PARTIAL + part_v_base + v_index, grad_v_part, v_mask)
+        if HAS_INITIAL:
+            tl.store(
+                GRAD_INITIAL + state_base + k_index[:, None] * V_DIM + v_index[None, :],
+                dstate,
+                kv_mask,
+            )
+
+    @triton.jit
     def decode_step_kernel(
         Q,
         K,
@@ -827,7 +1041,14 @@ def _kernels():
             tl.store(OUTPUT + v_base + v_index, output, v_mask)
         tl.store(STATE + state_offset, state, kv_mask)
 
-    return triton, forward_kernel, backward_kernel, decode_step_kernel
+    return (
+        triton,
+        forward_kernel,
+        backward_kernel,
+        decode_step_kernel,
+        chunked_k_normalized_forward_kernel,
+        chunked_k_normalized_backward_kernel,
+    )
 
 def execute_matrix_state_recurrence(
     *,
@@ -892,7 +1113,7 @@ def execute_matrix_state_recurrence(
     """
     import torch
 
-    triton, forward_kernel, backward_kernel, _ = _kernels()
+    triton, forward_kernel, backward_kernel, _, _, _ = _kernels()
     if query.device.type != "cuda":
         raise ValueError("native matrix-state recurrence requires CUDA tensors")
     batch, sequence, heads, key_dim = query.shape
@@ -1004,6 +1225,17 @@ def execute_matrix_state_recurrence(
     if has_left:
         block_k = max(block_k, 16)
         block_v = max(block_v, 16)
+    # The fused kernel carries the [BLOCK_K, BLOCK_V] state in registers; a tile
+    # beyond ~16K fp32 elements (e.g. the Based Taylor width 2145 → BLOCK_K=4096)
+    # hangs the compiler instead of failing (measured: exit 124). Decline loudly —
+    # the wide normalized additive law runs on the chunked-K schedule instead.
+    if block_k * block_v > 16384:
+        raise ValueError(
+            f"native K2 fused recurrence carries the [K,V] state in registers; "
+            f"next_pow2 widths K={key_dim}→{block_k}, V={value_dim}→{block_v} exceed "
+            f"the register budget ({block_k * block_v} > 16384 fp32 elements) — the "
+            f"chunked-K schedule owns the wide normalized additive law"
+        )
     grid = (batch * heads,)
     warps = 4
 
@@ -1171,7 +1403,7 @@ def execute_matrix_state_decode_step(
     """
     import torch
 
-    triton, _, _, decode_step_kernel = _kernels()
+    triton, _, _, decode_step_kernel, _, _ = _kernels()
     if query.device.type != "cuda":
         raise ValueError("native matrix-state decode step requires CUDA tensors")
     batch, heads, key_dim = query.shape
@@ -1218,6 +1450,201 @@ def execute_matrix_state_decode_step(
         )
     return output
 
+# The chunked-K schedule: state/norm slices of BLOCK_K×BLOCK_V per (batch, head,
+# k-chunk) program. BLOCK_K=128 matches the fused kernel's proven register profile
+# (64 fp32 state registers per thread at 4 warps); K chunks partition the state
+# rows exactly (the additive update and the linear read both decompose over K).
+_CHUNKED_K_BLOCK = 128
+# Route the normalized additive law to the chunked schedule above this feature
+# width; the fused kernel's BLOCK_K=next_pow2(K) register tile is the constraint.
+_CHUNKED_K_THRESHOLD = 256
+# The denominator epsilon: the same kernel default as the fused path
+# (execute_matrix_state_recurrence's epsilon=1e-6); the descriptor carries no
+# epsilon field, so both paths share the constant.
+_CHUNKED_K_EPSILON = 1e-6
+
+
+class _ChunkedKNormalized(torch.autograd.Function):
+    """Autograd bridge for the chunked-K normalized additive recurrence.
+
+    The forward kernel stores per-chunk partial numerators/denominators; the torch
+    epilogue (sum over chunks, divide) is inside this Function, so its backward is
+    the analytic num/den cotangent followed by the reverse-scan kernel. grad_v sums
+    over the K axis (cross-chunk) — the kernel stores per-chunk partials and the
+    host reduces over the chunk axis in a fixed order (deterministic).
+    """
+
+    @staticmethod
+    def forward(ctx, query, key, value, initial_state, scale):
+        (
+            triton,
+            _fwd,
+            _bwd,
+            _decode,
+            chunked_forward_kernel,
+            _cbwd,
+        ) = _kernels()
+        batch, sequence, heads, key_dim = query.shape
+        value_dim = value.shape[-1]
+        num_chunks = triton.cdiv(key_dim, _CHUNKED_K_BLOCK)
+        block_k = _CHUNKED_K_BLOCK
+        block_v = max(16, triton.next_power_of_2(value_dim))
+        has_initial = initial_state is not None
+        if has_initial:
+            if tuple(initial_state.shape) != (batch, heads, key_dim, value_dim):
+                raise ValueError("initial_state must use [B,H,K,V]")
+            initial = initial_state.contiguous()
+        else:
+            initial = torch.zeros(
+                (batch, heads, key_dim, value_dim), device=query.device, dtype=torch.float32
+            )
+        q_c = query.contiguous()
+        k_c = key.contiguous()
+        v_c = value.contiguous()
+        num_partial = torch.empty(
+            (batch, sequence, heads, num_chunks, value_dim),
+            device=query.device, dtype=torch.float32,
+        )
+        den_partial = torch.empty(
+            (batch, sequence, heads, num_chunks), device=query.device, dtype=torch.float32
+        )
+        states = torch.empty(
+            (sequence, batch * heads, key_dim, value_dim),
+            device=query.device, dtype=torch.float32,
+        )
+        norm_states = torch.empty(
+            (sequence, batch * heads, key_dim), device=query.device, dtype=torch.float32
+        )
+        final = torch.empty(
+            (batch, heads, key_dim, value_dim), device=query.device, dtype=torch.float32
+        )
+        final_norm = torch.empty(
+            (batch, heads, key_dim), device=query.device, dtype=torch.float32
+        )
+        chunked_forward_kernel[(batch * heads, num_chunks)](
+            q_c, k_c, v_c, initial,
+            num_partial, den_partial, states, norm_states, final, final_norm,
+            heads, sequence, key_dim, value_dim, scale, has_initial,
+            block_k, block_v, num_warps=4,
+        )
+        # Epilogue: out = Σ_c num_c / (Σ_c den_c + ε). The law's read is linear in
+        # the state, so the chunk partials decompose exactly.
+        num = num_partial.sum(dim=3)
+        den = den_partial.sum(dim=3) + _CHUNKED_K_EPSILON
+        output = (num / den[..., None]).to(query.dtype)
+        ctx.save_for_backward(q_c, k_c, v_c, initial, num_partial, den_partial)
+        ctx.states = states
+        ctx.norm_states = norm_states
+        ctx.scale = scale
+        ctx.has_initial = has_initial
+        return output, final
+
+    @staticmethod
+    def backward(ctx, grad_output, grad_final):
+        (
+            triton,
+            _fwd,
+            _bwd,
+            _decode,
+            _cfwd,
+            chunked_backward_kernel,
+        ) = _kernels()
+        # The STATES/NORM_STATES buffers are kernel-written fp32 history (not graph
+        # tensors needing grad), stashed as plain ctx attributes.
+        states = ctx.states
+        norm_states = ctx.norm_states
+        q, k, v, initial, num_partial, den_partial = ctx.saved_tensors
+        batch, sequence, heads, key_dim = q.shape
+        value_dim = v.shape[-1]
+        num_chunks = num_partial.shape[3]
+        block_k = _CHUNKED_K_BLOCK
+        block_v = max(16, triton.next_power_of_2(value_dim))
+        # The epilogue's analytic cotangents, shared by every chunk (the partials
+        # sum linearly): dnum = ∂L/∂num, dden = ∂L/∂den.
+        grad_output_c = (
+            torch.zeros(v.shape, device=v.device, dtype=torch.float32)
+            if grad_output is None
+            else grad_output.contiguous().float()
+        )
+        num = num_partial.sum(dim=3)
+        den = den_partial.sum(dim=3) + _CHUNKED_K_EPSILON
+        dnum = (grad_output_c / den[..., None]).contiguous()
+        dden = (-(grad_output_c * num).sum(dim=-1) / (den * den)).contiguous()
+        has_grad_final = grad_final is not None
+        grad_final_c = (
+            torch.zeros(
+                (batch, heads, key_dim, value_dim), device=q.device, dtype=torch.float32
+            )
+            if grad_final is None
+            else grad_final.contiguous().float()
+        )
+        grad_final_norm = torch.zeros(
+            (batch, heads, key_dim), device=q.device, dtype=torch.float32
+        )
+        grad_q = torch.empty_like(q)
+        grad_k = torch.empty_like(k)
+        grad_v_partial = torch.empty(
+            (batch, sequence, heads, num_chunks, value_dim),
+            device=q.device, dtype=torch.float32,
+        )
+        grad_initial = torch.empty(
+            (batch, heads, key_dim, value_dim), device=q.device, dtype=torch.float32
+        )
+        chunked_backward_kernel[(batch * heads, num_chunks)](
+            q, k, v, initial, states, norm_states,
+            dnum, dden, grad_final_c, grad_final_norm,
+            grad_q, grad_k, grad_v_partial, grad_initial,
+            heads, sequence, key_dim, value_dim, ctx.scale,
+            ctx.has_initial, has_grad_final,
+            block_k, block_v, num_warps=4,
+        )
+        # grad_v sums over the K axis (cross-chunk): fixed-order host reduction.
+        grad_v = grad_v_partial.sum(dim=3).to(v.dtype)
+        return grad_q, grad_k, grad_v, grad_initial, None
+
+
+def _chunked_k_normalized_recurrence(
+    query: Any,
+    key: Any,
+    value: Any,
+    initial_state: Any,
+    scale: float,
+) -> tuple[Any, Any]:
+    """Chunked-K normalized additive recurrence, opacified for compile safety.
+
+    Operands arrive in the kernel layout ``[B, T, H, *]`` (``initial_state`` is
+    ``[B, H, K, V]`` fp32 or None); returns ``(output [B,T,H,V], final_state
+    [B,H,K,V] fp32)`` — the same contract the fused path's normalized variant
+    fulfills (the final denominator state is internal to the kernel; the op-level
+    graph outputs only output/final_state).
+    """
+    from ....runtime.opaque import OpaqueOpSpec, opacify
+
+    def _fwd(query, key, value, initial_state, scale):
+        return _ChunkedKNormalized.apply(query, key, value, initial_state, scale)
+
+    def _meta(query, key, value, initial_state, scale):
+        B, T, H, K = query.shape
+        V = value.shape[-1]
+        import torch as _t
+        return [((B, T, H, V), query.dtype), ((B, H, K, V), _t.float32)]
+
+    chunked = opacify(
+        OpaqueOpSpec(
+            name="k2_recurrence_chunked_k_normalized",
+            tensor_args=("query", "key", "value", "initial_state"),
+            n_outputs=2,
+            optional_args=("initial_state",),
+            scalar_args=("scale",),
+        ),
+        _fwd,
+        output_meta=_meta,
+    )
+    return chunked(
+        query=query, key=key, value=value, initial_state=initial_state, scale=scale,
+    )
+
+
 def linear_delta_state(
     initial_state,
     keys,
@@ -1253,15 +1680,12 @@ def linear_delta_state(
     pointwise decay (RWKV-7 DPLR) the kernel takes ``alpha``/``low_rank_beta`` directly
     and composes the rank-1 update with the decay — ``M = exp(g)·M + k·vᵀ +
     low_rank_beta·(alphaᵀ·M)`` with the read off the pre-decay state. The normalized
-    variant stays declined (the kernel's ``y/max(q·z, ε)`` diverges from the pinned
-    ``y/((scale·q·norm)+ε)`` — measured 1.9e7) and the elementwise gate stays
+    variant is admitted: the denominator state tracks the pinned recurrence exactly
+    (verified 0.0) and the read is ``denom = (q·norm) + ε`` (the pinned additive
+    form, NOT the old clamped ``max(q·z, ε)``); wide feature widths (Based's Taylor
+    map, K=2145) run the chunked-K schedule. The elementwise gate stays
     reference-tier (single-client).
     """
-    if spec.normalized:
-        # The normalized variant is admitted: the denominator state tracks the pinned
-        # recurrence exactly (verified 0.0), and the read is denom = (q·norm) + ε
-        # (additive, matching the pinned law — NOT the previous clamped form).
-        pass
     if spec.gate_scope.value == "elementwise":
         raise ValueError("native K2 does not implement the elementwise gate scope")
     gate = spec.gate_scope.value
@@ -1296,6 +1720,23 @@ def linear_delta_state(
     read_before = spec.read_timing.value == "before_update"
 
     dual_gate = spec.erase_gate or spec.write_gate
+    # Chunked-K schedule for the normalized additive law at wide feature widths:
+    # the Based Taylor map expands head_dim 64 → 2145, and the fused kernel's
+    # BLOCK_K=next_pow2(K)=4096 register state tile hangs the compiler there
+    # (measured, exit 124). The schedule is justified by the register file, not the
+    # law — this is the same admitted normalized additive variant (clients:
+    # linear_attention's normalized form, based_attention), partitioned over the
+    # state rows. Narrow widths stay on the fused kernel.
+    if (
+        spec.normalized
+        and not spec.delta
+        and spec.gate_scope.value == "none"
+        and not read_before
+        and not (dual_gate or spec.predict_key or spec.low_rank or spec.num_deltas > 1)
+        and keys.shape[-1] > _CHUNKED_K_THRESHOLD
+    ):
+        out, final = _chunked_k_normalized_recurrence(q, k, v, initial_state, scale)
+        return out.transpose(1, 2), final
     if dual_gate or spec.predict_key or spec.low_rank or spec.num_deltas > 1:
         # --- Transition-feature path: call the kernel directly (the opaque op covers
         # the canonical envelope; the feature paths are newly qualified and get their
@@ -1362,12 +1803,31 @@ def linear_delta_state(
             is_delta=is_delta, read_before=read_before, normalizer=False,
         )
 
+    def _fwd_normalized(query, key, value, log_decay, beta, initial_state, scale,
+                        decay_granularity, is_delta, read_before):
+        return execute_matrix_state_recurrence(
+            query=query, key=key, value=value, log_decay=log_decay, beta=beta,
+            initial_state=initial_state, scale=scale, decay_granularity=decay_granularity,
+            is_delta=is_delta, read_before=read_before, normalizer=True,
+        )
+
     def _meta(query, key, value, log_decay, beta, initial_state, scale,
               decay_granularity, is_delta, read_before):
         B, T, H, K = query.shape
         V = value.shape[-1]
         import torch as _t
         return [((B, T, H, V), query.dtype), ((B, H, K, V), _t.float32)]
+
+    def _meta_normalized(query, key, value, log_decay, beta, initial_state, scale,
+                         decay_granularity, is_delta, read_before):
+        B, T, H, K = query.shape
+        V = value.shape[-1]
+        import torch as _t
+        return [
+            ((B, T, H, V), query.dtype),
+            ((B, H, K, V), _t.float32),
+            ((B, H, K), _t.float32),
+        ]
 
     k2_recurrence = opacify(
         OpaqueOpSpec(
@@ -1380,7 +1840,27 @@ def linear_delta_state(
         _fwd,
         output_meta=_meta,
     )
+    # The normalized variant is a separate registration: it returns a third output
+    # (the final denominator state [B,H,K]) and runs the kernel with normalizer=True.
+    k2_recurrence_normalized = opacify(
+        OpaqueOpSpec(
+            name="k2_recurrence_normalized",
+            tensor_args=("query", "key", "value", "log_decay", "beta", "initial_state"),
+            n_outputs=3,
+            optional_args=("log_decay", "beta"),
+            scalar_args=("scale", "decay_granularity", "is_delta", "read_before"),
+        ),
+        _fwd_normalized,
+        output_meta=_meta_normalized,
+    )
 
+    if spec.normalized:
+        out, final, _final_norm = k2_recurrence_normalized(
+            query=q, key=k, value=v, log_decay=g, beta=b, initial_state=initial_state,
+            scale=scale, decay_granularity=granularity,
+            is_delta=spec.delta, read_before=read_before,
+        )
+        return out.transpose(1, 2), final
     out, final = k2_recurrence(
         query=q, key=k, value=v, log_decay=g, beta=b, initial_state=initial_state,
         scale=scale, decay_granularity=granularity,
@@ -1398,8 +1878,6 @@ class _K2NativeBase:
     native kernel semantics diverge from the pinned law, so the native tier never
     silently executes the wrong equation:
 
-    - ``normalized`` — the kernel reads ``y/max(q·z, ε)`` but the pinned law is
-      ``y/((scale·q·norm) + ε)`` (verified divergence); the reference tier owns it.
     - ``elementwise`` gate scope — the per-element ``[K, V]`` Mamba-1 gate has no
       native branch (single-client, reference-tier per the two-client rule).
     - the A8 transition features (``erase_gate``/``write_gate``/``predict_key``/
@@ -1431,8 +1909,8 @@ class _K2NativeBase:
             )
         # The transition features are parity-qualified (forward + cotangents) against the
         # pinned laws and the Torch reference — see linear_delta_state's docstring for the
-        # measured residuals. Only the normalized variant (denominator law diverges) and
-        # the elementwise gate (single-client) remain declined.
+        # measured residuals. The normalized variant is admitted (additive denominator);
+        # only the elementwise gate (single-client) remains declined.
         return None
 
     def execute(self, request, operands):
