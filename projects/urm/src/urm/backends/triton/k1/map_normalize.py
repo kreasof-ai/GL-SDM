@@ -88,7 +88,7 @@ def _map_normalize_forward(
             weights = normed
     else:
         if SCORE_MAP == 0:
-            mapped = tl.exp(scores)
+            mapped = tl.exp(tl.minimum(scores, 30.0))  # clamp to avoid overflow under bf16
         elif SCORE_MAP == 1:
             mapped = 0.5 * scores * (1.0 + tl.math.tanh(0.7978845604730 * (scores + 0.044715 * scores * scores * scores)))
         else:
