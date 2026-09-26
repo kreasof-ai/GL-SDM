@@ -339,10 +339,12 @@ def _check_checkpoint_alignment(cfg: TrainConfig, mixer: MixerSpec, data_iter, *
     MFU path is measured separately in ``train``.
     """
     # Reduced shape: 2 layers / 2 heads is enough to exercise resume determinism.
-    # The gate runs on the reference tier for speed — except stateful K3 mixers, whose
-    # route generation has no reference-tier provider: those run the gate on the tier
-    # under training (the tier being certified).
-    gate_target = (cfg.target or mixer.tier) if mixer.stateful else "reference"
+    # The gate runs on the tier UNDER TRAINING (cfg.target or the registered tier) —
+    # certifying the reference tier while the native tier trains is exactly the gap
+    # that hid the key_dim_rsqrt divergence behind a green KL. Native-tier resume is
+    # deterministic by construction (program-ordered atomics, fixed-order reductions);
+    # this gate is where that claim is exercised.
+    gate_target = cfg.target or mixer.tier
     small = TrainConfig(
         mixer=cfg.mixer, vocab_size=min(cfg.vocab_size, 512),
         sequence_length=min(cfg.sequence_length, 64), layers=2, width=128,
