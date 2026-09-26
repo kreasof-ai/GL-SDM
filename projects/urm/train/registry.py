@@ -652,7 +652,7 @@ MIXER_REGISTRY: dict[str, MixerSpec] = {
     "mamba1": MixerSpec("mamba1", _build_mamba1_k2, "mamba_ssm", True, True),
     "log_linear_mamba2": MixerSpec("log_linear_mamba2", _build_log_linear_mamba2, None, False, False, tier="native"),
     "mla_attention": MixerSpec("mla_attention", _build_mla, None, False, False, tier="native"),
-    "tucker_attention": MixerSpec("tucker_attention", _build_tucker, None, False, False),
+    "tucker_attention": MixerSpec("tucker_attention", _build_tucker, None, False, False, tier="native"),
     "differential_attention": MixerSpec("differential_attention", _build_differential, None, False, False, tier="native"),
     # --- K1 native (the two-pass backward is SMEM-qualified at head_dim <= 64) ---
     "dense_attention": MixerSpec("dense_attention", _build_dense_attention,
