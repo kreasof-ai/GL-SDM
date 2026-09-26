@@ -399,22 +399,26 @@ def _check_checkpoint_alignment(cfg: TrainConfig, mixer: MixerSpec, data_iter, *
 
     uninterrupted = run_with_checkpoint(None)
     resumed = run_with_checkpoint(small.steps)
-    if not mixer.stateful:
+    # Relaxed-atomic backward rows: the native indexed-K1 backward (dsa, longformer,
+    # sparse_transformer, nsa's selected branch — see k1/indexed.py) and the K3 stateful
+    # backward reduce dk/dv through relaxed tl.atomic_add — summation order is
+    # scheduler-dependent BY DESIGN (a serialized scatter would destroy the
+    # P-parallelism the kernel exists for). Bitwise parameter equality is unachievable
+    # for these rows and is not the property under test.
+    atomic_backward = mixer.stateful or mixer.atomic_backward
+    if not atomic_backward:
         return all(
             torch.equal(uninterrupted["params"][k], resumed["params"][k])
             for k in uninterrupted["params"]
         )
-    # Stateful (K3) mixers: the native backward scatters gradients with relaxed
-    # tl.atomic_add — summation order is scheduler-dependent BY DESIGN (a serialized
-    # scatter would destroy the P-parallelism the kernel exists for). Measured on this
-    # config: two IDENTICAL uninterrupted runs diverge up to 1.6e-2 in parameters over
-    # 11 steps while their per-step losses agree to 2e-4 — the noise is high-dimensional
-    # but cancels in the loss. So bitwise parameter equality is unachievable and is not
-    # the property under test. The gate is: (a) the checkpoint round-trip is
-    # bitwise-lossless (structural — a misregistered param/buffer fails exactly), and
-    # (b) the resumed run's loss trajectory matches the uninterrupted run within 1e-2
-    # absolute per step (~50x the measured run-to-run loss spread): resume reproduces
-    # the training trajectory, which is what checkpointing is FOR.
+    # Measured on this config (K3): two IDENTICAL uninterrupted runs diverge up to
+    # 1.6e-2 in parameters over 11 steps while their per-step losses agree to 2e-4 —
+    # the noise is high-dimensional but cancels in the loss. The gate is: (a) the
+    # checkpoint round-trip is bitwise-lossless (structural — a misregistered
+    # param/buffer fails exactly), and (b) the resumed run's loss trajectory matches
+    # the uninterrupted run within 1e-2 absolute per step (~50x the measured
+    # run-to-run loss spread): resume reproduces the training trajectory, which is
+    # what checkpointing is FOR.
     if not resumed["roundtrip_lossless"]:
         return False
     return all(

@@ -468,7 +468,9 @@ def _build_pattention(model_dim, num_heads, head_dim, intent, target="reference"
     (pinned ParallelTokenformerLayer); the sequence mixing is standard causal
     attention over the projected heads."""
     from architectures.pattention import TokenformerBlock
-    return TokenformerBlock(model_dim, num_heads, head_dim, ffn_slots=256, qkv_slots=64,
+    # Slot counts sit inside the native map_normalize SMEM envelope at the benchmark
+    # width (measured: slots<=128 fits at width 768; 256 overflows the 101KB limit).
+    return TokenformerBlock(model_dim, num_heads, head_dim, ffn_slots=64, qkv_slots=64,
                             target=target, intent=intent)
 
 
@@ -669,13 +671,14 @@ MIXER_REGISTRY: dict[str, MixerSpec] = {
                       None, False, False, tier="native"),
     "moba": MixerSpec("moba", _op("moba.MoBALayer", extra=_moba_ops, chunk_size=8, topk=2),
                       None, False, False, tier="native"),
-    "nsa": MixerSpec("nsa", _build_nsa_full, "fla.ops.nsa", True, False, tier="native"),
+    "nsa": MixerSpec("nsa", _build_nsa_full, "fla.ops.nsa", True, False, tier="native",
+                     atomic_backward=True),  # indexed-K1 branches: relaxed-atomic backward
     "dsa": MixerSpec("dsa", _op("dsa.DSALayer", layout="bthd", extra=_dsa_ops),
-                     None, False, False, tier="native"),
+                     None, False, False, tier="native", atomic_backward=True),  # indexed-K1
     "longformer": MixerSpec("longformer", _op("longformer.LongformerLayer", layout="bthd", extra=_longformer_ops, window=8),
-                            None, False, False, tier="native"),
+                            None, False, False, tier="native", atomic_backward=True),  # indexed-K1
     "sparse_transformer": MixerSpec("sparse_transformer", _op("sparse_transformer.SparseTransformerLayer", layout="bthd", extra=_sparse_transformer_ops, stride=4, local_ctx=4),
-                                    None, False, False, tier="native"),
+                                    None, False, False, tier="native", atomic_backward=True),  # indexed-K1
     "abc_gsa": MixerSpec("abc_gsa", _build_abc("abc_gsa.ABCLayer"),
                          "fla.ops.abc", True, True, tier="native"),
     "gsa": MixerSpec("gsa", _build_abc("abc_gsa.GSALayer", gate=True),

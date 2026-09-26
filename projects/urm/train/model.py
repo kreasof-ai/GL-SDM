@@ -52,6 +52,10 @@ class MixerSpec:
     #                block summaries, not a sequence mixer); base blocks are dense
     #                attention, the row under test is the residual law itself.
     granularity: str = "mixer"
+    # The native backward reduces dk/dv through relaxed tl.atomic_add (the indexed-K1
+    # kernel; K3 rows set this via stateful). Bitwise resume equality is unachievable
+    # by design; the checkpoint gate uses the loss-trajectory criterion instead.
+    atomic_backward: bool = False
 
 
 class RMSNorm(nn.Module):

@@ -142,11 +142,14 @@ class PattentionLayer(torch.nn.Module):
         lead = query.shape[:-2]
         L, K = query.shape[-2], query.shape[-1]
         q = query.reshape(-1, L, 1, K).float()
-        # Broadcast the parameter tokens across the (flattened) batch.
+        # Broadcast the parameter tokens across the (flattened) batch. The expand
+        # must be materialized: the kernels index (batch*TK + key) flat offsets, so
+        # a stride-0 view reads out of bounds for batch > 0 (context-dependent
+        # garbage — the resume-gate nondeterminism this surfaced).
         B = q.shape[0]
         P = key.shape[-2]
-        k = key.reshape(1, P, 1, K).float().expand(B, P, 1, K)
-        v = value.reshape(1, P, 1, self.param_value_dim).float().expand(B, P, 1, self.param_value_dim)
+        k = key.reshape(1, P, 1, K).float().expand(B, P, 1, K).contiguous()
+        v = value.reshape(1, P, 1, self.param_value_dim).float().expand(B, P, 1, self.param_value_dim).contiguous()
         out = self._plan.execute(query=q, key=k, value=v, scale=scale_factor)["output"]
         out = out.reshape(*lead, L, self.param_value_dim)
         return out.to(inputs.dtype)
