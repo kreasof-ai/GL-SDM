@@ -1,0 +1,14 @@
+{
+  "mixer": "hopfield_association",
+  "steps": 10,
+  "final_loss": 10.526403427124023,
+  "mfu": 0.2648293023004957,
+  "params": 347226624,
+  "checkpoint_aligned": true,
+  "kl_divergence": null,
+  "wallclock_s": 9.218135253991932,
+  "throughput_tokens_s": 8886.829900279927,
+  "peak_memory_gib": 15.749567031860352,
+  "baseline_tier": "reference-implementation",
+  "granularity": "mixer"
+}

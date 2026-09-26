@@ -1,0 +1,14 @@
+{
+  "mixer": "gdn2",
+  "steps": 10,
+  "final_loss": 8.966974258422852,
+  "mfu": 0.14251449583941816,
+  "params": 115226028,
+  "checkpoint_aligned": true,
+  "kl_divergence": null,
+  "wallclock_s": 5.699002223002026,
+  "throughput_tokens_s": 14374.44605116289,
+  "peak_memory_gib": 10.266016960144043,
+  "baseline_tier": "production-kernel",
+  "granularity": "mixer"
+}

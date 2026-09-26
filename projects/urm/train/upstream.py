@@ -1173,21 +1173,36 @@ def main() -> None:
             continue
         t0 = time.time()
         if args.subprocess:
-            cmd = [sys.executable, "-m", "train.upstream", "--rows", row,
-                   "--out-dir", str(out_dir), "--steps", str(args.steps),
-                   "--layers", str(args.layers), "--width", str(args.width),
-                   "--num-heads", str(args.num_heads), "--head-dim", str(args.head_dim),
-                   "--sequence-length", str(args.sequence_length),
-                   "--microbatch-tokens", str(args.microbatch_tokens)]
-            env = dict(os.environ, PYTHONPATH="src:.", URM_UPSTREAM_CHILD="1")
-            try:
-                with log_file.open("w") as log:
-                    proc = subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT,
-                                          env=env, timeout=args.timeout)
-                rec = json.loads(out_file.read_text()) if proc.returncode == 0 \
-                    else {"mixer": row, "error": f"exit {proc.returncode} (see {log_file})"}
-            except subprocess.TimeoutExpired:
-                rec = {"mixer": row, "error": f"timeout after {args.timeout}s"}
+            # Same microbatch OOM ladder as the sweep driver (the naive-recurrence
+            # baselines keep the full T-loop autograd graph — memory-heavy at 8192).
+            ladder = (args.microbatch_tokens, 2048, 1024)
+            rec = {"mixer": row, "error": "OOM at all fallback microbatches"}
+            for attempt, mb in enumerate(ladder):
+                cmd = [sys.executable, "-m", "train.upstream", "--rows", row,
+                       "--out-dir", str(out_dir), "--steps", str(args.steps),
+                       "--layers", str(args.layers), "--width", str(args.width),
+                       "--num-heads", str(args.num_heads), "--head-dim", str(args.head_dim),
+                       "--sequence-length", str(args.sequence_length),
+                       "--microbatch-tokens", str(mb)]
+                env = dict(os.environ, PYTHONPATH="src:.", URM_UPSTREAM_CHILD="1")
+                try:
+                    with log_file.open("w") as log:
+                        proc = subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT,
+                                              env=env, timeout=args.timeout)
+                except subprocess.TimeoutExpired:
+                    rec = {"mixer": row, "error": f"timeout after {args.timeout}s"}
+                    break
+                if proc.returncode == 0:
+                    rec = json.loads(out_file.read_text())
+                    if attempt:
+                        rec["microbatch_fallback"] = mb
+                        out_file.write_text(json.dumps(rec, indent=2))
+                    break
+                log_text = log_file.read_text() if log_file.exists() else ""
+                if "out of memory" not in log_text.lower():
+                    rec = {"mixer": row, "error": f"exit {proc.returncode} (see {log_file})"}
+                    break
+                print(f"[upstream] {row}: OOM at {mb}, retrying smaller", flush=True)
         else:
             try:
                 rec = _run_one(row, args)

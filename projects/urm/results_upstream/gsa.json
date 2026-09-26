@@ -1,0 +1,14 @@
+{
+  "mixer": "gsa",
+  "steps": 10,
+  "final_loss": 12.658868789672852,
+  "mfu": 0.21602252632849614,
+  "params": 108057600,
+  "checkpoint_aligned": true,
+  "kl_divergence": null,
+  "wallclock_s": 3.5267422719916794,
+  "throughput_tokens_s": 23228.235488196533,
+  "peak_memory_gib": 9.537521839141846,
+  "baseline_tier": "production-kernel",
+  "granularity": "mixer"
+}
