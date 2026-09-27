@@ -54,6 +54,10 @@ policy, intent mode, shape and state initialization. Missing upstream modes are
 
 ## Historical records
 
-Older preserved results under `results/` and the retired generic-decoder table are
-historical engineering evidence from a prior harness; they are not current
-native/provider qualification and are not joined into the current report.
+The retired generic-decoder table (`results/validation/`: direction-sweep rows and
+master-table) and its reproduction script (`benchmarks/analysis/coverage_recovery.py`)
+were deleted — stale documentation from a prior harness whose generator is absent
+from the tree, not current evidence (git history retains them). What remains under
+`results/` is live: committed qualification/benchmark artifacts the suite validates
+against schemas (`test_artifact_schemas.py`) or that feed the mechanically-rendered
+validation docs (`docs/validation/`).
