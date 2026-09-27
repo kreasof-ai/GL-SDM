@@ -22,8 +22,11 @@ experiments, and acceptance tests stay within their project directory.
 
 ## Frozen URM dependency
 
-GL-SDM uses URM's sparse read/update primitives and defines its own transactional
-memory operator. CSDM consumes that GL-SDM contract and the same URM dependency.
+The [GL-SDM baseline suite](projects/gl-sdm/README.md#models-and-experiments)
+uses ordinary PyTorch SDPA, upstream CUDA SDM, and FLA GDN2, independently of URM.
+The planned GL-SDM architecture defines its own transactional memory operator;
+future compiler integration uses the frozen URM dependency. CSDM consumes the
+GL-SDM memory contract and the same URM dependency.
 URM source is maintained in its own repository.
 
 The accepted baseline is pinned to commit

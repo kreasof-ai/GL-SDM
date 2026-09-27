@@ -1,0 +1,49 @@
+{
+  "arch_type": "sdm",
+  "runtime": {
+    "torch": "2.14.0+cu130",
+    "cuda": "13.0",
+    "reference_fallback": false,
+    "repository": "https://github.com/facebookresearch/sparse-delta-memory",
+    "revision": "183e7df809131b80ad4393741029d0f20fc3640b",
+    "source": "/tmp/urm-comparator-pins/sdm",
+    "cuda_extensions": {
+      "sparse_ip_cuda": {
+        "path": "/home/sagemaker-user/.cache/urm/sdm-extensions/sparse_ip_sorted/sparse_ip_sorted.so",
+        "sha256": "5aa746d658f29a37d8d4139eb0a4c3ddfbd83cf780b2180f32195af9bff85570"
+      },
+      "warp_cooperative_gather_cuda": {
+        "path": "/home/sagemaker-user/.cache/urm/sdm-extensions/warp_cooperative_gather/warp_cooperative_gather.so",
+        "sha256": "e4eb0e0af8ae95bab0015f3cebe6fe74389a8e32fefc176ddb1a499d756e8eb4"
+      }
+    },
+    "gpu": "NVIDIA A10G"
+  },
+  "warmup": 2,
+  "iterations": 3,
+  "training": {
+    "num_params": 6580816,
+    "active_params": 6572624,
+    "memory_params": 8192,
+    "tokens": 390,
+    "seconds": 0.07855148595990613,
+    "tok_s": 4964.896529125648,
+    "mfu_6nd_pct": 0.2797062692986965,
+    "peak_tflops": 70.0,
+    "mfu_formula": "6 * active_params * tokens / seconds / peak_flops; excludes sparse learned memory bank and state work",
+    "median_step_ms": 26.36735897976905,
+    "loss": 10.755294095552884
+  },
+  "prefill": {
+    "median_ms": 9.509505005553365,
+    "tokens_per_second": 13650.980195516808,
+    "context_tokens": 65
+  },
+  "decode": {
+    "median_ms": 3.3929129713214934,
+    "tokens_per_second": 591.287440022989,
+    "context_tokens": 65
+  },
+  "peak_allocated_gib": 0.22502374649047852,
+  "peak_reserved_gib": 0.796875
+}

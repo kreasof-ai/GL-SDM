@@ -1,0 +1,142 @@
+{
+  "transformer": {
+    "reference": {
+      "arch_type": "transformer",
+      "status": "passed",
+      "batch": 2,
+      "length": 65,
+      "logits_max_abs": 0.015506386756896973,
+      "logits_relative_l2": 0.003197974991053343,
+      "gradient_max_abs": 0.00018310546875,
+      "continuation_max_abs": 0.01521456241607666
+    },
+    "checkpoint_step": 3,
+    "generated_shape": [
+      1,
+      8
+    ],
+    "val_stream_prefix_ce": {
+      "65": 10.821197979266827,
+      "129": 10.822371608527131
+    },
+    "val_stream_prefix_tokens": {
+      "65": 65,
+      "129": 129
+    },
+    "needle_val_stream": {
+      "65": {
+        "ce": 10.825603485107422,
+        "acc": 0.0,
+        "trials": 2
+      },
+      "129": {
+        "ce": 10.825603485107422,
+        "acc": 0.0,
+        "trials": 2
+      }
+    },
+    "needle_absent_ce": 10.825603485107422
+  },
+  "sdm": {
+    "reference": {
+      "arch_type": "sdm",
+      "status": "passed",
+      "batch": 2,
+      "length": 65,
+      "logits_max_abs": 0.6813762187957764,
+      "logits_relative_l2": 0.04072548821568489,
+      "gradient_max_abs": 0.00408935546875,
+      "continuation_max_abs": 0.5182909369468689,
+      "continuation_relative_l2": 0.031205160543322563,
+      "request_reset_max_abs": 0.188471719622612,
+      "request_reset_relative_l2": 0.007977171801030636,
+      "causality_max_abs": 0.32435986399650574,
+      "causality_relative_l2": 0.017727306112647057,
+      "reload_max_abs": 0.6775422096252441,
+      "reload_relative_l2": 0.029122889041900635,
+      "fp32_check": {
+        "arch_type": "sdm",
+        "status": "passed",
+        "batch": 2,
+        "length": 65,
+        "logits_max_abs": 0.00019973516464233398,
+        "logits_relative_l2": 3.987351374235004e-05,
+        "gradient_max_abs": 2.0209699869155884e-06,
+        "continuation_max_abs": 7.462501525878906e-05,
+        "cuda_calls": {
+          "sparse_inner_product": 28,
+          "warp_cooperative_gather": 0
+        }
+      },
+      "bf16_note": "5% relative L2 limit; strict FP32 check independently validates routing/recurrence integration",
+      "cuda_calls": {
+        "sparse_inner_product": 56,
+        "warp_cooperative_gather": 60
+      }
+    },
+    "checkpoint_step": 3,
+    "generated_shape": [
+      1,
+      8
+    ],
+    "val_stream_prefix_ce": {
+      "65": 10.8226806640625,
+      "129": 10.823589472807654
+    },
+    "val_stream_prefix_tokens": {
+      "65": 65,
+      "129": 129
+    },
+    "needle_val_stream": {
+      "65": {
+        "ce": 10.825628280639648,
+        "acc": 0.0,
+        "trials": 2
+      },
+      "129": {
+        "ce": 10.825627326965332,
+        "acc": 0.0,
+        "trials": 2
+      }
+    },
+    "needle_absent_ce": 10.825626373291016
+  },
+  "gdn2": {
+    "reference": {
+      "arch_type": "gdn2",
+      "status": "passed",
+      "batch": 2,
+      "length": 65,
+      "logits_max_abs": 0.023102641105651855,
+      "logits_relative_l2": 0.005449716001749039,
+      "gradient_max_abs": 0.000244140625,
+      "continuation_max_abs": 0.019475042819976807
+    },
+    "checkpoint_step": 3,
+    "generated_shape": [
+      1,
+      8
+    ],
+    "val_stream_prefix_ce": {
+      "65": 10.822130408653846,
+      "129": 10.82330937348595
+    },
+    "val_stream_prefix_tokens": {
+      "65": 65,
+      "129": 129
+    },
+    "needle_val_stream": {
+      "65": {
+        "ce": 10.825482368469238,
+        "acc": 0.0,
+        "trials": 2
+      },
+      "129": {
+        "ce": 10.825487613677979,
+        "acc": 0.0,
+        "trials": 2
+      }
+    },
+    "needle_absent_ce": 10.825482368469238
+  }
+}
