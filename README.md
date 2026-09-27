@@ -28,8 +28,9 @@ The [GL-SDM model](projects/gl-sdm/src/gl_sdm/global_model.py) has a tied reason
 adaptive or fixed depth and one global memory bank with snapshot-and-commit
 writes. It uses the same experiment interfaces as the three baselines.
 GL-SDM defines its own [transactional memory operator](projects/gl-sdm/src/gl_sdm/memory.py);
-future compiler integration uses the frozen URM dependency. CSDM consumes the
-GL-SDM memory contract and the same URM dependency.
+its native path compiles snapshot reads with frozen URM and implements routing,
+proposals and deterministic commits inside GL-SDM. CSDM consumes the GL-SDM
+memory contract and the same URM dependency.
 URM source is maintained in its own repository.
 
 The accepted baseline is pinned to commit
@@ -51,7 +52,7 @@ The preserved benchmark report is in
 1. Prove dense/small GL-SDM semantics on controlled tasks.
 2. Introduce sparse addressing and measure the memory/depth trade-off.
 3. Add CSDM overlays and consolidation after single-tier behavior is understood.
-4. Capture real routing traces before fixing URM's kernel API.
+4. Capture real routing traces to guide project-owned kernels against frozen URM.
 5. Scale only after each project passes its own acceptance gate.
 
 ## Repository rule

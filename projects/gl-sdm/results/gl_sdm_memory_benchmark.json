@@ -1,0 +1,119 @@
+{
+  "config": {
+    "batch": 2,
+    "heads": 8,
+    "slots": 4096,
+    "dim": 64,
+    "routes": 8,
+    "reasoning_steps": 8,
+    "dtype": "float32",
+    "seed": 1234,
+    "transaction_tokens": 1,
+    "cross_step_collision": "all write addresses repeated"
+  },
+  "scope": "token transaction forward/backward; no model projections or optimizer",
+  "warmup": 3,
+  "iterations": 10,
+  "correctness_max_abs": {
+    "readings": 3.5762786865234375e-07,
+    "state": 2.384185791015625e-07,
+    "initial_state_grad": 4.656612873077393e-10,
+    "weights_grad": 3.725290298461914e-09,
+    "targets_grad": 1.4551915228366852e-11,
+    "beta_grad": 2.3283064365386963e-10,
+    "decay_grad": 8.149072527885437e-10,
+    "mass_grad": 3.725290298461914e-09
+  },
+  "torch": {
+    "runtime": {
+      "torch": "2.14.0+cu130",
+      "cuda": "13.0",
+      "reference_fallback": false,
+      "implementation": "project-owned PyTorch GL-SDM",
+      "memory_backend": "torch",
+      "transaction": "one token",
+      "state_dtype": "float32",
+      "optimized_kernel": false,
+      "source_sha256": "f9d443e7eccda9071aeb301db97ae514b6ff103494bcfd519a099fb2fc64332f",
+      "gpu": "NVIDIA A10G"
+    },
+    "forward_backward_ms": 12.278363486984745,
+    "samples_ms": [
+      12.300794012844563,
+      12.551229039672762,
+      12.254754023160785,
+      12.216572009492666,
+      12.984169996343553,
+      12.32502399943769,
+      12.238513969350606,
+      12.82740500755608,
+      12.171612994279712,
+      12.255932961124927
+    ],
+    "peak_allocated_mib": 98.48876953125,
+    "step_end_allocated_mib": [
+      49.22705078125,
+      49.22705078125,
+      49.22705078125,
+      49.22705078125,
+      49.22705078125,
+      49.22705078125,
+      49.22705078125,
+      49.22705078125,
+      49.22705078125,
+      49.22705078125
+    ],
+    "saved_operator_storage_bytes": 1487936,
+    "retains_initializer_storage_for_backward": false
+  },
+  "urm": {
+    "runtime": {
+      "torch": "2.14.0+cu130",
+      "cuda": "13.0",
+      "reference_fallback": false,
+      "implementation": "GL-SDM transaction kernels + frozen URM",
+      "memory_backend": "urm",
+      "transaction": "one token",
+      "state_dtype": "float32",
+      "optimized_kernel": true,
+      "source_sha256": "f9d443e7eccda9071aeb301db97ae514b6ff103494bcfd519a099fb2fc64332f",
+      "urm": {
+        "repository": "https://github.com/kreasof-ai/urm.git",
+        "revision": "604bfdf5d2c827266a32ef142ca996cc712d70f0"
+      },
+      "routing": "GL-SDM stable product-key top-k; smaller address wins ties",
+      "commit": "stable ordered sum per address; no forward atomics",
+      "backward_storage": "selected rows; full bank versions are not saved",
+      "gpu": "NVIDIA A10G"
+    },
+    "forward_backward_ms": 8.186121500330046,
+    "samples_ms": [
+      8.41187103651464,
+      8.24204704258591,
+      7.9522510059177876,
+      8.130195958074182,
+      8.835920016281307,
+      7.96647003153339,
+      8.036703045945615,
+      7.888899999670684,
+      8.644976012874395,
+      8.479540992993861
+    ],
+    "peak_allocated_mib": 82.02685546875,
+    "step_end_allocated_mib": [
+      49.22705078125,
+      49.22705078125,
+      49.22705078125,
+      49.22705078125,
+      49.22705078125,
+      49.22705078125,
+      49.22705078125,
+      49.22705078125,
+      49.22705078125,
+      49.22705078125
+    ],
+    "saved_operator_storage_bytes": 586816,
+    "retains_initializer_storage_for_backward": false
+  },
+  "speedup": 1.499899981510134
+}

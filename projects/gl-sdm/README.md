@@ -16,7 +16,9 @@ evaluation and benchmark commands as its baselines.
 
 The baseline suite has exactly three models: a full Transformer using ordinary
 PyTorch and SDPA, Meta's upstream CUDA SDM, and FLA's GDN2. Every layer uses the
-chosen mixer. Neither GL-SDM nor these baselines depends on URM.
+chosen mixer. These baselines have no URM calls. GL-SDM's native memory path
+uses the frozen URM compiler for snapshot reads and project-owned CUDA kernels
+for stable routing, write proposals and transaction commits.
 
 Models follow ATMA's `embed`, `blocks`, `norm`, `proj` structure.
 `model(inputs, targets)` returns summed CE, regularization loss and an auxiliary
@@ -29,7 +31,7 @@ and `ABLATION_ERROR_JSON` blocks. See [source mapping](PROVENANCE.md).
 Install from the repository root:
 
 ```bash
-python -m pip install -e 'projects/gl-sdm[test]'
+python -m pip install -e 'projects/gl-sdm[test,urm]'
 python projects/gl-sdm/scripts/setup_sources.py
 ```
 
@@ -126,9 +128,13 @@ are write-timing controls within GL-SDM, alongside the three external baselines.
 The token boundary keeps results independent of how prefill is split into
 chunks; the entire token/reasoning loop lives inside one ATMA-compatible block.
 
-This is the initial PyTorch model and transaction implementation. Its token
-loop, routing and memory commits are not yet fused or tuned for large-model
-throughput. The configs and smoke comparisons establish working modeling and
+The supplied GL-SDM configs select `gl_memory_backend: urm`. Native memory
+operations execute on CUDA; missing dependencies or unsupported inputs fail.
+The explicit `torch` backend supports CPU execution and supplies a performance
+control. Older checkpoints without this field retain the PyTorch backend.
+The dense reasoner and causal token/ACT controller still run through PyTorch;
+this is not a fully fused decoder or serving engine.
+The configs and smoke comparisons establish working modeling and
 correctness, not a quality or performance advantage. Adaptive halting has not
 been validated on converged training. Memory capacity, active parameters and
 compute must be matched for the architecture study.
@@ -141,9 +147,43 @@ multiplier is used to inflate the reported MFU.
 ## URM boundary
 
 [URM](https://github.com/kreasof-ai/urm) remains frozen at the revision in
-[shared/requirements-urm.txt](../../shared/requirements-urm.txt). Any future use
-of its compiler is developed against that external package. This project does
-not carry or modify URM source.
+[shared/requirements-urm.txt](../../shared/requirements-urm.txt). The adapter
+checks the installed package's exact Git revision and compiles its public
+read-only sparse-state graph. Requests/heads have disjoint address ranges;
+adaptive request removal does not copy the whole bank. This project does not
+carry or modify URM source. The three baselines remain independent of URM.
+
+The project's kernels preserve smaller-address tie-breaking and accumulate
+colliding proposals in stable proposal order, without forward atomics. Reads
+and proposals save selected rows for backward rather than full bank versions;
+initial-memory, routing, target, decay, beta and ACT-mass gradients remain
+connected. Accurate FP32 exponentials prevent approximate math from changing
+later BF16 routes. Fixed depth avoids unnecessary request-selection GPU
+synchronizations; adaptive depth still removes finished requests.
+
+Native read inputs are contiguous, normalized routes with ascending unique
+local slots and distinct request IDs. The router guarantees these conditions;
+the adapter performs structural checks without scanning GPU route values.
+Version/lineage checks remain in the public memory API for CSDM reuse.
+
+Compare the two GL-SDM implementations with the same model and workload:
+
+```bash
+gl-sdm verify --config projects/gl-sdm/configs/gl_sdm_smoke.json
+gl-sdm benchmark --config projects/gl-sdm/configs/gl_sdm_smoke.json \
+  --memory-backend torch --warmup 2 --iterations 5
+gl-sdm benchmark --config projects/gl-sdm/configs/gl_sdm_smoke.json \
+  --memory-backend urm --warmup 2 --iterations 5
+python projects/gl-sdm/scripts/benchmark_memory.py \
+  --output projects/gl-sdm/results/gl_sdm_memory_benchmark.json
+```
+
+Use `gl_sdm_fixed_smoke.json` for the fixed-depth pair. Run GPU measurements
+alone. The memory script checks all operand gradients and times one transaction
+with eight colliding proposals at 4,096 slots/head, eight heads and width 64.
+Its timings exclude model projections and the optimizer and have no MFU claim.
+Whole-model results include the optimizer, report actual depth, and record
+step-end allocation to distinguish peak workspace from retained state.
 
 ## This project owns
 

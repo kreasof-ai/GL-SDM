@@ -1,6 +1,7 @@
 """Independent recurrence, backward, causality and cached continuation checks."""
 import copy
 import tempfile
+from contextlib import ExitStack
 from unittest.mock import patch
 import torch
 from .checkpoint import save, load
@@ -28,6 +29,17 @@ def compare_bf16_sdm(actual, expected, label):
 
 
 def check(cfg, device="cuda", length=65):
+    if cfg["arch_type"] == "gl_sdm" and cfg.get("gl_memory_backend", "torch") == "urm":
+        from . import kernels
+        with ExitStack() as stack:
+            observed = {name: stack.enter_context(patch.object(kernels, name, wraps=getattr(kernels, name)))
+                        for name in ("route", "read", "propose", "commit")}
+            result = _check(cfg, device, length)
+            if any(spy.call_count == 0 for spy in observed.values()):
+                raise AssertionError("GL-SDM verification did not execute every native memory operator")
+            result["native_calls"] = {name: spy.call_count for name, spy in observed.items()}
+            result["memory_backend"] = "urm"
+            return result
     if cfg["arch_type"] != "sdm":
         return _check(cfg, device, length)
     from .upstream import sdm_layer, verified_import

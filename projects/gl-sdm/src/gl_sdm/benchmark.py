@@ -13,7 +13,7 @@ def run(model, cfg, device, iterations=10, warmup=3, peak=None):
     x = torch.randint(cfg["vocab_size"], (cfg["batch_size"] // cfg["seq_len"], cfg["seq_len"]), device=device)
     y = torch.randint(cfg["vocab_size"], x.shape, device=device)
     opts = optimizers(model, cfg, device)
-    result = {"arch_type": cfg["arch_type"], "runtime": metadata(cfg["arch_type"]), "warmup": warmup, "iterations": iterations}
+    result = {"arch_type": cfg["arch_type"], "runtime": metadata(cfg["arch_type"], cfg), "config": cfg, "warmup": warmup, "iterations": iterations}
     if torch.device(device).type == "cuda":
         torch.cuda.reset_peak_memory_stats()
     model.train()
@@ -22,14 +22,21 @@ def run(model, cfg, device, iterations=10, warmup=3, peak=None):
     synchronize(device)
     times = []
     depths = []
+    allocations = []
     for _ in range(iterations):
         t0 = time.perf_counter()
         loss = update(model, opts, x, y, cfg)
         synchronize(device)
         times.append(time.perf_counter() - t0)
+        if torch.device(device).type == "cuda":
+            allocations.append(torch.cuda.memory_allocated() / 1024**3)
         if cfg["arch_type"] == "gl_sdm":
-            depths.append(model.last_training_depth)
+            # Keep telemetry on CPU so the allocation trace measures model
+            # state rather than an ever-growing list of GPU depth tensors.
+            depths.append(model.last_training_depth.cpu())
     result["training"] = {**utilization(model, x.numel() * iterations, sum(times), peak_flops(peak) if torch.device(device).type == "cuda" else None, torch.cat(depths) if depths else None), "median_step_ms": 1000 * statistics.median(times), "loss": loss}
+    if allocations:
+        result["training"]["step_end_allocated_gib"] = allocations
     del opts
     model.eval()
     for name in ("prefill", "decode"):

@@ -1,6 +1,5 @@
 """GL-SDM: a tied reasoner, one global bank and token transactions.
 
-This is a PyTorch architecture implementation, not an optimized serving kernel.
 Tokens execute in causal order. Recurrence is contained inside one ATMA block,
 so a caller traversing embed/blocks/norm/proj cannot leak future-token writes.
 """
@@ -30,10 +29,19 @@ class GlobalRouter(nn.Module):
         self.decay = nn.Linear(dim, self.heads)
         self.proj = nn.Linear(dim, dim)
         self.read_norm = RMSNorm(dk)
+        self.backend = cfg.get("gl_memory_backend", "torch")
+        if self.backend not in {"torch", "urm"}:
+            raise ValueError("gl_memory_backend must be torch or urm")
+        if self.backend == "urm":
+            from .urm_adapter import verify_dependency
+            verify_dependency()
         self.reference = False
 
     def route(self, projection, hidden, count):
         scores = projection(hidden).float().view(-1, self.heads, 2, self.half)
+        if self.backend == "urm" and not self.reference:
+            from .kernels import route
+            return route(scores.flatten(-2), count)
         k = min(count, self.half)
         # Stable tie-breaking: smaller sub-key/product index wins equal scores.
         order = scores.argsort(dim=-1, descending=True, stable=True)[..., :k]
@@ -46,12 +54,16 @@ class GlobalRouter(nn.Module):
         product, combined = product.gather(-1, by_address), combined.gather(-1, by_address)
         chosen = combined.argsort(dim=-1, descending=True, stable=True)[..., :count]
         indices = product.gather(-1, chosen)
-        weights = combined.gather(-1, chosen).softmax(-1)
+        # Canonical address order is required by URM's supplied-route read.
+        order = indices.argsort(dim=-1, stable=True)
+        indices = indices.gather(-1, order)
+        logits = combined.gather(-1, chosen).gather(-1, order)
+        weights = logits.softmax(-1)
         return indices, weights
 
     def retrieve(self, view, requests, hidden):
         idx, weights = self.route(self.q, hidden, self.num_reads)
-        values = read(view, requests, idx, weights, self.reference).to(hidden.dtype)
+        values = read(view, requests, idx, weights, self.reference, self.backend).to(hidden.dtype)
         return self.proj(self.read_norm(values).flatten(1))
 
     def propose(self, view, requests, hidden, mass):
@@ -60,7 +72,7 @@ class GlobalRouter(nn.Module):
         target = self.v(hidden).view(shape)
         beta = self.beta(hidden).float().sigmoid().unsqueeze(-1)
         g = -F.softplus(self.decay(hidden).float() - 4).unsqueeze(-1)
-        return propose_write(view, requests, idx, weights, target, beta, g, mass, self.reference)
+        return propose_write(view, requests, idx, weights, target, beta, g, mass, self.reference, self.backend)
 
 
 class GlobalMemoryBlock(nn.Module):
@@ -95,6 +107,8 @@ class GlobalMemoryBlock(nn.Module):
             state = cache.view
         outputs, depths, ponder = [], [], []
         scale = self.max_steps ** -0.5
+        fixed_requests = torch.arange(B, device=inputs.device) if self.halt is None else None
+        fixed_mass = inputs.new_full((B,), 1 / self.max_steps, dtype=torch.float32) if self.halt is None else None
         for token in range(T):
             snapshot = state
             x = inputs[:, token]
@@ -103,24 +117,26 @@ class GlobalMemoryBlock(nn.Module):
             active = torch.ones(B, device=x.device, dtype=torch.bool)
             accumulated = torch.zeros(B, device=x.device)
             weighted = torch.zeros_like(x)
-            depth = torch.zeros(B, device=x.device, dtype=torch.int64)
+            depth = torch.full((B,), self.max_steps if self.halt is None else 0, device=x.device, dtype=torch.int64)
             remainder = torch.zeros(B, device=x.device)
             proposals = []
             for step in range(self.max_steps):
-                requests = active.nonzero().flatten()
+                # Fixed depth has no data-dependent request selection. Avoid a
+                # CUDA-to-host nonzero synchronization at every reasoning step.
+                requests = fixed_requests if self.halt is None else active.nonzero().flatten()
                 if requests.numel() == 0:
                     break
                 view = state if self.write_policy == "every_step" else snapshot
-                current = h[requests]
+                current = h if self.halt is None else h[requests]
                 mixed = self.attn.retrieve(view, requests, self.norm1(current))
-                updated = current + condition[requests] + mixed * scale
+                updated = current + (condition if self.halt is None else condition[requests]) + mixed * scale
                 updated = updated + self.mlp(self.norm2(updated)) * scale
-                h = h.index_copy(0, requests, updated)
-                depth = depth.index_add(0, requests, torch.ones_like(requests))
+                h = updated if self.halt is None else h.index_copy(0, requests, updated)
                 if self.halt is None:
-                    mass = x.new_full((requests.numel(),), 1 / self.max_steps, dtype=torch.float32)
+                    mass = fixed_mass
                     stopped = torch.full_like(mass, step == self.max_steps - 1, dtype=torch.bool)
                 else:
+                    depth = depth.index_add(0, requests, torch.ones_like(requests))
                     p = self.halt(self.norm1(updated)).float().sigmoid().flatten()
                     remaining = 1 - accumulated[requests]
                     stopped = (accumulated[requests] + p >= 1 - self.halt_epsilon) | (step == self.max_steps - 1)
@@ -131,12 +147,13 @@ class GlobalMemoryBlock(nn.Module):
                 write_mass = stopped.float() if self.write_policy == "final" else mass
                 proposal = self.attn.propose(view, requests, self.norm1(updated), write_mass)
                 if self.write_policy == "every_step":
-                    state = commit(view, merge(view, [proposal]), self.attn.reference)
+                    state = commit(view, merge(view, [proposal]), self.attn.reference, self.attn.backend)
                 else:
                     proposals.append(proposal)
-                active = active.index_copy(0, requests, ~stopped)
+                if self.halt is not None:
+                    active = active.index_copy(0, requests, ~stopped)
             if self.write_policy != "every_step":
-                state = commit(snapshot, merge(snapshot, proposals), self.attn.reference)
+                state = commit(snapshot, merge(snapshot, proposals), self.attn.reference, self.attn.backend)
             outputs.append(h if self.halt is None else weighted)
             depths.append(depth)
             ponder.append(depth.float() + remainder)

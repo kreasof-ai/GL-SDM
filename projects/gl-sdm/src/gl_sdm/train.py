@@ -130,7 +130,7 @@ def run(cfg, device, directory, emit, resume=None, peak=None):
                 block.mlp.proj.weight.zero_()
                 output = getattr(block.attn, "o_proj", getattr(block.attn, "Wo", getattr(block.attn, "proj", None)))
                 output.weight.zero_()
-    emit("ABLATION_CONFIG_JSON", {**cfg, "attn_type": cfg["arch_type"], "runtime": metadata(cfg["arch_type"])})
+    emit("ABLATION_CONFIG_JSON", {**cfg, "attn_type": cfg["arch_type"], "runtime": metadata(cfg["arch_type"], cfg)})
     loader = data_generator(cfg["train_data"], cfg["batch_size"], cfg["seq_len"], device, cfg.get("num_chunks", 1))
     for _ in range(data_batches):
         next(loader)

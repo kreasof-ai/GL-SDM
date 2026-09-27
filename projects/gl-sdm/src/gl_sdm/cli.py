@@ -16,11 +16,21 @@ def main():
     parser.add_argument("--peak-tflops", type=float)
     parser.add_argument("--iterations", type=int, default=10)
     parser.add_argument("--warmup", type=int, default=3)
+    parser.add_argument("--memory-backend", choices=("torch", "urm"), help="explicit GL-SDM control for a config-based train/verify/benchmark run")
     parser.add_argument("--prompt", default="The research question is")
     parser.add_argument("--tokens", type=int, default=64)
     parser.add_argument("--temperature", type=float, default=0)
     parser.add_argument("--top-k", type=int, default=0)
     args = parser.parse_args()
+    if args.memory_backend and (args.command not in {"train", "verify", "benchmark"} or args.checkpoint):
+        parser.error("--memory-backend requires config-based train, verify or benchmark")
+    def read_config():
+        cfg = json.loads(args.config.read_text())
+        if args.memory_backend:
+            if cfg["arch_type"] != "gl_sdm":
+                parser.error("--memory-backend applies only to GL-SDM")
+            cfg["gl_memory_backend"] = args.memory_backend
+        return cfg
     fh = None
     if args.log:
         args.log.parent.mkdir(parents=True, exist_ok=True)
@@ -37,14 +47,14 @@ def main():
             if args.config is None or args.output is None:
                 parser.error("train requires --config and --output checkpoint directory")
             from .train import run
-            cfg = json.loads(args.config.read_text())
+            cfg = read_config()
             run(cfg, args.device, args.output, emit, args.checkpoint, args.peak_tflops)
             return
         if args.command == "verify":
             if args.config is None:
                 parser.error("verify requires --config")
             from .verify import check
-            result = check(json.loads(args.config.read_text()), args.device)
+            result = check(read_config(), args.device)
             emit("REFERENCE_CHECK_JSON", result)
             if args.output:
                 args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -54,7 +64,7 @@ def main():
             model, _ = load(args.checkpoint, args.device)
             cfg = model.cfg
         elif args.command == "benchmark" and args.config:
-            cfg = json.loads(args.config.read_text())
+            cfg = read_config()
             torch.manual_seed(cfg.get("seed", 1234))
             model = create_model(cfg).to(args.device)
         else:

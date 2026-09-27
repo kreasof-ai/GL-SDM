@@ -1,0 +1,143 @@
+{
+  "runtime": {
+    "torch": "2.14.0+cu130",
+    "cuda": "13.0",
+    "reference_fallback": false,
+    "implementation": "GL-SDM transaction kernels + frozen URM",
+    "memory_backend": "urm",
+    "transaction": "one token",
+    "state_dtype": "float32",
+    "optimized_kernel": true,
+    "source_sha256": "f9d443e7eccda9071aeb301db97ae514b6ff103494bcfd519a099fb2fc64332f",
+    "urm": {
+      "repository": "https://github.com/kreasof-ai/urm.git",
+      "revision": "604bfdf5d2c827266a32ef142ca996cc712d70f0"
+    },
+    "initial_batch_read_plan": {
+      "program": "gl_sdm_snapshot_read",
+      "steps": [
+        {
+          "step_id": 0,
+          "kind": "anchor_dispatch",
+          "anchor": "urm_native_sparse_state_mixer_v0",
+          "exchanges": [],
+          "note": "sparse_state_mixer",
+          "launch_config": {
+            "schedule_family": "partition_owned_ordered_token_scan",
+            "block_d": 32,
+            "num_warps": 2,
+            "num_stages": 3,
+            "tokens_per_program": -1,
+            "read_timing": "current_state",
+            "state_layout": "partition_slot_value"
+          }
+        }
+      ],
+      "obligations": [],
+      "escape_hatch_count": 0
+    },
+    "routing": "GL-SDM stable product-key top-k; smaller address wins ties",
+    "commit": "stable ordered sum per address; no forward atomics",
+    "backward_storage": "selected rows; full bank versions are not saved",
+    "gpu": "NVIDIA A10G"
+  },
+  "checkpoint_step": 3,
+  "generated_shape": [
+    1,
+    8
+  ],
+  "reference": {
+    "arch_type": "gl_sdm",
+    "status": "passed",
+    "batch": 2,
+    "length": 65,
+    "logits_max_abs": 0.0,
+    "logits_relative_l2": 0.0,
+    "gradient_max_abs": 0.000213623046875,
+    "continuation_max_abs": 0.00766444206237793,
+    "native_calls": {
+      "route": 2340,
+      "read": 1170,
+      "propose": 1170,
+      "commit": 390
+    },
+    "memory_backend": "urm"
+  },
+  "training_curve": [
+    {
+      "step": 0,
+      "val_loss": 10.825839468149038,
+      "wall_s": 0.0
+    },
+    {
+      "step": 1,
+      "val_loss": 10.824624399038461,
+      "wall_s": 1.108169408980757
+    },
+    {
+      "step": 2,
+      "val_loss": 10.823265662560097,
+      "wall_s": 2.166609953972511,
+      "num_params": 6509925,
+      "active_params": 6505829,
+      "memory_params": 4096,
+      "mean_reasoning_steps": 3.0,
+      "p95_reasoning_steps": 3.0,
+      "max_reasoning_steps": 3.0,
+      "executed_reasoner_calls": 390,
+      "gl_write_policy": "merged",
+      "mfu_interpretation": "unique-parameter 6ND; repeated applications of tied reasoner weights are not counted",
+      "tokens": 130,
+      "seconds": 1.058440544991754,
+      "tok_s": 122.82220349090349,
+      "mfu_6nd_pct": 0.006849087885557324,
+      "peak_tflops": 70.0,
+      "mfu_formula": "6 * active_params * tokens / seconds / peak_flops; excludes sparse learned memory bank and state work",
+      "mfu": 0.006849087885557324,
+      "step_ms": 1058.440544991754
+    },
+    {
+      "step": 3,
+      "val_loss": 10.822506009615385,
+      "wall_s": 3.2163527559605427,
+      "num_params": 6509925,
+      "active_params": 6505829,
+      "memory_params": 4096,
+      "mean_reasoning_steps": 3.0,
+      "p95_reasoning_steps": 3.0,
+      "max_reasoning_steps": 3.0,
+      "executed_reasoner_calls": 390,
+      "gl_write_policy": "merged",
+      "mfu_interpretation": "unique-parameter 6ND; repeated applications of tied reasoner weights are not counted",
+      "tokens": 130,
+      "seconds": 1.0497428019880317,
+      "tok_s": 123.83985844323242,
+      "mfu_6nd_pct": 0.006905836649278939,
+      "peak_tflops": 70.0,
+      "mfu_formula": "6 * active_params * tokens / seconds / peak_flops; excludes sparse learned memory bank and state work",
+      "mfu": 0.006905836649278939,
+      "step_ms": 1049.7428019880317
+    }
+  ],
+  "val_stream_prefix_ce": {
+    "65": 10.821079664963943,
+    "129": 10.822496517684108
+  },
+  "val_stream_prefix_tokens": {
+    "65": 65,
+    "129": 129
+  },
+  "needle_val_stream": {
+    "65": {
+      "ce": 10.825384616851807,
+      "acc": 0.0,
+      "trials": 2
+    },
+    "129": {
+      "ce": 10.825388431549072,
+      "acc": 0.0,
+      "trials": 2
+    }
+  },
+  "needle_absent_ce": 10.82538366317749
+}

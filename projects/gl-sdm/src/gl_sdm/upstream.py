@@ -56,11 +56,29 @@ def sdm_layer():
     return layer, identities
 
 
-def metadata(arch):
+def metadata(arch, cfg=None):
     import torch
     info = {"torch": torch.__version__, "cuda": torch.version.cuda, "reference_fallback": False}
     if arch == "gl_sdm":
-        info.update(implementation="project-owned PyTorch GL-SDM", transaction="one token", state_dtype="float32", optimized_kernel=False)
+        backend = (cfg or {}).get("gl_memory_backend", "torch")
+        info.update(implementation="GL-SDM transaction kernels + frozen URM" if backend == "urm" else "project-owned PyTorch GL-SDM",
+                    memory_backend=backend, transaction="one token", state_dtype="float32", optimized_kernel=backend == "urm")
+        digest = hashlib.sha256()
+        for path in sorted(Path(__file__).parent.glob("*.py")):
+            digest.update(path.name.encode())
+            digest.update(path.read_bytes())
+        info["source_sha256"] = digest.hexdigest()
+        if backend == "urm":
+            from .urm_adapter import verify_dependency, read_plan
+            info["urm"] = verify_dependency()
+            if cfg and "hidden_size" in cfg:
+                heads = cfg["hidden_size"] // cfg["head_dim"]
+                queries = cfg["mbs"] * heads
+                info["initial_batch_read_plan"] = read_plan(queries * cfg.get("gl_slots", 1024), queries,
+                                                            cfg["head_dim"], cfg.get("gl_reads", 8)).serialized_plan()
+            info["routing"] = "GL-SDM stable product-key top-k; smaller address wins ties"
+            info["commit"] = "stable ordered sum per address; no forward atomics"
+            info["backward_storage"] = "selected rows; full bank versions are not saved"
     if arch in {"sdm", "gdn2"}:
         name = "sdm" if arch == "sdm" else "fla"
         info.update(repository=PINS[name][0], revision=PINS[name][1], source=str(source(name)))

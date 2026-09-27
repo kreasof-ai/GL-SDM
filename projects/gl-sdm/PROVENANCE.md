@@ -59,5 +59,22 @@ dense one-hot reads and writes. Snapshot identity and version are checked;
 memory and routing parameters are never changed during a forward transaction.
 Benchmark logs report actual reasoning depth and retain unique-parameter 6ND.
 Repeated tied-weight applications are not counted in that MFU estimate.
-This is a modeling and correctness implementation; optimized GL-SDM kernels
-and converged, resource-matched architecture comparisons remain future work.
+
+The native path uses the external frozen
+[URM revision 604bfdf](https://github.com/kreasof-ai/urm/tree/604bfdf5d2c827266a32ef142ca996cc712d70f0).
+`urm_adapter.py` compiles its public read-only sparse-state program. URM's normal
+read backward retains the full input bank; the project's read wrapper instead
+saves selected rows and supplies the corresponding exact read gradients.
+Inference route tensors acquire normal version counters at the package boundary
+because the frozen route certificate requires them.
+
+`kernels.py` implements the project's stable product-key router and its softmax
+backward, snapshot delta proposals and their operand gradients, and ordered
+duplicate-address commits. URM's existing router chooses larger indices on ties;
+GL-SDM keeps its documented smaller-address rule. URM's sequential decayed-delta
+update is not substituted for GL-SDM's snapshot/commit law. No URM sources or
+legacy SDM kernels were copied or changed. These memory kernels are integrated
+into the existing GL-SDM block, training, inference and checking interfaces.
+The token controller and dense reasoner remain PyTorch. Converged,
+resource-matched architecture comparisons and further model throughput work
+remain experimental work.

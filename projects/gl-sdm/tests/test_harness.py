@@ -17,8 +17,9 @@ def shard(path, vocab=128):
     path.write_bytes(header.tobytes() + tokens.tobytes())
 
 
-@pytest.mark.parametrize("architecture", ["transformer", "gl_sdm"])
-def test_data_training_resume_eval_and_generation(tmp_path, architecture):
+@pytest.mark.parametrize("architecture,device", [("transformer", "cpu"), ("gl_sdm", "cpu"),
+    pytest.param("gl_sdm", "cuda", marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable"))])
+def test_data_training_resume_eval_and_generation(tmp_path, architecture, device):
     path = tmp_path / "tokens.bin"
     shard(path)
     cfg = {**config(), "run_id": "test", "train_data": str(path), "val_data": str(path),
@@ -26,8 +27,9 @@ def test_data_training_resume_eval_and_generation(tmp_path, architecture):
            "max_steps": 3, "val_tokens": 32, "val_freq": 1, "eval_lengths": [16, 32], "num_eval_docs": 2}
     if architecture == "gl_sdm":
         cfg.update(arch_type="gl_sdm", num_hidden_layers=1, gl_reasoning="adaptive", gl_max_steps=3,
-                   gl_slots=16, gl_reads=2, gl_writes=2, auxiliary_loss_weight=0.001)
-    generator = data_generator(str(path), 32, 16, "cpu")
+                   gl_slots=16, gl_reads=2, gl_writes=2, auxiliary_loss_weight=0.001,
+                   gl_memory_backend="urm" if device == "cuda" else "torch")
+    generator = data_generator(str(path), 32, 16, device)
     x, y = next(generator)
     assert torch.equal(x.flatten()[1:], y.flatten()[:-1])
     assert available_steps(str(path), 32, 1) == 31
@@ -35,9 +37,9 @@ def test_data_training_resume_eval_and_generation(tmp_path, architecture):
     def emit(name, value):
         json.dumps(value, allow_nan=False)
         events.append((name, value))
-    reference = run(cfg, "cpu", tmp_path / "complete", emit)
+    reference = run(cfg, device, tmp_path / "complete", emit)
     rows = next(value for name, value in events if name == "ABLATION_CURVE_JSON")
-    assert rows[-1]["mfu"] is None
+    assert rows[-1]["mfu"] is None if device == "cpu" else np.isfinite(rows[-1]["mfu"])
     assert rows[-1]["step_ms"] > 0 and rows[-1]["wall_s"] > 0
     # Interrupt immediately after step 1 checkpoint, then resume the exact
     # schedule/config and verify optimizer + RNG + data position restoration.
@@ -51,13 +53,13 @@ def test_data_training_resume_eval_and_generation(tmp_path, architecture):
         if args[3] == 1:
             raise Interrupted
     with patch("gl_sdm.checkpoint.save", stop_after_save), pytest.raises(Interrupted):
-        run(cfg, "cpu", tmp_path / "resume", emit)
-    resumed = run(cfg, "cpu", tmp_path / "resume", emit, resume=tmp_path / "resume")
+        run(cfg, device, tmp_path / "resume", emit)
+    resumed = run(cfg, device, tmp_path / "resume", emit, resume=tmp_path / "resume")
     for p, r in zip(reference.parameters(), resumed.parameters()):
         torch.testing.assert_close(p, r, atol=0, rtol=0)
-    restored, payload = load(tmp_path / "complete", "cpu")
+    restored, payload = load(tmp_path / "complete", device)
     assert payload["step"] == payload["data_batches"] == 3
-    result = run_eval(restored, cfg, "cpu")
+    result = run_eval(restored, cfg, device)
     assert result["junk_tokens"] == {16: 32, 32: 64}
     assert all(np.isfinite(list(result["junk_perplexity"].values())))
     a = generate(restored, x[:1, :4], 5)

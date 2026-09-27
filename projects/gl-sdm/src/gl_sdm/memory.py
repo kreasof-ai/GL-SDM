@@ -59,19 +59,30 @@ def selected(view, requests, indices, reference=False):
     return flat[index]
 
 
-def read(view, requests, indices, weights, reference=False):
+def read(view, requests, indices, weights, reference=False, backend="torch"):
+    if backend not in {"torch", "urm"}:
+        raise ValueError("memory backend must be torch or urm")
+    if backend == "urm" and not reference:
+        from .kernels import read as native_read
+        return native_read(view.values, requests, indices, weights)
     rows = selected(view, requests, indices, reference)
     return (rows * weights.float().unsqueeze(-1)).sum(-2)
 
 
 def propose_write(view, requests, indices, weights, targets, beta, log_decay,
-                  mass, reference=False):
+                  mass, reference=False, backend="torch"):
     """One delta update evaluated against the transaction's immutable snapshot.
 
     Router addresses within a proposal are unique. Multiple proposals may target
     the same slot. Their weighted deltas are summed, not applied sequentially.
     Fixed-depth mass is 1/R; ACT mass sums to one per request/token.
     """
+    if backend not in {"torch", "urm"}:
+        raise ValueError("memory backend must be torch or urm")
+    if backend == "urm" and not reference:
+        from .kernels import propose
+        idx, delta = propose(view.values, requests, indices, weights, targets, beta, log_decay, mass)
+        return WriteProposal(view.version, idx, delta, view.lineage)
     rows = selected(view, requests, indices, reference)
     decay = log_decay.float().exp().unsqueeze(-1)
     decayed = rows * decay
@@ -89,12 +100,18 @@ def merge(view, proposals):
     return WriteBuffer(view.version, proposals, view.lineage)
 
 
-def commit(view, buffer, reference=False):
+def commit(view, buffer, reference=False, backend="torch"):
+    if backend not in {"torch", "urm"}:
+        raise ValueError("memory backend must be torch or urm")
     if buffer.base_version != view.version or buffer.lineage is not view.lineage:
         raise ValueError("stale memory transaction")
     flat = view.values.flatten(0, 2)
     idx = torch.cat([p.addresses for p in buffer.proposals])
     delta = torch.cat([p.deltas for p in buffer.proposals]).float()
+    if backend == "urm" and not reference:
+        from .kernels import commit as native_commit
+        updated = native_commit(view.values, idx, delta)
+        return MemoryView(updated, view.version + 1, view.lineage)
     if reference:
         # Independent dense reduction, including cross-step address collisions.
         update = F.one_hot(idx.long(), flat.shape[0]).float().T @ delta

@@ -10,6 +10,7 @@ dependencies = ["torch>=2.7", "triton>=3.3", "numpy", "einops", "transformers>=4
 
 [project.optional-dependencies]
 test = ["pytest"]
+urm = ["urm-kernel-lab @ git+https://github.com/kreasof-ai/urm.git@604bfdf5d2c827266a32ef142ca996cc712d70f0"]
 
 [project.scripts]
 gl-sdm = "gl_sdm.cli:main"
