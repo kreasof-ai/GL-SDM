@@ -62,9 +62,12 @@ checked independently. KL is retained where an upstream comparator is wired.
 
 The report admits only finite, checkpoint-verified production runs with matching
 shapes, effective batch, microbatch, execution and precision policies, activation
-checkpointing, environment, and source fingerprint. It distinguishes shared
-frontends from architecture-family baselines with different mixer-side layers.
-Parameter counts remain explicit. Unavailable or failed production kernels have
+checkpointing, environment, and source fingerprint. The report separates runs
+that change only the mixer kernel while keeping the same projections, gates and
+routing from runs that use different mixer modules. In the latter, projections
+or other layers can differ, so decoder throughput does not isolate kernel speed.
+MFU is displayed as a percentage and parameter counts remain explicit.
+Unavailable or failed production kernels have
 no substitute reference throughput in the paired table.
 
 ## Corrections

@@ -17,7 +17,7 @@ PROTOCOL_KEYS = (
     "mlp_ratio", "batch_tokens", "microbatch_tokens", "steps", "seed",
     "compile_model", "bf16", "activation_checkpointing",
 )
-SHARED_FRONTEND_ROWS = {
+KERNEL_REPLACEMENT_ROWS = {
     "comba", "gdn2", "gated_delta_product", "dplr", "rwkv7", "mamba2",
     "log_linear_attention", "log_linear_mamba2", "dense_attention", "attnres", "samba_attention", "raven", "tda",
     "sdm",
@@ -88,122 +88,84 @@ def render(ours, upstream):
     ok = {n: r for n, r in ours.items() if verified(r)}
     pairs = {n: (r, upstream[n]) for n, r in ok.items() if n in upstream
              and comparison_reason(r, upstream[n]) is None}
-    lines = ["# URM training measurements — corrected campaign", "",
-             f"**Coverage.** {len(ok)}/{len(ours)} URM rows have finite training trajectories and passing checkpoint gates; "
-             f"{len(pairs)} have eligible production-kernel measurements.", "",
-             "Each row trains a decoder surround on finewebedu for 10 measured steps after two full optimizer warmup steps. "
-             "This measures the training harness; it does not claim source-model or serving parity. "
-             "See the [evidence policy](../docs/evidence.md).", "",
-             "**Protocol.** width=768, layers=9, heads=12, head_dim=64, sequence=512, vocab=50304. "
-             "Effective batch and microbatch are both 8192 tokens. Both arms compile the surround; "
-             "Python plan dispatch and unsupported upstream kernels remain eager boundaries. "
-             "Optimizer roles and clipping are identical in both arms. bf16 autocast with fp32 kernel accumulation; "
-             "timing is synchronized before and after measurement. "
-             "MFU is an approximate parameter/state FLOP estimate divided by the adopted 70 TFLOPS A10G peak, "
-             "not a hardware utilization counter.", "",
-             "Memory-heavy rows use the same explicit activation-checkpointing policy in both arms. "
-             "Based uses its upstream default of 16 query/key features and 64 value channels. "
-             "OOM retries are disabled in this campaign; failures are recorded without substituting a smaller batch. "
-             "Non-finite losses or gradient norms fail the run.", ""]
-    lines += ["TDA and Differential Attention training use existing public native calls with external "
-              "differentiable merges to retain projection and mixing-weight gradients. "
-              "Two core autograd-wrapper fixes retain only flags/shapes rather than bias/mask or gate tensors, "
-              "preventing graph retention after backward; kernel math is unchanged.", ""]
-    if "sdm" in ok and ok["sdm"].get("sdm_execution", {}).get("schedule") == "native-k3":
-        lines += ["SDM executes its complete public route/update/read graph through the native K3 provider. "
-                  "The compiler selects a generic guarded chunk schedule (maximum chunk size 128) by typed "
-                  "state properties, including decay and all operand/state gradients; the ordered scan remains available. "
-                  "The external SDM state-schedule file has been removed. Its shared-frontend baseline calls the "
-                  "unmodified pinned Meta CUDA/Triton kernels (chunk size 64), built with an isolated matching "
-                  "CUDA toolkit. The independent Torch reference remains unchanged. "
-                  "See [SDM measurements and historical MFU accounting](../docs/sdm-optimization.md). "
-                  "Accepted non-SDM measurements retain their original source fingerprints; each paired row "
-                  "still requires identical fingerprints in both arms.", ""]
-    if ok:
-        env = next(iter(ok.values())).get("environment", {})
-        hashes = sorted({r['source_fingerprint'][:12] for r in ok.values()})
-        lines += [f"**Provenance.** torch {env.get('torch', '?')}, {env.get('device', '?')}; "
-                  f"measurement version 2; source fingerprint(s) `{', '.join(hashes)}`. "
-                  "Each JSON contains its actual config, full source hash, loss trajectory, memory trajectory, "
-                  "and attempted microbatches. FLA and Mamba production adapters verify their pinned sources.", ""]
-        memory_ranges = [max(trace) - min(trace) for r in ok.values()
-                         for trace in [r.get('memory_trace_gib', [])] if trace]
-        if len(memory_ranges) == len(ok):
-            lines += [f"**Memory audit.** The largest within-run step-end allocation range across verified URM rows "
-                      f"is {_fmt(max(memory_ranges))} GiB over the measured steps. "
-                      "This checks intermediate steps as well as the first-to-last drift.", ""]
-        upstream_ranges = [max(trace) - min(trace) for _, r in pairs.values()
-                           for trace in [r.get('memory_trace_gib', [])] if trace]
-        if upstream_ranges:
-            lines += [f"The largest step-end allocation range among eligible upstream runs is "
-                      f"{_fmt(max(upstream_ranges) * 2**20, 1)} KiB.", ""]
-    lines += ["## URM rows", "",
-              "`slow` marks approximate MFU below 0.10. `ckpt` means activation checkpointing is enabled; "
-              "checkpoint correctness is reported separately. Memory drift is the last minus first step-end allocation.", "",
-              "| row | params | MFU | tok/s | checkpoint gate | peak GiB | loss | memory drift GiB | flags |",
-              "|---|---:|---:|---:|:---:|---:|---:|---:|---|"]
+    lines = ["# URM training benchmark", "",
+             f"**{len(ok)}/{len(ours)} URM configurations trained with finite losses and passed the checkpoint resume check.** "
+             f"{len(pairs)} also have a usable upstream production-kernel comparison.", "",
+             "Each run trains a nine-layer decoder on FineWebEdu for ten measured updates after two warmup updates. "
+             "Batch and microbatch are both 8192 tokens. Results measure decoder training on an A10G GPU.", "",
+             "MFU is shown as a percentage: estimated model work (`6 × parameters × tokens`, plus mixer/state work) "
+             "divided by elapsed time and 70 TFLOPS. It is an estimate, not a GPU hardware counter.", "",
+             "## URM results", "",
+             "Peak memory includes temporary activations. Memory change is the last minus first allocation "
+             "after a training step. The checkpoint column records whether saving, reloading and resuming passed.", "",
+             "| Model | Parameters | MFU (%) | Tokens/s | Checkpoint | Peak (GiB) | Final loss | Memory change (GiB) | Notes |",
+             "|---|---:|---:|---:|:---:|---:|---:|---:|---|"]
     for name, r in sorted(ours.items()):
         if not verified(r):
             reason = r.get("error", "unverified/legacy measurement").replace("|", "/").replace("\n", " ")
             lines.append(f"| {name} | — | — | — | — | — | — | — | {reason} |")
             continue
-        flags = []
+        notes = []
         if r['mfu'] < PATHOLOGICAL_MFU:
-            flags.append("slow")
+            notes.append("MFU below 10%")
         if r['config'].get('activation_checkpointing'):
-            flags.append("ckpt")
+            notes.append("activation checkpointing")
         if r.get('microbatch_fallback'):
-            flags.append(f"diagnostic mb{r['microbatch_fallback']}")
+            notes.append(f"reduced microbatch: {r['microbatch_fallback']} tokens (diagnostic)")
         if r.get('sdm_execution', {}).get('schedule') == 'torch-chunked':
-            flags.append("external state schedule")
+            notes.append("external state implementation")
         if r.get('sdm_execution', {}).get('schedule') == 'native-k3':
-            flags.append("native K3 chunk schedule")
+            notes.append("native chunks")
         memory = r.get('memory_trace_gib', [])
         drift = memory[-1] - memory[0] if memory else None
-        lines.append(f"| {name} | {r['params']:,} | {_fmt(r['mfu'])} | {_fmt(r['throughput_tokens_s'], 0)} | "
-                     f"✓ | {_fmt(r['peak_memory_gib'], 2)} | {_fmt(r['final_loss'])} | {_fmt(drift)} | {', '.join(flags) or '—'} |")
+        lines.append(f"| {name} | {r['params']:,} | {_fmt(100 * r['mfu'], 1)} | {_fmt(r['throughput_tokens_s'], 0)} | "
+                     f"✓ | {_fmt(r['peak_memory_gib'], 2)} | {_fmt(r['final_loss'])} | {_fmt(drift)} | {', '.join(notes) or '—'} |")
     slow = [n for n, r in ok.items() if r['mfu'] < PATHOLOGICAL_MFU]
     if slow:
-        lines += ["", f"### Remaining low-MFU rows ({len(slow)})", "",
-                  "These measurements remain visible. The listed work explains the execution path, "
-                  "and does not establish that the implementation is optimal.", ""]
-        lines += [f"- **{n}**: {SLOW_NOTES.get(n, 'requires further profiling')} (MFU {_fmt(ok[n]['mfu'])})."
+        lines += ["", f"### Rows below 10% MFU ({len(slow)})", "",
+                  "These rows need further profiling. The operations below describe their implementations; "
+                  "they have not been confirmed as the bottlenecks.", ""]
+        lines += [f"- **{n}**: {SLOW_NOTES.get(n, 'requires further profiling')} (MFU {_fmt(100 * ok[n]['mfu'], 1)}%)."
                   for n in sorted(slow)]
     lines += ["", "## Production-kernel measurements", "",
-              "Only verified runs with matching shapes, effective batch, microbatch, precision, compilation policy, "
-              "checkpointing policy, environment, and source fingerprint enter this table. "
-              "There is no reference-kernel replacement after an upstream failure. "
-              "`shared` uses a common external frontend; `family` is an architecture-family baseline whose "
-              "projections or other mixer-side layers can differ. Parameter counts are shown explicitly; "
-              "family measurements are not isolated kernel speedup claims.", "",
-              "| row | scope | MFU (URM / upstream) | tok/s (URM / upstream) | peak GiB (URM / upstream) | params (URM / upstream) |",
-              "|---|---|---:|---:|---:|---:|"]
-    for n, (o, u) in sorted(pairs.items()):
-        scope = 'shared' if n in SHARED_FRONTEND_ROWS else 'family'
-        lines.append(f"| {n} | {scope} | {_fmt(o['mfu'])} / {_fmt(u['mfu'])} | "
-                     f"{_fmt(o['throughput_tokens_s'], 0)} / {_fmt(u['throughput_tokens_s'], 0)} | "
-                     f"{_fmt(o['peak_memory_gib'], 2)} / {_fmt(u['peak_memory_gib'], 2)} | {o['params']:,} / {u['params']:,} |")
+              "Every pair uses the same decoder dimensions, data, batch sizes, precision, optimizer, "
+              "compilation and activation-checkpointing settings. Both runs must pass the training checks "
+              "and record the same hardware and benchmark source version. "
+              "Failed upstream kernels are excluded; a reference implementation cannot replace them.", "",
+              "Each cell shows **URM / upstream**. The tables separate comparisons that replace only the "
+              "mixer kernel from those that use a different mixer module."]
+    groups = (
+        (True, "Same projections and routing; only the kernel changes",
+         "Both runs use the same projections, gates and routing code. The upstream run replaces "
+         "the URM mixer kernel with the upstream production kernel."),
+        (False, "Different mixer modules",
+         "The upstream run uses a separate mixer implementation. Its projections, gates or other "
+         "layers can differ, as can its parameter count. These numbers compare decoder implementations; "
+         "they do not isolate kernel speed."),
+    )
+    for kernel_only, title, explanation in groups:
+        group = {n: pair for n, pair in pairs.items()
+                 if (n in KERNEL_REPLACEMENT_ROWS) == kernel_only}
+        if not group:
+            continue
+        lines += ["", f"### {title} ({len(group)})", "", explanation, "",
+                  "| Model | MFU (%) | Tokens/s | Peak (GiB) | Parameters |",
+                  "|---|---:|---:|---:|---:|"]
+        for n, (o, u) in sorted(group.items()):
+            lines.append(f"| {n} | {_fmt(100 * o['mfu'], 1)} / {_fmt(100 * u['mfu'], 1)} | "
+                         f"{_fmt(o['throughput_tokens_s'], 0)} / {_fmt(u['throughput_tokens_s'], 0)} | "
+                         f"{_fmt(o['peak_memory_gib'], 2)} / {_fmt(u['peak_memory_gib'], 2)} | {o['params']:,} / {u['params']:,} |")
     lines += ["", "### Production adapters", "",
-              "- Mamba-2 uses the unmodified pinned SSD Triton package without importing its optional CUDA extension; "
-              "RWKV-7 uses the pinned chunk kernel with `chunk_size=16`.",
-              "- Comba, GDN2, DeltaProduct, DPLR, RWKV-7, Mamba-2 and both log-linear rows share the URM external frontend. "
-              "The upstream call replaces only the mixer kernel.",
-              "- Samba uses the same Mamba-2/RoPE schedule with pinned SSD and production SDPA. "
-              "Raven shares the eight-slot/top-k-two deterministic frontend and uses pinned chunk GSA. "
-              "Equal duplication of all slots meets its 16-slot backward minimum while preserving outputs and gradients.",
-              "- TDA supplies contiguous head batches and gradients, applies the native query scaling, "
-              "and matches the registered differential merge (identical paths with lambda=0.5). "
-              "Supported Triton launch options select IEEE fp32 dots and one pipeline stage.",
-              "- Log-linear attention uses independent heads as single-group batches and an A10G one-stage pipeline. "
-              "Operands and level scales are bf16, and the last scale repeats for the capped bank. "
-              "The upstream checkout remains unmodified.", "",
-              "- SDM uses the verified original Meta sparse-IP/gather CUDA extensions and Triton WY kernels. "
-              "Partition-local identity padding, autocast isolation, and a saved terminal snapshot adapt the "
-              "production API without changing its source or substituting a reference kernel.", "",
-              "## Upstreams excluded from production comparison", "",
-              "Unavailable kernels, research implementations, failed training, and mismatched measurements are listed "
-              "without paired throughput. Reference implementations can be requested as separate diagnostics using "
-              "`train.upstream --include-reference`; they remain excluded from the table above.", ""]
+              "The upstream runs use pinned production kernels. Loading requirements and numerical "
+              "adjustments are documented in [benchmark implementation details](../docs/benchmark.md#corrections).", ""]
+    if "sdm" in ok and ok["sdm"].get("sdm_execution", {}).get("schedule") == "native-k3":
+        lines += ["SDM runs through native URM with chunks of up to 128 tokens. Its upstream comparison uses "
+                  "the original Meta CUDA/Triton kernels with 64-token chunks and the same projections and routes. "
+                  "See [SDM results and historical MFU accounting](../docs/sdm-optimization.md).", ""]
+    lines += ["## Upstreams excluded from production comparison", "",
+              "These rows have no usable production-kernel comparison. The reason is listed for each row. "
+              "Reference or research implementations can be run separately with "
+              "`train.upstream --include-reference`.", ""]
     for n, u in sorted(upstream.items()):
         if n in pairs:
             continue
@@ -211,11 +173,41 @@ def render(ours, upstream):
         lines.append(f"- **{n}**: {reason}.")
     for n in sorted(set(ours) - set(upstream)):
         lines.append(f"- **{n}**: no upstream measurement available.")
-    lines += ["", "## Validation limits", "",
-              "Checkpoint gates use reduced eager models and certify resume behavior, not full-scale accuracy. "
-              "Finite full-scale loss and gradient norms are checked separately at every update. "
-              "KL is retained in the per-row JSON wherever a comparator is wired; absent KL is not a parity claim. "
-              "These ten-step runs do not establish long-run convergence.", ""]
+    lines += ["", "## Measurement details", "",
+              "- Decoder: width 768, 9 layers, 12 heads, head dimension 64, sequence length 512, vocabulary 50,304.",
+              "- BF16 training with FP32 kernel accumulation. Both runs compile the model around Python plan "
+              "dispatch and upstream kernels that execute outside the compiled graph.",
+              "- GPU timing is synchronized. Optimizer settings and gradient clipping match in both runs.",
+              "- Activation checkpointing is enabled for the rows marked in the table. "
+              "It recomputes activations to reduce memory use and is separate from the checkpoint resume check.",
+              "- OOM retries are disabled. Failed runs are recorded at the requested batch size.", ""]
+    if ok:
+        env = next(iter(ok.values())).get("environment", {})
+        hashes = sorted({r['source_fingerprint'][:12] for r in ok.values()})
+        lines += [f"Torch {env.get('torch', '?')}; GPU: {env.get('device', '?')}; "
+                  f"measurement version 2. Benchmark source hashes: `{', '.join(hashes)}`. "
+                  "SDM was remeasured after native integration; the other rows retain their accepted measurements. "
+                  "Each URM/upstream pair has matching source hashes.", ""]
+        memory_ranges = [max(trace) - min(trace) for r in ok.values()
+                         for trace in [r.get('memory_trace_gib', [])] if trace]
+        if len(memory_ranges) == len(ok):
+            lines += [f"The largest change in step-end allocation within any URM run is "
+                      f"{_fmt(max(memory_ranges) * 2**20, 1)} KiB. "
+                      "This includes intermediate steps, not just the first and last.", ""]
+        upstream_ranges = [max(trace) - min(trace) for _, r in pairs.values()
+                           for trace in [r.get('memory_trace_gib', [])] if trace]
+        if upstream_ranges:
+            lines += [f"The largest step-end allocation change among compared upstream runs is "
+                      f"{_fmt(max(upstream_ranges) * 2**20, 1)} KiB.", ""]
+    lines += ["Full configs, losses, memory traces and source hashes are recorded in the per-model "
+              "JSONs under [sweep/](sweep/) and [upstream/](upstream/). "
+              "See [how to reproduce the benchmark](../docs/benchmark.md#running).", "",
+              "## What the checks establish", "",
+              "Checkpoint resume is tested on smaller models without compilation. Full-size runs separately "
+              "check losses and gradient norms at every update. Output-distribution comparisons (KL) are "
+              "recorded in JSON where available. Ten training updates do not establish long-run convergence "
+              "or equivalence to complete upstream models and serving workloads. "
+              "See the [evidence policy](../docs/evidence.md).", ""]
     return '\n'.join(lines)
 
 
