@@ -2,14 +2,14 @@
   "mixer": "sdm",
   "steps": 10,
   "final_loss": 9.172621726989746,
-  "mfu": 0.19742498260880764,
+  "mfu": 0.1937805405951013,
   "params": 94952448,
   "checkpoint_aligned": true,
   "grad_trace": {},
   "kl_divergence": null,
-  "wallclock_s": 3.383025642950088,
-  "throughput_tokens_s": 24215.010066717554,
-  "peak_memory_gib": 11.16523551940918,
+  "wallclock_s": 3.446650405006949,
+  "throughput_tokens_s": 23768.003822202223,
+  "peak_memory_gib": 11.16291618347168,
   "loss_trace": [
     9.070734024047852,
     9.32371711730957,
@@ -23,16 +23,16 @@
     9.172621726989746
   ],
   "memory_trace_gib": [
-    0.9987750053405762,
-    0.9987750053405762,
-    0.9987750053405762,
-    0.9987750053405762,
-    0.9987750053405762,
-    0.9987750053405762,
-    0.9987750053405762,
-    0.9987750053405762,
-    0.9987750053405762,
-    0.9987750053405762
+    0.9984087944030762,
+    0.9984087944030762,
+    0.9984087944030762,
+    0.9984087944030762,
+    0.9984087944030762,
+    0.9984087944030762,
+    0.9984087944030762,
+    0.9984087944030762,
+    0.9984087944030762,
+    0.9984087944030762
   ],
   "config": {
     "mixer": "sdm",
@@ -55,18 +55,18 @@
     "target": null
   },
   "measurement_version": 2,
-  "source_fingerprint": "e4b6d1444e12181f385fc72305bce6cda2af0e94d1fd04b2b2b9123598d4ee72",
+  "source_fingerprint": "487a6ddbd7320d01401f83a87c998c6ac2b779a9e65dad87f7114042d3cdac8f",
   "environment": {
     "torch": "2.14.0+cu130",
     "device": "NVIDIA A10G",
     "peak_flops": 70000000000000.0
   },
   "sdm_execution": {
-    "schedule": "torch-chunked",
+    "schedule": "native-k3",
     "chunk_size": 128,
     "routes": "native-public",
-    "compile_state": true,
-    "core_modified": false
+    "public_path": true,
+    "provider": "urm_native_sparse_state_mixer_v0"
   },
   "attempted_microbatches": [
     8192

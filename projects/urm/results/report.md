@@ -10,9 +10,9 @@ Memory-heavy rows use the same explicit activation-checkpointing policy in both 
 
 TDA and Differential Attention training use existing public native calls with external differentiable merges to retain projection and mixing-weight gradients. Two core autograd-wrapper fixes retain only flags/shapes rather than bias/mask or gate tensors, preventing graph retention after backward; kernel math is unchanged.
 
-SDM uses native public product-key routes with an external compiled PyTorch state schedule (chunk size 128), including decay and its gradients. Its shared-frontend baseline calls the unmodified pinned Meta CUDA/Triton kernels (chunk size 64), built with an isolated matching CUDA toolkit. The core URM backend is unchanged by this SDM optimization. See [SDM measurements and historical MFU accounting](../docs/sdm-optimization.md). Accepted non-SDM measurements retain their original source fingerprints; each paired row still requires identical fingerprints in both arms.
+SDM executes its complete public route/update/read graph through the native K3 provider. The compiler selects a generic guarded chunk schedule (maximum chunk size 128) by typed state properties, including decay and all operand/state gradients; the ordered scan remains available. The external SDM state-schedule file has been removed. Its shared-frontend baseline calls the unmodified pinned Meta CUDA/Triton kernels (chunk size 64), built with an isolated matching CUDA toolkit. The independent Torch reference remains unchanged. See [SDM measurements and historical MFU accounting](../docs/sdm-optimization.md). Accepted non-SDM measurements retain their original source fingerprints; each paired row still requires identical fingerprints in both arms.
 
-**Provenance.** torch 2.14.0+cu130, NVIDIA A10G; measurement version 2; source fingerprint(s) `345b161d5a98, e4b6d1444e12`. Each JSON contains its actual config, full source hash, loss trajectory, memory trajectory, and attempted microbatches. FLA and Mamba production adapters verify their pinned sources.
+**Provenance.** torch 2.14.0+cu130, NVIDIA A10G; measurement version 2; source fingerprint(s) `345b161d5a98, 487a6ddbd732`. Each JSON contains its actual config, full source hash, loss trajectory, memory trajectory, and attempted microbatches. FLA and Mamba production adapters verify their pinned sources.
 
 **Memory audit.** The largest within-run step-end allocation range across verified URM rows is 0.000 GiB over the measured steps. This checks intermediate steps as well as the first-to-last drift.
 
@@ -67,7 +67,7 @@ The largest step-end allocation range among eligible upstream runs is 12.0 KiB.
 | rodimus | 87,038,352 | 0.302 | 40222 | ✓ | 5.23 | 9.226 | 0.000 | — |
 | rwkv7 | 118,688,256 | 0.238 | 23274 | ✓ | 19.82 | 8.723 | 0.000 | — |
 | samba_attention | 94,432,632 | 0.254 | 31269 | ✓ | 5.27 | 8.897 | 0.000 | — |
-| sdm | 94,952,448 | 0.197 | 24215 | ✓ | 11.17 | 9.173 | 0.000 | external state schedule |
+| sdm | 94,952,448 | 0.194 | 23768 | ✓ | 11.16 | 9.173 | 0.000 | native K3 chunk schedule |
 | simple_gla | 102,825,900 | 0.233 | 26359 | ✓ | 5.41 | 9.108 | 0.000 | — |
 | sparse_transformer | 102,742,272 | 0.140 | 15814 | ✓ | 5.71 | 12.976 | 0.000 | — |
 | tda | 102,742,272 | 0.093 | 10514 | ✓ | 5.28 | 10.095 | 0.000 | slow |
@@ -122,7 +122,7 @@ Only verified runs with matching shapes, effective batch, microbatch, precision,
 | rodimus | family | 0.302 / 0.269 | 40222 / 26624 | 5.23 / 7.25 | 87,038,352 / 117,452,160 |
 | rwkv7 | shared | 0.238 / 0.275 | 23274 / 26898 | 19.82 / 6.08 | 118,688,256 / 118,688,256 |
 | samba_attention | shared | 0.254 / 0.323 | 31269 / 39766 | 5.27 / 5.12 | 94,432,632 / 94,432,632 |
-| sdm | shared | 0.197 / 0.169 | 24215 / 20747 | 11.17 / 7.80 | 94,952,448 / 94,952,448 |
+| sdm | shared | 0.194 / 0.169 | 23768 / 20726 | 11.16 / 7.80 | 94,952,448 / 94,952,448 |
 | simple_gla | family | 0.233 / 0.298 | 26359 / 32034 | 5.41 / 6.40 | 102,825,900 / 108,217,260 |
 | tda | shared | 0.093 / 0.129 | 10514 / 14632 | 5.28 / 5.60 | 102,742,272 / 102,742,272 |
 | wall_attention | family | 0.311 / 0.321 | 31865 / 32926 | 5.46 / 5.67 | 113,372,928 / 113,372,928 |

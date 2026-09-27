@@ -2,7 +2,7 @@
 import pytest
 import torch
 
-from architectures.sdm_chunked import chunked_sparse_delta_memory
+from urm.backends.triton.k3.sparse_state import chunked_sparse_state_update
 from extra.comparators.sdm.cuda import pinned_cuda_write_read
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason='SDM CUDA requires GPU')
@@ -75,7 +75,7 @@ def test_chunked_bf16_all_gradients_agree_with_actual_cuda(compiled):
     def kwargs(leaves):
         return dict(write_indices=wi, write_weights=leaves[2], values=leaves[3],
                     beta=leaves[4], log_decay=leaves[5], chunk_size=8)
-    output = chunked_sparse_delta_memory(ours[0], ri, ours[1], **kwargs(ours), compiled=compiled)
+    output = chunked_sparse_state_update(ours[0], ri, ours[1], **kwargs(ours), compiled=compiled)
     expected = pinned_cuda_write_read(upstream[0], ri, upstream[1], **kwargs(upstream),
                                      grad_final_memory=cm)
     for a, b in zip(output, expected):
@@ -89,13 +89,13 @@ def test_chunked_bf16_all_gradients_agree_with_actual_cuda(compiled):
         assert error < .025, (name, float(error))
 
 
-@pytest.mark.parametrize('execution', ['torch-chunked', 'upstream-cuda'])
+@pytest.mark.parametrize('execution', ['native', 'upstream-cuda'])
 def test_external_layer_commits_terminal_state_after_backward(execution):
     from architectures.sdm_memory import SparseDeltaMemoryLayer
     torch.manual_seed(51)
     layer = SparseDeltaMemoryLayer(64, 1, 64, 64, 4, 4, 2,
-        execution=execution, chunk_size=8, compile_state=False).cuda()
-    x = torch.randn(2, 13, 64, device='cuda', requires_grad=True)
+        execution=execution, chunk_size=8).cuda()
+    x = torch.randn(2, 37, 64, device='cuda', requires_grad=True)
     with torch.autocast('cuda', dtype=torch.bfloat16):
         output = layer(x)
     terminal = layer._pending_state.detach().clone()
@@ -108,16 +108,14 @@ def test_external_layer_commits_terminal_state_after_backward(execution):
     layer.detach_state()
     torch.testing.assert_close(layer.persistent_memory, terminal.float(), atol=0, rtol=0)
     assert layer._pending_state is None
-    assert layer._state_is_zero is False
     with torch.no_grad(), torch.autocast('cuda', dtype=torch.bfloat16):
         assert torch.isfinite(layer(x.detach())).all()
     layer.reset_state()
     assert torch.count_nonzero(layer.persistent_memory) == 0
     assert layer._pending_state is None
-    assert layer._state_is_zero is True
 
 
-def test_registry_pair_executes_cuda_with_matching_frontend_parameter_gradients():
+def test_registry_pair_executes_cuda_with_matching_frontend_parameter_gradients(monkeypatch):
     from train.registry import get_mixer
     from train.upstream import UPSTREAM_STATEFUL_BUILDERS, UPSTREAM_TIER
     torch.manual_seed(73)
@@ -125,9 +123,16 @@ def test_registry_pair_executes_cuda_with_matching_frontend_parameter_gradients(
     baseline = UPSTREAM_STATEFUL_BUILDERS['sdm']()(128, 2, 64, 'training', batch_size=2).cuda()
     baseline.load_state_dict(ours.state_dict())
     assert UPSTREAM_TIER['sdm'] == 'production-kernel'
-    assert ours.chunk_size == 128 and baseline.chunk_size == 64
-    assert ours.execution == 'torch-chunked' and baseline.execution == 'upstream-cuda'
-    assert get_mixer('sdm').public_path is False
+    assert baseline.chunk_size == 64
+    assert ours.execution == 'native' and baseline.execution == 'upstream-cuda'
+    assert get_mixer('sdm').public_path is True
+    import urm.backends.triton.k3.sparse_state as core
+    native_calls = []
+    native_chunked = core.chunked_sparse_state_update
+    def traced_native(*args, **kwargs):
+        native_calls.append(True)
+        return native_chunked(*args, **kwargs)
+    monkeypatch.setattr(core, 'chunked_sparse_state_update', traced_native)
     # Verify the production call executes rather than merely constructing an adapter.
     calls = []
     original = baseline._upstream_kernel
@@ -141,7 +146,7 @@ def test_registry_pair_executes_cuda_with_matching_frontend_parameter_gradients(
     b = a.detach().clone().requires_grad_()
     with torch.autocast('cuda', dtype=torch.bfloat16):
         out, ref = ours(a), baseline(b)
-    assert calls
+    assert calls and native_calls
     torch.testing.assert_close(out, ref, atol=2e-3, rtol=.03)
     cotangent = torch.randn_like(out)
     out.backward(cotangent)

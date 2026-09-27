@@ -16,6 +16,7 @@ for path in (PROJECT, PROJECT / "src"):
     sys.path.insert(0, str(path))
 
 from architectures.sdm_memory import SparseDeltaMemoryLayer
+from urm.compiler.pipeline import CompilationIntent, ScheduleParams, compile_graph
 from train.data import data_generator, get_data
 from train.harness import TrainConfig, train
 from train.registry import get_mixer
@@ -23,15 +24,27 @@ from train.registry import get_mixer
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--execution", choices=("native", "torch-chunked", "upstream-cuda"), required=True)
-    parser.add_argument("--chunk-size", type=int, default=128)
+    parser.add_argument("--execution", choices=("native", "upstream-cuda"), required=True)
+    parser.add_argument("--chunk-size", type=int, default=64,
+                        help="upstream CUDA chunk size; native size is compiler-owned")
+    parser.add_argument("--state-schedule", choices=("auto", "scan", "chunked"), default="auto",
+                        help="native K3 physical schedule preference")
     parser.add_argument("--steps", type=int, default=5)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
+    native_schedule = {}
 
     def builder(width, heads, dim, intent, target="native", batch_size=None):
-        return SparseDeltaMemoryLayer(width, heads, dim, 256, 8, 8, batch_size,
+        layer = SparseDeltaMemoryLayer(width, heads, dim, 256, 8, 8, batch_size,
             target="native", intent=intent, execution=args.execution, chunk_size=args.chunk_size)
+        if args.execution == "native":
+            layer._plan = compile_graph(layer._plan.program, target="native",
+                intent=CompilationIntent(intent),
+                schedule_params=ScheduleParams(sparse_state_schedule=args.state_schedule))
+            native_schedule.update(next(step.launch_config
+                for step in layer._plan.compilation.plan.steps
+                if step.anchor == "urm_native_sparse_state_mixer_v0"))
+        return layer
 
     cfg = TrainConfig(mixer="sdm", layers=9, batch_tokens=8192, microbatch_tokens=8192,
                       steps=args.steps)
@@ -41,8 +54,11 @@ def main():
                           cfg.microbatch_tokens, cfg.sequence_length)
     result = train(cfg, spec, data).to_dict()
     result["diagnostic"] = True
-    result["sdm_execution"] = {"schedule": args.execution, "chunk_size": args.chunk_size,
-                               "routes": "native-public", "compile_state": args.execution == "torch-chunked"}
+    result["sdm_execution"] = {"schedule": args.execution,
+                               "chunk_size": args.chunk_size if args.execution == "upstream-cuda" else native_schedule.get("chunk_size"),
+                               "launch_policy": native_schedule if args.execution == "native" else None,
+                               "state_schedule": args.state_schedule if args.execution == "native" else None,
+                               "routes": "native-public", "public_path": args.execution == "native"}
     if args.execution == "upstream-cuda":
         from extra.comparators.sdm.cuda import sdm_cuda_identity
         result["sdm_source_identity"] = sdm_cuda_identity()

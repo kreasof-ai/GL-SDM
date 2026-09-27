@@ -224,6 +224,8 @@ def make_compile_safe(model: URMDecoderLM) -> URMDecoderLM:
     eagerly).
     """
     for inner in model.modules():
+        if getattr(inner, "plan_dispatch_isolated", False):
+            continue  # The module already isolates plan execution inside its forward.
         if getattr(inner, "_target", None) == "native" and hasattr(inner, "_run_mixer"):
             continue  # native K2: the mixer is already an opaque custom op.
         fwd = getattr(inner, "forward", None)

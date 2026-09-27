@@ -48,8 +48,9 @@ policy, intent mode, shape and state initialization. Missing upstream modes are
 - Both arms compile their decoder surrounds; unsupported kernel calls execute
   behind eager boundaries. Non-finite runs and fallback/reference kernels do not
   supply production comparisons.
-- SDM's optimized state schedule is external compiled PyTorch, using public native
-  routes. It is not a new core compiler lowering. Its historical 40–50% dense-work
+- SDM now executes its complete public graph through the native K3 provider's
+  generic compiler-selected chunk schedule, with a supplied-route cache as an
+  independent admission client. Its historical 40–50% dense-work
   MFU proxy is not comparable to current decoder MFU; see [SDM accounting](sdm-optimization.md).
 
 ## Historical records

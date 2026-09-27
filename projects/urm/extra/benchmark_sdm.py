@@ -18,7 +18,8 @@ from torch.profiler import ProfilerActivity, profile
 
 PROJECT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT))
-from architectures.sdm_chunked import chunked_sparse_delta_memory
+sys.path.insert(0, str(PROJECT / "src"))
+from urm.backends.triton.k3.sparse_state import chunked_sparse_state_update
 from extra.comparators.sdm.cuda import load_pinned_sdm, sdm_cuda_identity
 
 HISTORICAL_COMMIT = "dd45e66a42fbaf4e570638e175ccac0599aeddfc"
@@ -41,8 +42,26 @@ def main():
                                     text=True).strip()
     if revision != HISTORICAL_COMMIT or dirty:
         raise RuntimeError("historical reproduction requires a clean checkout at " + HISTORICAL_COMMIT)
-    sys.path.insert(0, str(checkout / "projects/urm/src"))
-    from urm.backends.dual_form_sdm import chunked_dual_form_sdm
+    import importlib.util
+    import types
+    # Execute the untouched historical file with its original enum import in a
+    # private namespace; no historical code is used by the current provider.
+    semantic = types.ModuleType("urm.compiler.semantic")
+    from urm.ir.program import SparseReadTiming
+    semantic.SparseReadTiming = SparseReadTiming
+    source = checkout / "projects/urm/src/urm/backends/dual_form_sdm.py"
+    spec = importlib.util.spec_from_file_location("historical_dual_form_sdm", source)
+    old_module = importlib.util.module_from_spec(spec)
+    previous = sys.modules.get(semantic.__name__)
+    sys.modules[semantic.__name__] = semantic
+    try:
+        spec.loader.exec_module(old_module)
+    finally:
+        if previous is None:
+            sys.modules.pop(semantic.__name__)
+        else:
+            sys.modules[semantic.__name__] = previous
+    chunked_dual_form_sdm = old_module.chunked_dual_form_sdm
     kernel = load_pinned_sdm()
     identity = sdm_cuda_identity()
     historical = torch.compile(chunked_dual_form_sdm, dynamic=False, fullgraph=True)
@@ -68,7 +87,7 @@ def main():
         return fn(memory, ri, rw, **kwargs)
 
     def corrected(compiled=True):
-        return chunked_sparse_delta_memory(memory, ri, rw, **kwargs, compiled=compiled)
+        return chunked_sparse_state_update(memory, ri, rw, **kwargs, compiled=compiled)
 
     # Historical T is already divisible by C; launch the original flattened API.
     offsets = torch.arange(p, device="cuda").view(p, 1, 1) * s

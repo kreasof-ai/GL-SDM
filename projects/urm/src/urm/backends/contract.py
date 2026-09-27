@@ -70,6 +70,7 @@ class ProviderRequest:
     )
     mode: str
     accumulation_dtype: str = "float32"
+    launch_config: dict[str, Any] | None = None
 
 
 class Provider(Protocol):

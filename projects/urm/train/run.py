@@ -66,9 +66,9 @@ def main() -> None:
     result = train(cfg, mixer, data, device="cuda" if torch.cuda.is_available() else "cpu")
     report = result.to_dict()
     if args.mixer == "sdm":
-        report["sdm_execution"] = {"schedule": "torch-chunked", "chunk_size": 128,
-                                   "routes": "native-public", "compile_state": True,
-                                   "core_modified": False}
+        report["sdm_execution"] = {"schedule": "native-k3", "chunk_size": 128,
+                                   "routes": "native-public", "public_path": True,
+                                   "provider": "urm_native_sparse_state_mixer_v0"}
     print(json.dumps(report, indent=2, allow_nan=False))
     if args.out:
         with open(args.out, "w") as f:

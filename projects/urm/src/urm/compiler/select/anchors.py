@@ -25,6 +25,7 @@ from urm.ir.program import (
     MergePolicy,
     SparseReadTiming,
     SparseStateLayout,
+    SparseStateExecutionMode,
     SparseStateMixerSpec,
     SparseStateOperation,
     SparseStatePolicy,
@@ -559,9 +560,48 @@ def sparse_state_launch_parameters(value_dim: int) -> tuple[int, int]:
     return block, 8 if block >= 256 else 4 if block >= 64 else 2
 
 
-def sparse_state_launch_schedule(spec: SparseStateMixerSpec) -> dict[str, str | int]:
+def sparse_state_chunked_eligible(spec: SparseStateMixerSpec) -> bool:
+    """Typed workspace/numerical regime for the native training schedule.
+
+    Runtime dimensions are rematerialized before launch. Large sparse banks,
+    FP32, inference and read-only operations retain the ordered scan/read kernel.
+    No model names, tensor names or external implementation flags participate.
+    """
+    c = min(128, spec.sequence)
+    padded = ((spec.sequence + c - 1) // c) * c
+    workspace = spec.parallel * (padded * (spec.slots_per_partition + c + spec.value_dim)
+                                 + spec.slots_per_partition * spec.value_dim)
+    return (spec.operation is SparseStateOperation.UPDATE
+            and spec.mode is SparseStateExecutionMode.TRAINING
+            and spec.dtype is DType.BFLOAT16
+            and spec.slots_per_partition <= 4096
+            and workspace <= 64 * 1024**2)
+
+
+def sparse_state_launch_schedule(spec: SparseStateMixerSpec, preference="auto") -> dict[str, str | int]:
     """Serialize the deterministic v0 schedule without importing a GPU runtime."""
     block_d, warps = sparse_state_launch_parameters(spec.value_dim)
+    if preference not in {"auto", "scan", "chunked"}:
+        raise ValueError("sparse state schedule must be auto, scan or chunked")
+    if preference == "chunked" and not sparse_state_chunked_eligible(spec):
+        raise ValueError("chunked state schedule is outside its typed numerical/workspace envelope")
+    if preference != "scan" and sparse_state_chunked_eligible(spec):
+        from urm.compiler.rewrite.rules import CHUNKED_DECAYED_DELTA_STATE
+        if not CHUNKED_DECAYED_DELTA_STATE.backward_covers(spec.dtype):
+            raise ValueError("chunked state schedule has no certified backward for this dtype")
+        return {
+            "schedule_family": "guarded_chunked_decayed_delta",
+            "reparameterization_rule": CHUNKED_DECAYED_DELTA_STATE.name,
+            "chunk_size": 128,
+            "minimum_sequence": 32,
+            "minimum_chunk_size": 32,
+            "maximum_workspace_elements": 64 * 1024**2,
+            "maximum_slots": 4096,
+            "runtime_guard": "nonpositive_decay_and_beta_in_unit_interval",
+            "base_schedule": "partition_owned_ordered_token_scan",
+            "read_timing": spec.read_timing.value,
+            "state_layout": spec.state_layout.value,
+        }
     return {
         "schedule_family": "partition_owned_ordered_token_scan",
         "block_d": block_d,

@@ -25,9 +25,9 @@ the level at which the pinned upstream defines the architecture.
   (harness reset/detach lifecycle).
 - **external-composition** — `mom`, `raven` are plain-torch compositions that do not
   route through a URM plan (`public_path=False`); trained as-is so the report never
-  claims compiler coverage it didn't exercise. `sdm` also sets `public_path=False`:
-  it uses native public product-key routes and an external compiled PyTorch state
-  schedule; the complete state graph is not lowered by the core compiler.
+  claims compiler coverage it didn't exercise. `sdm` uses `public_path=True`:
+  the complete route/update/read graph selects the native K3 provider and its
+  generic guarded chunk schedule.
 - The registry `upstream` field names the KL-gate parity oracle, where wired — it
   is *not* a statement that no upstream kernel exists (the benchmark's upstream arm
   covers 50/51 native rows; see [benchmark.md](benchmark.md)).
@@ -80,7 +80,7 @@ the level at which the pinned upstream defines the architecture.
 | rodimus | — | |
 | rwkv7 | fla.ops.rwkv7 | |
 | samba_attention | fla.models.samba | schedule |
-| sdm | — | stateful; native public routes + external compiled state; actual pinned CUDA baseline |
+| sdm | — | stateful; complete public K3 graph; native chunk schedule; actual pinned CUDA baseline |
 | simple_gla | fla.ops.simple_gla.naive | |
 | sparse_transformer | — | atomic-bwd |
 | tda | — | |

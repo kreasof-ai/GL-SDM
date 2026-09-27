@@ -53,6 +53,12 @@ demonstrated correctness bug, whose fix must re-verify that kernel family's test
 re-run that row's sweep before the report ships. Frontend (`architectures/`) and
 harness (`train/`) work continue freely.
 
+The user's explicit follow-up authorizes internalizing the chunked decayed-delta
+optimization into the existing native K3 provider/compiler path. This exception
+requires name-independent selection, independent-client admission, full-state/VJP
+gates, and new matched SDM measurements. It does not unfreeze other backend families
+or permit SDM-specific branches in the Torch reference backend.
+
 ## Running the benchmark (from projects/urm, PYTHONPATH=src:.)
 
 ```sh
@@ -80,9 +86,9 @@ bf16 peak = 70 TFLOPS. Docs live in `docs/` (mirrors the code — see its README
   `~/.cache/urm/sdm-cuda13` and extension cache under `~/.cache/urm/sdm-extensions`;
   it does not replace the base CUDA/Python environment. Provision it with
   `python extra/provision_sdm_cuda.py`; see `docs/sdm-optimization.md`.
-- The SDM benchmark uses native public routes and an external compiled PyTorch
-  state schedule (`public_path=False`). Its actual pinned CUDA/Triton baseline
-  shares those routes/projections. Keep both schedules outside the frozen core.
+- The SDM benchmark executes its complete public K3 graph (`public_path=True`).
+  The native provider owns the generic guarded chunk schedule. Its actual pinned
+  CUDA/Triton comparator stays external and shares the native routes/projections.
 - Production comparisons require finite training, checkpoint gates, matching
   configs/environment/source fingerprints, and production kernels. Research and
   failed implementations have no paired throughput in the report.

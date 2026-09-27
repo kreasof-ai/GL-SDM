@@ -44,3 +44,11 @@ route fragments) and call `load_graph_recipe_document` → `normalize_graph_docu
 `train/model.py` is a generic surround (embeddings, norms, MLP, lm_head) that never
 owns a mixer equation; `train/harness.py` marks `plan.execute`-based mixers as
 dynamo boundaries (`make_compile_safe`) so the model compiles around the opaque op.
+
+Native K3 training plans can select the registered `chunked_decayed_delta_state`
+physical reparameterization. This preserves the semantic state node and records
+the numerical/workspace guards and ordered scan base in `launch_config`; runtime
+binding enforces that configuration. Selection uses typed properties, independent
+of architecture names. `compile_graph(..., schedule_params=ScheduleParams(
+sparse_state_schedule="scan"))` explicitly retains the original scan. See the
+[K3 schedule and evidence](sdm-optimization.md) for eligibility and state gradients.

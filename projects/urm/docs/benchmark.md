@@ -69,7 +69,7 @@ no substitute reference throughput in the paired table.
 
 ## Corrections
 
-Kernel math in `src/urm/` remains unchanged. Two necessary autograd-wrapper
+The original stabilization campaign retained kernel math. Two necessary autograd-wrapper
 fixes replace captured bias/mask and decay/beta tensors with immutable metadata;
 capturing those tensors retained upstream graphs after backward. Full-size
 probes show flat step-end allocations after the fix. Frontend/harness corrections include
@@ -103,10 +103,12 @@ Its adapter also matches native query scaling and selects IEEE fp32 dot products
 with one pipeline stage through supported Triton launch options. The registered
 differential recipe uses identical paths with lambda 0.5; the production adapter
 implements the exact merge as half of one kernel call.
-SDM shares the public native product-key routes/projections between an external
-compiled PyTorch state schedule and the original pinned Meta CUDA/Triton state
-kernel. Its user-authorized CUDA build uses an isolated matching toolkit; the
-base environment and frozen core are unchanged. See [SDM optimization](sdm-optimization.md)
+SDM now executes its complete route/update/read graph through native K3. The
+compiler selects a generic guarded chunk schedule with registered numerical/VJP
+evidence and an explicit scan alternative. No SDM-specific branch is added to
+the Torch reference backend. Its actual pinned Meta CUDA/Triton comparator shares
+the public native routes/projections. The CUDA build uses an isolated matching
+toolkit; the base environment is unchanged. See [SDM optimization](sdm-optimization.md)
 for provisioning, historical MFU accounting, and numerical limits. No flash-attn
 installation is required. Other unavailable production training kernels remain
 explicit exclusions.

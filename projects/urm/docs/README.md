@@ -10,7 +10,7 @@ disagrees with the code is a bug in the docs; file an issue or fix the doc.
 | [backends.md](backends.md) | `src/urm/backends/` | The op inventory per family/tier, the native Triton kernels, numerical policies (relaxed atomics), hardware envelopes measured on this A10G |
 | [catalog.md](catalog.md) | `architectures/`, `train/registry.py` | The 52-row architecture registry: granularity taxonomy, tiers, upstream mapping per row |
 | [benchmark.md](benchmark.md) | `train/`, `results/sweep/`, `results/upstream/` | The training-harness benchmark: config, drivers, gates, protocol, and how to reproduce |
-| [sdm-optimization.md](sdm-optimization.md) | External SDM schedules and actual pinned CUDA baseline | Historical MFU reproduction, decay correctness, frozen snapshots and performance limits |
+| [sdm-optimization.md](sdm-optimization.md) | Native K3 chunk scheduling and actual pinned CUDA baseline | Historical MFU reproduction, compiler selection, state/VJP correctness and performance limits |
 | [evidence.md](evidence.md) | `tests/`, `extra/` | The claim policy (five independent verdicts) and what the current evidence supports |
 
 Top-level: [project README](../README.md), [agent notes](../AGENTS.md),

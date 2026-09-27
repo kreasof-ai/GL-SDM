@@ -36,6 +36,7 @@ from urm.ir.program import (
     Transform,
     TransformKind,
     WeightedReduce,
+    SparseStateMixerAccess,
 )
 
 
@@ -314,9 +315,65 @@ DEFAULT_RULES: tuple[RewriteRule, ...] = (
 )
 
 
+def _match_chunked_state(program, match):
+    del program
+    from urm.compiler.select.anchors import sparse_state_chunked_eligible
+    return (isinstance(match.subject, SparseStateMixerAccess)
+            and sparse_state_chunked_eligible(match.subject.spec))
+
+
+def _preserve_state_node(program, match):
+    del program
+    return (match.subject,)
+
+
+def _chunked_state_metadata(program, match):
+    if _match_chunked_state(program, match):
+        return CheckOutcome.pass_()
+    return CheckOutcome.fail(DiagnosticCode.REWRITE_PRECONDITION_FAILED,
+                             "requires a BF16 training update within the declared workspace envelope")
+
+
+# Physical reparameterizations preserve the semantic node and its effects.
+# They are registered separately from graph-changing DEFAULT_RULES; the native
+# provider's serialized schedule names this contract rather than rewriting IR
+# into an architecture-specific callback or expanding the op inventory.
+CHUNKED_DECAYED_DELTA_STATE = RewriteRule(
+    name="chunked_decayed_delta_state",
+    description=("Slot-local cumulative decay factors and causal triangular solves "
+                 "execute the ordered decayed-delta recurrence in chunks. Unique "
+                 "certified writes, normalized weights, nonpositive decay and beta "
+                 "in [0,1]; read-before and read-after preserved. Bounded runtime "
+                 "dimensions/decay choose the scan base outside the chunk envelope. "
+                 "FP32 accumulation, BF16 products/state boundaries; changes "
+                 "per-token storage rounding. Saves chunk factors/solve operands "
+                 "instead of selected token-state rows; O(P*T*S + P*T*C) workspace."),
+    subject_kind=SparseStateMixerAccess,
+    producer_kind=None,
+    matcher=_match_chunked_state,
+    preconditions=(Precondition("bf16_training_update_with_bounded_workspace", _chunked_state_metadata),),
+    equivalence=EquivalenceClass.FLOATING_POINT,
+    tolerance_envelope={"bfloat16_atol": .02, "bfloat16_rtol": .03},
+    forward_mapping=_preserve_state_node,
+    backward_contract=BackwardContract(
+        strategy=BackwardStrategy.MATERIALIZED_AUTOGRAD,
+        verified_dtypes=(DType.BFLOAT16,),
+        tolerance_envelope={"relative_gradient_norm": .04},
+        evidence="tests/test_k3_chunked_native.py; tests/test_sdm_chunked.py; tests/test_sdm_cuda_baseline.py",
+    ),
+    saved_state_policy=SavedStatePolicy.SAVE_TENSORS,
+    preserved_effects=frozenset({EffectClass.ORDERED_STATE_TRANSITION}),
+    locality_floor="partition",
+    communication_volume_delta_bytes=0,
+)
+PHYSICAL_REPARAMETERIZATIONS = {CHUNKED_DECAYED_DELTA_STATE.name: CHUNKED_DECAYED_DELTA_STATE}
+
+
 __all__ = [
     "BARRIER_FREE",
     "CheckOutcome",
+    "CHUNKED_DECAYED_DELTA_STATE",
+    "PHYSICAL_REPARAMETERIZATIONS",
     "DEFAULT_RULES",
     "DELAY_ROW_SCALE_THROUGH_GEMM",
     "FOLD_ROW_SCALE_EPILOGUE",

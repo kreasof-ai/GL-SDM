@@ -1,14 +1,16 @@
-# SDM: external optimization and actual CUDA baseline
+# SDM: native K3 optimization and actual CUDA baseline
 
-SDM now keeps the public native product-key route operators and moves its
-decayed-delta state schedule into
-[`architectures/sdm_chunked.py`](../architectures/sdm_chunked.py).
-The benchmark selects compiled PyTorch with chunk size 128. The shared-frontend
-baseline uses the original pinned Meta CUDA/Triton implementation with chunk
-size 64. This work changes no file in `src/urm/`; the existing complete native
-K3 path remains available as `SparseDeltaMemoryLayer(execution="native")`.
-Accepted non-SDM campaign records retain their original source fingerprints.
-Each production pair still has identical fingerprints, configs and environment.
+`architectures/sdm_memory.py` now executes its complete public URM graph:
+two native route operators and the existing native K3 decayed-delta state
+operator. `architectures/sdm_chunked.py` has been deleted. Chunking is a physical
+schedule of that operator, selected by the compiler from typed properties and
+recorded in the executable plan. There is no SDM-specific Torch backend branch;
+the Torch recurrence remains an independent reference.
+
+The exception to the backend freeze is limited to this generic K3 integration
+and its compiler/runtime plumbing. Other accepted campaign rows and their
+artifacts retain their original source fingerprints. Each production pair still
+requires identical fingerprints, configs and environment.
 
 ## What the historical 40–50% measured
 
@@ -61,52 +63,83 @@ weights and beta are contractive, decay is negative, and the seed is recorded.
 Timing variation is expected; these are short microbenchmarks, not convergence
 or original software-stack replication.
 
-## Correct schedule and snapshot interface
+## Native schedule and state interface
 
-The operator exposes the same partition-local sparse operands as the recurrence:
+The compiler registers `chunked_decayed_delta_state` as a floating-point physical
+reparameterization, with BF16 forward and all-state/operand backward evidence.
+It preserves the existing semantic node, ordered collisions, route certification,
+state layout, and read timing. The serialized plan names the rule, chunk cap,
+workspace limit, runtime guards, and scan base. Runtime binding rejects missing
+or altered schedule metadata before dispatch.
+
+A supplied-route client can use the public interface without an SDM frontend:
 
 ```python
-from architectures.sdm_chunked import chunked_sparse_delta_memory
+from urm.compiler.pipeline import CompilationIntent, ScheduleParams, compile_graph
+from urm.ir.program import DType, SparseStateExecutionMode, sparse_state_mixer_program
 
-readings, next_snapshot = chunked_sparse_delta_memory(
-    snapshot, read_indices, read_weights,
-    write_indices=write_indices, write_weights=write_weights,
+program = sparse_state_mixer_program(
+    name="supplied_route_cache", parallel=2, sequence=41,
+    slots_per_partition=67, value_dim=37, writes=3, reads=2,
+    dtype=DType.BFLOAT16, mode=SparseStateExecutionMode.TRAINING,
+)
+plan = compile_graph(program, target="native", intent=CompilationIntent.TRAINING)
+result = plan.execute(
+    memory=snapshot, read_addresses=read_indices, read_weights=read_weights,
+    write_addresses=write_indices, write_weights=write_weights,
     values=values, beta=beta, log_decay=log_decay,
-    chunk_size=128, compiled=True,
+)
+readings, next_snapshot = result["readings"], result["updated_memory"]
+
+# A reviewable choice of the original scan through the same public API:
+scan_plan = compile_graph(
+    program, target="native", intent=CompilationIntent.TRAINING,
+    schedule_params=ScheduleParams(sparse_state_schedule="scan"),
 )
 ```
 
-The snapshot is read-only. Both readings and the new snapshot are differentiable,
-including gradients to initial memory and decay. Callers own commit/detach timing;
-this is a recurrence operator, not the full GL-SDM transaction or CSDM lifecycle.
-Write addresses must be unique within each token, valid and partition-local;
-cross-token collisions remain ordered. Use nonpositive decay and normalized
-weights/contractive gates as supplied by the SDM frontend.
+During autograd, the input snapshot remains read-only and both outputs are
+differentiable, including initial-memory and decay gradients. Callers own
+commit/detach timing. Without gradients, the existing persistent in-place state
+ABI and preallocated-output behavior are preserved. Both before-update and
+after-update reads are supported. Write addresses remain certified, unique
+within a token, valid and partition-local; cross-token collisions stay ordered.
 
 Slot-local cumulative decay factors convert the recurrence into causal chunk
-systems. BF16 Tensor Core products construct their coupling/read matrices;
-FP32 unit-lower-triangular solves compute deltas directly, avoiding an explicit
-inverse. Exponentials and saved decay derivatives stay sparse; only matmul
-operands expand to slot vectors. Decay factors are centered to limit magnitude.
-An explicit zero-snapshot specialization skips the first initial-memory products
-only when lifecycle guarantees zero state without initial-memory gradients.
+systems. BF16 Tensor Core products construct coupling/read matrices; FP32
+unit-lower-triangular solves compute deltas directly. Exponentials and their
+saved derivatives stay sparse; only matmul operands expand to slot vectors.
+Centering bounds exponential magnitude. The zero-state specialization requires
+an actual zero snapshot with no initial-memory gradient; the native provider
+checks those facts rather than relying on an architecture lifecycle flag.
 
-Strong decay reduces the effective chunk size to bound exponential factors; the
-size-one limiting schedule uses a stable token recurrence. This decision incurs
-one scalar device synchronization per attempted size outside the compiled graph.
-The mathematical path retains all operand gradients. FP64 tests compare exact
-readings, terminal state, and all six differentiable operand groups to an
-independent serial recurrence, including decay -1000 and two linked transactions.
-BF16 eager/compiled tests compare against actual pinned CUDA, including explicit
-terminal-state cotangents. The pin's default TF32 matmuls have a separate numerical
-budget. BF16 chunking does not reproduce storage rounding at every token; this
-is a numerical schedule change, not bitwise equivalence.
+Automatic chunk selection requires a BF16 training update, at most 4096 slots,
+and a workspace estimate no larger than `64 * 1024**2` elements. The compiler caps
+chunks at 128 tokens. Runtime P/T dimensions are checked again. Nonpositive
+decay and beta in [0,1] are required; actual slot decay sums reduce the chunk
+size until exponential factors are bounded. The decay-bound checks incur scalar
+device synchronizations outside the compiled numerical graph. Chunks shorter
+than 32 tokens, oversized banks/workspace, inference, read-only access, FP32,
+unsafe gate/decay values, and exhaustion of the bounded compiled-shape cache use
+the existing ordered scan/read kernels. The cache has a per-function budget on
+Torch versions that expose it; no process-global compiler limit is changed.
+A forced `chunked` hint cannot bypass the typed eligibility check.
 
-Dense chunk-slot tensors still scale with P*T*S. This implementation has been
-measured at S=256 and S=4096; it does not qualify arbitrarily large global banks,
-adaptive routing, overlays, read-only transactions, or contention policies.
-Those GL-SDM/CSDM workloads need their own capacity/bandwidth benchmarks before
-choosing this schedule over the original sparse CUDA path.
+FP64 algebra tests compare exact readings, terminal state and all six operand
+groups against an independent serial recurrence, including decay -1000 and
+linked transactions. Native BF16 public-plan tests compare both read timings,
+terminal-only losses and continuation against the unchanged Torch oracle.
+An independent supplied-route cache client uses nonsquare banks, unequal route
+widths and a read-only terminal probe. Actual pinned CUDA tests cover autocast,
+partition-local padding, all operand gradients and terminal-state lifetime.
+The registered BF16 forward budget is atol .02 / rtol .03, and relative gradient
+norm error is below .04 in these gates. Chunking changes per-token BF16 storage
+rounding; this is floating-point equivalence, not bitwise identity.
+
+Dense chunk-slot tensors scale with P*T*S. The bounded admission policy retains
+sparse scans for large global banks. These gates qualify the recurrence and
+its physical schedule; GL-SDM/CSDM capacity, adaptive routing, transaction,
+overlay and contention policies still require their own workload measurements.
 
 ## Production kernel and machine isolation
 
@@ -130,13 +163,15 @@ clones the input snapshot because the pin mutates it, and disables autocast arou
 the pin's FP32 WY operations. The pin returns an empty second output and reconstructs
 earlier memory in its workspace during backward; the adapter therefore saves a
 terminal snapshot before backward. That CUDA snapshot is detached: terminal-state
-cotangents use the pin's explicit `grad_final_memory` API. The PyTorch API above
+cotangents use the pin's explicit `grad_final_memory` API. The native autograd API above
 supports ordinary autograd through the returned snapshot.
 
 ## Decoder campaign
 
 The current row has P=192, T=511 next-token positions, S=256, reads=writes=8:
-a different geometry from the historical microbenchmark. Both arms use the
+a different geometry from the historical microbenchmark. The unchanged model
+FLOP estimate is `6 * parameter_count * tokens` plus the state-work term, divided
+by full-step time and 70 TFLOPS; it is not the historical 522-GFLOP proxy. Both arms use the
 same 94,952,448 parameters, routes/projections, nine-layer decoder, data,
 8192-token batch/microbatch, optimizer, BF16, compilation policy and checkpoint
 gate. The canonical ten-step measurements and memory traces live in
@@ -145,24 +180,42 @@ is retained in [`accepted-native.json`](../results/sdm-optimization/accepted-nat
 
 | Decoder schedule | MFU | Tokens/s | Peak GiB |
 |---|---:|---:|---:|
-| Accepted native K3 | 16.1% | 19,780 | 7.04 |
-| Corrected compiled PyTorch | 19.7% | 24,215 | 11.17 |
-| Actual upstream CUDA/Triton | 16.9% | 20,747 | 7.80 |
+| Accepted native K3 before optimization | 16.1% | 19,780 | 7.04 |
+| Current public native scan (control) | 16.6% | 20,408 | 7.04 |
+| Current public native chunks | 19.4% | 23,768 | 11.16 |
+| Actual upstream CUDA/Triton | 16.9% | 20,726 | 7.80 |
 
-The optimized decoder is 22.4% faster than the accepted native row and 16.7%
-faster than the matched CUDA baseline. Both new runs have finite losses, passing
-checkpoint gates, no batch fallback, and exactly flat step-end allocations over
-all ten measured steps. The compiled schedule uses more peak memory; throughput
-improvement does not imply an improvement in peak activation demand.
+The chunked native decoder is 16.5% faster than the current public native scan,
+20.2% faster than the accepted pre-optimization row, and 14.7% faster than the
+matched CUDA baseline. The scan control uses the same current projections,
+public graph, data, configuration and FLOP numerator; only the compiler's state
+schedule preference changes. Its result is a separate
+[`native-scan.json`](../results/sdm-optimization/native-scan.json) diagnostic,
+not a replacement production arm. The native/CUDA canonical pair and scan
+control share source fingerprint `487a6ddbd7320d01401f83a87c998c6ac2b779a9e65dad87f7114042d3cdac8f`.
 
-Five-step tuning found PyTorch C=128 faster than C=64; actual CUDA C=64 beat
+All three runs have finite losses, passing checkpoint gates, no batch fallback,
+and exactly flat step-end allocations over ten measured steps. Chunking uses
+more peak memory; throughput improvement does not imply lower activation demand.
+The current native loss trace equals the preceding external chunk implementation's
+trace on this dataset/seed. That preceding 19.7% result is archived in
+[`external-before-integration.json`](../results/sdm-optimization/external-before-integration.json);
+it is historical evidence and no longer feeds the production report.
+[`native-plans.json`](../results/sdm-optimization/native-plans.json) records the
+complete three-op SDM plan and a supplied-route client's native plan, both using
+the same physical schedule contract. The validation log records 193 passed
+checks and one skip.
+
+Earlier five-step tuning found PyTorch C=128 faster than C=64; actual CUDA C=64 beat
 C=128 and C=256 on this small-bank geometry. These are diagnostics, separate
 from the canonical final pair; their JSONs retain their individual source hashes.
 For a new diagnostic, run one candidate per process:
 
 ```sh
-python extra/tune_sdm.py --execution torch-chunked --chunk-size 128 \
-  --out /tmp/sdm-torch-128.json
+python extra/tune_sdm.py --execution native --state-schedule auto \
+  --out /tmp/sdm-native.json
+python extra/tune_sdm.py --execution native --state-schedule scan \
+  --out /tmp/sdm-scan.json
 python extra/tune_sdm.py --execution upstream-cuda --chunk-size 64 \
   --out /tmp/sdm-cuda-64.json
 PYTHONPATH=src:. python -m train.sweep --rows sdm --out-dir /tmp/sdm-sweep

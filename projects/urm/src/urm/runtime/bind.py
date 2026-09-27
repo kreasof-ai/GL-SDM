@@ -175,6 +175,7 @@ def _execute_node(
     anchor: str,
     tensors: dict[str, Any],
     mode: str,
+    launch_config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Dispatch one typed node to its anchor's provider and execute it."""
     provider = _PROVIDERS.get(anchor)
@@ -190,6 +191,7 @@ def _execute_node(
         descriptor=descriptor,
         mode=mode,
         accumulation_dtype="float32",
+        launch_config=launch_config,
     )
     decline = provider.decline(request)
     if decline is not None:
@@ -235,6 +237,13 @@ class BoundGraphPlan:
                 raise PlanBindingError(
                     f"plan step {step.step_id}: unknown provider anchor {step.anchor!r}"
                 )
+            op = next(op for op in program.ops if op.name == step.note)
+            if isinstance(op, SparseStateMixerAccess) and step.anchor == "urm_native_sparse_state_mixer_v0":
+                from urm.compiler.select.anchors import sparse_state_launch_schedule
+                allowed = (sparse_state_launch_schedule(op.spec),
+                           sparse_state_launch_schedule(op.spec, "scan"))
+                if step.launch_config not in allowed:
+                    raise PlanBindingError("native K3 plan has an invalid or missing physical schedule")
 
     def execute(self, **inputs: Any) -> dict[str, Any]:
         """Execute the plan in graph order; return the program's outputs."""
@@ -261,7 +270,7 @@ class BoundGraphPlan:
                 raise PlanBindingError(
                     f"plan has no dispatch step for op {op.name!r}"
                 )
-            outputs = _execute_node(op, step.anchor, tensors, mode)
+            outputs = _execute_node(op, step.anchor, tensors, mode, step.launch_config)
             for out_name, out_value in zip(op.outputs, outputs.values()):
                 tensors[out_name] = out_value
 

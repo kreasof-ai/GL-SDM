@@ -1,13 +1,18 @@
-"""Native K3 sparse-state mixer ops (the frozen SparseStateMixer v0 algebra).
+"""Native K3 sparse-state mixer ops (the closed SparseStateMixer v0 algebra).
 
 The kernels consume certified partition-local routes. One program owns a
 partition/value fragment and traverses tokens sequentially, making ordered
 cross-token collisions structural rather than atomic or scheduler dependent.
+The compiler can select a bounded BF16 training reparameterization using chunk
+matrix products and triangular solves. It preserves the typed route/state ABI,
+supplies all state/operand cotangents, and retains the ordered scan base.
 """
 
 from __future__ import annotations
 
+import inspect
 import torch
+import torch.nn.functional as F
 import triton
 import triton.language as tl
 
@@ -27,6 +32,7 @@ _STATE_PROFILER: Callable[[str], ContextManager[Any]] | None = None
 from urm.compiler.select.anchors import (
     FROZEN_V0_ENVELOPE,
     sparse_state_launch_schedule,
+    sparse_state_chunked_eligible,
     sparse_state_spec_status,
 )
 from urm.ir.program import SparseReadTiming, SparseStateOperation, SparseStateMixerSpec
@@ -753,6 +759,151 @@ def sparse_state_read(
         return _SparseStateRead.apply(memory, read_indices, read_weights)
     return _sparse_state_read_forward(memory, read_indices, read_weights, out=out)
 
+def _bounded_state_chunk_size(write_indices, log_decay, slots, requested):
+    """Bound exponential factors using actual per-slot decay, not token count.
+
+    This one scalar synchronization is outside the compiled numerical graph.
+    It chooses an equivalent schedule and never detaches a numerical operand.
+    """
+    p, t, w = write_indices.shape
+    size = min(requested, t)
+    detached = log_decay.detach().float()
+    while size > 1:
+        n = (t + size - 1) // size
+        pad = n * size - t
+        addresses = F.pad(write_indices.long(), (0, 0, 0, pad)).reshape(p, n, size * w)
+        decay = F.pad(detached.expand(p, t, w), (0, 0, 0, pad)).reshape(p, n, size * w)
+        sums = torch.zeros(p, n, slots, device=decay.device).scatter_add(-1, addresses, decay)
+        if float(sums.abs().max()) <= 60:
+            break
+        size = max(1, size // 2)
+    return size
+
+
+def _chunked_state_update(memory, ri, rw, wi, ww, values, beta, log_decay, chunk_size,
+             zero_initial_state=False, read_before_update=False):
+    p, t, d = values.shape
+    slots = memory.shape[1]
+    c = min(chunk_size, t)
+    n = (t + c - 1) // c
+    pad = n * c - t
+    dtype = torch.float64 if values.dtype == torch.float64 else torch.float32
+
+    def chunks(x):
+        return F.pad(x, (0, 0, 0, pad)).reshape(p, n, c, x.shape[-1])
+
+    ri, wi = chunks(ri.long()), chunks(wi.long())
+    rw, ww, v, b, g = [chunks(x.to(dtype)) for x in (rw, ww, values, beta, log_decay)]
+    slot_decay = torch.zeros(p, n, c, slots, device=values.device, dtype=dtype).scatter(
+        -1, wi, g.expand_as(ww))
+    cumul = slot_decay.cumsum(-2)
+    end = cumul[..., -1:, :]
+    write_cumul = cumul.gather(-1, wi)
+    read_cumul = (cumul - slot_decay if read_before_update else cumul).gather(-1, ri)
+    write_end = end.expand(p, n, c, slots).gather(-1, wi)
+    read_end = end.expand(p, n, c, slots).gather(-1, ri)
+    dot_dtype = torch.bfloat16 if values.dtype == torch.bfloat16 else dtype
+
+    def dense(indices, weights):
+        return torch.zeros(p, n, c, slots, device=values.device, dtype=dot_dtype).scatter_add(
+            -1, indices, weights.to(dot_dtype))
+
+    # Exponentials and their saved backward tensors stay sparse. Only the
+    # matmul operands expand to slot vectors, already in the compute dtype.
+    plus = dense(wi, ww * (write_cumul - write_end * .5).exp())
+    minus = dense(wi, ww * (write_end * .5 - write_cumul).exp())
+    qplus = dense(ri, rw * (read_cumul - read_end * .5).exp())
+
+    def mm(a, b):
+        return (a.to(dot_dtype) @ b.to(dot_dtype)).to(dtype)
+
+    strict_upper = torch.ones(c, c, device=values.device, dtype=torch.bool).triu(0)
+    coupling = mm(plus, minus.transpose(-1, -2)).masked_fill(strict_upper, 0.)
+    attention = mm(qplus, minus.transpose(-1, -2)).tril(-1 if read_before_update else 0)
+    eye = torch.eye(c, device=values.device, dtype=dtype).expand(p, n, c, c)
+    system = eye + b * coupling
+    initial_w = dense(wi, ww * write_cumul.exp())
+    initial_q = dense(ri, rw * read_cumul.exp())
+    final_w = dense(wi, ww * (write_end - write_cumul).exp())
+    state = memory.to(dtype)
+    outputs = []
+    for i in range(n):
+        if i == 0 and zero_initial_state:
+            rhs = b[:, i] * v[:, i]
+            base = torch.zeros_like(v[:, i])
+        else:
+            retrieved = mm(initial_w[:, i], state)
+            base = mm(initial_q[:, i], state)
+            rhs = b[:, i] * (v[:, i] - retrieved)
+        delta = torch.linalg.solve_triangular(system[:, i], rhs,
+                                             upper=False, unitriangular=True)
+        outputs.append(base + mm(attention[:, i], delta))
+        update = mm(final_w[:, i].transpose(-1, -2), delta)
+        state = update if i == 0 and zero_initial_state else (
+            cumul[:, i, -1, :, None].exp() * state + update
+        )
+    return torch.cat(outputs, dim=1)[:, :t].to(values.dtype), state.to(memory.dtype)
+
+
+# Static chunks specialize on geometry, read timing and state-gradient ownership.
+# Newer Torch supports a per-call cache budget, so unrelated models do not need
+# a process-global compiler setting. Older versions retain their default budget.
+_chunk_compile_options = {"fullgraph": True, "dynamic": False}
+if "recompile_limit" in inspect.signature(torch.compile).parameters:
+    _chunk_compile_options["recompile_limit"] = 64
+_compiled_chunked_state_update = torch.compile(_chunked_state_update, **_chunk_compile_options)
+
+
+def _chunked_tokenwise_state_update(memory, ri, rw, wi, ww, values, beta, log_decay, read_before_update=False):
+    """Stable limiting schedule for decay too strong for exponential factoring."""
+    p, t, d = values.shape
+    dtype = torch.float64 if values.dtype == torch.float64 else torch.float32
+    state = memory.to(dtype)
+    outputs = []
+    for token in range(t):
+        reads = ri[:, token].long().unsqueeze(-1).expand(p, -1, d)
+        if read_before_update:
+            outputs.append((state.gather(1, reads) * rw[:, token].to(dtype).unsqueeze(-1)).sum(1))
+        addresses = wi[:, token].long().unsqueeze(-1).expand(p, -1, d)
+        decayed = state.gather(1, addresses) * log_decay[:, token].to(dtype).exp().unsqueeze(-1)
+        weight = ww[:, token].to(dtype).unsqueeze(-1)
+        retrieved = (weight * decayed).sum(1)
+        delta = beta[:, token].to(dtype) * (values[:, token].to(dtype) - retrieved)
+        state = state.scatter(1, addresses, decayed + weight * delta.unsqueeze(1))
+        if not read_before_update:
+            outputs.append((state.gather(1, reads) * rw[:, token].to(dtype).unsqueeze(-1)).sum(1))
+    return torch.stack(outputs, 1).to(values.dtype), state.to(memory.dtype)
+
+
+def chunked_sparse_state_update(memory, read_indices, read_weights, *,
+                                write_indices, write_weights, values, beta,
+                                log_decay, chunk_size=256, compiled=False,
+                                zero_initial_state=False, read_before_update=False):
+    """Ordered reads with ordered cross-token collisions and unique writes.
+
+    Indices must be valid partition-local routes; writes within each token must
+    be unique. Gates have shape [P,T,1] and log_decay is nonpositive. FP64 inputs
+    provide an exact algebraic test path; BF16 uses Tensor Core matmuls with
+    FP32 solves/decay and rounds the returned readings and state to their input
+    dtypes. It does not reproduce per-token BF16 storage rounding.
+
+    zero_initial_state is an explicit lifecycle fact, valid only for a zero
+    snapshot that does not require gradients. It is never inferred from values.
+    """
+    if chunk_size < 1:
+        raise ValueError("chunk_size must be positive")
+    if zero_initial_state and memory.requires_grad:
+        raise ValueError("zero_initial_state cannot discard initial-memory gradients")
+    size = _bounded_state_chunk_size(write_indices, log_decay, memory.shape[1], chunk_size)
+    if size == 1:
+        return _chunked_tokenwise_state_update(memory, read_indices, read_weights, write_indices, write_weights,
+                          values, beta, log_decay, read_before_update)
+    call = _compiled_chunked_state_update if compiled else _chunked_state_update
+    with torch.autocast(values.device.type, enabled=False):
+        return call(memory, read_indices, read_weights, write_indices, write_weights,
+                    values, beta, log_decay, size, zero_initial_state, read_before_update)
+
+
 def sparse_state_update(
     memory: torch.Tensor,
     write_indices: torch.Tensor,
@@ -765,14 +916,40 @@ def sparse_state_update(
     *,
     read_before_update: bool,
     out: torch.Tensor | None = None,
+    chunked: bool = False,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     differentiable = (memory, write_weights, values, beta, log_decay, read_weights)
     needs_grad = torch.is_grad_enabled() and any(
         tensor.requires_grad for tensor in differentiable
     )
+    if needs_grad and out is not None:
+        raise ValueError("autograd execution does not accept a preallocated output")
+    # This bounded physical branch is owned by the native K3 provider. It
+    # consumes the same certified routes, read timing and state cotangents.
+    # Outside its numerical/workspace envelope the ordered scan stays available.
+    size = 1
+    if chunked and not bool(((log_decay > 0) | (beta < 0) | (beta > 1)).any()):
+        size = _bounded_state_chunk_size(write_indices, log_decay, memory.shape[1], 128)
+    if size >= 32:
+        zero = not memory.requires_grad and not bool(torch.count_nonzero(memory))
+        try:
+            readings, final = chunked_sparse_state_update(memory, read_indices, read_weights,
+                write_indices=write_indices, write_weights=write_weights, values=values,
+                beta=beta, log_decay=log_decay, chunk_size=size, compiled=True,
+                zero_initial_state=zero, read_before_update=read_before_update)
+        except torch._dynamo.exc.FailOnRecompileLimitHit:
+            # Cache exhaustion selects the admitted scan base; numerical/compiler
+            # errors are not caught, and no eager reference substitutes for native.
+            pass
+        else:
+            if not needs_grad:
+                memory.copy_(final)
+                final = memory
+                if out is not None:
+                    out.copy_(readings)
+                    readings = out
+            return readings, final
     if needs_grad:
-        if out is not None:
-            raise ValueError("autograd execution does not accept a preallocated output")
         return _SparseStateUpdate.apply(
             memory,
             write_indices,
@@ -826,6 +1003,7 @@ def sparse_delta_state(
     beta=None,
     log_decay=None,
     spec,
+    schedule=None,
 ):
     """Canonical K3 sparse-delta state — the native Triton implementation of the
     uniform address-index signature.
@@ -836,6 +1014,10 @@ def sparse_delta_state(
     execute the ordered update + read. Returns ``(readings, updated_memory)``.
     """
 
+    if schedule is not None and schedule not in (
+        sparse_state_launch_schedule(spec), sparse_state_launch_schedule(spec, "scan")
+    ):
+        raise ValueError("invalid native K3 physical schedule")
     spec = _k3_runtime_spec(spec, {
         "values": values, "read_addresses": read_addresses,
     })
@@ -846,7 +1028,7 @@ def sparse_delta_state(
         write_indices=write_addresses,
         write_weights=write_weights,
     )
-    backend = TritonSparseStateMixerBackend(spec)
+    backend = TritonSparseStateMixerBackend(spec, schedule=schedule)
     prepared = backend._prepare_generated_routes(
         routes, values=values, beta=beta, log_decay=log_decay,
     )
@@ -867,6 +1049,11 @@ class K3NativeTritonProvider:
 
         if not torch.cuda.is_available():
             return "native K3 requires CUDA"
+        if request.launch_config is not None and request.launch_config not in (
+            sparse_state_launch_schedule(request.descriptor),
+            sparse_state_launch_schedule(request.descriptor, "scan"),
+        ):
+            return "invalid native K3 physical schedule"
         return None
 
     def execute(self, request, operands):
@@ -880,6 +1067,7 @@ class K3NativeTritonProvider:
             beta=operands.get("beta"),
             log_decay=operands.get("log_decay"),
             spec=request.descriptor,
+            schedule=request.launch_config,
         )
         return {"readings": readings, "updated_memory": updated}
 
@@ -888,8 +1076,9 @@ class TritonSparseStateMixerBackend:
 
     name = NATIVE_SPARSE_STATE_MIXER_NAME
 
-    def __init__(self, spec: SparseStateMixerSpec) -> None:
+    def __init__(self, spec: SparseStateMixerSpec, *, schedule=None) -> None:
         self.spec = spec
+        self.schedule = schedule or sparse_state_launch_schedule(spec)
         status = self.support_status(spec)
         status.require()
 
@@ -1084,6 +1273,8 @@ class TritonSparseStateMixerBackend:
             prepared.routes.read_weights,
             read_before_update=self.spec.read_timing is SparseReadTiming.BEFORE_UPDATE,
             out=out,
+            chunked=(self.schedule["schedule_family"] == "guarded_chunked_decayed_delta"
+                     and sparse_state_chunked_eligible(self.spec) and self.spec.sequence >= 32),
         )
         state.memory = memory
         state.sequence_length += self.spec.sequence
@@ -1107,4 +1298,4 @@ class TritonSparseStateMixerBackend:
         }
 
     def launch_schedule(self) -> dict[str, str | int]:
-        return sparse_state_launch_schedule(self.spec)
+        return dict(self.schedule)

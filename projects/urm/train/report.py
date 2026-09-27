@@ -109,11 +109,13 @@ def render(ours, upstream):
               "differentiable merges to retain projection and mixing-weight gradients. "
               "Two core autograd-wrapper fixes retain only flags/shapes rather than bias/mask or gate tensors, "
               "preventing graph retention after backward; kernel math is unchanged.", ""]
-    if "sdm" in ok and ok["sdm"].get("sdm_execution"):
-        lines += ["SDM uses native public product-key routes with an external compiled PyTorch state schedule "
-                  "(chunk size 128), including decay and its gradients. Its shared-frontend baseline calls the "
+    if "sdm" in ok and ok["sdm"].get("sdm_execution", {}).get("schedule") == "native-k3":
+        lines += ["SDM executes its complete public route/update/read graph through the native K3 provider. "
+                  "The compiler selects a generic guarded chunk schedule (maximum chunk size 128) by typed "
+                  "state properties, including decay and all operand/state gradients; the ordered scan remains available. "
+                  "The external SDM state-schedule file has been removed. Its shared-frontend baseline calls the "
                   "unmodified pinned Meta CUDA/Triton kernels (chunk size 64), built with an isolated matching "
-                  "CUDA toolkit. The core URM backend is unchanged by this SDM optimization. "
+                  "CUDA toolkit. The independent Torch reference remains unchanged. "
                   "See [SDM measurements and historical MFU accounting](../docs/sdm-optimization.md). "
                   "Accepted non-SDM measurements retain their original source fingerprints; each paired row "
                   "still requires identical fingerprints in both arms.", ""]
@@ -154,6 +156,8 @@ def render(ours, upstream):
             flags.append(f"diagnostic mb{r['microbatch_fallback']}")
         if r.get('sdm_execution', {}).get('schedule') == 'torch-chunked':
             flags.append("external state schedule")
+        if r.get('sdm_execution', {}).get('schedule') == 'native-k3':
+            flags.append("native K3 chunk schedule")
         memory = r.get('memory_trace_gib', [])
         drift = memory[-1] - memory[0] if memory else None
         lines.append(f"| {name} | {r['params']:,} | {_fmt(r['mfu'])} | {_fmt(r['throughput_tokens_s'], 0)} | "

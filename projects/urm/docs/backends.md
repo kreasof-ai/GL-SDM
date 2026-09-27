@@ -47,8 +47,9 @@ certified backward. Reference tiers (numpy/torch) are the parity oracles the
   the system nvcc 12.9 is mismatched with Torch cu130. The user-authorized SDM
   baseline now builds the untouched pinned sources with an isolated CUDA 13.0
   toolkit and executes the original CUDA/Triton kernels. The optimized SDM row
-  uses an external compiled PyTorch state schedule with public native routes;
-  this changes no core backend. See [SDM measurements](sdm-optimization.md).
+  uses the complete public K3 graph and the native provider's generic chunk
+  schedule. Read-only, inference, FP32, large banks and numerical guards retain
+  the existing scan/read kernels. See [SDM measurements](sdm-optimization.md).
 
 ## Compile behavior
 

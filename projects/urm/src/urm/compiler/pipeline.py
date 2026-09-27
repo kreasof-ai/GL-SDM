@@ -147,6 +147,7 @@ class ScheduleParams:
     dtype_hints: dict[str, str] = field(default_factory=dict)
     layout_hints: dict[str, str] = field(default_factory=dict)
     deterministic: bool = False
+    sparse_state_schedule: str = "auto"
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -157,6 +158,7 @@ class ScheduleParams:
             "dtype_hints": dict(self.dtype_hints),
             "layout_hints": dict(self.layout_hints),
             "deterministic": self.deterministic,
+            "sparse_state_schedule": self.sparse_state_schedule,
         }
 
 
@@ -165,6 +167,10 @@ def validate_schedule_params(
 ) -> tuple[Diagnostic, ...]:
     """Structured validation of schedule hints; empty tuple means valid."""
     collector = DiagnosticsCollector()
+    if params.sparse_state_schedule not in {"auto", "scan", "chunked"}:
+        collector.error(DiagnosticCode.SCHEDULE_HINT_INVALID,
+                        "sparse_state_schedule must be auto, scan or chunked",
+                        subject="sparse_state_schedule")
     from urm.compiler.select.anchors import TRUSTED_ANCHORS, _PROVIDER_ANCHORS
 
     known_anchors = {a.name for a in (*TRUSTED_ANCHORS, *_PROVIDER_ANCHORS)}
@@ -861,6 +867,7 @@ class UrmCompiler:
         steps, anchors_chosen, cost_parts = self._lower_to_anchors(
             compiled,
             effective_decisions,
+            sparse_state_schedule=schedule_params.sparse_state_schedule,
             launch_config=(
                 dict(schedule_decision.launch_config)
                 if schedule_decision is not None
@@ -1312,6 +1319,7 @@ class UrmCompiler:
         compiled: SemanticProgram,
         effective_decisions: dict[str, AnchorDecision],
         launch_config: dict[str, str | int] | None = None,
+        sparse_state_schedule: str = "auto",
     ):
         steps: list[PlanStep] = []
         anchors_chosen: list[str] = []
@@ -1337,7 +1345,12 @@ class UrmCompiler:
             ):
                 from urm.compiler.select.anchors import sparse_state_launch_schedule
 
-                step_launch_config = sparse_state_launch_schedule(op.spec)
+                try:
+                    step_launch_config = sparse_state_launch_schedule(
+                        op.spec, sparse_state_schedule)
+                except ValueError as error:
+                    raise CompilerError((Diagnostic(
+                        DiagnosticCode.SCHEDULE_HINT_INVALID, str(error), subject=op.name),)) from error
             if anchor.kind is AnchorKind.SPARSE_ROUTE_SELECTION:
                 assert isinstance(op, SparseRouteGeneration)
                 block_half = 1 << (op.spec.factor_extent - 1).bit_length()
@@ -1803,6 +1816,7 @@ def compile_graph(
     *,
     target: str = "reference",
     intent: CompilationIntent = CompilationIntent.INFERENCE,
+    schedule_params: ScheduleParams | None = None,
 ) -> Any:
     """Compile a typed semantic program into a bound, executable plan.
 
@@ -1848,10 +1862,7 @@ def compile_graph(
         registry.register(make_sparse_state_mixer_selector(state_anchor))
     registry.register(make_selector(in_target))
     active = UrmCompiler(anchors=registry)
-    compilation = active.compile(program, intent=intent)
+    compilation = active.compile(program, intent=intent, schedule_params=schedule_params)
     return BoundGraphPlan(compilation)
-
-
-
 
 
