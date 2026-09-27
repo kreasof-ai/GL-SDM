@@ -1,9 +1,9 @@
 import pytest
 import torch
 from gl_sdm.model import create_model
-from gl_sdm.verify import check
-from gl_sdm.evaluate import _blocks_forward, _chunked_loss
-from gl_sdm.metrics import utilization
+from gl_sdm.experiments.verify import check
+from gl_sdm.experiments.evaluate import _blocks_forward, _chunked_loss
+from gl_sdm.experiments.metrics import utilization
 
 
 def config(arch="transformer", dtype="float32"):

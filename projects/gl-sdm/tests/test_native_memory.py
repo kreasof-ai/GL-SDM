@@ -6,14 +6,14 @@ import pytest
 import torch
 from gl_sdm.memory import MemoryView, WriteProposal, read, propose_write, merge, commit
 from gl_sdm.model import create_model
-from gl_sdm.verify import check
+from gl_sdm.experiments.verify import check
 from test_global_memory import config
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable")
 
 
 def test_frozen_dependency_and_native_read_plan():
-    from gl_sdm.urm_adapter import URM_REVISION, verify_dependency, read_plan
+    from gl_sdm.memory.backends.urm import URM_REVISION, verify_dependency, read_plan
     root = Path(__file__).resolve().parents[3]
     assert URM_REVISION in (root / "shared/requirements-urm.txt").read_text()
     assert URM_REVISION in (root / "projects/gl-sdm/pyproject.toml").read_text()
@@ -26,7 +26,7 @@ def test_frozen_dependency_and_native_read_plan():
 
 @pytest.mark.parametrize("half,count", [(4, 2), (3, 5), (8, 64), (64, 8)])
 def test_routing_preserves_selection_ties_and_all_score_gradients(half, count):
-    from gl_sdm.kernels import route
+    from gl_sdm.memory.backends.token import route
     torch.manual_seed(13)
     router = create_model(config(hidden_size=32, head_dim=16, gl_slots=half ** 2)).cuda().blocks[0].attn
     scores = torch.randn(3, 2, 2 * half, device="cuda", requires_grad=True)

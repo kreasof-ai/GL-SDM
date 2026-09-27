@@ -3,11 +3,11 @@ import math
 import time
 import torch
 from . import checkpoint
-from .data import available_steps, data_generator
-from .evaluate import run_eval
-from .metrics import peak_flops, utilization
-from .model import create_model
-from .upstream import metadata
+from gl_sdm.experiments.data import available_steps, data_generator
+from gl_sdm.experiments.evaluate import run_eval
+from gl_sdm.experiments.metrics import peak_flops, utilization
+from gl_sdm.model import create_model
+from gl_sdm.experiments.provenance import metadata
 
 
 def synchronize(device):
@@ -17,7 +17,7 @@ def synchronize(device):
 
 def optimizers(model, cfg, device):
     if cfg.get("optimizer", "adamw") == "atma_muon":
-        from .muon import Muon
+        from gl_sdm.experiments.muon import Muon
         scalar = [p for p in model.parameters() if p.ndim < 2]
         matrix = [p for p in model.blocks.parameters() if p.ndim >= 2]
         # SDM's learned memory is a sparse parameter bank, not a dense matrix
@@ -59,7 +59,7 @@ def schedule(opts, cfg, step, steps):
 
 def update(model, opts, inputs, targets, cfg):
     if cfg.get("gl_cuda_graph", False):
-        from .training_graph import TrainingGraph
+        from gl_sdm.runtime.training_graph import TrainingGraph
         if not hasattr(model, "_training_graph"):
             model._training_graph = TrainingGraph(model, inputs, targets, cfg)
         return model._training_graph.update(opts, inputs, targets)

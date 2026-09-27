@@ -42,19 +42,19 @@ def main():
         if fh:
             fh.write(block)
     try:
-        from .checkpoint import load
+        from gl_sdm.experiments.checkpoint import load
         from .model import create_model
         if args.command == "train":
             if args.config is None or args.output is None:
                 parser.error("train requires --config and --output checkpoint directory")
-            from .train import run
+            from gl_sdm.experiments.train import run
             cfg = read_config()
             run(cfg, args.device, args.output, emit, args.checkpoint, args.peak_tflops)
             return
         if args.command == "verify":
             if args.config is None:
                 parser.error("verify requires --config")
-            from .verify import check
+            from gl_sdm.experiments.verify import check
             cfg = read_config()
             length = args.length or max(65, cfg.get("gl_chunk_size", 1) + 1)
             result = check(cfg, args.device, length)
@@ -73,17 +73,17 @@ def main():
         else:
             parser.error("infer/eval require --checkpoint; benchmark requires --config or --checkpoint")
         if args.command == "benchmark":
-            from .benchmark import run
+            from gl_sdm.experiments.benchmark import run
             result = run(model, cfg, args.device, args.iterations, args.warmup, args.peak_tflops)
             emit("BENCHMARK_JSON", result)
         elif args.command == "eval":
-            from .evaluate import run_eval
+            from gl_sdm.experiments.evaluate import run_eval
             if args.config:
                 cfg = {**cfg, **json.loads(args.config.read_text())}
             result = run_eval(model, cfg, args.device)
             emit("ABLATION_EVAL_JSON", result)
         else:
-            from .inference import generate
+            from gl_sdm.experiments.inference import generate
             from transformers import AutoTokenizer
             tokenizer = AutoTokenizer.from_pretrained(cfg.get("tokenizer_name", "gpt2"))
             inputs = torch.tensor(tokenizer.encode(args.prompt), device=args.device)[None]

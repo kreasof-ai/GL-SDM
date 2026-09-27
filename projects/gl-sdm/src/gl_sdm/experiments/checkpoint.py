@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 import torch
-from .model import create_model
+from gl_sdm.model import create_model
 
 
 def save(model, directory, optimizers=(), step=0, data_batches=0):

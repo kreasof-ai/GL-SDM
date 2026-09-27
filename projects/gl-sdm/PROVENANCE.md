@@ -5,13 +5,13 @@ The experiment structure is adapted from
 
 | Here | ATMA source |
 | --- | --- |
-| `model.py` | `external_baselines/model.py`, `model/layers.py`: model/block contracts, normalization, gated squared-ReLU MLP, soft-capped head |
-| `mixers.py:Transformer` | `train/model.py`: RoPE softmax projections, QK normalization and output gate |
-| `train.py`, `checkpoint.py` | `raven_baseline/train.py`: token batches, microbatch accumulation, AdamW/Muon options, validation curves, checkpoint files and structured log blocks |
-| `regularization.py`, `muon.py` | `train/reg.py`, `train/optimizer.py`, copied with their equations intact |
-| `data.py` | `train/data.py`: nanoGPT shard header and next-token shift |
-| `evaluate.py` | `eval.py`, `scaled_ablation/evaluate.py`: chunked head, clean/junk prefix CE, digit-code induction needle and absent-needle control |
-| `inference.py`, `benchmark.py`, `verify.py` | ATMA's prefill/decode, warmup timing and reference verification approach, implemented against the common model contract |
+| `model.py`, `layers/common.py`, `baselines/block.py` | `external_baselines/model.py`, `model/layers.py`: model/block contracts, normalization, gated squared-ReLU MLP, soft-capped head |
+| `layers/attention.py:Transformer` | `train/model.py`: RoPE softmax projections, QK normalization and output gate |
+| `experiments/train.py`, `experiments/checkpoint.py` | `raven_baseline/train.py`: token batches, microbatch accumulation, AdamW/Muon options, validation curves, checkpoint files and structured log blocks |
+| `layers/regularization.py`, `experiments/muon.py` | `train/reg.py`, `train/optimizer.py`, copied with their equations intact |
+| `experiments/data.py` | `train/data.py`: nanoGPT shard header and next-token shift |
+| `experiments/evaluate.py` | `eval.py`, `scaled_ablation/evaluate.py`: chunked head, clean/junk prefix CE, digit-code induction needle and absent-needle control |
+| `experiments/inference.py`, `experiments/benchmark.py`, `experiments/verify.py` | ATMA's prefill/decode, warmup timing and reference verification approach, implemented against the common model contract |
 
 The Transformer uses full attention in **every block**, ordinary `nn.Linear` and
 PyTorch SDPA. It has no local convolution blocks, Titans memory, custom linear
@@ -47,7 +47,7 @@ configs are starting points, **not parameter-matched quality claims**.
 
 ## GL-SDM
 
-`global_model.py` and `memory.py` implement this repository's proposed model;
+`layers/global_memory.py` and `memory/` implement this repository's proposed model;
 they do not wrap a baseline as GL-SDM. They reuse the ATMA model/head/block
 interfaces and MLP form, with a tied reasoner, product-key routes, one global
 learned FP32 bank, token-level frozen snapshots and weighted delta commits.
@@ -66,7 +66,7 @@ including embeddings/biases/norms and excluding attention and sparse state FLOPs
 Saved fixed-depth timings can be recalculated with `scripts/recalculate_mfu.py`;
 the original measurement fingerprint remains, with separate accounting provenance.
 
-The chunk path in `chunk.py` composes routing and snapshot reads from the public
+The chunk path in `layers/chunk.py` composes routing and snapshot reads from the public
 frozen [URM revision 604bfdf](https://github.com/kreasof-ai/urm/tree/604bfdf5d2c827266a32ef142ca996cc712d70f0),
 including both backwards. It adopts URM's highest-address ties. Physical zero
 padding of width-64 values selects its existing width-128 schedule; logical
@@ -77,10 +77,10 @@ chunk-commit clock. The token-clock control retains its earlier implementation.
 
 Dense reasoner/proposal/head-loss arithmetic uses ordinary PyTorch compilation
 with eager BF16 rounding casts preserved. Fixed writes batch across reasoning
-steps because their snapshot is immutable. `training_graph.py` captures only
+steps because their snapshot is immutable. `runtime/training_graph.py` captures only
 fixed-shape forward/backward; data copies, finite checks, clipping and optimizer
 updates are timed by the same runner. Warmup/capture do not update parameters or
-consume training data. The project-owned `kernels.py` continues to lower ordered
+consume training data. The project-owned `memory/backends/commit.py` continues to lower ordered
 sparse commits, for which the frozen URM package has no executable lowering.
 
 The token path still uses the project's stable smaller-address router,

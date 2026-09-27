@@ -1,7 +1,7 @@
 import copy
 import pytest
 import torch
-from gl_sdm.metrics import gl_parameter_groups, parameter_counts, utilization
+from gl_sdm.experiments.metrics import gl_parameter_groups, parameter_counts, utilization
 from gl_sdm.model import create_model
 from test_global_memory import config
 

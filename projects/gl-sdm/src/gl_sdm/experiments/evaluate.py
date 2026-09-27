@@ -3,7 +3,7 @@ import math
 import random
 import torch
 import torch.nn.functional as F
-from .data import data_generator
+from gl_sdm.experiments.data import data_generator
 
 
 def _blocks_forward(model, inputs):

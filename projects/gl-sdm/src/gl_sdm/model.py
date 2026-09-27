@@ -4,9 +4,10 @@ from unittest.mock import patch
 import torch
 from torch import nn
 import torch.nn.functional as F
-from .mixers import make_mixer
-from .regularization import sigreg
-from .compilation import compiled
+from gl_sdm.baselines.block import Block
+from gl_sdm.baselines.cache import FLACache
+from gl_sdm.layers.common import RMSNorm
+from gl_sdm.runtime.compilation import compiled
 
 
 def _head_loss(x, targets, norm, weight):
@@ -19,66 +20,6 @@ def _head_loss(x, targets, norm, weight):
 _compiled_head_loss = compiled(_head_loss)
 
 
-class RMSNorm(nn.Module):
-    def __init__(self, dim):
-        super().__init__()
-        self.weight = nn.Parameter(torch.ones(dim))
-
-    def forward(self, x):
-        return F.rms_norm(x, (x.shape[-1],), self.weight.to(x.dtype), eps=1e-6)
-
-
-class MLP(nn.Module):
-    def __init__(self, dim):
-        super().__init__()
-        self.fc = nn.Linear(dim, 8 * dim)
-        self.proj = nn.Linear(4 * dim, dim)
-
-    def forward(self, x):
-        x, gate = self.fc(x).chunk(2, -1)
-        return self.proj(gate * x.relu().square())
-
-
-class FLACache:
-    """Minimal FLA layer-cache protocol, kept per request, never on the model."""
-    def __init__(self):
-        self.states = []
-
-    def __len__(self):
-        return len(self.states)
-
-    def __getitem__(self, index):
-        return self.states[index]
-
-    def update(self, layer_idx, offset=1, **state):
-        while len(self.states) <= layer_idx:
-            self.states.append(None)
-        self.states[layer_idx] = state
-        return state
-
-
-class Block(nn.Module):
-    def __init__(self, cfg, layer_idx):
-        super().__init__()
-        self.arch_type = cfg["arch_type"]
-        self.attn = make_mixer(cfg, layer_idx)
-        self.norm1, self.norm2 = RMSNorm(cfg["hidden_size"]), RMSNorm(cfg["hidden_size"])
-        self.mlp = MLP(cfg["hidden_size"])
-        self.reg_mode, self.sketch_dim = cfg.get("reg_mode", "baseline"), cfg.get("sketch_dim", 64)
-
-    def forward(self, x, cache=None):
-        z = self.norm1(x)
-        if self.arch_type == "gdn2":
-            mixed = self.attn(z, past_key_values=cache, use_cache=cache is not None)[0]
-        elif self.arch_type == "sdm":
-            mixed = self.attn(z, cache=cache)[0]
-        else:
-            mixed = self.attn(z, cache=cache)
-        x = x + mixed
-        x = x + self.mlp(self.norm2(x))
-        return x, sigreg(x, self.reg_mode, self.sketch_dim), x.new_zeros(())
-
-
 class Model(nn.Module):
     def __init__(self, cfg):
         super().__init__()
@@ -88,7 +29,7 @@ class Model(nn.Module):
             raise ValueError("positive layer count and hidden_size divisible by head_dim required")
         self.embed = nn.Embedding(cfg["vocab_size"], dim)
         if cfg["arch_type"] == "gl_sdm":
-            from .global_model import GlobalMemoryBlock
+            from gl_sdm.layers.global_memory import GlobalMemoryBlock
             if layers != 1:
                 raise ValueError("GL-SDM uses one tied block; set num_hidden_layers=1 and gl_max_steps for depth")
             self.blocks = nn.ModuleList([GlobalMemoryBlock(cfg)])
@@ -147,7 +88,7 @@ class Model(nn.Module):
     def reference(self):
         """Explicit oracle execution; never selected by training or inference."""
         if self.cfg["arch_type"] == "gdn2":
-            from .reference import gdn2
+            from gl_sdm.baselines.reference import gdn2
             with patch("fla.layers.gdn2.chunk_gdn2", gdn2), patch("fla.layers.gdn2.fused_recurrent_gdn2", gdn2):
                 yield
         else:

@@ -4,8 +4,8 @@ import tempfile
 from contextlib import ExitStack
 from unittest.mock import patch
 import torch
-from .checkpoint import save, load
-from .model import create_model
+from gl_sdm.experiments.checkpoint import save, load
+from gl_sdm.model import create_model
 
 
 def compare(actual, expected, label, atol=0.03, rtol=0.03):
@@ -31,18 +31,19 @@ def compare_bf16_sdm(actual, expected, label):
 def check(cfg, device="cuda", length=65):
     if cfg["arch_type"] == "gl_sdm" and cfg.get("gl_memory_backend", "torch") == "urm":
         if cfg.get("gl_chunk_size", 1) > 1:
-            from . import urm_adapter, kernels
+            from gl_sdm.memory.backends import urm, commit
             name = "routed_snapshot_read"
-            with patch.object(urm_adapter, name, wraps=getattr(urm_adapter, name)) as reads, patch.object(kernels, "commit", wraps=kernels.commit) as commits:
+            with patch.object(urm, name, wraps=getattr(urm, name)) as reads, patch.object(commit, "commit", wraps=commit.commit) as commits:
                 result = _check(cfg, device, length)
                 if not reads.call_count or not commits.call_count:
                     raise AssertionError("chunk check must execute URM route/read and native commit")
                 result["native_calls"] = {"urm_route_read": reads.call_count, "commit": commits.call_count}
                 result["memory_backend"] = "urm"
                 return result
-        from . import kernels
+        from gl_sdm.memory.backends import token, commit
         with ExitStack() as stack:
-            observed = {name: stack.enter_context(patch.object(kernels, name, wraps=getattr(kernels, name)))
+            observed = {name: stack.enter_context(patch.object(commit if name == "commit" else token, name,
+                wraps=getattr(commit if name == "commit" else token, name)))
                         for name in ("route", "read", "propose", "commit")}
             result = _check(cfg, device, length)
             if any(spy.call_count == 0 for spy in observed.values()):
@@ -52,7 +53,7 @@ def check(cfg, device="cuda", length=65):
             return result
     if cfg["arch_type"] != "sdm":
         return _check(cfg, device, length)
-    from .upstream import sdm_layer, verified_import
+    from gl_sdm.baselines.upstream import sdm_layer, verified_import
     sdm_layer()
     sparse = verified_import("sdm", "lingua.sparse_delta_memory.cuda.sparse_ip_cuda")
     gather = verified_import("sdm", "lingua.sparse_delta_memory.cuda.warp_cooperative_gather_cuda")

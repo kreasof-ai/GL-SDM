@@ -10,9 +10,10 @@ quality-compute-capacity frontier?
 
 ## Models and experiments
 
-The proposed [GL-SDM model](src/gl_sdm/global_model.py) is registered as
+The proposed [GL-SDM model](src/gl_sdm/layers/global_memory.py) is registered as
 `arch_type: gl_sdm` and runs through the same training, inference, reference,
-evaluation and benchmark commands as its baselines.
+evaluation and benchmark commands as its baselines. Start with the
+[code guide](src/gl_sdm/README.md) to inspect the model and memory implementation.
 
 The baseline suite has exactly three models: a full Transformer using ordinary
 PyTorch and SDPA, Meta's upstream CUDA SDM, and FLA's GDN2. Every layer uses the
@@ -137,7 +138,7 @@ writes during chunk reasoning would violate causality. Commits sum collisions
 in canonical address/token/depth order, return a new version and preserve the
 previous snapshot. Stale or unrelated buffers are rejected. Requests maintain
 independent states initialized from the same learned bank. The
-[memory API](src/gl_sdm/memory.py) remains reusable by CSDM.
+[memory API](src/gl_sdm/memory/__init__.py) remains reusable by CSDM.
 
 Prefill and decode use the same absolute chunk boundaries. An unfinished chunk
 retains its snapshot, sparse proposals and local KV tensors across calls. Future

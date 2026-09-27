@@ -9,7 +9,7 @@ import hashlib
 import json
 from pathlib import Path
 import torch
-from gl_sdm import metrics
+from gl_sdm.experiments import metrics
 from gl_sdm.model import create_model
 
 

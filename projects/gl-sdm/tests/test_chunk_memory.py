@@ -2,7 +2,7 @@ from unittest.mock import patch
 import pytest
 import torch
 from gl_sdm.model import create_model
-from gl_sdm.verify import check
+from gl_sdm.experiments.verify import check
 from gl_sdm.memory import MemoryView, WriteProposal, merge, commit
 from test_global_memory import config
 
@@ -18,7 +18,7 @@ def test_chunk_full_reference(reasoning, policy, backend, device):
 
 def test_absolute_commit_clock_and_frozen_snapshot():
     model = create_model(config(gl_chunk_size=4)).eval()
-    import gl_sdm.chunk as module
+    import gl_sdm.memory.routing as module
     versions = []
     original = module.routed_read
     def observe(block, memory, *args):
@@ -52,7 +52,7 @@ def test_keyed_commit_is_independent_of_proposal_arrival_order():
 
 
 def test_chunk_highest_ties_match_urm_contract():
-    from gl_sdm.chunk import torch_routed_read
+    from gl_sdm.memory.routing import torch_routed_read
     _, index, weights = torch_routed_read(torch.zeros(1, 2, 16, 3), torch.zeros(1, 5, 2, 8), 4)
     torch.testing.assert_close(index, torch.arange(12, 16).expand(1, 5, 2, 4))
     torch.testing.assert_close(weights, torch.full_like(weights, .25))
@@ -64,7 +64,7 @@ def test_chunk_rejects_noncausal_every_step():
 
 
 def test_chunk_act_compacts_finished_tokens():
-    import gl_sdm.chunk as module
+    import gl_sdm.runtime.dense as module
     model = create_model(config(gl_chunk_size=4, gl_reasoning="adaptive", gl_max_steps=4)).eval()
     block = model.blocks[0]
     with torch.no_grad():
@@ -85,8 +85,8 @@ def test_chunk_act_compacts_finished_tokens():
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable")
 def test_urm_colliding_read_gradients():
-    from gl_sdm.urm_adapter import routed_snapshot_read
-    from gl_sdm.chunk import torch_routed_read
+    from gl_sdm.memory.backends.urm import routed_snapshot_read
+    from gl_sdm.memory.routing import torch_routed_read
     torch.manual_seed(42)
     memory = torch.randn(2, 2, 16, 8, device="cuda", requires_grad=True)
     scores = torch.randn(2, 17, 2, 8, device="cuda", requires_grad=True)
@@ -103,8 +103,8 @@ def test_urm_colliding_read_gradients():
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable")
 def test_production_bank_padded_read_and_operand_gradients():
-    from gl_sdm.urm_adapter import routed_snapshot_read
-    from gl_sdm.chunk import torch_routed_read
+    from gl_sdm.memory.backends.urm import routed_snapshot_read
+    from gl_sdm.memory.routing import torch_routed_read
     torch.manual_seed(42)
     memory = torch.randn(2, 8, 4096, 64, device="cuda", requires_grad=True)
     scores = torch.randn(2, 65, 8, 128, device="cuda", dtype=torch.bfloat16).float().requires_grad_()
@@ -147,7 +147,7 @@ def test_padded_width64_full_reference():
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable")
 def test_training_graph_updates_gradients_inputs_and_learning_rate():
-    from gl_sdm.train import update, optimizers
+    from gl_sdm.experiments.train import update, optimizers
     torch.manual_seed(17)
     c = config(gl_chunk_size=8, gl_memory_backend="urm", gl_compile=True,
         seq_len=17, batch_size=34, mbs=1)
@@ -171,7 +171,7 @@ def test_training_graph_updates_gradients_inputs_and_learning_rate():
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable")
 def test_chunk_executes_urm_backward_without_token_kernels():
     from contextlib import ExitStack
-    import gl_sdm.kernels as local
+    import gl_sdm.memory.backends.token as local
     import urm.backends.triton.k3.sparse_state as upstream
     model = create_model(config(gl_chunk_size=8, gl_memory_backend="urm")).cuda()
     x = torch.randint(64, (2, 17), device="cuda")

@@ -3,8 +3,8 @@ import pytest
 import torch
 from gl_sdm.memory import MemoryView, WriteProposal, read, propose_write, merge, commit
 from gl_sdm.model import create_model
-from gl_sdm.metrics import parameter_counts
-from gl_sdm.verify import check
+from gl_sdm.experiments.metrics import parameter_counts
+from gl_sdm.experiments.verify import check
 
 
 def config(**changes):
@@ -163,17 +163,17 @@ def test_adaptive_execution_removes_halted_requests():
 
 def test_reads_share_one_version_until_commit():
     from unittest.mock import patch
-    import gl_sdm.global_model as module
+    from gl_sdm.layers import router, token
     model = create_model(config()).eval()
     reads, commits = [], []
-    original_read, original_commit = module.read, module.commit
+    original_read, original_commit = router.read, token.commit
     def observe_read(view, *args, **kwargs):
         reads.append(view.version)
         return original_read(view, *args, **kwargs)
     def observe_commit(view, *args, **kwargs):
         commits.append(view.version)
         return original_commit(view, *args, **kwargs)
-    with patch.object(module, "read", observe_read), patch.object(module, "commit", observe_commit), torch.inference_mode():
+    with patch.object(router, "read", observe_read), patch.object(token, "commit", observe_commit), torch.inference_mode():
         _, cache = model.prefill(torch.randint(64, (2, 3)))
     assert reads == [0, 0, 0, 1, 1, 1, 2, 2, 2]
     assert commits == [0, 1, 2] and cache[0].view.version == 3

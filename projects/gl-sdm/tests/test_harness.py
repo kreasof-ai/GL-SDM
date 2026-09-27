@@ -2,11 +2,11 @@ import json
 import numpy as np
 import pytest
 import torch
-from gl_sdm.data import data_generator, load_shard, available_steps
-from gl_sdm.train import run, optimizers
-from gl_sdm.checkpoint import load
-from gl_sdm.inference import generate
-from gl_sdm.evaluate import run_eval, needle_retrieval, _chunked_loss
+from gl_sdm.experiments.data import data_generator, load_shard, available_steps
+from gl_sdm.experiments.train import run, optimizers
+from gl_sdm.experiments.checkpoint import load
+from gl_sdm.experiments.inference import generate
+from gl_sdm.experiments.evaluate import run_eval, needle_retrieval, _chunked_loss
 from test_models import config
 
 
@@ -46,13 +46,13 @@ def test_data_training_resume_eval_and_generation(tmp_path, architecture, device
     class Interrupted(Exception):
         pass
     from unittest.mock import patch
-    from gl_sdm import checkpoint
+    from gl_sdm.experiments import checkpoint
     original_save = checkpoint.save
     def stop_after_save(*args, **kwargs):
         original_save(*args, **kwargs)
         if args[3] == 1:
             raise Interrupted
-    with patch("gl_sdm.checkpoint.save", stop_after_save), pytest.raises(Interrupted):
+    with patch("gl_sdm.experiments.checkpoint.save", stop_after_save), pytest.raises(Interrupted):
         run(cfg, device, tmp_path / "resume", emit)
     resumed = run(cfg, device, tmp_path / "resume", emit, resume=tmp_path / "resume")
     for p, r in zip(reference.parameters(), resumed.parameters()):

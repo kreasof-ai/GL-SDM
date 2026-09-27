@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import torch
 from gl_sdm.model import create_model
-from gl_sdm.benchmark import run
+from gl_sdm.experiments.benchmark import run
 
 
 def main():

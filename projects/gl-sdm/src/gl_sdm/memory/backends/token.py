@@ -1,21 +1,14 @@
-"""GL-SDM CUDA operators; URM supplies the compiled snapshot read.
+"""Token-clock control: project route/proposal kernels and URM snapshot reads.
 
-Training saves selected rows, not whole bank versions. Forward commits have
-one owner per address and sum collisions in proposal order without atomics.
-The backward of each sparse operation writes unique request/head/slot rows.
+The parallel chunk model uses backends.urm for route/read and backends.commit
+for commits; it does not execute these token-specific route/proposal kernels.
 """
 import torch
 import triton
 import triton.language as tl
 from triton.language.extra.cuda import libdevice
-from .urm_adapter import snapshot_read
-
-
-def require_cuda(values):
-    if not values.is_cuda or not values.is_contiguous():
-        raise ValueError("GL-SDM native kernels require contiguous CUDA tensors")
-    if torch.cuda.get_device_capability(values.device) < (8, 0):
-        raise ValueError("GL-SDM native kernels require SM80 or newer")
+from .urm import snapshot_read
+from .primitives import require_cuda, _gather
 
 
 def validate_access(values, requests, indices, weights):
@@ -136,15 +129,6 @@ def absolute_addresses(values, requests, indices):
     _addresses[(triton.cdiv(indices.numel(), 128),)](
         requests, indices, result, values.shape[1], values.shape[2], indices.shape[-1], indices.numel(), 128)
     return result
-
-
-@triton.jit
-def _gather(values, indices, output, D: tl.constexpr, BD: tl.constexpr):
-    row = tl.program_id(0)
-    d = tl.arange(0, BD)
-    idx = tl.load(indices + row)
-    value = tl.load(values + idx * D + d, d < D, other=0.0)
-    tl.store(output + row * D + d, value, d < D)
 
 
 @triton.jit
@@ -290,52 +274,3 @@ def propose(memory, requests, indices, weights, targets, beta, log_decay, mass):
     floats = [t.float().contiguous() for t in (weights, targets, beta, log_decay, mass)]
     addresses, deltas = _Propose.apply(memory, requests, indices, *floats)
     return addresses.flatten(), deltas.flatten(0, 2)
-
-
-@triton.jit
-def _commit_forward(memory, indices, order, deltas, output, E: tl.constexpr,
-                    D: tl.constexpr, BD: tl.constexpr):
-    position = tl.program_id(0)
-    entry = tl.load(order + position)
-    addr = tl.load(indices + entry)
-    prev_entry = tl.load(order + position - 1, position > 0, other=0)
-    prev = tl.load(indices + prev_entry)
-    if (position == 0) | (addr != prev):
-        d = tl.arange(0, BD)
-        accumulator = tl.full((BD,), 0.0, tl.float32)
-        cursor = position
-        same_address = cursor < E
-        while same_address:
-            e = tl.load(order + cursor)
-            accumulator += tl.load(deltas + e * D + d, d < D, other=0.0)
-            cursor += 1
-            next_entry = tl.load(order + cursor, cursor < E, other=0)
-            next_addr = tl.load(indices + next_entry)
-            same_address = (cursor < E) & (next_addr == addr)
-        old = tl.load(memory + addr * D + d, d < D, other=0.0)
-        tl.store(output + addr * D + d, old + accumulator, d < D)
-
-
-class _Commit(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, memory, indices, deltas, keys):
-        require_cuda(memory)
-        order = keys.argsort(stable=True)
-        output = memory.clone()
-        _commit_forward[(indices.numel(),)](memory, indices, order, deltas, output, indices.numel(),
-                                            memory.shape[-1], triton.next_power_of_2(memory.shape[-1]), enable_fp_fusion=False)
-        ctx.save_for_backward(indices)
-        ctx.dim = memory.shape[-1]
-        return output
-
-    @staticmethod
-    def backward(ctx, incoming):
-        (indices,) = ctx.saved_tensors
-        incoming = incoming.contiguous()
-        gd = torch.empty((indices.numel(), ctx.dim), device=incoming.device, dtype=torch.float32)
-        _gather[(indices.numel(),)](incoming, indices, gd, ctx.dim, triton.next_power_of_2(ctx.dim))
-        return incoming, None, gd, None
-
-
-def commit(memory, indices, deltas, keys=None):
-    return _Commit.apply(memory, indices, deltas, indices if keys is None else keys)

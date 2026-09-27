@@ -10,8 +10,8 @@ from pathlib import Path
 from unittest.mock import patch
 import torch
 from gl_sdm.model import create_model
-from gl_sdm.upstream import metadata
-from gl_sdm.verify import check, compare
+from gl_sdm.experiments.provenance import metadata
+from gl_sdm.experiments.verify import check, compare
 
 
 def difference(actual, expected, label, atol, rtol):
@@ -43,15 +43,15 @@ def main():
     oracle = copy.deepcopy(model)
     inputs = torch.randint(cfg["vocab_size"], (2, args.length), device="cuda")
     targets = torch.randint_like(inputs, cfg["vocab_size"])
-    from gl_sdm import chunk
-    original_read = chunk.routed_read
+    from gl_sdm.memory import routing
+    original_read = routing.routed_read
     observed = []
     def observe(block, memory, scores, *args):
         result = original_read(block, memory, scores, *args)
         if scores.ndim == 4 and len(observed) < cfg["gl_max_steps"]:
             observed.append((scores.detach().clone(), result[0].detach().clone(), result[1].detach().clone()))
         return result
-    with patch.object(chunk, "routed_read", observe):
+    with patch.object(routing, "routed_read", observe):
         actual = model.head(model.hidden(inputs)[0])
         native_reads, observed = observed, []
         with oracle.reference():

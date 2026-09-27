@@ -2,9 +2,9 @@
 import statistics
 import time
 import torch
-from .metrics import peak_flops, utilization
-from .train import optimizers, update, synchronize
-from .upstream import metadata
+from gl_sdm.experiments.metrics import peak_flops, utilization
+from gl_sdm.experiments.train import optimizers, update, synchronize
+from gl_sdm.experiments.provenance import metadata
 
 
 def run(model, cfg, device, iterations=10, warmup=3, peak=None):

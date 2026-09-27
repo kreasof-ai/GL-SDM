@@ -11,7 +11,7 @@ import statistics
 import time
 import torch
 from gl_sdm.memory import MemoryView, read, propose_write, merge, commit
-from gl_sdm.upstream import metadata
+from gl_sdm.experiments.provenance import metadata
 
 
 def main():
