@@ -1,1 +1,1 @@
-[upstream] 1 rows -> results_upstream
+fla's DeltaFormerAttention layer needs flash-attn; baseline is the pinned naive deltaformer op

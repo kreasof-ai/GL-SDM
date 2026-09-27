@@ -1,10 +1,9 @@
 """Benchmark sweep: 100M-class training runs across the native registry rows.
 
 Runs each row as a subprocess (CUDA memory isolation between rows), records the
-TrainResult JSON per row under the output dir, and automatically falls back from the
-primary 8192-token microbatch to 2048 for memory-capped rows (the chunked-K Based
-state history is the binding constraint). Rows that fail record an error JSON so the
-sweep completes and reports honestly.
+TrainResult JSON per row under the output dir. OOM fallback is an opt-in diagnostic;
+the default campaign retains an 8192-token effective batch and microbatch. Memory
+heavy rows use activation checkpointing. Failures remain error records.
 
 Usage:
     PYTHONPATH=src:. python -m train.sweep --out-dir results/sweep
@@ -23,10 +22,6 @@ from pathlib import Path
 
 # The benchmark configuration: ~100M-param class (dense = 102.7M; exact per-row
 # counts are in each result JSON — the mixers' projection structures differ).
-PRIMARY_MICROBATCH = 8192     # B=16 at T=512 — puts efficient rows in the 40-50% MFU band
-FALLBACK_MICROBATCH = 2048    # B=4 — first OOM fallback
-FALLBACK2_MICROBATCH = 1024   # B=2 — the chunked-K Based state history (states+backward
-                              # ≈ 2× tokens×H×2145×64×4B) fits only here at width 768
 TIMEOUT_S = 1500              # per-row wallclock cap (compile + train + gates)
 
 
@@ -41,6 +36,11 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--head-dim", type=int, default=64)
     p.add_argument("--sequence-length", type=int, default=512)
     p.add_argument("--timeout", type=int, default=TIMEOUT_S)
+    p.add_argument("--batch-tokens", type=int, default=8192)
+    p.add_argument("--microbatch-tokens", type=int, default=8192)
+    p.add_argument("--allow-oom-fallback", action="store_true",
+                   help="diagnostic only; retain the effective batch and record every attempt")
+    p.add_argument("--eager", action="store_true")
     p.add_argument("--include-reference", action="store_true",
                    help="also run reference-tier rows (mamba1)")
     return p.parse_args()
@@ -57,13 +57,20 @@ def _run_row(row: str, args: argparse.Namespace, microbatch_tokens: int,
         "--num-heads", str(args.num_heads),
         "--head-dim", str(args.head_dim),
         "--sequence-length", str(args.sequence_length),
-        "--batch-tokens", str(microbatch_tokens),
+        "--batch-tokens", str(args.batch_tokens),
         "--microbatch-tokens", str(microbatch_tokens),
         "--out", str(out_file),
     ]
+    from train.campaign import use_checkpointing
+    if use_checkpointing(row):
+        cmd.append("--activation-checkpointing")
+    if args.eager:
+        cmd.append("--eager")
     env = dict(os.environ)
     env["PYTHONPATH"] = "src:."
-    with log_file.open("w") as log:
+    with log_file.open("a") as log:
+        log.write(f"\nCOMMAND: {cmd!r}\n")
+        log.flush()
         proc = subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT,
                               env=env, timeout=args.timeout)
     if proc.returncode != 0:
@@ -84,6 +91,9 @@ def main() -> None:
     args = _parse_args()
     sys.path.insert(0, ".")
     from train.registry import MIXER_REGISTRY
+    from train.campaign import use_checkpointing, valid_cached_result
+    from train.harness import TrainConfig
+    from dataclasses import asdict
 
     if args.rows:
         rows = [r.strip() for r in args.rows.split(",") if r.strip()]
@@ -101,16 +111,30 @@ def main() -> None:
     for i, row in enumerate(rows, 1):
         out_file = out_dir / f"{row}.json"
         log_file = out_dir / f"{row}.log"
+        expected = asdict(TrainConfig(
+            mixer=row, layers=args.layers, width=args.width, num_heads=args.num_heads,
+            head_dim=args.head_dim, sequence_length=args.sequence_length,
+            steps=args.steps, batch_tokens=args.batch_tokens,
+            microbatch_tokens=args.microbatch_tokens, compile_model=not args.eager,
+            activation_checkpointing=use_checkpointing(row),
+        ))
         if out_file.exists():
             rec = json.loads(out_file.read_text())
-            print(f"[sweep] {i}/{len(rows)} {row}: cached "
-                  f"(mfu={rec.get('mfu', 0):.3f})", flush=True)
-            summary.append(rec)
-            continue
+            if valid_cached_result(rec, expected):
+                print(f"[sweep] {i}/{len(rows)} {row}: cached "
+                      f"(mfu={rec.get('mfu', 0):.3f})", flush=True)
+                summary.append(rec)
+                continue
+        log_file.write_text("")
         t0 = time.time()
         rec: dict = {"mixer": row}
-        ladder = (PRIMARY_MICROBATCH, FALLBACK_MICROBATCH, FALLBACK2_MICROBATCH)
+        ladder = (args.microbatch_tokens,)
+        if args.allow_oom_fallback:
+            ladder += tuple(mb for mb in (2048, 1024, 512)
+                            if mb < args.microbatch_tokens and args.batch_tokens % mb == 0)
+        attempts = []
         for attempt, mb in enumerate(ladder):
+            attempts.append(mb)
             try:
                 rec = _run_row(row, args, mb, out_file, log_file)
                 if attempt:
@@ -130,8 +154,10 @@ def main() -> None:
             except Exception as e:  # noqa: BLE001 — record and continue the sweep
                 rec = {"mixer": row, "error": str(e)}
                 break
+        rec["attempted_microbatches"] = attempts
         if "error" in rec:
-            out_file.write_text(json.dumps(rec, indent=2))
+            rec.update(measurement_version=2, config=expected)
+        out_file.write_text(json.dumps(rec, indent=2, allow_nan=False))
         dt = time.time() - t0
         status = (f"mfu={rec['mfu']:.3f} tok/s={rec['throughput_tokens_s']:.0f} "
                   f"mem={rec['peak_memory_gib']:.1f}GiB" if "mfu" in rec

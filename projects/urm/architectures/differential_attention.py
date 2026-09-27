@@ -86,6 +86,20 @@ class DifferentialAttentionLayer(torch.nn.Module):
         recipe = load_graph_recipe_document(document)
         program = normalize_graph_document(recipe.document)
         self._plan = compile_graph(program, target=target, intent=CompilationIntent(intent))
+        self._path_plan = None
+        if target == "native" and intent == "training":
+            # Preserve Q/K/V and lambda gradients by composing the two public
+            # native training calls with an external differentiable merge.
+            path_document = {
+                "schema_version": 2, "name": "differential_training_path", "kind": "kernel_fragment",
+                "graph": {
+                    "inputs": document["graph"]["inputs"][:2] + document["graph"]["inputs"][4:5],
+                    "nodes": [k1("attn", "q1", "k1", "output")],
+                    "outputs": ["output"],
+                },
+            }
+            path_program = normalize_graph_document(load_graph_recipe_document(path_document).document)
+            self._path_plan = compile_graph(path_program, target=target, intent=CompilationIntent(intent))
 
     def _lambda_full(self) -> torch.Tensor:
         lambda_1 = torch.exp(torch.sum(self.lambda_q1 * self.lambda_k1, dim=-1))
@@ -111,9 +125,14 @@ class DifferentialAttentionLayer(torch.nn.Module):
         q1, q2 = q[:, :, :, 0], q[:, :, :, 1]   # [B,T,H,D] each
         k1, k2 = k[:, :, :, 0], k[:, :, :, 1]
 
-        out = self._plan.execute(
-            q1=q1, k1=k1, q2=q2, k2=k2, v=v, lambda_full=self._lambda_full()
-        )["output"]  # [B,T,H,2D]
+        if self._path_plan is not None:
+            out1 = self._path_plan.execute(q1=q1, k1=k1, v=v)["output"]
+            out2 = self._path_plan.execute(q1=q2, k1=k2, v=v)["output"]
+            out = out1 - self._lambda_full() * out2
+        else:
+            out = self._plan.execute(
+                q1=q1, k1=k1, q2=q2, k2=k2, v=v, lambda_full=self._lambda_full()
+            )["output"]  # [B,T,H,2D]
 
         # External post-stages: subln over 2·head_dim, (1−λ_init) rescale, out_proj.
         attn = self.subln(out)

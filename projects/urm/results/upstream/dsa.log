@@ -1,1 +1,1 @@
-[upstream] 1 rows -> results_upstream
+the pinned fla naive_dsa op (lightning indexer + top-k selection + attention); fla's fast DSA kernel is indexer-coupled to a specific head tiling

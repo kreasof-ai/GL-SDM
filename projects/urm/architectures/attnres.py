@@ -91,6 +91,27 @@ class AttnResLayer(torch.nn.Module):
         self._plan = compile_graph(
             program, target=target, intent=CompilationIntent(intent)
         )
+        self._indexed_plan = None
+        if target == "native":
+            # Pack independent spatial positions as indexed queries. The
+            # full-width normalization and pseudo-query contraction remain
+            # external, while the public K1 reduction gathers each position's
+            # depth sources in 64-wide value heads.
+            import copy
+            indexed = copy.deepcopy(document)
+            indexed["name"] = "attnres_indexed_depth_mixer"
+            indexed["graph"]["inputs"] = [
+                {"name": "query", "dtype": "float32", "shape": [1, "N", "VH", 1]},
+                {"name": "key", "dtype": "float32", "shape": [1, "S", "VH", 1]},
+                {"name": "value", "dtype": "float32", "shape": [1, "S", "VH", 64]},
+                {"name": "gather_indices", "dtype": "float32", "shape": [1, "VH", "N", num_sources]},
+                {"name": "scale", "dtype": "float32", "shape": []},
+            ]
+            node = indexed["graph"]["nodes"][0]
+            node["inputs"].append("gather_indices")
+            node["params"]["roles"]["gather_indices"] = "gather_indices"
+            indexed_program = normalize_graph_document(load_graph_recipe_document(indexed).document)
+            self._indexed_plan = compile_graph(indexed_program, target=target, intent=CompilationIntent(intent))
 
     def forward(
         self,
@@ -112,8 +133,23 @@ class AttnResLayer(torch.nn.Module):
         v = stacked.float()
         k = F.rms_norm(v, (D,), rms_weight.flatten().float(), rms_eps)
         q = (query.flatten().float() * scale)
-
         L, N, _ = stacked.shape
+        if self._indexed_plan is not None:
+            with torch.autocast(stacked.device.type, enabled=False):
+                logits = (k * q).sum(-1)  # [L,N], same full-width depth score
+                heads = (D + 63) // 64
+                values = F.pad(v, (0, heads * 64 - D)).reshape(1, L * N, heads, 64)
+                keys = logits.reshape(1, L * N, 1, 1).expand(1, L * N, heads, 1).contiguous()
+                queries = torch.ones(1, N, heads, 1, device=q.device)
+                indices = torch.arange(N, device=q.device)[:, None] + torch.arange(L, device=q.device)[None] * N
+                indices = indices.view(1, 1, N, L).expand(1, heads, N, L).contiguous().float()
+                out = self._indexed_plan.execute(query=queries, key=keys, value=values,
+                                                 gather_indices=indices,
+                                                 scale=torch.ones((), device=q.device))["output"]
+                o = out.reshape(N, heads * 64)[..., :D].reshape(output_shape)
+                if output_rms_weight is not None:
+                    o = F.rms_norm(o, (D,), output_rms_weight.float(), rms_eps)
+                return o.to(stacked.dtype)
         # Faithful K1 layout: each flattened position is one BATCH element and
         # the depth sources form the sequence axis — q [N, 1, 1, D] (one query,
         # one head), k/v [N, L, 1, D] (L depth sources). The pinned scale is

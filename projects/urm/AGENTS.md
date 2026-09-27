@@ -56,32 +56,34 @@ harness (`train/`) work continue freely.
 ## Running the benchmark (from projects/urm, PYTHONPATH=src:.)
 
 ```sh
-python -m pytest tests/ -q                                   # full suite (676 passed / 41 skipped)
+python -m pytest tests/ -q                                   # full suite
 python -m train.sweep --out-dir results/sweep                # native rows (51)
-python -m train.upstream --out-dir results/upstream --subprocess   # upstream baselines (49 runnable + 1 blocked)
+python -m train.upstream --out-dir results/upstream --subprocess   # production baselines + explicit unavailable records
 python -m train.report --sweep-dir results/sweep --upstream-dir results/upstream --out results/report.md
 ```
 
-Sweep driver: per-row subprocess isolation, 8192→2048→1024 microbatch fallback on
-CUDA OOM (the OOM text is sniffed from the subprocess log, not the exit path); the
-upstream driver has the same ladder. Config: width=768, layers=9, heads=12,
+Both drivers isolate every row in a subprocess. Effective batch and microbatch
+remain 8192 tokens; memory-heavy rows use matched activation checkpointing.
+Smaller microbatches are opt-in diagnostics and excluded from production comparisons.
+Config: width=768, layers=9, heads=12,
 head_dim=64, seq=512, finewebedu, 10 steps. MFU denominator: A10G adopted achievable
 bf16 peak = 70 TFLOPS. Docs live in `docs/` (mirrors the code — see its README).
 
 ## Conventions
 
-- Native rows compile through the opaque-op boundary; upstream rows run EAGER
-  (fla chunk kernels fail torch.compile/Inductor here).
-- No flash-attn installs (too heavy for this box); bypass to SDPA. mamba_ssm has no
-  prebuilt torch-2.14/cu130 wheel — mamba rows use fla's own Triton mamba layers.
+- Both arms compile the surround; Python plans and unsupported upstream kernels
+  execute behind eager boundaries. Dynamic routing is also an eager boundary.
+- No flash-attn installs (too heavy for this box). Mamba-2's pinned pure Triton SSD
+  kernel is loaded without its optional CUDA-extension package initializer.
 - No source builds that could destabilize the machine (the lingua SDM CUDA extension
-  is environment-blocked: nvcc 12.9 vs cu13 headers; sdm upstream runs the pinned
-  law in torch, labeled reference-implementation).
-- Upstream baselines are labeled `production-kernel` vs `reference-implementation`
-  in the report; granularity-matched to the URM row.
-- hla has NO upstream (empty pin) — the sole principled exclusion.
-  log_linear_mamba2's upstream chunk kernel exceeds the A10G SMEM envelope and ships
-  no reference variant — recorded environment-blocked (`UPSTREAM_BLOCKED`), not
-  fabricated.
+  is environment-blocked: nvcc 12.9 vs cu13 headers; sdm is excluded from production
+  comparison, with its reference implementation available only as a diagnostic).
+- Production comparisons require finite training, checkpoint gates, matching
+  configs/environment/source fingerprints, and production kernels. Research and
+  failed implementations have no paired throughput in the report.
+- hla has NO upstream (empty pin). Research-only and environment-blocked
+  baselines are also explicit production exclusions.
+  Both log-linear rows use the pinned chunk kernel with bf16 operands, one
+  pipeline stage, and independent-head batches to fit the A10G SMEM envelope.
 - fla Triton JIT compiles are slow on first use (>120s/layer); the shared
   `~/.triton` cache warms subsequent runs. Pass generous shell timeouts.

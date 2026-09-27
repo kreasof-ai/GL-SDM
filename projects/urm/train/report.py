@@ -1,279 +1,216 @@
-"""Aggregate the benchmark sweep + upstream baseline results into a full-context report.
+"""Report verified training measurements and eligible production comparisons.
 
-This is a TRAINING-HARNESS measurement report: 10-step training runs of a
-100M-class decoder LM per architecture row on real data (finewebedu), with
-correctness gates. It is not a production serving benchmark and not a source-model
-parity claim (see docs/evidence.md). The report carries the full context inline:
-NaN-diverged rows, pathological-MFU rows with reasons, fallback microbatch markers,
-upstream tier/granularity labels, per-row upstream limitation notes, blocked and
-missing upstreams, and the environment/provenance block.
-
-Usage:
-    PYTHONPATH=src:. python -m train.report --sweep-dir results/sweep \
-        --upstream-dir results/upstream --out results/report.md
+Reference implementations and failed production runs never supply the comparison
+arm. Results with different shapes, batches, execution policies, or source hashes
+are kept visible as diagnostics and are excluded from the paired table.
 """
-
 from __future__ import annotations
 
 import argparse
 import json
 import math
-import subprocess
 from pathlib import Path
 
-# MFU below this is pathological for a 100M-class training step on an A10G and gets
-# flagged inline (with the per-row reason in the notes section).
 PATHOLOGICAL_MFU = 0.10
-
-# Why a row's MFU is pathologically low (native side). Architectural costs, stated
-# honestly — these are real measurements of the executed FLOPs, not harness bugs.
-NATIVE_SLOW_NOTES = {
-    "based_attention": "chunked-K with 12× score recompute at DV=768; ran at the 1024-token fallback (state history memory)",
-    "pattention": "tokenformer block: five cascaded reference-tier pattention maps per block (no fused kernel exists anywhere)",
-    "path_attention": "the path-sum mixer runs a dense per-pair recurrence at this width",
-    "mom": "external torch composition (public_path=False): mixture-of-paths routing, 2.5× the class parameter count",
-    "iplr": "identity-plus-rank-1 transition; also NaN-diverged (see flags) and ran at the 2048 fallback",
-    "deltaformer": "K4 triangular solve is serial in t by construction",
-    "tucker_attention": "Tucker foldings materialize per-head einsum operands (230M params, 2.2× the class)",
-    "attnres": "the residual design keeps every block summary alive and aggregates depth-domain per sub-layer",
-    "log_linear_attention": "dyadic-banked K2; the naive upstream comparison is 8× slower still",
+PROTOCOL_KEYS = (
+    "vocab_size", "sequence_length", "layers", "width", "num_heads", "head_dim",
+    "mlp_ratio", "batch_tokens", "microbatch_tokens", "steps", "seed",
+    "compile_model", "bf16", "activation_checkpointing",
+)
+SHARED_FRONTEND_ROWS = {
+    "comba", "gdn2", "gated_delta_product", "dplr", "rwkv7", "mamba2",
+    "log_linear_attention", "log_linear_mamba2", "dense_attention", "attnres", "samba_attention", "raven", "tda",
+}
+SLOW_NOTES = {
+    "attnres": "depth aggregation over full-width residual sources",
+    "based_attention": "normalized recurrent Taylor-feature state",
+    "deltaformer": "strict-causal correction and block triangular solve",
+    "iplr": "factored identity-plus-rank-one state transition",
+    "mom": "eight variable-length expert streams with routing and packing",
+    "path_attention": "Householder score correction and block triangular solve",
+    "pattention": "five count-scaled parameter-token softmax contractions per decoder block",
+    "tucker_attention": "full-rank Tucker foldings and 768-wide per-head attention",
+    "log_linear_attention": "four saved state banks and activation recomputation",
+    "log_linear_mamba2": "four saved state banks and activation recomputation",
+    "tda": "threshold-ReLU-square forward/backward with restored Q/K/V gradients",
 }
 
-# Upstream rows whose measured MFU is pathological (mostly the reference-tier or
-# fallback-ladder rows); the reason is the baseline's nature, labeled per row.
-UPSTREAM_SLOW_FLOOR = 0.01
+
+def _load(directory):
+    return {r.get("mixer", p.stem): r
+            for p in sorted(Path(directory).glob("*.json")) if not p.name.startswith("_")
+            for r in [json.loads(p.read_text())]}
 
 
-def _load(dirpath: str) -> dict[str, dict]:
-    out = {}
-    for f in sorted(Path(dirpath).glob("*.json")):
-        if f.name.startswith("_"):
-            continue
-        rec = json.loads(f.read_text())
-        out[rec.get("mixer", f.stem)] = rec
-    return out
+def verified(record):
+    if record.get("measurement_version") != 2 or "error" in record:
+        return False
+    trace = record.get("loss_trace", [])
+    return (record.get("checkpoint_aligned") is True
+            and len(trace) == record.get("steps", 0) > 0
+            and all(isinstance(x, (int, float)) and math.isfinite(x) for x in trace)
+            and math.isfinite(record.get("final_loss", math.nan))
+            and record.get("source_fingerprint") is not None
+            and all(math.isfinite(record.get(k, math.nan)) and record.get(k, 0) > 0
+                    for k in ("mfu", "wallclock_s", "throughput_tokens_s")))
 
 
-def _fmt(v, spec="{:.3f}"):
-    if v is None:
+def comparison_reason(ours, upstream):
+    if not verified(ours) or not verified(upstream):
+        return "training/gates not verified under measurement version 2"
+    if upstream.get("baseline_tier") != "production-kernel":
+        return "production training kernel unavailable"
+    if ours.get("source_fingerprint") != upstream.get("source_fingerprint"):
+        return "different source fingerprints"
+    if ours.get("environment") != upstream.get("environment"):
+        return "different device/precision environment"
+    oc, uc = ours.get("config", {}), upstream.get("config", {})
+    mismatches = [key for key in PROTOCOL_KEYS if key not in oc or key not in uc or oc[key] != uc[key]]
+    if mismatches:
+        return "different " + ", ".join(mismatches)
+    if ours.get("microbatch_fallback") or upstream.get("microbatch_fallback"):
+        return "diagnostic OOM fallback"
+    return None
+
+
+def _fmt(value, digits=3):
+    if value is None:
         return "—"
-    if isinstance(v, bool):
-        return "✓" if v else "✗"
-    if isinstance(v, float):
-        return spec.format(v)
-    return str(v)
+    if isinstance(value, bool):
+        return "✓" if value else "✗"
+    if not math.isfinite(value):
+        return "invalid"
+    return f"{value:.{digits}f}"
 
 
-def _is_nan(v) -> bool:
-    return isinstance(v, float) and math.isnan(v)
-
-
-def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--sweep-dir", default="results/sweep")
-    ap.add_argument("--upstream-dir", default="results/upstream")
-    ap.add_argument("--out", default="results/report.md")
-    args = ap.parse_args()
-
-    ours = _load(args.sweep_dir)
-    upstream = _load(args.upstream_dir) if Path(args.upstream_dir).exists() else {}
-
-    from train.upstream import UPSTREAM_BLOCKED, UPSTREAM_NOTES, UPSTREAM_TIER
-
-    try:
-        head = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"],
-                                       text=True).strip()
-    except Exception:  # noqa: BLE001 — provenance is best-effort
-        head = "unknown"
-
-    lines = []
-    # ============================== Preamble ==============================
-    lines.append("# URM training-harness measurement: 51 native rows × 49 upstream baselines\n")
-    lines.append(
-        "**What this is.** A training-harness measurement: each architecture row trains a "
-        "100M-class decoder LM for 10 steps on finewebedu, with checkpoint-parity and KL "
-        "gates, on one NVIDIA A10G. It is **not** a production serving benchmark and "
-        "**not** a source-model parity claim — the harness trains a generic decoder "
-        "surround around each row's mixer (verdict 4 of the [evidence "
-        "policy](docs/evidence.md); verdict 5 is not claimed).\n")
-    lines.append(
-        "**Config.** width=768, layers=9, heads=12, head_dim=64, seq=512, vocab=50304, "
-        "finewebedu, 10 steps, bf16 autocast with fp32 kernel accumulation. Microbatch "
-        "8192 tokens with an OOM fallback ladder 2048 → 1024 (fallback rows are marked "
-        "`(mbNNNN)`). URM rows compile through the opaque-op boundary; upstream rows run "
-        "eager (the fla chunk kernels fail torch.compile/Inductor here) — so upstream "
-        "throughput is a *lower bound*. MFU denominator: A10G adopted achievable bf16 "
-        "peak = 70 TFLOPS.\n")
-    lines.append(
-        "**Environment.** torch 2.14.0+cu130, triton 3.8.0, NVIDIA A10G 22 GiB "
-        f"(101 KB shared-memory limit), git HEAD `{head}`. Policy constraints: no "
-        "flash-attn installs (bypassed to SDPA), no mamba_ssm (no torch-2.14/cu130 "
-        "wheel), no source builds (the lingua SDM CUDA extension is toolchain-blocked).\n")
-
-    # ============================== Native table ==============================
-    lines.append("\n## URM native rows\n")
-    lines.append("All 51 native rows completed training and checkpoint parity. Inline "
-                 "flags: **`NaN`** = loss diverged within the 10 steps (stability "
-                 "finding; MFU still validly measures executed FLOPs); **`slow`** = "
-                 "pathological MFU (<0.10, reasons below); `(mbNNNN)` = OOM fallback.\n")
-    lines.append("| row | params | MFU | tok/s | ckpt | KL | peak GiB | loss | flags |")
-    lines.append("|---|---|---|---|---|---|---|---|---|")
-    n_ok = 0
-    nan_rows, slow_rows, fb_rows = [], [], []
-    for name in sorted(ours):
-        r = ours[name]
-        if "error" in r:
-            lines.append(f"| {name} | — | — | — | — | — | — | — | **runtime error** |")
+def render(ours, upstream):
+    ok = {n: r for n, r in ours.items() if verified(r)}
+    pairs = {n: (r, upstream[n]) for n, r in ok.items() if n in upstream
+             and comparison_reason(r, upstream[n]) is None}
+    lines = ["# URM training measurements — corrected campaign", "",
+             f"**Coverage.** {len(ok)}/{len(ours)} URM rows have finite training trajectories and passing checkpoint gates; "
+             f"{len(pairs)} have eligible production-kernel measurements.", "",
+             "Each row trains a decoder surround on finewebedu for 10 measured steps after two full optimizer warmup steps. "
+             "This measures the training harness; it does not claim source-model or serving parity. "
+             "See the [evidence policy](../docs/evidence.md).", "",
+             "**Protocol.** width=768, layers=9, heads=12, head_dim=64, sequence=512, vocab=50304. "
+             "Effective batch and microbatch are both 8192 tokens. Both arms compile the surround; "
+             "Python plan dispatch and unsupported upstream kernels remain eager boundaries. "
+             "Optimizer roles and clipping are identical in both arms. bf16 autocast with fp32 kernel accumulation; "
+             "timing is synchronized before and after measurement. "
+             "MFU is an approximate parameter/state FLOP estimate divided by the adopted 70 TFLOPS A10G peak, "
+             "not a hardware utilization counter.", "",
+             "Memory-heavy rows use the same explicit activation-checkpointing policy in both arms. "
+             "Based uses its upstream default of 16 query/key features and 64 value channels. "
+             "OOM retries are disabled in this campaign; failures are recorded without substituting a smaller batch. "
+             "Non-finite losses or gradient norms fail the run.", ""]
+    lines += ["TDA and Differential Attention training use existing public native calls with external "
+              "differentiable merges to retain projection and mixing-weight gradients. "
+              "Two core autograd-wrapper fixes retain only flags/shapes rather than bias/mask or gate tensors, "
+              "preventing graph retention after backward; kernel math is unchanged.", ""]
+    if ok:
+        env = next(iter(ok.values())).get("environment", {})
+        hashes = sorted({r['source_fingerprint'][:12] for r in ok.values()})
+        lines += [f"**Provenance.** torch {env.get('torch', '?')}, {env.get('device', '?')}; "
+                  f"measurement version 2; source fingerprint(s) `{', '.join(hashes)}`. "
+                  "Each JSON contains its actual config, full source hash, loss trajectory, memory trajectory, "
+                  "and attempted microbatches. FLA and Mamba production adapters verify their pinned sources.", ""]
+        memory_ranges = [max(trace) - min(trace) for r in ok.values()
+                         for trace in [r.get('memory_trace_gib', [])] if trace]
+        if len(memory_ranges) == len(ok):
+            lines += [f"**Memory audit.** The largest within-run step-end allocation range across verified URM rows "
+                      f"is {_fmt(max(memory_ranges))} GiB over the measured steps. "
+                      "This checks intermediate steps as well as the first-to-last drift.", ""]
+        upstream_ranges = [max(trace) - min(trace) for _, r in pairs.values()
+                           for trace in [r.get('memory_trace_gib', [])] if trace]
+        if upstream_ranges:
+            lines += [f"The largest step-end allocation range among eligible upstream runs is "
+                      f"{_fmt(max(upstream_ranges) * 2**20, 1)} KiB.", ""]
+    lines += ["## URM rows", "",
+              "`slow` marks approximate MFU below 0.10. `ckpt` means activation checkpointing is enabled; "
+              "checkpoint correctness is reported separately. Memory drift is the last minus first step-end allocation.", "",
+              "| row | params | MFU | tok/s | checkpoint gate | peak GiB | loss | memory drift GiB | flags |",
+              "|---|---:|---:|---:|:---:|---:|---:|---:|---|"]
+    for name, r in sorted(ours.items()):
+        if not verified(r):
+            reason = r.get("error", "unverified/legacy measurement").replace("|", "/").replace("\n", " ")
+            lines.append(f"| {name} | — | — | — | — | — | — | — | {reason} |")
             continue
-        n_ok += 1
         flags = []
-        if _is_nan(r.get("final_loss")):
-            flags.append("**NaN**")
-            nan_rows.append(name)
-        if r.get("mfu", 1.0) < PATHOLOGICAL_MFU:
-            flags.append("**slow**")
-            slow_rows.append(name)
-        fb = ""
-        if r.get("microbatch_fallback"):
-            fb = f" (mb{r['microbatch_fallback']})"
-            fb_rows.append(name)
-        lines.append(
-            f"| {name}{fb} | {r['params']:,} | {_fmt(r['mfu'])} | "
-            f"{_fmt(r['throughput_tokens_s'], '{:.0f}')} | {_fmt(r['checkpoint_aligned'])} | "
-            f"{_fmt(r.get('kl_divergence'), '{:.2e}')} | "
-            f"{_fmt(r['peak_memory_gib'], '{:.2f}')} | {_fmt(r['final_loss'], '{:.3f}')} | "
-            f"{' '.join(flags) or '—'} |"
-        )
-    lines.append(f"\n_{n_ok}/{len(ours)} native rows completed._\n")
-
-    # ---- Native context sections ----
-    if nan_rows:
-        lines.append(f"\n### NaN-diverged rows ({len(nan_rows)})\n")
-        lines.append("The low-rank/dual-gate K2 family diverges to NaN loss within the "
-                     "10 steps at width 768 — a genuine training-stability result, not a "
-                     "harness bug. MFU/throughput remain valid measurements of executed "
-                     "FLOPs; the separate reduced-shape checkpoint-parity gate passes "
-                     "(it certifies resume correctness, not 10-step stability):\n")
-        for n in sorted(nan_rows):
-            lines.append(f"- **{n}** — MFU {_fmt(ours[n]['mfu'])} still measured; loss NaN")
-        lines.append("")
-    if slow_rows:
-        lines.append(f"\n### Pathological-MFU rows ({len(slow_rows)}, MFU < {PATHOLOGICAL_MFU})\n")
-        lines.append("Architectural costs, measured honestly:\n")
-        for n in sorted(slow_rows):
-            note = NATIVE_SLOW_NOTES.get(n, "expensive mixer structure at this config")
-            lines.append(f"- **{n}** — MFU {_fmt(ours[n]['mfu'])}: {note}")
-        lines.append("")
-    if fb_rows:
-        lines.append(f"\n### OOM-fallback rows ({len(fb_rows)})\n")
-        lines.append("These rows OOM'd at the 8192-token primary microbatch and trained "
-                     "at the fallback rung shown; their MFU is measured at that rung "
-                     "(lower occupancy than the primary, stated openly):\n")
-        for n in sorted(fb_rows):
-            lines.append(f"- **{n}** — mb{ours[n]['microbatch_fallback']}")
-        lines.append("")
-
-    # ============================== Upstream table ==============================
-    if upstream:
-        lines.append("\n## Upstream comparison\n")
-        lines.append(
-            "Same 100M-class config; upstream rows run eager. Tiers: **prod** = the "
-            "upstream's production kernel; **ref** = the upstream's reference/research "
-            "implementation, or a transcription where the production kernel is "
-            "environment-blocked (flash-attn absent, mamba_ssm wheel absent, "
-            "SMEM/toolchain envelope) — the per-row reason is in the notes below. "
-            "Granularity: mixer / schedule (interleaved hybrid) / block (full block) / "
-            "residual (residual design).\n")
-        lines.append("| row | tier | granularity | MFU (urm/up) | tok/s (urm/up) | "
-                     "peak GiB (urm/up) | params (urm/up) | KL |")
-        lines.append("|---|---|---|---|---|---|---|---|")
-        n_prod = n_ref = 0
-        up_slow = []
-        up_fb = []
-        for name in sorted(upstream):
-            u = upstream[name]
-            o = ours.get(name)
-            tier = u.get("baseline_tier", UPSTREAM_TIER.get(name, "?"))
-            gran = u.get("granularity", "mixer")
-            tier_short = {"production-kernel": "prod",
-                          "reference-implementation": "ref"}.get(tier, tier)
-            if "error" in u:
-                lines.append(f"| {name} | {tier_short} | {gran} | — / **runtime error** "
-                             f"({u['error'][:60]}) | — | — | — | — |")
-                continue
-            if tier == "production-kernel":
-                n_prod += 1
-            else:
-                n_ref += 1
-            if u.get("mfu", 1.0) < UPSTREAM_SLOW_FLOOR:
-                up_slow.append(name)
-            if u.get("microbatch_fallback"):
-                up_fb.append(name)
-            o_mfu = _fmt(o['mfu']) if o and 'mfu' in o else "—"
-            o_tps = _fmt(o['throughput_tokens_s'], '{:.0f}') if o and 'mfu' in o else "—"
-            o_mem = _fmt(o['peak_memory_gib'], '{:.2f}') if o and 'mfu' in o else "—"
-            o_par = f"{o['params']:,}" if o and 'params' in o else "—"
-            kl = _fmt(o['kl_divergence'], '{:.2e}') if o and 'kl_divergence' in o else "—"
-            u_fb = f" (mb{u['microbatch_fallback']})" if u.get("microbatch_fallback") else ""
-            lines.append(
-                f"| {name} | {tier_short} | {gran} | {o_mfu} / {_fmt(u['mfu'])}{u_fb} | "
-                f"{o_tps} / {_fmt(u['throughput_tokens_s'], '{:.0f}')} | {o_mem} / "
-                f"{_fmt(u['peak_memory_gib'], '{:.2f}')} | {o_par} / {u['params']:,} | {kl} |"
-            )
-        lines.append(f"\n_{n_prod + n_ref}/{len(upstream)} upstream baselines completed: "
-                     f"{n_prod} production-kernel, {n_ref} reference-implementation._\n")
-
-        # ---- Upstream context sections ----
-        ref_rows = sorted(n for n in upstream
-                          if UPSTREAM_TIER.get(n) == "reference-implementation"
-                          and "error" not in upstream[n])
-        if ref_rows:
-            lines.append(f"\n### Reference-implementation baselines ({len(ref_rows)}) — "
-                         "why no production kernel\n")
-            for n in ref_rows:
-                note = UPSTREAM_NOTES.get(n, "research-code pin")
-                lines.append(f"- **{n}** — {note}")
-            lines.append("")
-        lines.append("\n### Production-kernel baselines with caveats\n")
-        for n in sorted(upstream):
-            if UPSTREAM_TIER.get(n) == "production-kernel" and n in UPSTREAM_NOTES:
-                lines.append(f"- **{n}** — {UPSTREAM_NOTES[n]}")
-        lines.append("")
-        if up_slow:
-            lines.append(f"\n### Pathological upstream MFU (<{UPSTREAM_SLOW_FLOOR})\n")
-            lines.append("The baseline itself is slow (naive recurrence / torch "
-                         "transcription / eager fallback config) — the comparison is "
-                         "still valid; the tier label says why:\n")
-            for n in sorted(up_slow):
-                lines.append(f"- **{n}** — upstream MFU {_fmt(upstream[n]['mfu'])} "
-                             f"({UPSTREAM_TIER.get(n, '?')})")
-            lines.append("")
-        if up_fb:
-            lines.append(f"\n### Upstream OOM-fallback rows ({len(up_fb)})\n")
-            for n in sorted(up_fb):
-                lines.append(f"- **{n}** — mb{upstream[n]['microbatch_fallback']}")
-            lines.append("")
-
-    # ============================== Coverage ==============================
-    lines.append("\n## Coverage and exclusions\n")
-    lines.append("- **hla** — no upstream implementation exists anywhere (empty pin; "
-                 "paper-only). The sole principled exclusion: the URM row trains, no "
-                 "baseline is fabricated.")
-    if UPSTREAM_BLOCKED:
-        for row, why in UPSTREAM_BLOCKED.items():
-            lines.append(f"- **{row}** — environment-blocked: {why}. Ours-only row.")
-    lines.append("- **mamba1** — reference-tier row (accepted charter debt: the K2 "
-                 "elementwise gate has a single client); not in the 51-row native "
-                 "sweep, so no baseline comparison is run.")
-    lines.append("- **KL gate** — wired for the 23 rows with a registry comparator; "
-                 "`—` elsewhere means *no comparator wired*, not failure.")
-    lines.append("- **mom, raven** — external torch compositions (public_path=False); "
-                 "trained as-is, no compiler-coverage claim.")
-    lines.append("")
-
-    Path(args.out).write_text("\n".join(lines) + "\n")
-    print(f"[report] wrote {args.out} ({n_ok} urm rows, {len(upstream)} upstream rows)")
+        if r['mfu'] < PATHOLOGICAL_MFU:
+            flags.append("slow")
+        if r['config'].get('activation_checkpointing'):
+            flags.append("ckpt")
+        if r.get('microbatch_fallback'):
+            flags.append(f"diagnostic mb{r['microbatch_fallback']}")
+        memory = r.get('memory_trace_gib', [])
+        drift = memory[-1] - memory[0] if memory else None
+        lines.append(f"| {name} | {r['params']:,} | {_fmt(r['mfu'])} | {_fmt(r['throughput_tokens_s'], 0)} | "
+                     f"✓ | {_fmt(r['peak_memory_gib'], 2)} | {_fmt(r['final_loss'])} | {_fmt(drift)} | {', '.join(flags) or '—'} |")
+    slow = [n for n, r in ok.items() if r['mfu'] < PATHOLOGICAL_MFU]
+    if slow:
+        lines += ["", f"### Remaining low-MFU rows ({len(slow)})", "",
+                  "These measurements remain visible. The listed work explains the execution path, "
+                  "and does not establish that the implementation is optimal.", ""]
+        lines += [f"- **{n}**: {SLOW_NOTES.get(n, 'requires further profiling')} (MFU {_fmt(ok[n]['mfu'])})."
+                  for n in sorted(slow)]
+    lines += ["", "## Production-kernel measurements", "",
+              "Only verified runs with matching shapes, effective batch, microbatch, precision, compilation policy, "
+              "checkpointing policy, environment, and source fingerprint enter this table. "
+              "There is no reference-kernel replacement after an upstream failure. "
+              "`shared` uses a common external frontend; `family` is an architecture-family baseline whose "
+              "projections or other mixer-side layers can differ. Parameter counts are shown explicitly; "
+              "family measurements are not isolated kernel speedup claims.", "",
+              "| row | scope | MFU (URM / upstream) | tok/s (URM / upstream) | peak GiB (URM / upstream) | params (URM / upstream) |",
+              "|---|---|---:|---:|---:|---:|"]
+    for n, (o, u) in sorted(pairs.items()):
+        scope = 'shared' if n in SHARED_FRONTEND_ROWS else 'family'
+        lines.append(f"| {n} | {scope} | {_fmt(o['mfu'])} / {_fmt(u['mfu'])} | "
+                     f"{_fmt(o['throughput_tokens_s'], 0)} / {_fmt(u['throughput_tokens_s'], 0)} | "
+                     f"{_fmt(o['peak_memory_gib'], 2)} / {_fmt(u['peak_memory_gib'], 2)} | {o['params']:,} / {u['params']:,} |")
+    lines += ["", "### Production adapters", "",
+              "- Mamba-2 uses the unmodified pinned SSD Triton package without importing its optional CUDA extension; "
+              "RWKV-7 uses the pinned chunk kernel with `chunk_size=16`.",
+              "- Comba, GDN2, DeltaProduct, DPLR, RWKV-7, Mamba-2 and both log-linear rows share the URM external frontend. "
+              "The upstream call replaces only the mixer kernel.",
+              "- Samba uses the same Mamba-2/RoPE schedule with pinned SSD and production SDPA. "
+              "Raven shares the eight-slot/top-k-two deterministic frontend and uses pinned chunk GSA. "
+              "Equal duplication of all slots meets its 16-slot backward minimum while preserving outputs and gradients.",
+              "- TDA supplies contiguous head batches and gradients, applies the native query scaling, "
+              "and matches the registered differential merge (identical paths with lambda=0.5). "
+              "Supported Triton launch options select IEEE fp32 dots and one pipeline stage.",
+              "- Log-linear attention uses independent heads as single-group batches and an A10G one-stage pipeline. "
+              "Operands and level scales are bf16, and the last scale repeats for the capped bank. "
+              "The upstream checkout remains unmodified.", "",
+              "## Upstreams excluded from production comparison", "",
+              "Unavailable kernels, research implementations, failed training, and mismatched measurements are listed "
+              "without paired throughput. Reference implementations can be requested as separate diagnostics using "
+              "`train.upstream --include-reference`; they remain excluded from the table above.", ""]
+    for n, u in sorted(upstream.items()):
+        if n in pairs:
+            continue
+        reason = u.get('reason') or u.get('error') or comparison_reason(ours.get(n, {}), u)
+        lines.append(f"- **{n}**: {reason}.")
+    for n in sorted(set(ours) - set(upstream)):
+        lines.append(f"- **{n}**: no upstream measurement available.")
+    lines += ["", "## Validation limits", "",
+              "Checkpoint gates use reduced eager models and certify resume behavior, not full-scale accuracy. "
+              "Finite full-scale loss and gradient norms are checked separately at every update. "
+              "KL is retained in the per-row JSON wherever a comparator is wired; absent KL is not a parity claim. "
+              "These ten-step runs do not establish long-run convergence.", ""]
+    return '\n'.join(lines)
 
 
-if __name__ == "__main__":
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--sweep-dir', default='results/sweep')
+    parser.add_argument('--upstream-dir', default='results/upstream')
+    parser.add_argument('--out', default='results/report.md')
+    args = parser.parse_args()
+    ours, upstream = _load(args.sweep_dir), _load(args.upstream_dir)
+    Path(args.out).write_text(render(ours, upstream))
+    print(f'[report] wrote {args.out}')
+
+
+if __name__ == '__main__':
     main()

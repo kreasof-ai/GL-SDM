@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import math
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 
 import torch
 
@@ -50,16 +50,21 @@ class TrainConfig:
     capture_gradients: bool = False  # gradient alignment adds one sync per group
     compile_model: bool = True       # torch.compile the surround (mixer is an opaque boundary)
     bf16: bool = True                # bf16 autocast (the A10G bf16 peak is the MFU denominator)
+    activation_checkpointing: bool = False
     target: str | None = None        # the mixer's registered tier (registry.tier) is the
                                      # default; pass "native"/"reference" to override
 
     def __post_init__(self):
+        if min(self.batch_tokens, self.microbatch_tokens, self.sequence_length, self.steps) <= 0:
+            raise ValueError("token counts, sequence length and steps must be positive")
         if self.width != self.num_heads * self.head_dim:
             raise ValueError("width must equal num_heads * head_dim")
         if self.batch_tokens % self.microbatch_tokens != 0:
             raise ValueError("batch_tokens must be a multiple of microbatch_tokens")
         if self.batch_tokens % self.sequence_length != 0:
             raise ValueError("batch_tokens must be a multiple of sequence_length")
+        if self.microbatch_tokens % self.sequence_length != 0:
+            raise ValueError("microbatch_tokens must be a multiple of sequence_length")
 
     @property
     def grad_accum(self) -> int:
@@ -173,15 +178,25 @@ class TrainResult:
     wallclock_s: float = 0.0
     throughput_tokens_s: float = 0.0
     peak_memory_gib: float = 0.0
+    loss_trace: list[float] = field(default_factory=list)
+    memory_trace_gib: list[float] = field(default_factory=list)
+    config: dict[str, object] = field(default_factory=dict)
+    source_fingerprint: str = ""
+    environment: dict[str, object] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, object]:
         return {
             "mixer": self.mixer, "steps": self.steps, "final_loss": self.final_loss,
             "mfu": self.mfu, "params": self.params,
             "checkpoint_aligned": self.checkpoint_aligned,
+            "grad_trace": self.grad_trace,
             "kl_divergence": self.kl_divergence, "wallclock_s": self.wallclock_s,
             "throughput_tokens_s": self.throughput_tokens_s,
             "peak_memory_gib": self.peak_memory_gib,
+            "loss_trace": self.loss_trace, "memory_trace_gib": self.memory_trace_gib,
+            "config": self.config, "measurement_version": 2,
+            "source_fingerprint": self.source_fingerprint,
+            "environment": self.environment,
         }
 
 
@@ -195,28 +210,27 @@ def build_model(cfg: TrainConfig, mixer: MixerSpec, *, device: str = "cuda",
         target=target or cfg.target or mixer.tier,
         batch_size=(cfg.microbatch_tokens // cfg.sequence_length) if mixer.stateful else None,
     )
+    model.activation_checkpointing = cfg.activation_checkpointing
     return model.to(device)
 
 
 def make_compile_safe(model: URMDecoderLM) -> URMDecoderLM:
     """Mark plan.execute-based mixers as dynamo boundaries so torch.compile works.
 
-    Native K2-family layers run their mixer as an opaque custom op (traceable, no
-    boundary needed) and are skipped. Mixers whose forward calls ``self._plan.execute``
-    (a Python dispatch loop dynamo cannot trace — K3 SDM, K1 reference tiers, K2 on the
-    reference tier) get their forward disabled: the plan, provider and equation are
+    Native K2-family layers using _run_mixer run as opaque custom ops and are
+    skipped. Modules owning Python plans (including block/residual children and
+    triangular solves) get their forward disabled: the plan, provider and equation are
     unchanged; only the dynamo partition moves (the surround fuses; the provider runs
     eagerly).
     """
-    for block in model.blocks:
-        mixer = getattr(block, "mixer", None)
-        if mixer is None:
-            continue  # block/residual granularity: the row owns the block structure
-        if getattr(mixer, "_target", None) == "native":
+    for inner in model.modules():
+        if getattr(inner, "_target", None) == "native" and hasattr(inner, "_run_mixer"):
             continue  # native K2: the mixer is already an opaque custom op.
-        inner = getattr(mixer, "_mixer", mixer)  # FoX adapter holds the real mixer in _mixer
         fwd = getattr(inner, "forward", None)
-        if callable(fwd) and getattr(inner, "_plan", None) is not None:
+        owns_plan = any(getattr(inner, name, None) is not None
+                        for name in ("_plan", "_solve", "_attn_plan"))
+        owns_plan = owns_plan or getattr(inner, "_dynamic_routing", False)
+        if callable(fwd) and owns_plan:
             inner.forward = torch._dynamo.disable(fwd)
     return model
 
@@ -232,6 +246,8 @@ def train(cfg: TrainConfig, mixer: MixerSpec, data_iter, *,
     ceiling for a ~100M-param dense model is ~30–35% MFU (memory-bandwidth-bound at this
     batch/sequence), so the 50% target is a large-GPU number, recorded not claimed here.
     """
+    from train.campaign import source_fingerprint
+    measured_source = source_fingerprint()
     model = build_model(cfg, mixer, device=device)
     if cfg.compile_model:
         # The native K2 layers run their mixer as an opaque custom op (no boundary
@@ -273,17 +289,31 @@ def train(cfg: TrainConfig, mixer: MixerSpec, data_iter, *,
             (getattr(model, "_orig_mod", model)).detach_state()
 
     # Warmup / compile.
-    for _ in range(min(2, cfg.steps)):
-        _maybe_reset()
-        inputs, targets = next(data_iter)
+    def _backward(inputs, targets):
         loss = _step_loss(inputs, targets)
+        value = loss.item()
+        if not math.isfinite(value):
+            raise FloatingPointError(f"{mixer.name}: non-finite training loss: {value}")
         (loss / cfg.grad_accum).backward()
         _maybe_detach()
+        # Do not retain a completed autograd context across the next forward.
+        # Some native kernels keep large history buffers as ctx attributes.
+        del loss
+        return value / cfg.grad_accum
+
+    for _ in range(min(2, cfg.steps)):
+        _maybe_reset()
+        for _ in range(cfg.grad_accum):
+            inputs, targets = next(data_iter)
+            _backward(inputs, targets)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0, error_if_nonfinite=True)
         for opt in optimizers:
             opt.step()
         model.zero_grad(set_to_none=True)
     if device == "cuda":
+        torch.cuda.synchronize()
         torch.cuda.reset_peak_memory_stats()
+    loss_trace, memory_trace = [], []
     t0 = time.perf_counter()
     for step in range(cfg.steps):
         model.train()
@@ -291,43 +321,61 @@ def train(cfg: TrainConfig, mixer: MixerSpec, data_iter, *,
         _maybe_reset()
         for _ in range(cfg.grad_accum):
             inputs, targets = next(data_iter)
-            loss = _step_loss(inputs, targets)
-            (loss / cfg.grad_accum).backward()
-            _maybe_detach()
-            step_loss += loss.item() / cfg.grad_accum
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            step_loss += _backward(inputs, targets)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0, error_if_nonfinite=True)
+        if cfg.capture_gradients:
+            _record_gradient_norms(model, grad_trace)
         for opt in optimizers:
             opt.step()
         model.zero_grad(set_to_none=True)
         final_loss = step_loss
-        if cfg.capture_gradients:
-            _record_gradient_norms(model, grad_trace)
+        loss_trace.append(step_loss)
+        if device == "cuda":
+            memory_trace.append(torch.cuda.memory_allocated() / 2**30)
+    if device == "cuda":
+        torch.cuda.synchronize()
     wallclock = time.perf_counter() - t0
     mfu = (flops_per_step * cfg.steps / wallclock) / peak if wallclock > 0 else 0.0
     throughput = (cfg.steps * cfg.grad_accum * cfg.microbatch_tokens) / wallclock if wallclock > 0 else 0.0
     peak_memory_gib = (
         torch.cuda.max_memory_allocated() / 2**30 if device == "cuda" else 0.0
     )
-
-    checkpoint_aligned = _check_checkpoint_alignment(cfg, mixer, data_iter, device=device)
     kl = _kl_gate(cfg, mixer, model, device=device)
+    # Gates should not compete with the timed model and its optimizer state.
+    del _step_loss, model, optimizers
+    import gc
+    gc.collect()
+    if device == "cuda":
+        torch.cuda.empty_cache()
+    checkpoint_aligned = _check_checkpoint_alignment(cfg, mixer, data_iter, device=device)
+    if not checkpoint_aligned:
+        raise RuntimeError(f"{mixer.name}: checkpoint alignment failed")
 
     return TrainResult(
         mixer=mixer.name, steps=cfg.steps, final_loss=final_loss, mfu=mfu,
         params=n_params, checkpoint_aligned=checkpoint_aligned,
         grad_trace=grad_trace, kl_divergence=kl, wallclock_s=wallclock,
         throughput_tokens_s=throughput, peak_memory_gib=peak_memory_gib,
+        loss_trace=loss_trace, memory_trace_gib=memory_trace,
+        config=asdict(cfg), source_fingerprint=measured_source,
+        environment={"torch": torch.__version__,
+                     "device": torch.cuda.get_device_name() if device == "cuda" else device,
+                     "peak_flops": peak},
     )
 
 
 def _record_gradient_norms(model, trace: dict[str, list[float]]) -> None:
     """Per-group gradient-norm trace (the gradient-alignment surface)."""
-    # Note: called before zero_grad in a real capture; here it records post-step state.
-    for name, p in model.named_parameters():
+    squared = {}
+    for name, p in getattr(model, "_orig_mod", model).named_parameters():
         if p.grad is None:
             continue
-        group = name.split(".")[0] + "." + (name.split(".")[1] if "blocks" in name else "")
-        trace.setdefault(group, []).append(float(p.grad.float().norm().item()))
+        parts = name.split(".")
+        group = ".".join(parts[:2]) if parts[0] == "blocks" else parts[0]
+        norm2 = p.grad.float().square().sum()
+        squared[group] = squared.get(group, 0) + norm2
+    for group, norm2 in squared.items():
+        trace.setdefault(group, []).append(float(norm2.sqrt().item()))
 
 
 def _check_checkpoint_alignment(cfg: TrainConfig, mixer: MixerSpec, data_iter, *,
@@ -347,10 +395,12 @@ def _check_checkpoint_alignment(cfg: TrainConfig, mixer: MixerSpec, data_iter, *
     # deterministic by construction (program-ordered atomics, fixed-order reductions);
     # this gate is where that claim is exercised.
     gate_target = cfg.target or mixer.tier
+    gate_sequence = min(cfg.sequence_length, 64)
     small = TrainConfig(
         mixer=cfg.mixer, vocab_size=min(cfg.vocab_size, 512),
-        sequence_length=min(cfg.sequence_length, 64), layers=2, width=128,
-        num_heads=2, head_dim=cfg.head_dim, batch_tokens=128, microbatch_tokens=128,
+        sequence_length=gate_sequence, layers=2, width=2 * cfg.head_dim,
+        num_heads=2, head_dim=cfg.head_dim, batch_tokens=2 * gate_sequence,
+        microbatch_tokens=2 * gate_sequence,
         steps=cfg.steps, seed=cfg.seed, target=gate_target,
     )
     seed_stream = [torch.randint(0, small.vocab_size, (small.microbatch_sequences, small.sequence_length),

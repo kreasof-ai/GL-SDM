@@ -1,15 +1,66 @@
-/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/merge.py:71: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
-Consider using tensor.detach() first. (Triggered internally at /__w/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:820.)
-  float(s) if s is not None else 1.0
+
+COMMAND: ['/opt/conda/bin/python', '-m', 'train.run', '--mixer', 'differential_attention', '--steps', '10', '--layers', '9', '--width', '768', '--num-heads', '12', '--head-dim', '64', '--sequence-length', '512', '--batch-tokens', '8192', '--microbatch-tokens', '8192', '--out', 'results/sweep/differential_attention.json']
 {
   "mixer": "differential_attention",
   "steps": 10,
-  "final_loss": 8.16616153717041,
-  "mfu": 0.5346016714420482,
+  "final_loss": 16.94534683227539,
+  "mfu": 0.21065013583861558,
   "params": 123979392,
   "checkpoint_aligned": true,
+  "grad_trace": {},
   "kl_divergence": null,
-  "wallclock_s": 1.6342149609990884,
-  "throughput_tokens_s": 50128.04432405738,
-  "peak_memory_gib": 5.582964897155762
+  "wallclock_s": 4.147417452011723,
+  "throughput_tokens_s": 19752.05075155006,
+  "peak_memory_gib": 6.957248210906982,
+  "loss_trace": [
+    13.535184860229492,
+    14.694345474243164,
+    16.899852752685547,
+    17.394567489624023,
+    17.50263023376465,
+    18.1107177734375,
+    16.662656784057617,
+    16.952810287475586,
+    15.718984603881836,
+    16.94534683227539
+  ],
+  "memory_trace_gib": [
+    1.0887293815612793,
+    1.0887293815612793,
+    1.0887293815612793,
+    1.0887293815612793,
+    1.0887293815612793,
+    1.0887293815612793,
+    1.0887293815612793,
+    1.0887293815612793,
+    1.0887293815612793,
+    1.0887293815612793
+  ],
+  "config": {
+    "mixer": "differential_attention",
+    "vocab_size": 50304,
+    "sequence_length": 512,
+    "layers": 9,
+    "width": 768,
+    "num_heads": 12,
+    "head_dim": 64,
+    "mlp_ratio": 4,
+    "batch_tokens": 8192,
+    "microbatch_tokens": 8192,
+    "steps": 10,
+    "seed": 0,
+    "target_mfu": 0.5,
+    "capture_gradients": false,
+    "compile_model": true,
+    "bf16": true,
+    "activation_checkpointing": false,
+    "target": null
+  },
+  "measurement_version": 2,
+  "source_fingerprint": "345b161d5a9866e94c1ff1686d5b9156ce4c0aa404149c80ec35f81a08a601c1",
+  "environment": {
+    "torch": "2.14.0+cu130",
+    "device": "NVIDIA A10G",
+    "peak_flops": 70000000000000.0
+  }
 }

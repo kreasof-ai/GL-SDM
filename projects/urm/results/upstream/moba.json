@@ -1,14 +1,7 @@
 {
   "mixer": "moba",
-  "steps": 10,
-  "final_loss": 13.398002624511719,
-  "mfu": 0.24093713145396295,
-  "params": 102742272,
-  "checkpoint_aligned": true,
-  "kl_divergence": null,
-  "wallclock_s": 3.0071457080193795,
-  "throughput_tokens_s": 27241.779399494288,
-  "peak_memory_gib": 8.748722076416016,
+  "measurement_version": 2,
   "baseline_tier": "reference-implementation",
-  "granularity": "mixer"
+  "status": "production-unavailable",
+  "reason": "fla's parallel_moba needs flash-attn; baseline is the pinned law as a block-sparse SDPA mask"
 }

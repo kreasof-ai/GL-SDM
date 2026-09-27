@@ -1,1 +1,1 @@
-[upstream] 1 rows -> results_upstream
+the lingua CUDA extension is toolchain-blocked (nvcc 12.9 vs cu13 headers; source builds excluded); baseline is the pinned law in torch

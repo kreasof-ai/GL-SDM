@@ -1,20 +1,66 @@
-W0926 20:12:19.011000 212438 site-packages/torch/_dynamo/convert_frame.py:2008] [16/8] torch._dynamo hit config.recompile_limit (8)
-W0926 20:12:19.011000 212438 site-packages/torch/_dynamo/convert_frame.py:2008] [16/8]    function: 'torch_dynamo_resume_in_execute_online_softmax_at_901' (/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k1/online_softmax.py:901)
-W0926 20:12:19.011000 212438 site-packages/torch/_dynamo/convert_frame.py:2008] [16/8]    last reason: 16/7: ___check_obj_id(___stack0, 94457894630144), type=<class 'urm.backends.triton.k1.online_softmax.execute_online_softmax.<locals>._OnlineSoftmax'>  # return _OnlineSoftmax.apply(query, key, value, mask, bias)  # ome/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k1/online_softmax.py:1036 in torch_dynamo_resume_in_execute_online_softmax_at_901
-W0926 20:12:19.011000 212438 site-packages/torch/_dynamo/convert_frame.py:2008] [16/8] User stack trace:
-W0926 20:12:19.011000 212438 site-packages/torch/_dynamo/convert_frame.py:2008] [16/8]   File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k1/online_softmax.py", line 1036, in torch_dynamo_resume_in_execute_online_softmax_at_901
-W0926 20:12:19.011000 212438 site-packages/torch/_dynamo/convert_frame.py:2008] [16/8]     return _OnlineSoftmax.apply(query, key, value, mask, bias)
-W0926 20:12:19.011000 212438 site-packages/torch/_dynamo/convert_frame.py:2008] [16/8] To log all recompilation reasons, use TORCH_LOGS="recompiles".
-W0926 20:12:19.011000 212438 site-packages/torch/_dynamo/convert_frame.py:2008] [16/8] To diagnose recompilation issues, see https://docs.pytorch.org/docs/main/user_guide/torch_compiler/compile/programming_model.recompilation.html
+
+COMMAND: ['/opt/conda/bin/python', '-m', 'train.run', '--mixer', 'pattention', '--steps', '10', '--layers', '9', '--width', '768', '--num-heads', '12', '--head-dim', '64', '--sequence-length', '512', '--batch-tokens', '8192', '--microbatch-tokens', '8192', '--out', 'results/sweep/pattention.json']
 {
   "mixer": "pattention",
   "steps": 10,
-  "final_loss": 8.081219673156738,
-  "mfu": 0.01396265638267834,
+  "final_loss": 14.905525207519531,
+  "mfu": 0.17365262123059505,
   "params": 43464960,
   "checkpoint_aligned": true,
+  "grad_trace": {},
   "kl_divergence": null,
-  "wallclock_s": 22.080663150001783,
-  "throughput_tokens_s": 3710.033500510757,
-  "peak_memory_gib": 4.868691444396973
+  "wallclock_s": 1.7754106450011022,
+  "throughput_tokens_s": 46141.43788686653,
+  "peak_memory_gib": 5.667774200439453,
+  "loss_trace": [
+    21.253982543945312,
+    21.807575225830078,
+    20.784671783447266,
+    18.177202224731445,
+    16.620616912841797,
+    16.3887939453125,
+    16.046361923217773,
+    15.22330379486084,
+    15.497973442077637,
+    14.905525207519531
+  ],
+  "memory_trace_gib": [
+    0.48720312118530273,
+    0.48720312118530273,
+    0.48720312118530273,
+    0.48720312118530273,
+    0.48720312118530273,
+    0.48720312118530273,
+    0.48720312118530273,
+    0.48720312118530273,
+    0.48720312118530273,
+    0.48720312118530273
+  ],
+  "config": {
+    "mixer": "pattention",
+    "vocab_size": 50304,
+    "sequence_length": 512,
+    "layers": 9,
+    "width": 768,
+    "num_heads": 12,
+    "head_dim": 64,
+    "mlp_ratio": 4,
+    "batch_tokens": 8192,
+    "microbatch_tokens": 8192,
+    "steps": 10,
+    "seed": 0,
+    "target_mfu": 0.5,
+    "capture_gradients": false,
+    "compile_model": true,
+    "bf16": true,
+    "activation_checkpointing": false,
+    "target": null
+  },
+  "measurement_version": 2,
+  "source_fingerprint": "345b161d5a9866e94c1ff1686d5b9156ce4c0aa404149c80ec35f81a08a601c1",
+  "environment": {
+    "torch": "2.14.0+cu130",
+    "device": "NVIDIA A10G",
+    "peak_flops": 70000000000000.0
+  }
 }

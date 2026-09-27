@@ -1242,6 +1242,9 @@ def execute_matrix_state_recurrence(
         )
     grid = (batch * heads,)
     warps = 4
+    # Keep the per-call autograd class free of tensor-valued closures.
+    has_log_decay = log_decay is not None
+    has_beta = beta is not None
 
     class _MatrixState(torch.autograd.Function):
         @staticmethod
@@ -1364,8 +1367,8 @@ def execute_matrix_state_recurrence(
                 grad_q,
                 grad_k,
                 grad_v,
-                grad_g if log_decay is not None else None,
-                grad_b if beta is not None else None,
+                grad_g if has_log_decay else None,
+                grad_b if has_beta else None,
                 grad_retr if has_retr else None,
                 grad_erase if dual_gate else None,
                 grad_write if dual_gate else None,

@@ -1,14 +1,7 @@
 {
   "mixer": "sparse_transformer",
-  "steps": 10,
-  "final_loss": 13.308314323425293,
-  "mfu": 0.2614546064682044,
-  "params": 102742272,
-  "checkpoint_aligned": true,
-  "kl_divergence": null,
-  "wallclock_s": 2.771161963988561,
-  "throughput_tokens_s": 29561.606670615427,
-  "peak_memory_gib": 7.908023834228516,
+  "measurement_version": 2,
   "baseline_tier": "reference-implementation",
-  "granularity": "mixer"
+  "status": "production-unavailable",
+  "reason": "the pin's attention_impl is TF1/blocksparse (not runnable); baseline applies the pinned strided+local mask via SDPA"
 }

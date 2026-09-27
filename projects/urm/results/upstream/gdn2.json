@@ -1,14 +1,74 @@
 {
   "mixer": "gdn2",
   "steps": 10,
-  "final_loss": 8.966974258422852,
-  "mfu": 0.14251449583941816,
-  "params": 115226028,
+  "final_loss": 8.829404830932617,
+  "mfu": 0.19675515938732477,
+  "params": 113372928,
   "checkpoint_aligned": true,
+  "grad_trace": {},
   "kl_divergence": null,
-  "wallclock_s": 5.699002223002026,
-  "throughput_tokens_s": 14374.44605116289,
-  "peak_memory_gib": 10.266016960144043,
+  "wallclock_s": 4.061791783984518,
+  "throughput_tokens_s": 20168.43904283998,
+  "peak_memory_gib": 3.63596248626709,
+  "loss_trace": [
+    9.266850471496582,
+    9.28538703918457,
+    8.948646545410156,
+    8.924249649047852,
+    8.78049087524414,
+    9.237102508544922,
+    9.268861770629883,
+    8.980392456054688,
+    9.053685188293457,
+    8.829404830932617
+  ],
+  "memory_trace_gib": [
+    1.0150761604309082,
+    1.0150761604309082,
+    1.0150761604309082,
+    1.0150761604309082,
+    1.0150761604309082,
+    1.0150761604309082,
+    1.0150761604309082,
+    1.0150761604309082,
+    1.0150761604309082,
+    1.0150761604309082
+  ],
+  "config": {
+    "mixer": "gdn2",
+    "vocab_size": 50304,
+    "sequence_length": 512,
+    "layers": 9,
+    "width": 768,
+    "num_heads": 12,
+    "head_dim": 64,
+    "mlp_ratio": 4,
+    "batch_tokens": 8192,
+    "microbatch_tokens": 8192,
+    "steps": 10,
+    "seed": 0,
+    "target_mfu": 0.5,
+    "capture_gradients": false,
+    "compile_model": true,
+    "bf16": true,
+    "activation_checkpointing": true,
+    "target": null
+  },
+  "measurement_version": 2,
+  "source_fingerprint": "345b161d5a9866e94c1ff1686d5b9156ce4c0aa404149c80ec35f81a08a601c1",
+  "environment": {
+    "torch": "2.14.0+cu130",
+    "device": "NVIDIA A10G",
+    "peak_flops": 70000000000000.0
+  },
   "baseline_tier": "production-kernel",
-  "granularity": "mixer"
+  "granularity": "mixer",
+  "fla_source_identity": {
+    "repository": "https://github.com/fla-org/flash-linear-attention",
+    "revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+    "source_path": "/tmp/urm-comparator-pins/fla/fla"
+  },
+  "attempted_microbatches": [
+    8192
+  ]
 }

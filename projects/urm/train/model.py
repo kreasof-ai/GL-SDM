@@ -103,6 +103,7 @@ class URMDecoderLM(nn.Module):
                            layers=layers, width=width, num_heads=num_heads,
                            head_dim=head_dim, mixer=mixer.name, target=target)
         self.mixer_spec = mixer
+        self.activation_checkpointing = False
         self.token = nn.Embedding(vocab_size, width)
         self.position = nn.Embedding(sequence_length, width)
 
@@ -160,7 +161,13 @@ class URMDecoderLM(nn.Module):
         if self.granularity == "residual":
             return self._hidden_residual(x)
         for block in self.blocks:
-            x = block(x)
+            if self.activation_checkpointing and self.training and torch.is_grad_enabled():
+                from torch.utils.checkpoint import checkpoint
+                # Reentrant checkpointing also releases kernel buffers stored as
+                # plain autograd ctx attributes, which saved-tensor hooks cannot.
+                x = checkpoint(block, x, use_reentrant=True, preserve_rng_state=False)
+            else:
+                x = block(x)
         return self.norm(x)
 
     def _hidden_residual(self, x: torch.Tensor) -> torch.Tensor:

@@ -1,1 +1,1 @@
-[upstream] 1 rows -> results_upstream
+fla's parallel_moba needs flash-attn; baseline is the pinned law as a block-sparse SDPA mask

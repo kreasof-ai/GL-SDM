@@ -1,1 +1,1 @@
-[upstream] 1 rows -> results_upstream
+fla's MLA layer hard-requires flash-attn; baseline is the pinned prefill equation in torch

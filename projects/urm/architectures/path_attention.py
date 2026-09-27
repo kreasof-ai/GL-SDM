@@ -153,15 +153,17 @@ class PaTHAttentionLayer(torch.nn.Module):
         wf = w.permute(0, 2, 1, 3).float()                        # [B,HQ,T,D]
         betaf = beta.permute(0, 2, 1).float()                     # [B,HQ,T]
         P = wf @ wf.transpose(-1, -2)
-        eye = torch.eye(T, device=q.device).expand(B, HQ, T, T).contiguous()
-        T_mat = self._solve.execute(probs=P, beta=betaf, value=eye)["T_mat"]  # [B,HQ,T,T]
 
         # 2. Householder score correction (external typed assembly), head-first.
         qf = q.permute(0, 2, 1, 3).float()
         kf = k.permute(0, 2, 1, 3).float()
         wbf = (wf * betaf.unsqueeze(-1))                          # w_β [B,HQ,T,D]
         upper = torch.triu(torch.ones(T, T, dtype=torch.bool, device=q.device), diagonal=0)
-        Twbk = T_mat @ (wbf @ kf.transpose(-1, -2)).masked_fill(upper, 0)
+        # Solve directly for the required RHS, rather than materializing the
+        # full inverse and then multiplying it by that RHS.
+        from architectures.triangular_schedule import solve_in_blocks
+        rhs = (wbf @ kf.transpose(-1, -2)).masked_fill(upper, 0)
+        Twbk = solve_in_blocks(self._solve, P, betaf, rhs, "T_mat", block_size=64)
         qw = (qf @ wf.transpose(-1, -2)).tril()
         correction = -(qw @ Twbk)                                 # A_local − tril(qkᵀ) [B,HQ,T,T]
 
@@ -171,7 +173,7 @@ class PaTHAttentionLayer(torch.nn.Module):
 
         # 4. Public K1 causal softmax with the combined additive score bias.
         score_bias = (correction + gc_bias) * scale
-        out = self._attn.execute(query=q.float(), key=k.float(), value=v.float(),
+        out = self._attn.execute(query=q, key=k, value=v,
                                  score_bias=score_bias)["output"]
         return out.to(q.dtype)                                    # [B,T,HQ,D]
 

@@ -40,6 +40,7 @@ class IPLRLayer(torch.nn.Module):
                     {"name": "key", "dtype": "float32", "shape": ["B", "H", "T", "K"]},
                     {"name": "value", "dtype": "float32", "shape": ["B", "H", "T", "V"]},
                     {"name": "beta", "dtype": "float32", "shape": ["B", "H", "T"]},
+                    {"name": "log_decay", "dtype": "float32", "shape": ["B", "H", "T"]},
                     {"name": "alpha", "dtype": "float32", "shape": ["B", "H", "T", "K"]},
                     {"name": "low_rank_beta", "dtype": "float32", "shape": ["B", "H", "T", "K"]},
                     {"name": "initial_state", "dtype": "float32", "shape": ["B", "H", "K", "V"]},
@@ -47,15 +48,19 @@ class IPLRLayer(torch.nn.Module):
                 "nodes": [
                     {
                         "id": "mixer", "op": "linear_delta_state",
-                        "inputs": ["query", "key", "value", "beta", "alpha",
+                        "inputs": ["query", "key", "value", "beta", "log_decay", "alpha",
                                    "low_rank_beta", "initial_state"],
                         "outputs": ["output", "final_state"],
                         "params": {
-                            "delta": False, "gate_scope": "none",
+                            # exp(0) is the identity. Binding it explicitly selects
+                            # the existing factored low-rank schedule, avoiding a
+                            # dense [B,H,T,K,K] transition and its gradient.
+                            "delta": False, "gate_scope": "head",
                             "read_timing": "after_update", "scale_rule": "key_dim_rsqrt",
                             "low_rank": True,
                             "roles": {"query": "query", "key": "key", "value": "value",
                                       "beta": "beta", "alpha": "alpha",
+                                      "log_decay": "log_decay",
                                       "low_rank_beta": "low_rank_beta",
                                       "initial_state": "initial_state"},
                         },
@@ -75,6 +80,7 @@ class IPLRLayer(torch.nn.Module):
         return self._plan.execute(
             query=q, key=k, value=v,
             beta=torch.ones(B, H, T, device=q.device),
+            log_decay=torch.zeros(B, H, T, device=q.device),
             alpha=alpha, low_rank_beta=beta,
             initial_state=torch.zeros(B, H, K, V, device=q.device),
         )["output"]

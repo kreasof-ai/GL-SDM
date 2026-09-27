@@ -1,12 +1,66 @@
+
+COMMAND: ['/opt/conda/bin/python', '-m', 'train.run', '--mixer', 'simple_gla', '--steps', '10', '--layers', '9', '--width', '768', '--num-heads', '12', '--head-dim', '64', '--sequence-length', '512', '--batch-tokens', '8192', '--microbatch-tokens', '8192', '--out', 'results/sweep/simple_gla.json']
 {
   "mixer": "simple_gla",
   "steps": 10,
-  "final_loss": 8.113951683044434,
-  "mfu": 0.2879645152112328,
+  "final_loss": 9.108100891113281,
+  "mfu": 0.23332145391305742,
   "params": 102825900,
   "checkpoint_aligned": true,
+  "grad_trace": {},
   "kl_divergence": 0.0,
-  "wallclock_s": 2.5180889810144436,
-  "throughput_tokens_s": 32532.60731358171,
-  "peak_memory_gib": 5.6513495445251465
+  "wallclock_s": 3.107816536008613,
+  "throughput_tokens_s": 26359.342339174993,
+  "peak_memory_gib": 5.409494400024414,
+  "loss_trace": [
+    9.269250869750977,
+    9.053274154663086,
+    8.889507293701172,
+    8.80591106414795,
+    8.908340454101562,
+    9.231502532958984,
+    9.137170791625977,
+    9.110218048095703,
+    9.216426849365234,
+    9.108100891113281
+  ],
+  "memory_trace_gib": [
+    0.9330458641052246,
+    0.9330458641052246,
+    0.9330458641052246,
+    0.9330458641052246,
+    0.9330458641052246,
+    0.9330458641052246,
+    0.9330458641052246,
+    0.9330458641052246,
+    0.9330458641052246,
+    0.9330458641052246
+  ],
+  "config": {
+    "mixer": "simple_gla",
+    "vocab_size": 50304,
+    "sequence_length": 512,
+    "layers": 9,
+    "width": 768,
+    "num_heads": 12,
+    "head_dim": 64,
+    "mlp_ratio": 4,
+    "batch_tokens": 8192,
+    "microbatch_tokens": 8192,
+    "steps": 10,
+    "seed": 0,
+    "target_mfu": 0.5,
+    "capture_gradients": false,
+    "compile_model": true,
+    "bf16": true,
+    "activation_checkpointing": false,
+    "target": null
+  },
+  "measurement_version": 2,
+  "source_fingerprint": "345b161d5a9866e94c1ff1686d5b9156ce4c0aa404149c80ec35f81a08a601c1",
+  "environment": {
+    "torch": "2.14.0+cu130",
+    "device": "NVIDIA A10G",
+    "peak_flops": 70000000000000.0
+  }
 }

@@ -1,231 +1,160 @@
-# URM training-harness measurement: 51 native rows × 49 upstream baselines
+# URM training measurements — corrected campaign
 
-**What this is.** A training-harness measurement: each architecture row trains a 100M-class decoder LM for 10 steps on finewebedu, with checkpoint-parity and KL gates, on one NVIDIA A10G. It is **not** a production serving benchmark and **not** a source-model parity claim — the harness trains a generic decoder surround around each row's mixer (verdict 4 of the [evidence policy](docs/evidence.md); verdict 5 is not claimed).
+**Coverage.** 51/51 URM rows have finite training trajectories and passing checkpoint gates; 34 have eligible production-kernel measurements.
 
-**Config.** width=768, layers=9, heads=12, head_dim=64, seq=512, vocab=50304, finewebedu, 10 steps, bf16 autocast with fp32 kernel accumulation. Microbatch 8192 tokens with an OOM fallback ladder 2048 → 1024 (fallback rows are marked `(mbNNNN)`). URM rows compile through the opaque-op boundary; upstream rows run eager (the fla chunk kernels fail torch.compile/Inductor here) — so upstream throughput is a *lower bound*. MFU denominator: A10G adopted achievable bf16 peak = 70 TFLOPS.
+Each row trains a decoder surround on finewebedu for 10 measured steps after two full optimizer warmup steps. This measures the training harness; it does not claim source-model or serving parity. See the [evidence policy](../docs/evidence.md).
 
-**Environment.** torch 2.14.0+cu130, triton 3.8.0, NVIDIA A10G 22 GiB (101 KB shared-memory limit), git HEAD `fa1720e`. Policy constraints: no flash-attn installs (bypassed to SDPA), no mamba_ssm (no torch-2.14/cu130 wheel), no source builds (the lingua SDM CUDA extension is toolchain-blocked).
+**Protocol.** width=768, layers=9, heads=12, head_dim=64, sequence=512, vocab=50304. Effective batch and microbatch are both 8192 tokens. Both arms compile the surround; Python plan dispatch and unsupported upstream kernels remain eager boundaries. Optimizer roles and clipping are identical in both arms. bf16 autocast with fp32 kernel accumulation; timing is synchronized before and after measurement. MFU is an approximate parameter/state FLOP estimate divided by the adopted 70 TFLOPS A10G peak, not a hardware utilization counter.
 
+Memory-heavy rows use the same explicit activation-checkpointing policy in both arms. Based uses its upstream default of 16 query/key features and 64 value channels. OOM retries are disabled in this campaign; failures are recorded without substituting a smaller batch. Non-finite losses or gradient norms fail the run.
 
-## URM native rows
+TDA and Differential Attention training use existing public native calls with external differentiable merges to retain projection and mixing-weight gradients. Two core autograd-wrapper fixes retain only flags/shapes rather than bias/mask or gate tensors, preventing graph retention after backward; kernel math is unchanged.
 
-All 51 native rows completed training and checkpoint parity. Inline flags: **`NaN`** = loss diverged within the 10 steps (stability finding; MFU still validly measures executed FLOPs); **`slow`** = pathological MFU (<0.10, reasons below); `(mbNNNN)` = OOM fallback.
+**Provenance.** torch 2.14.0+cu130, NVIDIA A10G; measurement version 2; source fingerprint(s) `345b161d5a98`. Each JSON contains its actual config, full source hash, loss trajectory, memory trajectory, and attempted microbatches. FLA and Mamba production adapters verify their pinned sources.
 
-| row | params | MFU | tok/s | ckpt | KL | peak GiB | loss | flags |
-|---|---|---|---|---|---|---|---|---|
-| abc_gsa | 104,071,104 | 0.207 | 23121 | ✓ | — | 7.41 | 8.105 | — |
-| attnres | 102,769,920 | 0.051 | 5803 | ✓ | — | 13.13 | 8.181 | **slow** |
-| based_attention (mb1024) | 102,742,272 | 0.012 | 1375 | ✓ | — | 9.30 | 8.196 | **slow** |
-| bit_attention | 102,769,920 | 0.238 | 26938 | ✓ | — | 6.25 | 8.098 | — |
-| cat_attention | 102,742,272 | 0.329 | 37199 | ✓ | — | 5.77 | 8.142 | — |
-| comba | 102,908,376 | 0.335 | 37842 | ✓ | — | 19.10 | nan | **NaN** |
-| conformer_attention (mb2048) | 108,092,160 | 0.201 | 21637 | ✓ | — | 7.48 | 8.540 | — |
-| deltaformer | 102,908,376 | 0.031 | 3463 | ✓ | — | 9.03 | 8.196 | **slow** |
-| deltanet | 102,825,792 | 0.254 | 28745 | ✓ | 4.28e-10 | 6.19 | 8.113 | — |
-| dense_attention | 102,742,272 | 0.434 | 46149 | ✓ | 1.01e-09 | 5.75 | 8.197 | — |
-| differential_attention | 123,979,392 | 0.535 | 50128 | ✓ | — | 5.58 | 8.166 | — |
-| dplr | 118,688,256 | 0.317 | 31080 | ✓ | — | 21.04 | nan | **NaN** |
-| dsa | 102,742,272 | 0.435 | 49216 | ✓ | — | 5.57 | 8.375 | — |
-| forgetting_attention (mb2048) | 102,825,216 | 0.238 | 26863 | ✓ | 0.00e+00 | 7.19 | 8.410 | — |
-| gated_delta_product (mb2048) | 102,991,428 | 0.160 | 18037 | ✓ | — | 12.70 | nan | **NaN** |
-| gated_deltanet | 102,908,952 | 0.270 | 30448 | ✓ | 0.00e+00 | 6.19 | 8.132 | — |
-| gdn2 (mb2048) | 113,372,928 | 0.225 | 23071 | ✓ | — | 6.66 | nan | **NaN** |
-| gla | 108,278,784 | 0.290 | 31102 | ✓ | 0.00e+00 | 6.17 | 8.048 | — |
-| gsa | 104,071,104 | 0.177 | 19704 | ✓ | — | 7.31 | 8.112 | — |
-| hgrn2 | 102,742,272 | 0.284 | 32145 | ✓ | 0.00e+00 | 5.97 | 8.168 | — |
-| hla | 102,742,272 | 0.198 | 22370 | ✓ | — | 6.09 | 10.834 | — |
-| hopfield_association | 108,202,860 | 0.453 | 48653 | ✓ | — | 6.02 | 8.184 | — |
-| iplr (mb2048) | 113,372,928 | 0.029 | 2926 | ✓ | — | 9.34 | nan | **NaN** **slow** |
-| kata | 102,742,272 | 0.460 | 52040 | ✓ | — | 5.65 | 8.151 | — |
-| kda | 108,140,652 | 0.271 | 29103 | ✓ | 0.00e+00 | 6.38 | 8.122 | — |
-| lightnet | 102,742,272 | 0.280 | 31681 | ✓ | — | 6.02 | 8.172 | — |
-| lightning_attention | 102,742,272 | 0.290 | 32836 | ✓ | 2.77e-09 | 5.54 | 8.348 | — |
-| linear_attention | 102,742,272 | 0.291 | 32861 | ✓ | 1.99e-11 | 5.75 | 8.163 | — |
-| log_linear_attention (mb2048) | 113,372,928 | 0.134 | 13759 | ✓ | — | 12.80 | 9.076 | — |
-| log_linear_mamba2 (mb2048) | 103,157,208 | 0.117 | 13167 | ✓ | — | 12.67 | 10.002 | — |
-| longformer | 102,742,272 | 0.299 | 33806 | ✓ | — | 5.60 | 8.357 | — |
-| mamba2 | 87,784,920 | 0.261 | 34471 | ✓ | — | 5.46 | 8.578 | — |
-| mla_attention | 93,978,000 | 0.344 | 42511 | ✓ | — | 5.68 | 8.594 | — |
-| moba | 102,742,272 | 0.447 | 50568 | ✓ | — | 5.70 | 8.190 | — |
-| mom | 252,766,656 | 0.018 | 818 | ✓ | — | 9.92 | 8.482 | **slow** |
-| nsa | 102,991,104 | 0.282 | 31849 | ✓ | — | 6.21 | 8.141 | — |
-| path_attention (mb2048) | 102,908,376 | 0.016 | 1854 | ✓ | — | 8.88 | 8.469 | **slow** |
-| pattention | 43,464,960 | 0.014 | 3710 | ✓ | — | 4.87 | 8.081 | **slow** |
-| raven | 104,069,376 | 0.178 | 19850 | ✓ | — | 7.41 | 8.075 | — |
-| retnet | 108,050,688 | 0.292 | 31447 | ✓ | 0.00e+00 | 5.93 | 8.385 | — |
-| rodimus | 87,038,352 | 0.379 | 50600 | ✓ | — | 5.41 | 8.013 | — |
-| rwkv7 | 118,688,256 | 0.318 | 31107 | ✓ | — | 21.11 | nan | **NaN** |
-| samba_attention | 94,432,632 | 0.313 | 38452 | ✓ | — | 5.48 | 7.987 | — |
-| sdm | 94,952,448 | 0.191 | 23411 | ✓ | — | 7.26 | 8.299 | — |
-| simple_gla | 102,825,900 | 0.288 | 32533 | ✓ | 0.00e+00 | 5.65 | 8.114 | — |
-| sparse_transformer | 102,742,272 | 0.182 | 20634 | ✓ | — | 5.95 | 8.168 | — |
-| tda | 102,742,272 | 0.548 | 62001 | ✓ | — | 4.92 | 8.343 | — |
-| tpa_attention | 99,424,512 | 0.354 | 41332 | ✓ | — | 6.25 | 8.130 | — |
-| tucker_attention | 230,153,760 | 0.082 | 4155 | ✓ | — | 12.64 | 9.058 | **slow** |
-| wall_attention | 113,372,928 | 0.437 | 44774 | ✓ | — | 5.74 | 8.120 | — |
-| yoco | 102,825,216 | 0.289 | 32679 | ✓ | — | 5.54 | 8.254 | — |
+**Memory audit.** The largest within-run step-end allocation range across verified URM rows is 0.000 GiB over the measured steps. This checks intermediate steps as well as the first-to-last drift.
 
-_51/51 native rows completed._
+The largest step-end allocation range among eligible upstream runs is 12.0 KiB.
 
+## URM rows
 
-### NaN-diverged rows (6)
+`slow` marks approximate MFU below 0.10. `ckpt` means activation checkpointing is enabled; checkpoint correctness is reported separately. Memory drift is the last minus first step-end allocation.
 
-The low-rank/dual-gate K2 family diverges to NaN loss within the 10 steps at width 768 — a genuine training-stability result, not a harness bug. MFU/throughput remain valid measurements of executed FLOPs; the separate reduced-shape checkpoint-parity gate passes (it certifies resume correctness, not 10-step stability):
+| row | params | MFU | tok/s | checkpoint gate | peak GiB | loss | memory drift GiB | flags |
+|---|---:|---:|---:|:---:|---:|---:|---:|---|
+| abc_gsa | 104,071,104 | 0.186 | 20793 | ✓ | 7.17 | 16.853 | 0.000 | — |
+| attnres | 102,769,920 | 0.171 | 19352 | ✓ | 12.57 | 17.010 | 0.000 | — |
+| based_attention | 94,779,648 | 0.119 | 14562 | ✓ | 6.99 | 16.266 | 0.000 | — |
+| bit_attention | 102,769,920 | 0.243 | 27480 | ✓ | 6.02 | 15.642 | 0.000 | — |
+| cat_attention | 102,742,272 | 0.267 | 30207 | ✓ | 5.50 | 13.739 | 0.000 | — |
+| comba | 102,908,376 | 0.258 | 29137 | ✓ | 19.03 | 9.051 | 0.000 | — |
+| conformer_attention | 108,092,160 | 0.172 | 18498 | ✓ | 3.59 | 16.551 | 0.000 | ckpt |
+| deltaformer | 102,908,376 | 0.097 | 10925 | ✓ | 11.08 | 15.094 | 0.000 | slow |
+| deltanet | 102,825,792 | 0.213 | 24025 | ✓ | 5.95 | 9.011 | 0.000 | — |
+| dense_attention | 102,742,272 | 0.318 | 33777 | ✓ | 5.50 | 16.590 | 0.000 | — |
+| differential_attention | 123,979,392 | 0.211 | 19752 | ✓ | 6.96 | 16.945 | 0.000 | — |
+| dplr | 118,688,256 | 0.238 | 23278 | ✓ | 19.82 | 8.723 | 0.000 | — |
+| dsa | 102,742,272 | 0.312 | 35331 | ✓ | 5.31 | 10.151 | 0.000 | — |
+| forgetting_attention | 102,825,216 | 0.188 | 21230 | ✓ | 3.55 | 9.426 | 0.000 | ckpt |
+| gated_delta_product | 102,991,428 | 0.114 | 12863 | ✓ | 6.29 | 8.854 | 0.000 | ckpt |
+| gated_deltanet | 102,908,952 | 0.222 | 25086 | ✓ | 5.95 | 9.039 | 0.000 | — |
+| gdn2 | 113,372,928 | 0.175 | 17894 | ✓ | 3.63 | 8.834 | 0.000 | ckpt |
+| gla | 108,278,784 | 0.231 | 24824 | ✓ | 5.88 | 8.720 | 0.000 | — |
+| gsa | 104,071,104 | 0.154 | 17205 | ✓ | 7.06 | 8.812 | 0.000 | — |
+| hgrn2 | 102,742,272 | 0.231 | 26160 | ✓ | 5.72 | 9.036 | 0.000 | — |
+| hla | 102,742,272 | 0.175 | 19732 | ✓ | 5.85 | 12.049 | 0.000 | — |
+| hopfield_association | 108,202,860 | 0.319 | 34299 | ✓ | 5.77 | 9.726 | 0.000 | — |
+| iplr | 113,372,928 | 0.240 | 24551 | ✓ | 19.56 | 9.617 | 0.000 | — |
+| kata | 102,742,272 | 0.320 | 36168 | ✓ | 5.39 | 8.859 | 0.000 | — |
+| kda | 108,140,652 | 0.220 | 23685 | ✓ | 6.10 | 9.136 | 0.000 | — |
+| lightnet | 102,742,272 | 0.229 | 25866 | ✓ | 5.72 | 9.572 | 0.000 | — |
+| lightning_attention | 102,742,272 | 0.235 | 26583 | ✓ | 5.30 | 11.140 | 0.000 | — |
+| linear_attention | 102,742,272 | 0.235 | 26599 | ✓ | 5.51 | 16.045 | 0.000 | — |
+| log_linear_attention | 113,372,928 | 0.069 | 7078 | ✓ | 6.35 | 8.953 | 0.000 | slow, ckpt |
+| log_linear_mamba2 | 103,157,208 | 0.065 | 7267 | ✓ | 6.22 | 8.955 | 0.000 | slow, ckpt |
+| longformer | 102,742,272 | 0.271 | 30665 | ✓ | 5.34 | 10.667 | 0.000 | — |
+| mamba2 | 87,784,920 | 0.226 | 29921 | ✓ | 5.28 | 9.066 | 0.000 | — |
+| mla_attention | 93,978,000 | 0.270 | 33316 | ✓ | 5.47 | 9.420 | 0.000 | — |
+| moba | 102,742,272 | 0.314 | 35516 | ✓ | 5.44 | 9.285 | 0.000 | — |
+| mom | 252,766,656 | 0.144 | 6640 | ✓ | 13.49 | 9.019 | 0.000 | — |
+| nsa | 102,991,104 | 0.230 | 25966 | ✓ | 5.96 | 16.715 | 0.000 | — |
+| path_attention | 102,908,376 | 0.059 | 6686 | ✓ | 4.25 | 15.087 | 0.000 | slow, ckpt |
+| pattention | 43,464,960 | 0.174 | 46141 | ✓ | 5.67 | 14.906 | 0.000 | — |
+| raven | 104,069,376 | 0.142 | 15869 | ✓ | 7.17 | 12.663 | 0.000 | — |
+| retnet | 108,050,688 | 0.233 | 25092 | ✓ | 5.67 | 8.779 | 0.000 | — |
+| rodimus | 87,038,352 | 0.302 | 40222 | ✓ | 5.23 | 9.226 | 0.000 | — |
+| rwkv7 | 118,688,256 | 0.238 | 23274 | ✓ | 19.82 | 8.723 | 0.000 | — |
+| samba_attention | 94,432,632 | 0.254 | 31269 | ✓ | 5.27 | 8.897 | 0.000 | — |
+| sdm | 94,952,448 | 0.161 | 19780 | ✓ | 7.04 | 9.173 | 0.000 | — |
+| simple_gla | 102,825,900 | 0.233 | 26359 | ✓ | 5.41 | 9.108 | 0.000 | — |
+| sparse_transformer | 102,742,272 | 0.140 | 15814 | ✓ | 5.71 | 12.976 | 0.000 | — |
+| tda | 102,742,272 | 0.093 | 10514 | ✓ | 5.28 | 10.095 | 0.000 | slow |
+| tpa_attention | 99,424,512 | 0.277 | 32318 | ✓ | 6.02 | 9.076 | 0.000 | — |
+| tucker_attention | 230,153,760 | 0.123 | 6246 | ✓ | 4.68 | 22.029 | 0.000 | ckpt |
+| wall_attention | 113,372,928 | 0.311 | 31865 | ✓ | 5.46 | 16.217 | 0.000 | — |
+| yoco | 102,825,216 | 0.234 | 26477 | ✓ | 5.31 | 8.776 | 0.000 | — |
 
-- **comba** — MFU 0.335 still measured; loss NaN
-- **dplr** — MFU 0.317 still measured; loss NaN
-- **gated_delta_product** — MFU 0.160 still measured; loss NaN
-- **gdn2** — MFU 0.225 still measured; loss NaN
-- **iplr** — MFU 0.029 still measured; loss NaN
-- **rwkv7** — MFU 0.318 still measured; loss NaN
+### Remaining low-MFU rows (5)
 
+These measurements remain visible. The listed work explains the execution path, and does not establish that the implementation is optimal.
 
-### Pathological-MFU rows (8, MFU < 0.1)
+- **deltaformer**: strict-causal correction and block triangular solve (MFU 0.097).
+- **log_linear_attention**: four saved state banks and activation recomputation (MFU 0.069).
+- **log_linear_mamba2**: four saved state banks and activation recomputation (MFU 0.065).
+- **path_attention**: Householder score correction and block triangular solve (MFU 0.059).
+- **tda**: threshold-ReLU-square forward/backward with restored Q/K/V gradients (MFU 0.093).
 
-Architectural costs, measured honestly:
+## Production-kernel measurements
 
-- **attnres** — MFU 0.051: the residual design keeps every block summary alive and aggregates depth-domain per sub-layer
-- **based_attention** — MFU 0.012: chunked-K with 12× score recompute at DV=768; ran at the 1024-token fallback (state history memory)
-- **deltaformer** — MFU 0.031: K4 triangular solve is serial in t by construction
-- **iplr** — MFU 0.029: identity-plus-rank-1 transition; also NaN-diverged (see flags) and ran at the 2048 fallback
-- **mom** — MFU 0.018: external torch composition (public_path=False): mixture-of-paths routing, 2.5× the class parameter count
-- **path_attention** — MFU 0.016: the path-sum mixer runs a dense per-pair recurrence at this width
-- **pattention** — MFU 0.014: tokenformer block: five cascaded reference-tier pattention maps per block (no fused kernel exists anywhere)
-- **tucker_attention** — MFU 0.082: Tucker foldings materialize per-head einsum operands (230M params, 2.2× the class)
+Only verified runs with matching shapes, effective batch, microbatch, precision, compilation policy, checkpointing policy, environment, and source fingerprint enter this table. There is no reference-kernel replacement after an upstream failure. `shared` uses a common external frontend; `family` is an architecture-family baseline whose projections or other mixer-side layers can differ. Parameter counts are shown explicitly; family measurements are not isolated kernel speedup claims.
 
+| row | scope | MFU (URM / upstream) | tok/s (URM / upstream) | peak GiB (URM / upstream) | params (URM / upstream) |
+|---|---|---:|---:|---:|---:|
+| abc_gsa | family | 0.186 / 0.281 | 20793 / 30959 | 7.17 / 6.61 | 104,071,104 / 105,397,056 |
+| attnres | shared | 0.171 / 0.186 | 19352 / 21059 | 12.57 / 9.65 | 102,769,920 / 102,769,920 |
+| based_attention | family | 0.119 / 0.321 | 14562 / 39381 | 6.99 / 5.47 | 94,779,648 / 94,779,648 |
+| bit_attention | family | 0.243 / 0.279 | 27480 / 31513 | 6.02 / 5.39 | 102,769,920 / 102,749,184 |
+| comba | shared | 0.258 / 0.314 | 29137 / 35488 | 19.03 / 5.62 | 102,908,376 / 102,908,376 |
+| deltanet | family | 0.213 / 0.292 | 24025 / 32999 | 5.95 / 6.24 | 102,825,792 / 102,908,736 |
+| dense_attention | shared | 0.318 / 0.363 | 33777 / 38597 | 5.50 / 5.39 | 102,742,272 / 102,742,272 |
+| dplr | shared | 0.238 / 0.273 | 23278 / 26779 | 19.82 / 6.18 | 118,688,256 / 118,688,256 |
+| forgetting_attention | family | 0.188 / 0.267 | 21230 / 30148 | 3.55 / 3.56 | 102,825,216 / 102,825,324 |
+| gated_delta_product | shared | 0.114 / 0.206 | 12863 / 23282 | 6.29 / 3.55 | 102,991,428 / 102,991,428 |
+| gated_deltanet | family | 0.222 / 0.275 | 25086 / 25742 | 5.95 / 7.30 | 102,908,952 / 124,253,784 |
+| gdn2 | shared | 0.175 / 0.197 | 17894 / 20168 | 3.63 / 3.64 | 113,372,928 / 113,372,928 |
+| gla | family | 0.231 / 0.302 | 24824 / 34124 | 5.88 / 6.25 | 108,278,784 / 102,912,192 |
+| gsa | family | 0.154 / 0.254 | 17205 / 27354 | 7.06 / 7.23 | 104,071,104 / 108,057,600 |
+| hgrn2 | family | 0.231 / 0.285 | 26160 / 32258 | 5.72 / 6.23 | 102,742,272 / 102,749,184 |
+| kata | family | 0.320 / 0.300 | 36168 / 33904 | 5.39 / 6.24 | 102,742,272 / 102,742,848 |
+| kda | family | 0.220 / 0.261 | 23685 / 28974 | 6.10 / 6.81 | 108,140,652 / 104,692,140 |
+| lightnet | family | 0.229 / 0.205 | 25866 / 20659 | 5.72 / 8.47 | 102,742,272 / 115,135,488 |
+| lightning_attention | family | 0.235 / 0.298 | 26583 / 32009 | 5.30 / 6.40 | 102,742,272 / 108,217,260 |
+| linear_attention | family | 0.235 / 0.302 | 26599 / 34141 | 5.51 / 6.34 | 102,742,272 / 102,892,608 |
+| log_linear_attention | shared | 0.069 / 0.211 | 7078 / 21656 | 6.35 / 3.63 | 113,372,928 / 113,372,928 |
+| log_linear_mamba2 | shared | 0.065 / 0.210 | 7267 / 23660 | 6.22 / 3.56 | 103,157,208 / 103,157,208 |
+| mamba2 | shared | 0.226 / 0.324 | 29921 / 42850 | 5.28 / 4.83 | 87,784,920 / 87,784,920 |
+| mom | family | 0.144 / 0.171 | 6640 / 8413 | 13.49 / 12.01 | 252,766,656 / 236,947,032 |
+| path_attention | family | 0.059 / 0.220 | 6686 / 24755 | 4.25 / 3.56 | 102,908,376 / 103,288,428 |
+| raven | shared | 0.142 / 0.304 | 15869 / 33925 | 7.17 / 5.76 | 104,069,376 / 104,069,376 |
+| retnet | family | 0.233 / 0.303 | 25092 / 28396 | 5.67 / 6.55 | 108,050,688 / 123,977,088 |
+| rodimus | family | 0.302 / 0.269 | 40222 / 26624 | 5.23 / 7.25 | 87,038,352 / 117,452,160 |
+| rwkv7 | shared | 0.238 / 0.275 | 23274 / 26898 | 19.82 / 6.08 | 118,688,256 / 118,688,256 |
+| samba_attention | shared | 0.254 / 0.323 | 31269 / 39766 | 5.27 / 5.12 | 94,432,632 / 94,432,632 |
+| simple_gla | family | 0.233 / 0.298 | 26359 / 32034 | 5.41 / 6.40 | 102,825,900 / 108,217,260 |
+| tda | shared | 0.093 / 0.129 | 10514 / 14632 | 5.28 / 5.60 | 102,742,272 / 102,742,272 |
+| wall_attention | family | 0.311 / 0.321 | 31865 / 32926 | 5.46 / 5.67 | 113,372,928 / 113,372,928 |
+| yoco | family | 0.234 / 0.305 | 26477 / 32805 | 5.31 / 6.08 | 102,825,216 / 108,133,632 |
 
-### OOM-fallback rows (9)
+### Production adapters
 
-These rows OOM'd at the 8192-token primary microbatch and trained at the fallback rung shown; their MFU is measured at that rung (lower occupancy than the primary, stated openly):
+- Mamba-2 uses the unmodified pinned SSD Triton package without importing its optional CUDA extension; RWKV-7 uses the pinned chunk kernel with `chunk_size=16`.
+- Comba, GDN2, DeltaProduct, DPLR, RWKV-7, Mamba-2 and both log-linear rows share the URM external frontend. The upstream call replaces only the mixer kernel.
+- Samba uses the same Mamba-2/RoPE schedule with pinned SSD and production SDPA. Raven shares the eight-slot/top-k-two deterministic frontend and uses pinned chunk GSA. Equal duplication of all slots meets its 16-slot backward minimum while preserving outputs and gradients.
+- TDA supplies contiguous head batches and gradients, applies the native query scaling, and matches the registered differential merge (identical paths with lambda=0.5). Supported Triton launch options select IEEE fp32 dots and one pipeline stage.
+- Log-linear attention uses independent heads as single-group batches and an A10G one-stage pipeline. Operands and level scales are bf16, and the last scale repeats for the capped bank. The upstream checkout remains unmodified.
 
-- **based_attention** — mb1024
-- **conformer_attention** — mb2048
-- **forgetting_attention** — mb2048
-- **gated_delta_product** — mb2048
-- **gdn2** — mb2048
-- **iplr** — mb2048
-- **log_linear_attention** — mb2048
-- **log_linear_mamba2** — mb2048
-- **path_attention** — mb2048
+## Upstreams excluded from production comparison
 
+Unavailable kernels, research implementations, failed training, and mismatched measurements are listed without paired throughput. Reference implementations can be requested as separate diagnostics using `train.upstream --include-reference`; they remain excluded from the table above.
 
-## Upstream comparison
+- **cat_attention**: the fla modeling_cat decoder needs FlexAttention block-mask plumbing; baseline applies the pinned structural mask via SDPA.
+- **conformer_attention**: the pinned espnet rel-pos attention module (research code).
+- **deltaformer**: fla's DeltaFormerAttention layer needs flash-attn; baseline is the pinned naive deltaformer op.
+- **differential_attention**: the pinned Diff-Transformer MultiheadDiffAttn (research code, AST-extracted).
+- **dsa**: the pinned fla naive_dsa op (lightning indexer + top-k selection + attention); fla's fast DSA kernel is indexer-coupled to a specific head tiling.
+- **hopfield_association**: the pinned hflayers Hopfield module, self-association mode (research code).
+- **iplr**: fla's chunk_iplr_delta_rule backward is NotImplementedError upstream; baseline is the pinned naive recurrence.
+- **longformer**: the pinned longformer sliding-chunk torch path (the TVM kernel needs Apache TVM, not installed).
+- **mla_attention**: fla's MLA layer hard-requires flash-attn; baseline is the pinned prefill equation in torch.
+- **moba**: fla's parallel_moba needs flash-attn; baseline is the pinned law as a block-sparse SDPA mask.
+- **nsa**: fla's parallel_nsa needs flash-attn (absent by policy); baseline composes the pinned naive branch oracles.
+- **pattention**: the pinned tokenformer Pattention equation hosted at reference tier (megatron source needs neox/mpu).
+- **sdm**: the lingua CUDA extension is toolchain-blocked (nvcc 12.9 vs cu13 headers; source builds excluded); baseline is the pinned law in torch.
+- **sparse_transformer**: the pin's attention_impl is TF1/blocksparse (not runnable); baseline applies the pinned strided+local mask via SDPA.
+- **tpa_attention**: the pin ships decode-only kernels (n==1 assert); baseline generalizes the pinned factorized equation to training.
+- **tucker_attention**: the pinned fused kernel is H100-targeted (294KB SMEM); baseline transcribes the pinned equation in torch.
+- **hla**: no upstream measurement available.
 
-Same 100M-class config; upstream rows run eager. Tiers: **prod** = the upstream's production kernel; **ref** = the upstream's reference/research implementation, or a transcription where the production kernel is environment-blocked (flash-attn absent, mamba_ssm wheel absent, SMEM/toolchain envelope) — the per-row reason is in the notes below. Granularity: mixer / schedule (interleaved hybrid) / block (full block) / residual (residual design).
+## Validation limits
 
-| row | tier | granularity | MFU (urm/up) | tok/s (urm/up) | peak GiB (urm/up) | params (urm/up) | KL |
-|---|---|---|---|---|---|---|---|
-| abc_gsa | prod | mixer | 0.207 / 0.218 | 23121 / 23978 | 7.41 / 8.92 | 104,071,104 / 105,397,056 | — |
-| attnres | prod | residual | 0.051 / 0.168 | 5803 / 18999 | 13.13 / 13.10 | 102,769,920 / 102,769,920 | — |
-| based_attention | prod | mixer | 0.012 / 0.257 | 1375 / 29087 | 9.30 / 8.01 | 102,742,272 / 102,742,272 | — |
-| bit_attention | prod | mixer | 0.238 / 0.268 | 26938 / 30252 | 6.25 / 7.80 | 102,769,920 / 102,749,184 | — |
-| cat_attention | ref | mixer | 0.329 / 0.261 | 37199 / 29566 | 5.77 / 7.91 | 102,742,272 / 102,742,272 | — |
-| comba | prod | mixer | 0.335 / 0.180 | 37842 / 16813 | 19.10 / 9.15 | 102,908,376 / 124,254,000 | — |
-| conformer_attention | ref | mixer | 0.201 / 0.158 | 21637 / 16977 | 7.48 / 12.69 | 108,092,160 / 108,092,160 | — |
-| deltaformer | ref | mixer | 0.031 / 0.002 (mb2048) | 3463 / 176 | 9.03 / 18.73 | 102,908,376 / 113,372,928 | — |
-| deltanet | prod | mixer | 0.254 / 0.171 | 28745 / 19316 | 6.19 / 8.55 | 102,825,792 / 102,908,736 | 4.28e-10 |
-| dense_attention | prod | mixer | 0.434 / 0.288 | 46149 / 30565 | 5.75 / 7.90 | 102,742,272 / 102,742,272 | 1.01e-09 |
-| differential_attention | ref | mixer | 0.535 / 0.184 | 50128 / 20856 | 5.58 / 11.70 | 123,979,392 / 102,745,728 | — |
-| dplr | prod | mixer | 0.317 / 0.223 | 31080 / 22908 | 21.04 / 8.85 | 118,688,256 / 113,372,928 | — |
-| dsa | ref | mixer | 0.435 / 0.135 | 49216 / 14444 | 5.57 / 10.49 | 102,742,272 / 108,576,000 | — |
-| forgetting_attention | prod | mixer | 0.238 / 0.249 | 26863 / 28085 | 7.19 / 8.02 | 102,825,216 / 102,825,324 | 0.00e+00 |
-| gated_delta_product | prod | mixer | 0.160 / 0.190 | 18037 / 15717 | 12.70 / 9.63 | 102,991,428 / 140,344,920 | — |
-| gated_deltanet | prod | mixer | 0.270 / 0.181 | 30448 / 16936 | 6.19 / 9.61 | 102,908,952 / 124,253,784 | 0.00e+00 |
-| gdn2 | prod | mixer | 0.225 / 0.143 | 23071 / 14374 | 6.66 / 10.27 | 113,372,928 / 115,226,028 | — |
-| gla | prod | mixer | 0.290 / 0.218 | 31102 / 24646 | 6.17 / 8.55 | 108,278,784 / 102,912,192 | 0.00e+00 |
-| gsa | prod | mixer | 0.177 / 0.216 | 19704 / 23228 | 7.31 / 9.54 | 104,071,104 / 108,057,600 | — |
-| hgrn2 | prod | mixer | 0.284 / 0.241 | 32145 / 27279 | 5.97 / 8.54 | 102,742,272 / 102,749,184 | 0.00e+00 |
-| hopfield_association | ref | mixer | 0.453 / 0.265 | 48653 / 8887 | 6.02 / 15.75 | 108,202,860 / 347,226,624 | — |
-| iplr | ref | mixer | 0.029 / 0.003 (mb2048) | 2926 / 351 | 9.34 / 8.31 | 113,372,928 / 113,372,928 | — |
-| kata | prod | mixer | 0.460 / 0.251 | 52040 / 28433 | 5.65 / 8.54 | 102,742,272 / 102,742,848 | — |
-| kda | prod | mixer | 0.271 / 0.143 | 29103 / 15844 | 6.38 / 9.11 | 108,140,652 / 104,692,140 | 0.00e+00 |
-| lightnet | prod | mixer | 0.280 / 0.175 | 31681 / 17680 | 6.02 / 10.77 | 102,742,272 / 115,135,488 | — |
-| lightning_attention | prod | mixer | 0.290 / 0.175 | 32836 / 18797 | 5.54 / 8.70 | 102,742,272 / 108,217,260 | 2.77e-09 |
-| linear_attention | prod | mixer | 0.291 / 0.214 | 32861 / 24145 | 5.75 / 8.64 | 102,742,272 / 102,892,608 | 1.99e-11 |
-| log_linear_attention | ref | mixer | 0.134 / 0.046 (mb2048) | 13759 / 4731 | 12.80 / 8.32 | 113,372,928 / 113,372,928 | — |
-| longformer | ref | mixer | 0.299 / 0.232 | 33806 / 26177 | 5.60 / 8.42 | 102,742,272 / 102,742,272 | — |
-| mamba2 | prod | mixer | 0.261 / 0.011 (mb2048) | 34471 / 1090 | 5.46 / 16.56 | 87,784,920 / 115,389,576 | — |
-| mla_attention | ref | mixer | 0.344 / 0.184 | 42511 / 22545 | 5.68 / 10.24 | 93,978,000 / 95,000,832 | — |
-| moba | ref | mixer | 0.447 / 0.241 | 50568 / 27242 | 5.70 / 8.75 | 102,742,272 / 102,742,272 | — |
-| mom | prod | mixer | 0.018 / 0.120 | 818 / 5909 | 9.92 / 14.32 | 252,766,656 / 236,947,032 | — |
-| nsa | ref | mixer | 0.282 / 0.001 | 31849 / 67 | 6.21 / 13.06 | 102,991,104 / 102,991,104 | — |
-| path_attention | prod | mixer | 0.016 / 0.179 | 1854 / 20088 | 8.88 / 8.56 | 102,908,376 / 103,288,428 | — |
-| pattention | ref | block | 0.014 / 0.106 | 3710 / 28168 | 4.87 / 6.88 | 43,464,960 / 43,464,960 | — |
-| raven | prod | mixer | 0.178 / 0.190 | 19850 / 20458 | 7.41 / 10.51 | 104,069,376 / 108,141,912 | — |
-| retnet | prod | mixer | 0.292 / 0.262 | 31447 / 24568 | 5.93 / 8.85 | 108,050,688 / 123,977,088 | 0.00e+00 |
-| rodimus | prod | mixer | 0.379 / 0.185 | 50600 / 18297 | 5.41 / 9.55 | 87,038,352 / 117,452,160 | — |
-| rwkv7 | ref | mixer | 0.318 / 0.002 (mb2048) | 31107 / 202 | 21.11 / 10.10 | 118,688,256 / 118,688,256 | — |
-| samba_attention | prod | schedule | 0.313 / 0.002 (mb2048) | 38452 / 168 | 5.48 / 7.83 | 94,432,632 / 116,084,992 | — |
-| sdm | ref | mixer | 0.191 / 0.002 (mb2048) | 23411 / 168 | 7.26 / 20.36 | 94,952,448 / 116,290,008 | — |
-| simple_gla | prod | mixer | 0.288 / 0.174 | 32533 / 18731 | 5.65 / 8.70 | 102,825,900 / 108,217,260 | 0.00e+00 |
-| sparse_transformer | ref | mixer | 0.182 / 0.261 | 20634 / 29562 | 5.95 / 7.91 | 102,742,272 / 102,742,272 | — |
-| tda | prod | mixer | 0.548 / 0.251 | 62001 / 28353 | 4.92 / 8.22 | 102,742,272 / 102,742,272 | — |
-| tpa_attention | ref | mixer | 0.354 / 0.134 | 41332 / 16929 | 6.25 / 12.67 | 99,424,512 / 92,070,144 | — |
-| tucker_attention | ref | mixer | 0.082 / 0.225 | 4155 / 11365 | 12.64 / 14.40 | 230,153,760 / 230,146,848 | — |
-| wall_attention | prod | mixer | 0.437 / 0.256 | 44774 / 26280 | 5.74 / 8.40 | 113,372,928 / 113,372,928 | — |
-| yoco | prod | mixer | 0.289 / 0.244 | 32679 / 26167 | 5.54 / 8.38 | 102,825,216 / 108,133,632 | — |
-
-_49/49 upstream baselines completed: 31 production-kernel, 18 reference-implementation._
-
-
-### Reference-implementation baselines (18) — why no production kernel
-
-- **cat_attention** — the fla modeling_cat decoder needs FlexAttention block-mask plumbing; baseline applies the pinned structural mask via SDPA
-- **conformer_attention** — the pinned espnet rel-pos attention module (research code)
-- **deltaformer** — fla's DeltaFormerAttention layer needs flash-attn; baseline is the pinned naive deltaformer op
-- **differential_attention** — the pinned Diff-Transformer MultiheadDiffAttn (research code, AST-extracted)
-- **dsa** — the pinned fla naive_dsa op (lightning indexer + top-k selection + attention); fla's fast DSA kernel is indexer-coupled to a specific head tiling
-- **hopfield_association** — the pinned hflayers Hopfield module, self-association mode (research code)
-- **iplr** — fla's chunk_iplr_delta_rule backward is NotImplementedError upstream; baseline is the pinned naive recurrence
-- **log_linear_attention** — fla's chunk kernel exceeds A10G SMEM (122KB > 101KB) at head_dim=64; baseline is the pinned naive
-- **longformer** — the pinned longformer sliding-chunk torch path (the TVM kernel needs Apache TVM, not installed)
-- **mla_attention** — fla's MLA layer hard-requires flash-attn; baseline is the pinned prefill equation in torch
-- **moba** — fla's parallel_moba needs flash-attn; baseline is the pinned law as a block-sparse SDPA mask
-- **nsa** — fla's parallel_nsa needs flash-attn (absent by policy); baseline composes the pinned naive branch oracles
-- **pattention** — the pinned tokenformer Pattention equation hosted at reference tier (megatron source needs neox/mpu)
-- **rwkv7** — fla's chunk kernel exceeds A10G SMEM (131KB) and fused_recurrent is inference-only; baseline is the pinned naive recurrence
-- **sdm** — the lingua CUDA extension is toolchain-blocked (nvcc 12.9 vs cu13 headers; source builds excluded); baseline is the pinned law in torch
-- **sparse_transformer** — the pin's attention_impl is TF1/blocksparse (not runnable); baseline applies the pinned strided+local mask via SDPA
-- **tpa_attention** — the pin ships decode-only kernels (n==1 assert); baseline generalizes the pinned factorized equation to training
-- **tucker_attention** — the pinned fused kernel is H100-targeted (294KB SMEM); baseline transcribes the pinned equation in torch
-
-
-### Production-kernel baselines with caveats
-
-- **attnres** — fla fused_attnres — the pinned production kernel, full tier match
-- **bit_attention** — fla's BitAttention layer needs flash-attn; baseline is pinned fused-BitLinear kernels (production) + SDPA attention
-- **mamba2** — fla's own Triton Mamba2 (mamba_ssm has no prebuilt torch-2.14/cu130 wheel); causal_conv1d absent so its conv falls back to Triton
-- **samba_attention** — fla mamba branch (Triton backend) + SDPA sliding-window attention (fla's attention layer needs flash-attn)
-
-
-### Pathological upstream MFU (<0.01)
-
-The baseline itself is slow (naive recurrence / torch transcription / eager fallback config) — the comparison is still valid; the tier label says why:
-
-- **deltaformer** — upstream MFU 0.002 (reference-implementation)
-- **iplr** — upstream MFU 0.003 (reference-implementation)
-- **nsa** — upstream MFU 0.001 (reference-implementation)
-- **rwkv7** — upstream MFU 0.002 (reference-implementation)
-- **samba_attention** — upstream MFU 0.002 (production-kernel)
-- **sdm** — upstream MFU 0.002 (reference-implementation)
-
-
-### Upstream OOM-fallback rows (7)
-
-- **deltaformer** — mb2048
-- **iplr** — mb2048
-- **log_linear_attention** — mb2048
-- **mamba2** — mb2048
-- **rwkv7** — mb2048
-- **samba_attention** — mb2048
-- **sdm** — mb2048
-
-
-## Coverage and exclusions
-
-- **hla** — no upstream implementation exists anywhere (empty pin; paper-only). The sole principled exclusion: the URM row trains, no baseline is fabricated.
-- **log_linear_mamba2** — environment-blocked: upstream chunk kernel exceeds A10G SMEM (196KB > 101KB); no reference variant in the pin. Ours-only row.
-- **mamba1** — reference-tier row (accepted charter debt: the K2 elementwise gate has a single client); not in the 51-row native sweep, so no baseline comparison is run.
-- **KL gate** — wired for the 23 rows with a registry comparator; `—` elsewhere means *no comparator wired*, not failure.
-- **mom, raven** — external torch compositions (public_path=False); trained as-is, no compiler-coverage claim.
-
+Checkpoint gates use reduced eager models and certify resume behavior, not full-scale accuracy. Finite full-scale loss and gradient norms are checked separately at every update. KL is retained in the per-row JSON wherever a comparator is wired; absent KL is not a parity claim. These ten-step runs do not establish long-run convergence.

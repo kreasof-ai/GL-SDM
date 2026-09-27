@@ -1,12 +1,66 @@
+
+COMMAND: ['/opt/conda/bin/python', '-m', 'train.run', '--mixer', 'lightning_attention', '--steps', '10', '--layers', '9', '--width', '768', '--num-heads', '12', '--head-dim', '64', '--sequence-length', '512', '--batch-tokens', '8192', '--microbatch-tokens', '8192', '--out', 'results/sweep/lightning_attention.json']
 {
   "mixer": "lightning_attention",
   "steps": 10,
-  "final_loss": 8.347785949707031,
-  "mfu": 0.29041850257713125,
+  "final_loss": 11.139975547790527,
+  "mfu": 0.23511070002011836,
   "params": 102742272,
   "checkpoint_aligned": true,
+  "grad_trace": {},
   "kl_divergence": 2.7715818529117087e-09,
-  "wallclock_s": 2.494789603020763,
-  "throughput_tokens_s": 32836.43634750157,
-  "peak_memory_gib": 5.541041851043701
+  "wallclock_s": 3.0816677449911367,
+  "throughput_tokens_s": 26583.008545665136,
+  "peak_memory_gib": 5.304810047149658,
+  "loss_trace": [
+    10.31132698059082,
+    9.718347549438477,
+    10.36129379272461,
+    9.599800109863281,
+    10.475194931030273,
+    10.513612747192383,
+    10.460559844970703,
+    10.194192886352539,
+    11.561853408813477,
+    11.139975547790527
+  ],
+  "memory_trace_gib": [
+    0.9331302642822266,
+    0.9331302642822266,
+    0.9331302642822266,
+    0.9331302642822266,
+    0.9331302642822266,
+    0.9331302642822266,
+    0.9331302642822266,
+    0.9331302642822266,
+    0.9331302642822266,
+    0.9331302642822266
+  ],
+  "config": {
+    "mixer": "lightning_attention",
+    "vocab_size": 50304,
+    "sequence_length": 512,
+    "layers": 9,
+    "width": 768,
+    "num_heads": 12,
+    "head_dim": 64,
+    "mlp_ratio": 4,
+    "batch_tokens": 8192,
+    "microbatch_tokens": 8192,
+    "steps": 10,
+    "seed": 0,
+    "target_mfu": 0.5,
+    "capture_gradients": false,
+    "compile_model": true,
+    "bf16": true,
+    "activation_checkpointing": false,
+    "target": null
+  },
+  "measurement_version": 2,
+  "source_fingerprint": "345b161d5a9866e94c1ff1686d5b9156ce4c0aa404149c80ec35f81a08a601c1",
+  "environment": {
+    "torch": "2.14.0+cu130",
+    "device": "NVIDIA A10G",
+    "peak_flops": 70000000000000.0
+  }
 }

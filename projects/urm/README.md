@@ -6,7 +6,7 @@ Start with the [documentation index](docs/README.md). The [compiler charter](doc
 
 ## Current boundary
 
-The [architecture registry](train/registry.py) carries 52 rows — 51 native-tier plus `mamba1` (reference-tier charter debt). The training-harness benchmark (`train/sweep.py`, `train/upstream.py`) has measured all 51 native rows (10-step 100M-class training, A10G) with checkpoint parity, and joined 49 upstream baselines at matched granularity — see the generated [training-harness report](results/report.md). This is harness-level measurement, not complete source-model qualification; [evidence.md](docs/evidence.md) states the exact claim boundaries. The machine-readable [architecture register](extra/architecture-coverage.json) tracks 80 named rows, 76 of them mixer-relevant.
+The [architecture registry](train/registry.py) carries 52 rows — 51 native-tier plus `mamba1` (reference-tier charter debt). The training-harness benchmark (`train/sweep.py`, `train/upstream.py`) measures 10-step decoder training on the A10G, rejects non-finite trajectories, and compares only verified production kernels under a matched measurement protocol — see the generated [training-harness report](results/report.md). This is harness-level measurement, not complete source-model qualification; [evidence.md](docs/evidence.md) states the exact claim boundaries. The machine-readable [architecture register](extra/architecture-coverage.json) tracks 80 named rows, 76 of them mixer-relevant.
 
 ## Code map
 

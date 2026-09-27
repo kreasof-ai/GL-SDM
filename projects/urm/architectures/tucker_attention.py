@@ -108,6 +108,23 @@ class TuckerAttentionLayer(torch.nn.Module):
         self._plan = compile_graph(
             program, target=target, intent=CompilationIntent(intent)
         )
+        self._score_plan = None
+        if target == "native" and r_k > 128:
+            # Materialize the wide core-mixed score once as an external operand,
+            # avoiding its recomputation for every native value-column tile.
+            import copy
+            score_document = copy.deepcopy(document)
+            score_document["name"] = "tucker_precomputed_score"
+            for entry in score_document["graph"]["inputs"][:2]:
+                entry["shape"][-1] = 1
+            score_document["graph"]["inputs"].append({
+                "name": "score_bias", "dtype": "float32", "shape": ["B", n_head, "T", "S"],
+            })
+            node = score_document["graph"]["nodes"][0]
+            node["inputs"].append("score_bias")
+            node["params"]["roles"] = {name: name for name in ("query", "key", "value", "score_bias")}
+            score_program = normalize_graph_document(load_graph_recipe_document(score_document).document)
+            self._score_plan = compile_graph(score_program, target=target, intent=CompilationIntent(intent))
 
     def _init_factors(self) -> None:
         for param in [self.Core_pre, self.Core_post, *self.Us_pre, *self.Us_post]:
@@ -136,7 +153,15 @@ class TuckerAttentionLayer(torch.nn.Module):
 
         # The K1 key-dim rule scales by R^-0.5 (the q/k width after factoring),
         # matching the pinned kernel's sm_scale = key_dim^-0.5 with key_dim = R.
-        out = self._plan.execute(query=q_eff, key=k_h, value=v_h)["output"]  # [B,N,H,Rv]
+        if self._score_plan is not None:
+            with torch.autocast(x.device.type, enabled=False):
+                scores = q_eff.float().transpose(1, 2) @ k_h.float().permute(0, 2, 3, 1)
+                scores = scores * (T ** -0.5)
+            zero_keys = torch.zeros(B, N, self.n_head, 1, device=x.device, dtype=v_h.dtype)
+            out = self._score_plan.execute(query=zero_keys, key=zero_keys, value=v_h,
+                                           score_bias=scores)["output"]
+        else:
+            out = self._plan.execute(query=q_eff, key=k_h, value=v_h)["output"]  # [B,N,H,Rv]
 
         # External output folding (pinned _tucker_foldings_output_optimized).
         R2, S2, T2 = self.Core_post.shape

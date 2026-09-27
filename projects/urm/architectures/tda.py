@@ -76,6 +76,24 @@ class TDALayer(torch.nn.Module):
         recipe = load_graph_recipe_document(document)
         program = normalize_graph_document(recipe.document)
         self._plan = compile_graph(program, target=target, intent=CompilationIntent(intent))
+        self._path_plan = None
+        if differential and target == "native" and intent == "training":
+            # Keep autograd across the differential merge outside the combined
+            # dispatch, which currently drops the threshold paths' gradients.
+            path_document = {
+                "schema_version": 2, "name": "tda_training_path", "kind": "kernel_fragment",
+                "graph": {
+                    "inputs": [
+                        {"name": "query", "dtype": "float32", "shape": ["B", "T", num_heads, head_dim]},
+                        {"name": "key", "dtype": "float32", "shape": ["B", "S", num_heads, head_dim]},
+                        {"name": "value", "dtype": "float32", "shape": ["B", "S", num_heads, head_dim]},
+                    ],
+                    "nodes": [_k1_threshold("attn", "query", "key", "output", beta, relu_power)],
+                    "outputs": ["output"],
+                },
+            }
+            path_program = normalize_graph_document(load_graph_recipe_document(path_document).document)
+            self._path_plan = compile_graph(path_program, target=target, intent=CompilationIntent(intent))
 
     def forward(self, query, key, value, *, query2=None, key2=None, lam: float = 0.5,
                 cosine: bool = False):
@@ -85,6 +103,12 @@ class TDALayer(torch.nn.Module):
             q2 = F.normalize(query2, dim=-1) if cosine else query2
             k2 = F.normalize(key2, dim=-1) if cosine else key2
             lam_t = torch.clamp(torch.as_tensor(lam, dtype=torch.float32, device=query.device), 0.0, 1.0)
+            if self._path_plan is not None:
+                out1 = self._path_plan.execute(query=q1, key=k1, value=value)["output"]
+                if q1 is q2 and k1 is k2:
+                    return out1 * (1 - lam_t)
+                out2 = self._path_plan.execute(query=q2, key=k2, value=value)["output"]
+                return out1 - lam_t * out2
             return self._plan.execute(q1=q1, k1=k1, q2=q2, k2=k2, value=value, lam=lam_t)["output"]
         return self._plan.execute(query=query, key=key, value=value)["output"]
 

@@ -7,7 +7,7 @@ scale``; a closed score-map/normalizer algebra over the parameter tokens; then
 ``output = norm(scores) @ value_param``.
 
 The score-map/normalizer algebra is the admitted K1 ``MAP_NORMALIZE`` reducer
-(axis A13), a reference-tier admission: the elementwise map (``EXP`` / ``GELU`` /
+(axis A13): the elementwise map (``EXP`` / ``GELU`` /
 ``IDENTITY``), the Lp normalizer degree ``normalizer_p``, and the map↔norm order
 (``normalize_before_map``) are closed descriptor fields. The three pinned variants
 map onto it exactly:
@@ -22,9 +22,10 @@ K1 key/value roles, so gradients flow to them through the contraction. Parameter
 token construction/reparameterization, the MoE ``router_index`` selection and the
 model replacement (Pattention replacing QKV/output projections and the MLP) are
 external; "one attention contraction equals MLP/MoE" is explicitly not claimed
-(sweep blocker). The native/SDPA K1 anchors decline the non-softmax reducer; only
-the reference tier executes it (a native schedule is residual, pending a second
-client per the two-client physical-branch rule).
+(sweep blocker). Native softmax mode precomputes scores externally and composes the public
+softmax reducer with multiplication by the parameter-token count. Other modes
+retain the public map/normalizer reducer. Wide values use independent heads or
+column tiles; normalization remains over the same parameter-token domain.
 
 The independent pinned comparator (the source equation transcription) lives in
 the parity-gate test (``tests/test_architectures_pattention.py``).
@@ -77,6 +78,7 @@ class PattentionLayer(torch.nn.Module):
         self.param_key_dim = input_channels
         self.param_value_dim = output_channels
         self.norm_activation_type = norm_activation_type
+        self._native = target == "native"
 
         self.key_param_tokens = torch.nn.Parameter(torch.rand(param_token_num, input_channels))
         self.value_param_tokens = torch.nn.Parameter(torch.rand(param_token_num, output_channels))
@@ -91,7 +93,7 @@ class PattentionLayer(torch.nn.Module):
                 "inputs": [
                     {"name": "query", "dtype": "float32", "shape": ["B", "L", 1, input_channels]},
                     {"name": "key", "dtype": "float32", "shape": ["B", "P", 1, input_channels]},
-                    {"name": "value", "dtype": "float32", "shape": ["B", "P", 1, output_channels]},
+                    {"name": "value", "dtype": "float32", "shape": ["B", "P", 1, "V"]},
                     {"name": "scale", "dtype": "float32", "shape": []},
                 ],
                 "nodes": [
@@ -118,6 +120,29 @@ class PattentionLayer(torch.nn.Module):
         recipe = load_graph_recipe_document(document)
         program = normalize_graph_document(recipe.document)
         self._plan = compile_graph(program, target=target, intent=CompilationIntent(intent))
+        self._softmax_plan = None
+        if self._native and norm_activation_type == "softmax":
+            # EXP/L1 times source count is ordinary softmax times source count.
+            # Precompute wide scores externally and use the existing production
+            # softmax reducer, including its native backward, in 64-wide heads.
+            import copy
+            softmax_document = copy.deepcopy(document)
+            softmax_document["name"] = "pattention_softmax_scores"
+            softmax_document["graph"]["inputs"][:3] = [
+                {"name": "query", "dtype": "float32", "shape": ["B", "L", "VH", 1]},
+                {"name": "key", "dtype": "float32", "shape": ["B", "P", "VH", 1]},
+                {"name": "value", "dtype": "float32", "shape": ["B", "P", "VH", 64]},
+            ]
+            softmax_document["graph"]["inputs"].append({
+                "name": "score_bias", "dtype": "float32", "shape": ["B", 1, "L", "P"],
+            })
+            node = softmax_document["graph"]["nodes"][0]
+            for field in ("reducer_law", "score_map", "normalizer_p", "normalize_before_map"):
+                node["params"].pop(field)
+            node["inputs"].append("score_bias")
+            node["params"]["roles"]["score_bias"] = "score_bias"
+            softmax_program = normalize_graph_document(load_graph_recipe_document(softmax_document).document)
+            self._softmax_plan = compile_graph(softmax_program, target=target, intent=CompilationIntent(intent))
 
     def forward(
         self,
@@ -141,18 +166,40 @@ class PattentionLayer(torch.nn.Module):
         # Flatten leading batch dims into B; the K1 graph is [B, L, 1, D].
         lead = query.shape[:-2]
         L, K = query.shape[-2], query.shape[-1]
-        q = query.reshape(-1, L, 1, K).float()
+        dtype = (torch.get_autocast_dtype(query.device.type)
+                 if torch.is_autocast_enabled(query.device.type) else torch.float32)
+        q = query.reshape(-1, L, 1, K).to(dtype)
         # Broadcast the parameter tokens across the (flattened) batch. The expand
         # must be materialized: the kernels index (batch*TK + key) flat offsets, so
         # a stride-0 view reads out of bounds for batch > 0 (context-dependent
         # garbage — the resume-gate nondeterminism this surfaced).
         B = q.shape[0]
         P = key.shape[-2]
-        k = key.reshape(1, P, 1, K).float().expand(B, P, 1, K).contiguous()
-        v = value.reshape(1, P, 1, self.param_value_dim).float().expand(B, P, 1, self.param_value_dim).contiguous()
-        out = self._plan.execute(query=q, key=k, value=v, scale=scale_factor)["output"]
+        k = key.reshape(1, P, 1, K).to(dtype).expand(B, P, 1, K).contiguous()
+        v = value.reshape(1, P, 1, self.param_value_dim).to(dtype).expand(B, P, 1, self.param_value_dim).contiguous()
+        if self._softmax_plan is not None:
+            with torch.autocast(query.device.type, enabled=False):
+                scores = q.squeeze(2).float() @ k.squeeze(2).float().transpose(-1, -2)
+                scores = (scores * scale_factor).unsqueeze(1)
+            heads = (self.param_value_dim + 63) // 64
+            queries = torch.zeros(B, L, heads, 1, device=query.device, dtype=dtype)
+            keys = torch.zeros(B, P, heads, 1, device=query.device, dtype=dtype)
+            values = F.pad(v, (0, heads * 64 - self.param_value_dim)).reshape(B, P, heads, 64)
+            out = self._softmax_plan.execute(query=queries, key=keys, value=values,
+                                             score_bias=scores, scale=1.0)["output"] * P
+            out = out.reshape(B, L, heads * 64)[..., :self.param_value_dim]
+        elif self._native and self.param_value_dim > 256:
+            # Keep the native reduction's value tile within a practical register
+            # budget. Scores and normalization are independent of value columns.
+            out = torch.cat([
+                self._plan.execute(query=q, key=k, value=v[..., start:start + 256].contiguous(),
+                                   scale=scale_factor)["output"]
+                for start in range(0, self.param_value_dim, 256)
+            ], dim=-1)
+        else:
+            out = self._plan.execute(query=q, key=k, value=v, scale=scale_factor)["output"]
         out = out.reshape(*lead, L, self.param_value_dim)
-        return out.to(inputs.dtype)
+        return out.to(dtype).to(inputs.dtype)
 
 
 class _RMSNorm(torch.nn.Module):
@@ -247,6 +294,9 @@ class TokenformerBlock(torch.nn.Module):
         q = self.query(h).view(B, T, H, D)
         k = self.key(h).view(B, T, H, D)
         v = self.value(h).view(B, T, H, D)
+        if torch.is_autocast_enabled(x.device.type):
+            dtype = torch.get_autocast_dtype(x.device.type)
+            q, k, v = q.to(dtype), k.to(dtype), v.to(dtype)
         ctx = self._attn_plan.execute(query=q, key=k, value=v)["output"].reshape(B, T, C)
         x = x + self.proj(ctx)
         x = x + self.mlp(self.norm2(x))

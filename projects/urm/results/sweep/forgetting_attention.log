@@ -1,12 +1,66 @@
+
+COMMAND: ['/opt/conda/bin/python', '-m', 'train.run', '--mixer', 'forgetting_attention', '--steps', '10', '--layers', '9', '--width', '768', '--num-heads', '12', '--head-dim', '64', '--sequence-length', '512', '--batch-tokens', '8192', '--microbatch-tokens', '8192', '--out', 'results/sweep/forgetting_attention.json', '--activation-checkpointing']
 {
   "mixer": "forgetting_attention",
   "steps": 10,
-  "final_loss": 8.410032272338867,
-  "mfu": 0.23777452371106209,
+  "final_loss": 9.425915718078613,
+  "mfu": 0.18791989388264388,
   "params": 102825216,
   "checkpoint_aligned": true,
+  "grad_trace": {},
   "kl_divergence": 0.0,
-  "wallclock_s": 0.7623981939977966,
-  "throughput_tokens_s": 26862.602982581553,
-  "peak_memory_gib": 7.194299221038818
+  "wallclock_s": 3.8586413329758216,
+  "throughput_tokens_s": 21230.27069137377,
+  "peak_memory_gib": 3.5529212951660156,
+  "loss_trace": [
+    9.940773963928223,
+    10.82742977142334,
+    11.059110641479492,
+    10.224983215332031,
+    10.288795471191406,
+    10.264366149902344,
+    10.281466484069824,
+    9.560807228088379,
+    10.260566711425781,
+    9.425915718078613
+  ],
+  "memory_trace_gib": [
+    0.932034969329834,
+    0.932034969329834,
+    0.932034969329834,
+    0.932034969329834,
+    0.932034969329834,
+    0.932034969329834,
+    0.932034969329834,
+    0.932034969329834,
+    0.932034969329834,
+    0.932034969329834
+  ],
+  "config": {
+    "mixer": "forgetting_attention",
+    "vocab_size": 50304,
+    "sequence_length": 512,
+    "layers": 9,
+    "width": 768,
+    "num_heads": 12,
+    "head_dim": 64,
+    "mlp_ratio": 4,
+    "batch_tokens": 8192,
+    "microbatch_tokens": 8192,
+    "steps": 10,
+    "seed": 0,
+    "target_mfu": 0.5,
+    "capture_gradients": false,
+    "compile_model": true,
+    "bf16": true,
+    "activation_checkpointing": true,
+    "target": null
+  },
+  "measurement_version": 2,
+  "source_fingerprint": "345b161d5a9866e94c1ff1686d5b9156ce4c0aa404149c80ec35f81a08a601c1",
+  "environment": {
+    "torch": "2.14.0+cu130",
+    "device": "NVIDIA A10G",
+    "peak_flops": 70000000000000.0
+  }
 }

@@ -1,12 +1,67 @@
 {
   "mixer": "sdm",
   "steps": 10,
-  "final_loss": 8.29949951171875,
-  "mfu": 0.19087128029096062,
+  "final_loss": 9.172720909118652,
+  "mfu": 0.16126410178466316,
   "params": 94952448,
   "checkpoint_aligned": true,
+  "grad_trace": {},
   "kl_divergence": null,
-  "wallclock_s": 3.4991842549934518,
-  "throughput_tokens_s": 23411.170727319502,
-  "peak_memory_gib": 7.260410785675049
+  "wallclock_s": 4.141614725987893,
+  "throughput_tokens_s": 19779.724918874428,
+  "peak_memory_gib": 7.041902542114258,
+  "loss_trace": [
+    9.072296142578125,
+    9.323986053466797,
+    9.211840629577637,
+    9.145708084106445,
+    9.109660148620605,
+    9.730910301208496,
+    9.325299263000488,
+    9.082998275756836,
+    9.024539947509766,
+    9.172720909118652
+  ],
+  "memory_trace_gib": [
+    0.9954791069030762,
+    0.9954791069030762,
+    0.9954791069030762,
+    0.9954791069030762,
+    0.9954791069030762,
+    0.9954791069030762,
+    0.9954791069030762,
+    0.9954791069030762,
+    0.9954791069030762,
+    0.9954791069030762
+  ],
+  "config": {
+    "mixer": "sdm",
+    "vocab_size": 50304,
+    "sequence_length": 512,
+    "layers": 9,
+    "width": 768,
+    "num_heads": 12,
+    "head_dim": 64,
+    "mlp_ratio": 4,
+    "batch_tokens": 8192,
+    "microbatch_tokens": 8192,
+    "steps": 10,
+    "seed": 0,
+    "target_mfu": 0.5,
+    "capture_gradients": false,
+    "compile_model": true,
+    "bf16": true,
+    "activation_checkpointing": false,
+    "target": null
+  },
+  "measurement_version": 2,
+  "source_fingerprint": "345b161d5a9866e94c1ff1686d5b9156ce4c0aa404149c80ec35f81a08a601c1",
+  "environment": {
+    "torch": "2.14.0+cu130",
+    "device": "NVIDIA A10G",
+    "peak_flops": 70000000000000.0
+  },
+  "attempted_microbatches": [
+    8192
+  ]
 }

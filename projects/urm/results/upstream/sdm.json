@@ -1,15 +1,7 @@
 {
   "mixer": "sdm",
-  "steps": 10,
-  "final_loss": NaN,
-  "mfu": 0.0016733250826722523,
-  "params": 116290008,
-  "checkpoint_aligned": true,
-  "kl_divergence": null,
-  "wallclock_s": 122.16992936198949,
-  "throughput_tokens_s": 167.63535926519006,
-  "peak_memory_gib": 20.35792827606201,
+  "measurement_version": 2,
   "baseline_tier": "reference-implementation",
-  "granularity": "mixer",
-  "microbatch_fallback": 2048
+  "status": "production-unavailable",
+  "reason": "the lingua CUDA extension is toolchain-blocked (nvcc 12.9 vs cu13 headers; source builds excluded); baseline is the pinned law in torch"
 }

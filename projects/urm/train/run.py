@@ -38,6 +38,8 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--vocab-size", type=int, default=50304)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--capture-gradients", action="store_true")
+    p.add_argument("--activation-checkpointing", action="store_true")
+    p.add_argument("--eager", action="store_true")
     p.add_argument("--out", default=None, help="write the TrainResult JSON here")
     return p.parse_args()
 
@@ -50,6 +52,8 @@ def main() -> None:
         num_heads=args.num_heads, head_dim=args.head_dim,
         batch_tokens=args.batch_tokens, microbatch_tokens=args.microbatch_tokens,
         steps=args.steps, seed=args.seed, capture_gradients=args.capture_gradients,
+        activation_checkpointing=args.activation_checkpointing,
+        compile_model=not args.eager,
     )
     mixer = get_mixer(args.mixer)
     if args.synthetic:
@@ -61,10 +65,10 @@ def main() -> None:
                               cfg.microbatch_tokens, cfg.sequence_length)
     result = train(cfg, mixer, data, device="cuda" if torch.cuda.is_available() else "cpu")
     report = result.to_dict()
-    print(json.dumps(report, indent=2))
+    print(json.dumps(report, indent=2, allow_nan=False))
     if args.out:
         with open(args.out, "w") as f:
-            json.dump(report, f, indent=2)
+            json.dump(report, f, indent=2, allow_nan=False)
 
 
 if __name__ == "__main__":

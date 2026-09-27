@@ -232,7 +232,8 @@ def _build_log_linear_mamba2(model_dim, num_heads, head_dim, intent, target="ref
 
 # ---- Operand mixers (QKVAdapter + input-derived operands) ---------------------------------
 
-def _op(layer_path, *, layout="bhtd", extra=None, gate_out_dim=None, **ctor):
+def _op(layer_path, *, layout="bhtd", extra=None, gate_out_dim=None,
+        normalize_qk=False, **ctor):
     """Wrap an operand mixer in the QKVAdapter. ``gate_out_dim`` sizes the input-derived
     gate projection: "heads" → num_heads, "heads_dim" → num_heads*head_dim."""
     def build(model_dim, num_heads, head_dim, intent, target="reference"):
@@ -260,7 +261,7 @@ def _op(layer_path, *, layout="bhtd", extra=None, gate_out_dim=None, **ctor):
         elif gate_out_dim == "heads_dim":
             god = num_heads * head_dim
         return QKVAdapter(model_dim, num_heads, head_dim, factory, layout=layout,
-                          extra=extra, gate_out_dim=god)
+                          extra=extra, gate_out_dim=god, normalize_qk=normalize_qk)
     return build
 
 
@@ -271,14 +272,18 @@ def _beta(adapter, hidden, q, k, v):
 def _comba_ops(adapter, hidden, q, k, v):
     g = F.logsigmoid(adapter.gate_proj(hidden)).transpose(1, 2)      # [B,H,T]
     beta = torch.sigmoid(adapter.gate_proj2(hidden)).transpose(1, 2)
-    return {"p": q, "beta": beta, "g": g}
+    # The production frontend retrieves at the write key (optionally decayed),
+    # rather than at an independent unnormalized query.
+    return {"p": k, "beta": beta, "g": g}
 
 
 def _iplr_ops(adapter, hidden, q, k, v):
     # alpha / low_rank_beta per-channel [B,H,T,K], input-derived, contractive at init.
     B, H, T, K = k.shape
-    gate = torch.tanh(adapter.gate_proj(hidden)).view(B, T, H, K).transpose(1, 2) * 0.1
-    return {"alpha": gate, "beta": gate * 0.5}
+    gate = F.normalize(adapter.gate_proj(hidden).float().view(B, T, H, K), dim=-1).transpose(1, 2)
+    # I - beta * alpha alpha^T is contractive; a positive feedback term is not.
+    strength = torch.sigmoid(adapter.gate_proj2(hidden).view(B, T, H, K)).transpose(1, 2).mean(-1, keepdim=True)
+    return {"alpha": gate, "beta": -gate * strength}
 
 
 def _gdn2_ops(adapter, hidden, q, k, v):
@@ -428,6 +433,8 @@ class _GDPAdapter(torch.nn.Module):
         q = self.q_proj(hidden).view(B, T, H, D).transpose(1, 2)
         k = self.k_proj(hidden).view(B, T, H, D).transpose(1, 2)
         v = self.v_proj(hidden).view(B, T, H, D).transpose(1, 2)
+        q = F.normalize(q.float(), dim=-1).to(q.dtype)
+        k = F.normalize(k.float(), dim=-1).to(k.dtype)
         k = k.repeat_interleave(R, dim=2)
         v = v.repeat_interleave(R, dim=2)
         # Bounded gates: strong decay + small beta keep the R-fold rank-1 product
@@ -552,8 +559,8 @@ class _RWKV7Adapter(torch.nn.Module):
         k = self.k_proj(hidden).view(B, T, H, D)
         v = self.v_proj(hidden).view(B, T, H, D)
         w = F.logsigmoid(self.w_proj(hidden)).view(B, T, H, D)
-        a = torch.tanh(self.a_proj(hidden)).view(B, T, H, D) * 0.1
-        b = torch.tanh(self.b_proj(hidden)).view(B, T, H, D) * 0.1
+        a = F.normalize(torch.tanh(self.a_proj(hidden)).float().view(B, T, H, D), dim=-1) * 0.1
+        b = F.normalize(torch.tanh(self.b_proj(hidden)).float().view(B, T, H, D), dim=-1) * 0.1
         out = self._mixer(r, w, k, v, a, b)
         return self.o_proj(out.reshape(B, T, H * D))
 
@@ -587,8 +594,8 @@ class _DPLRAdapter(torch.nn.Module):
         k = self.k_proj(hidden).view(B, T, H, D).transpose(1, 2)
         v = self.v_proj(hidden).view(B, T, H, D).transpose(1, 2)
         gk = F.logsigmoid(self.gk_proj(hidden)).view(B, T, H, D).transpose(1, 2)
-        alpha = torch.tanh(self.a_proj(hidden)).view(B, T, H, D).transpose(1, 2) * 0.1
-        beta = torch.tanh(self.b_proj(hidden)).view(B, T, H, D).transpose(1, 2) * 0.1
+        alpha = F.normalize(torch.tanh(self.a_proj(hidden)).float().view(B, T, H, D), dim=-1).transpose(1, 2) * 0.1
+        beta = F.normalize(torch.tanh(self.b_proj(hidden)).float().view(B, T, H, D), dim=-1).transpose(1, 2) * 0.1
         out, _ = self._mixer(q, k, v, alpha, beta, gk)
         return self.o_proj(out.transpose(1, 2).reshape(B, T, H * D))
 
@@ -607,7 +614,9 @@ def _build_tda(model_dim, num_heads, head_dim, intent, target="reference"):
 
 def _build_based(model_dim, num_heads, head_dim, intent, target="reference"):
     from architectures.based_attention import BasedLayer
-    return BasedLayer(model_dim, num_heads, head_dim, head_dim, target=target, intent=intent)
+    # Based's production default is a 16-wide feature projection, independently
+    # of the value head width. Using head_dim here expanded it to 2145 features.
+    return BasedLayer(model_dim, num_heads, 16, head_dim, target=target, intent=intent)
 
 
 # =====================================================================================
@@ -657,13 +666,13 @@ MIXER_REGISTRY: dict[str, MixerSpec] = {
                              None, False, False, tier="native"),
     "path_attention": MixerSpec("path_attention", _op("path_attention.PaTHAttentionLayer", layout="bthd", extra=_path_ops, gate_out_dim="heads"),
                                 None, False, False, tier="native"),
-    "comba": MixerSpec("comba", _op("comba.CombaLayer", extra=_comba_ops, gate_out_dim="heads"),
+    "comba": MixerSpec("comba", _op("comba.CombaLayer", extra=_comba_ops, gate_out_dim="heads", normalize_qk=True),
                        "fla.ops.comba", True, True, tier="native"),
     "iplr": MixerSpec("iplr", _op("iplr.IPLRLayer", extra=_iplr_ops, gate_out_dim="heads_dim"),
                       None, False, False, tier="native"),
     "gated_delta_product": MixerSpec("gated_delta_product", _build_gdp,
                                      "fla.ops.gated_delta_product", True, True, tier="native"),
-    "gdn2": MixerSpec("gdn2", _op("gdn2.GDN2Layer", extra=_gdn2_ops, gate_out_dim="heads_dim"),
+    "gdn2": MixerSpec("gdn2", _op("gdn2.GDN2Layer", extra=_gdn2_ops, gate_out_dim="heads_dim", normalize_qk=True),
                       "fla.ops.gdn2.naive.naive_recurrent_gdn2", True, True, tier="native"),
     "wall_attention": MixerSpec("wall_attention", _op("wall_attention.WallAttentionLayer", layout="bthd", extra=_wall_ops, gate_out_dim="heads_dim"),
                                 None, False, False, tier="native"),

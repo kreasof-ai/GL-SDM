@@ -50,15 +50,31 @@ class Muon(torch.optim.Optimizer):
     @torch.no_grad()
     def step(self):
         for group in self.param_groups:
+            shapes = {}
             for p in group["params"]:
                 if p.grad is None:  # skip params unused this step (e.g. dropped branches)
                     continue
                 state = self.state[p]
                 if not state:
                     state["momentum"] = torch.zeros_like(p)
-                update = muon_update(p.grad, state["momentum"], mu=group["mu"])
-                p.mul_(1 - group["lr"] * group["weight_decay"])
-                p.add_(update, alpha=-group["lr"])
+                shapes.setdefault((p.shape, p.dtype, p.device), []).append(p)
+            for parameters in shapes.values():
+                # Independent Newton-Schulz iterations batched over equal-shaped
+                # weights. Bound temporary stacks, especially for Tucker cores.
+                chunk_size = max(1, min(32, 2**24 // parameters[0].numel()))
+                for start in range(0, len(parameters), chunk_size):
+                    chunk = parameters[start:start + chunk_size]
+                    moments = [self.state[p]["momentum"] for p in chunk]
+                    if len(chunk) == 1:
+                        updates = [muon_update(chunk[0].grad, moments[0], mu=group["mu"])]
+                    else:
+                        momentum = torch.stack(moments)
+                        update = muon_update(torch.stack([p.grad for p in chunk]),
+                                             momentum, mu=group["mu"])
+                        torch._foreach_copy_(moments, list(momentum.unbind(0)))
+                        updates = list(update.unbind(0))
+                    torch._foreach_mul_(chunk, 1 - group["lr"] * group["weight_decay"])
+                    torch._foreach_add_(chunk, updates, alpha=-group["lr"])
 
 
 def build_optimizers(model: torch.nn.Module, *, muon_lr: float = 0.005,
@@ -69,7 +85,9 @@ def build_optimizers(model: torch.nn.Module, *, muon_lr: float = 0.005,
     Asserts every model parameter is claimed by exactly one optimizer (the ATMA
     coverage check), so no parameter silently trains at the wrong rate or not at all.
     """
-    named = dict(model.named_parameters())
+    # OptimizedModule prefixes names with _orig_mod; optimizer roles must be
+    # identical in eager and compiled runs.
+    named = dict(getattr(model, "_orig_mod", model).named_parameters())
     embed_params = [p for n, p in named.items() if n.startswith("token.") or n.startswith("position.")]
     head_params = [p for n, p in named.items() if n.startswith("lm_head.")]
     block_matrix = [p for n, p in named.items()

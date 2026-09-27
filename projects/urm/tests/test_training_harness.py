@@ -17,6 +17,7 @@ gate runs separately against the real finewebedu shards via ``train/run.py``.
 
 from __future__ import annotations
 
+import math
 import pytest
 
 torch = pytest.importorskip("torch")
@@ -86,9 +87,10 @@ def test_gradient_alignment_trace_when_enabled():
     data = synthetic_generator(cfg.microbatch_tokens, cfg.sequence_length,
                                cfg.vocab_size, device=DEVICE, seed=cfg.seed)
     result = train(cfg, mixer, data, device=DEVICE)
-    # Gradient capture is a surface; the trace dict is present (may be empty if the
-    # capture point is post-step). The gate is that the run completes with it on.
-    assert result.grad_trace is not None
+    # Capture one finite group norm per measured step, before gradients are cleared.
+    assert result.grad_trace
+    assert all(len(values) == cfg.steps for values in result.grad_trace.values())
+    assert all(math.isfinite(value) for values in result.grad_trace.values() for value in values)
 
 
 def test_stateful_sdm_lifecycle_and_metrics():

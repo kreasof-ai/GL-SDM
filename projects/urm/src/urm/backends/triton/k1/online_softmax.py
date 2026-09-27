@@ -897,6 +897,17 @@ def execute_online_softmax(
     bwd_block_n = block_n
     bwd_num_warps = num_warps if bwd_block_m >= 64 else 4
     bwd_num_stages = 1
+    # A per-call autograd class must capture metadata, not tensor operands.
+    # Capturing a nonleaf bias/mask retains its upstream autograd graph.
+    has_mask = attention_mask is not None
+    mask_is_bool = has_mask and attention_mask.dtype is torch.bool
+    has_bias = score_bias is not None
+    needs_mask_grad = (
+        has_mask and attention_mask.is_floating_point() and attention_mask.requires_grad
+    )
+    needs_bias_grad = has_bias and score_bias.requires_grad
+    mask_shape = tuple(attention_mask.shape) if has_mask else None
+    bias_shape = tuple(score_bias.shape) if has_bias else None
 
     class _OnlineSoftmax(torch.autograd.Function):
         @staticmethod
@@ -928,9 +939,9 @@ def execute_online_softmax(
                 value_dim,
                 *mask_strides,
                 *bias_strides,
-                attention_mask is not None,
-                attention_mask is not None and attention_mask.dtype is torch.bool,
-                score_bias is not None,
+                has_mask,
+                mask_is_bool,
+                has_bias,
                 causal,
                 scale,
                 q.dtype is torch.float32,
@@ -942,21 +953,17 @@ def execute_online_softmax(
                 num_stages=num_stages,
             )
             ctx.save_for_backward(q, k, v, mask_tensor, bias_tensor, output, logsumexp)
-            ctx.needs_mask_grad = (
-                attention_mask is not None
-                and attention_mask.is_floating_point()
-                and attention_mask.requires_grad
-            )
-            ctx.needs_bias_grad = score_bias is not None and score_bias.requires_grad
-            ctx.has_mask = attention_mask is not None
-            ctx.mask_is_bool = attention_mask is not None and attention_mask.dtype is torch.bool
-            ctx.has_bias = score_bias is not None
+            ctx.needs_mask_grad = needs_mask_grad
+            ctx.needs_bias_grad = needs_bias_grad
+            ctx.has_mask = has_mask
+            ctx.mask_is_bool = mask_is_bool
+            ctx.has_bias = has_bias
             ctx.causal = causal
             ctx.scale = scale
             ctx.mask_strides = mask_strides
             ctx.bias_strides = bias_strides
-            ctx.mask_shape = None if attention_mask is None else tuple(attention_mask.shape)
-            ctx.bias_shape = None if score_bias is None else tuple(score_bias.shape)
+            ctx.mask_shape = mask_shape
+            ctx.bias_shape = bias_shape
             return output
 
         @staticmethod

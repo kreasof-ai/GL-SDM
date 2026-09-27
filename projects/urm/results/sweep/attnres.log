@@ -1,44 +1,74 @@
-W0926 20:12:56.707000 212933 site-packages/torch/_dynamo/variables/tensor.py:1841] [4/0] Graph break from `Tensor.item()`, consider setting:
-W0926 20:12:56.707000 212933 site-packages/torch/_dynamo/variables/tensor.py:1841] [4/0]     torch._dynamo.config.capture_scalar_outputs = True
-W0926 20:12:56.707000 212933 site-packages/torch/_dynamo/variables/tensor.py:1841] [4/0] or:
-W0926 20:12:56.707000 212933 site-packages/torch/_dynamo/variables/tensor.py:1841] [4/0]     env TORCHDYNAMO_CAPTURE_SCALAR_OUTPUTS=1
-W0926 20:12:56.707000 212933 site-packages/torch/_dynamo/variables/tensor.py:1841] [4/0] to include these operations in the captured graph.
-W0926 20:12:56.707000 212933 site-packages/torch/_dynamo/variables/tensor.py:1841] [4/0] 
-W0926 20:12:56.707000 212933 site-packages/torch/_dynamo/variables/tensor.py:1841] [4/0] Graph break: from user code at:
-W0926 20:12:56.707000 212933 site-packages/torch/_dynamo/variables/tensor.py:1841] [4/0]   File "/home/sagemaker-user/GL-SDM/projects/urm/architectures/attnres.py", line 178, in aggregate
-W0926 20:12:56.707000 212933 site-packages/torch/_dynamo/variables/tensor.py:1841] [4/0]     return layer(
-W0926 20:12:56.707000 212933 site-packages/torch/_dynamo/variables/tensor.py:1841] [4/0]            ^^^^^^
-W0926 20:12:56.707000 212933 site-packages/torch/_dynamo/variables/tensor.py:1841] [4/0]   File "/home/sagemaker-user/GL-SDM/projects/urm/architectures/attnres.py", line 121, in forward
-W0926 20:12:56.707000 212933 site-packages/torch/_dynamo/variables/tensor.py:1841] [4/0]     out = self._plan.execute(
-W0926 20:12:56.707000 212933 site-packages/torch/_dynamo/variables/tensor.py:1841] [4/0]           ^^^^^^^^^^^^^^^^^^^
-W0926 20:12:56.707000 212933 site-packages/torch/_dynamo/variables/tensor.py:1841] [4/0]   File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/runtime/bind.py", line 264, in execute
-W0926 20:12:56.707000 212933 site-packages/torch/_dynamo/variables/tensor.py:1841] [4/0]     outputs = _execute_node(op, step.anchor, tensors, mode)
-W0926 20:12:56.707000 212933 site-packages/torch/_dynamo/variables/tensor.py:1841] [4/0]               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-W0926 20:12:56.707000 212933 site-packages/torch/_dynamo/variables/tensor.py:1841] [4/0]   File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/runtime/bind.py", line 198, in _execute_node
-W0926 20:12:56.707000 212933 site-packages/torch/_dynamo/variables/tensor.py:1841] [4/0]     return provider.execute(request, operands)
-W0926 20:12:56.707000 212933 site-packages/torch/_dynamo/variables/tensor.py:1841] [4/0]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-W0926 20:12:56.707000 212933 site-packages/torch/_dynamo/variables/tensor.py:1841] [4/0]   File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k1/online_softmax.py", line 1215, in execute
-W0926 20:12:56.707000 212933 site-packages/torch/_dynamo/variables/tensor.py:1841] [4/0]     scale=None if operands.get("scale") is None else float(operands["scale"]),
-W0926 20:12:56.707000 212933 site-packages/torch/_dynamo/variables/tensor.py:1841] [4/0]                                                      ^^^^^^^^^^^^^^^^^^^^^^^^^
-W0926 20:12:56.707000 212933 site-packages/torch/_dynamo/variables/tensor.py:1841] [4/0] 
-W0926 20:12:56.707000 212933 site-packages/torch/_dynamo/variables/tensor.py:1841] [4/0] 
-W0926 20:13:25.629000 212933 site-packages/torch/_dynamo/convert_frame.py:2008] [4/8] torch._dynamo hit config.recompile_limit (8)
-W0926 20:13:25.629000 212933 site-packages/torch/_dynamo/convert_frame.py:2008] [4/8]    function: 'aggregate' (/home/sagemaker-user/GL-SDM/projects/urm/architectures/attnres.py:169)
-W0926 20:13:25.629000 212933 site-packages/torch/_dynamo/convert_frame.py:2008] [4/8]    last reason: 4/7: len(residuals) == 5                                      # layer = self._layers[len(residuals) - 1]  # ome/sagemaker-user/GL-SDM/projects/urm/architectures/attnres.py:177 in aggregate
-W0926 20:13:25.629000 212933 site-packages/torch/_dynamo/convert_frame.py:2008] [4/8] User stack trace:
-W0926 20:13:25.629000 212933 site-packages/torch/_dynamo/convert_frame.py:2008] [4/8]   File "/home/sagemaker-user/GL-SDM/projects/urm/architectures/attnres.py", line 177, in aggregate
-W0926 20:13:25.629000 212933 site-packages/torch/_dynamo/convert_frame.py:2008] [4/8]     layer = self._layers[len(residuals) - 1]
-W0926 20:13:25.629000 212933 site-packages/torch/_dynamo/convert_frame.py:2008] [4/8] To log all recompilation reasons, use TORCH_LOGS="recompiles".
-W0926 20:13:25.629000 212933 site-packages/torch/_dynamo/convert_frame.py:2008] [4/8] To diagnose recompilation issues, see https://docs.pytorch.org/docs/main/user_guide/torch_compiler/compile/programming_model.recompilation.html
+
+COMMAND: ['/opt/conda/bin/python', '-m', 'train.run', '--mixer', 'attnres', '--steps', '10', '--layers', '9', '--width', '768', '--num-heads', '12', '--head-dim', '64', '--sequence-length', '512', '--batch-tokens', '8192', '--microbatch-tokens', '8192', '--out', 'results/sweep/attnres.json']
+W0927 11:26:30.521000 264509 site-packages/torch/_dynamo/convert_frame.py:2008] [4/8] torch._dynamo hit config.recompile_limit (8)
+W0927 11:26:30.521000 264509 site-packages/torch/_dynamo/convert_frame.py:2008] [4/8]    function: 'aggregate' (/home/sagemaker-user/GL-SDM/projects/urm/architectures/attnres.py:205)
+W0927 11:26:30.521000 264509 site-packages/torch/_dynamo/convert_frame.py:2008] [4/8]    last reason: 4/7: len(residuals) == 5                                      # layer = self._layers[len(residuals) - 1]  # ome/sagemaker-user/GL-SDM/projects/urm/architectures/attnres.py:213 in aggregate
+W0927 11:26:30.521000 264509 site-packages/torch/_dynamo/convert_frame.py:2008] [4/8] User stack trace:
+W0927 11:26:30.521000 264509 site-packages/torch/_dynamo/convert_frame.py:2008] [4/8]   File "/home/sagemaker-user/GL-SDM/projects/urm/architectures/attnres.py", line 213, in aggregate
+W0927 11:26:30.521000 264509 site-packages/torch/_dynamo/convert_frame.py:2008] [4/8]     layer = self._layers[len(residuals) - 1]
+W0927 11:26:30.521000 264509 site-packages/torch/_dynamo/convert_frame.py:2008] [4/8] To log all recompilation reasons, use TORCH_LOGS="recompiles".
+W0927 11:26:30.521000 264509 site-packages/torch/_dynamo/convert_frame.py:2008] [4/8] To diagnose recompilation issues, see https://docs.pytorch.org/docs/main/user_guide/torch_compiler/compile/programming_model.recompilation.html
 {
   "mixer": "attnres",
   "steps": 10,
-  "final_loss": 8.181123733520508,
-  "mfu": 0.05134142216591015,
+  "final_loss": 17.010223388671875,
+  "mfu": 0.17120703875190016,
   "params": 102769920,
   "checkpoint_aligned": true,
+  "grad_trace": {},
   "kl_divergence": null,
-  "wallclock_s": 14.115837983001256,
-  "throughput_tokens_s": 5803.410332326758,
-  "peak_memory_gib": 13.125545501708984
+  "wallclock_s": 4.2330455709889065,
+  "throughput_tokens_s": 19352.496595226163,
+  "peak_memory_gib": 12.568775177001953,
+  "loss_trace": [
+    14.502918243408203,
+    11.988734245300293,
+    11.190461158752441,
+    12.338088035583496,
+    13.591226577758789,
+    15.284433364868164,
+    17.143102645874023,
+    15.225789070129395,
+    18.147411346435547,
+    17.010223388671875
+  ],
+  "memory_trace_gib": [
+    0.9445443153381348,
+    0.9445443153381348,
+    0.9445443153381348,
+    0.9445443153381348,
+    0.9445443153381348,
+    0.9445443153381348,
+    0.9445443153381348,
+    0.9445443153381348,
+    0.9445443153381348,
+    0.9445443153381348
+  ],
+  "config": {
+    "mixer": "attnres",
+    "vocab_size": 50304,
+    "sequence_length": 512,
+    "layers": 9,
+    "width": 768,
+    "num_heads": 12,
+    "head_dim": 64,
+    "mlp_ratio": 4,
+    "batch_tokens": 8192,
+    "microbatch_tokens": 8192,
+    "steps": 10,
+    "seed": 0,
+    "target_mfu": 0.5,
+    "capture_gradients": false,
+    "compile_model": true,
+    "bf16": true,
+    "activation_checkpointing": false,
+    "target": null
+  },
+  "measurement_version": 2,
+  "source_fingerprint": "345b161d5a9866e94c1ff1686d5b9156ce4c0aa404149c80ec35f81a08a601c1",
+  "environment": {
+    "torch": "2.14.0+cu130",
+    "device": "NVIDIA A10G",
+    "peak_flops": 70000000000000.0
+  }
 }

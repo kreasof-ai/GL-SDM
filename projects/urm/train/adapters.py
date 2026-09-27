@@ -37,10 +37,12 @@ class QKVAdapter(nn.Module):
     """
 
     def __init__(self, model_dim, num_heads, head_dim, mixer_factory, *,
-                 layout="bhtd", extra=None, gate_out_dim: int | None = None):
+                 layout="bhtd", extra=None, gate_out_dim: int | None = None,
+                 normalize_qk: bool = False):
         super().__init__()
         self.num_heads, self.head_dim = num_heads, head_dim
         self.layout = layout
+        self.normalize_qk = normalize_qk
         self.q_proj = nn.Linear(model_dim, num_heads * head_dim, bias=False)
         self.k_proj = nn.Linear(model_dim, num_heads * head_dim, bias=False)
         self.v_proj = nn.Linear(model_dim, num_heads * head_dim, bias=False)
@@ -62,6 +64,9 @@ class QKVAdapter(nn.Module):
         q = self.q_proj(hidden).view(B, T, H, D)
         k = self.k_proj(hidden).view(B, T, H, D)
         v = self.v_proj(hidden).view(B, T, H, D)
+        if self.normalize_qk:
+            q = F.normalize(q.float(), dim=-1).to(q.dtype)
+            k = F.normalize(k.float(), dim=-1).to(k.dtype)
         if self.layout == "bhtd":
             q, k, v = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
         extras = self._extra(self, hidden, q, k, v) if self._extra is not None else {}

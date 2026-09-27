@@ -7,15 +7,11 @@ against the upstream's production kernel. The surround (embeddings, norms, MLP,
 lm_head, optimizers, harness loop) is identical to the URM rows; only the mixer
 module differs.
 
-Honest scope:
-- Upstream rows run EAGER (compile_model=False): the fla chunk kernels fail
-  torch.compile/Inductor in this environment (measured), while the URM native rows
-  compile through the opaque custom-op boundary. The eager penalty on the upstream
-  side is the unfused surround only — the fla mixer kernels are already fused Triton.
-- mamba2's upstream (mamba_ssm) needs a compiled CUDA extension not built here, so it
-  has no upstream baseline (recorded, not fabricated).
-- The flops numerator reuses the URM row's mixer name so the MFU accounting is
-  identical between arms.
+Both arms compile the surround with unsupported kernels behind eager boundaries.
+The default driver runs production kernels only, records unavailable baselines,
+and never substitutes a reference implementation after a production failure.
+Matched-front-end adapters live in train/production.py. The approximate FLOP
+numerator uses each model's actual parameter count and the same family estimate.
 
 Usage:
     PYTHONPATH=src:. python -m train.upstream --out-dir results/upstream
@@ -52,6 +48,7 @@ class _FlaWrap(torch.nn.Module):
     def __init__(self, layer):
         super().__init__()
         self.layer = layer
+        self.layer.forward = torch.compiler.disable(self.layer.forward)
 
     def forward(self, hidden):
         # fla's log_linear_mamba2 mixes explicit .float() ops with the activation
@@ -71,6 +68,20 @@ class _FlaWrap(torch.nn.Module):
         return out.to(hidden.dtype)
 
 
+class _IEEEDotLaunch:
+    """Select the launcher's supported fp32 mode without editing pinned code."""
+    def __init__(self, kernel):
+        self.kernel = kernel
+
+    def __getitem__(self, grid):
+        launch = self.kernel[grid]
+        def run(*args, **kwargs):
+            return launch(*args, default_dot_input_precision="ieee",
+                          allowed_dot_input_precisions=("ieee",), num_stages=1,
+                          **kwargs)
+        return run
+
+
 class _TDAUpstream(torch.nn.Module):
     """The pinned TDA Triton kernel (threshold ReLU² attention) as a [B,T,C] mixer.
 
@@ -81,6 +92,13 @@ class _TDAUpstream(torch.nn.Module):
     def __init__(self, model_dim, num_heads, head_dim):
         super().__init__()
         sys.path.insert(0, "/tmp/urm-comparator-pins/tda")
+        import triton_threshold_attention as pinned
+        for name in ("_threshold_rela_fwd_kernel", "_threshold_rela_bwd_kernel_dq",
+                     "_threshold_rela_bwd_kernel_dkv"):
+            kernel = getattr(pinned, name)
+            if not isinstance(kernel, _IEEEDotLaunch):
+                setattr(pinned, name, _IEEEDotLaunch(kernel))
+        self._kernel = torch.compiler.disable(pinned.threshold_rela_triton)
         self.num_heads, self.head_dim = num_heads, head_dim
         self.q_proj = torch.nn.Linear(model_dim, num_heads * head_dim, bias=False)
         self.k_proj = torch.nn.Linear(model_dim, num_heads * head_dim, bias=False)
@@ -88,14 +106,25 @@ class _TDAUpstream(torch.nn.Module):
         self.o_proj = torch.nn.Linear(num_heads * head_dim, model_dim, bias=False)
 
     def forward(self, hidden):
-        from triton_threshold_attention import threshold_rela_triton
         B, T, _ = hidden.shape
         H, D = self.num_heads, self.head_dim
         q = self.q_proj(hidden).view(B, T, H, D).transpose(1, 2)
         k = self.k_proj(hidden).view(B, T, H, D).transpose(1, 2)
         v = self.v_proj(hidden).view(B, T, H, D).transpose(1, 2)
-        out = threshold_rela_triton(q, k, v, beta=1.0, relu_power=2.0)
+        # The registered TDA differential recipe reuses q/k in both paths with
+        # lambda=.5, so its exact merge is half of a single production call.
+        out = self._call(q * D ** -.5, k, v) * .5
         return self.o_proj(out.transpose(1, 2).reshape(B, T, H * D))
+
+    @torch.compiler.disable
+    def _call(self, q, k, v):
+        # The pinned launcher flattens B*H with stride_h and therefore requires
+        # contiguous head batches, including the incoming output gradient.
+        out = self._kernel(q.contiguous(), k.contiguous(), v.contiguous(),
+                           beta=1.0, relu_power=2.0)
+        if out.requires_grad:
+            out.register_hook(lambda grad: grad.contiguous())
+        return out
 
 
 class _FlaOpWrap(torch.nn.Module):
@@ -106,6 +135,7 @@ class _FlaOpWrap(torch.nn.Module):
         super().__init__()
         module_name, fn_name = op_path.rsplit(".", 1)
         self._op = getattr(__import__(module_name, fromlist=[fn_name]), fn_name)
+        self._op = torch.compiler.disable(self._op)
         self._derive = derive  # (module, hidden, q, k, v) -> extra kwargs
         self.num_heads, self.head_dim = num_heads, head_dim
         self.q_proj = torch.nn.Linear(model_dim, num_heads * head_dim, bias=False)
@@ -348,14 +378,12 @@ class _SDPASlidingWindow(torch.nn.Module):
 
 def _samba_upstream_layer(layer_idx, model_dim, num_heads, head_dim, intent,
                           target="reference"):
-    """fla Samba schedule: mamba on even layers, sliding-window attention on odd.
-    The mamba branch is fla.layers.mamba.Mamba (Triton backend — causal_conv1d absent,
-    its own fallback); the attention branch is SDPA+window (fla's layer requires
-    flash-attn, bypassed per the no-FA constraint)."""
+    """Match the native Mamba-2 / RoPE-attention schedule with production ops."""
+    from train.production import Mamba2Production, samba_attention_production
     if layer_idx % 2 == 0:
-        from fla.layers.mamba import Mamba
-        return _FlaWrap(Mamba(hidden_size=model_dim, layer_idx=layer_idx))
-    return _SDPASlidingWindow(model_dim, num_heads, head_dim, window=512)
+        return Mamba2Production(model_dim, num_heads, head_dim, intent, target)
+    return samba_attention_production(model_dim, num_heads, head_dim, intent, target)
+
 
 
 class _RWKV7NaiveUpstream(torch.nn.Module):
@@ -544,6 +572,7 @@ class _AttnResUpstreamDesign(torch.nn.Module):
     def rezero_(self):
         torch.nn.init.zeros_(self.query)
 
+    @torch.compiler.disable
     def aggregate(self, sublayer_idx, residuals, output_rms_weight):
         from fla.ops.attnres import fused_attnres
         # The fused kernel requires one dtype across query/residuals/weights; under
@@ -599,10 +628,9 @@ def _fla_builder(cls_path, extra=None):
 
 # The fast upstream kernels, keyed by the URM row they baseline. The mixer name in the
 # MixerSpec is the URM row's name so model_flops_per_step's numerator is identical.
-# Coverage: every native-tier row whose registry upstream has a FAST kernel. Excluded:
-# - mamba2 — mamba_ssm's fused kernel needs a compiled CUDA extension not built here.
-# - dplr — its pinned upstream is an op (fla.ops.generalized_delta_rule.dplr), not a
-#   standalone layer; the GatedDeltaNet layer already represents that kernel family.
+# Default production and explicit diagnostic builders. Shared-frontend production
+# adapters override the legacy declarations below for the delta, RWKV, Mamba,
+# and log-linear families.
 UPSTREAM_BUILDERS = {
     "dense_attention": lambda: (
         lambda model_dim, num_heads, head_dim, intent, target="reference":
@@ -635,7 +663,7 @@ UPSTREAM_BUILDERS = {
     ),
     # fla's based chunk backward requires even feature width (its Taylor K is odd);
     # the pinned layer's default mode is "parallel" — use it (its own production path).
-    "based_attention": _fla("fla.layers.based.BasedLinearAttention", extra={"mode": "parallel"}),
+    "based_attention": _fla("fla.layers.based.BasedLinearAttention", extra={"mode": "parallel", "feature_dim": 16}),
     "forgetting_attention": _fla("fla.layers.forgetting_attn.ForgettingAttention"),
     # lightning_attention's pinned comparator IS simple_gla's kernel (same class).
     "lightning_attention": _fla("fla.layers.simple_gla.SimpleGatedLinearAttention"),
@@ -678,7 +706,7 @@ UPSTREAM_BUILDERS = {
                            hidden.shape[0], hidden.shape[1], mod.num_heads, mod.head_dim
                            ).mean(-1)})
     ),
-    # log_linear_mamba2: fla's layer is chunk-kernel-only and exceeds the A10G SMEM
+    # Legacy log_linear_mamba2 layer: its default launch exceeds the A10G SMEM
     # limit at the benchmark config (196KB > 101KB, hardware envelope); fla ships no
     # naive/reference variant for the mamba2-banked law — recorded as
     # environment-blocked (see UPSTREAM_BLOCKED), no baseline fabricated.
@@ -694,7 +722,10 @@ UPSTREAM_BUILDERS = {
     # full 3-branch layer, wired with the remodeled full-NSA row.
     "path_attention": _fla("fla.layers.path_attn.PaTHAttention"),
     "rodimus": _fla("fla.layers.rodimus.RodimusAttention"),
-    "raven": _fla("fla.layers.raven.Raven"),
+    "raven": _fla("fla.layers.raven.Raven", extra={
+        "num_slots": 8, "topk": 2, "add_gumbel_noise": False,
+        "decay_type": "GLA", "scale": None,
+    }),
     # Our yoco row is the YOCO self-decoder half → fla's YOCOGatedRetention.
     "yoco": _fla("fla.layers.yoco.YOCOGatedRetention"),
     # Op-level fast baselines (no fla layer class; the pinned chunk/parallel OP wrapped
@@ -800,6 +831,32 @@ UPSTREAM_TIER = {
         "mla_attention", "deltaformer", "moba", "pattention",
     )},
 }
+
+# These adapters invoke unmodified pinned production ops. The SSD import avoids
+# the package-level CUDA-extension dependency; RWKV uses a supported small chunk.
+def _production_builder(class_name):
+    def factory():
+        from train import production
+        return getattr(production, class_name)
+    return factory
+
+UPSTREAM_BUILDERS["mamba2"] = _production_builder("Mamba2Production")
+UPSTREAM_BUILDERS["rwkv7"] = _production_builder("RWKV7Production")
+UPSTREAM_BUILDERS["raven"] = _production_builder("RavenProduction")
+UPSTREAM_TIER["rwkv7"] = "production-kernel"
+UPSTREAM_BUILDERS["log_linear_attention"] = _production_builder("log_linear_production")
+UPSTREAM_TIER["log_linear_attention"] = "production-kernel"
+UPSTREAM_BUILDERS["log_linear_mamba2"] = _production_builder("log_linear_mamba2_production")
+UPSTREAM_TIER["log_linear_mamba2"] = "production-kernel"
+
+def _matched_delta_builder(row):
+    def factory():
+        from train.production import delta_production
+        return delta_production(row)
+    return factory
+
+for _row in ("comba", "gdn2", "gated_delta_product", "dplr"):
+    UPSTREAM_BUILDERS[_row] = _matched_delta_builder(_row)
 
 import sys as _sys
 if "/tmp/urm-comparator-pins/kata" not in _sys.path:
@@ -1200,24 +1257,21 @@ class _TPAUpstream(torch.nn.Module):
 # Upstream baselines that are environment-blocked (recorded, not fabricated):
 # the upstream kernel exists but cannot run on this A10G (SMEM envelope) and no
 # reference variant ships. The report lists ours-only for these rows.
-UPSTREAM_BLOCKED = {
-    # fla's LogLinearMamba2 chunk kernel needs 196KB SMEM at the benchmark config
-    # (hardware limit 101KB); no naive/reference variant ships in the pin.
-    "log_linear_mamba2": "upstream chunk kernel exceeds A10G SMEM (196KB > 101KB); no reference variant in the pin",
-}
+UPSTREAM_BLOCKED = {}
 
 # Why a baseline is reference-tier (or a production-tier caveat) — the report prints
 # these verbatim so no upstream limitation is silently blended away.
 UPSTREAM_NOTES = {
     "iplr": "fla's chunk_iplr_delta_rule backward is NotImplementedError upstream; baseline is the pinned naive recurrence",
-    "log_linear_attention": "fla's chunk kernel exceeds A10G SMEM (122KB > 101KB) at head_dim=64; baseline is the pinned naive",
+    "log_linear_attention": "pinned chunk_log_linear_attn with bf16 operands and one-stage A10G pipeline; independent heads packed as single-group batches",
+    "log_linear_mamba2": "shared selective frontend with pinned chunk_log_linear_attn, bf16 operands, one-stage A10G pipeline, and capped-bank level-scale mapping",
     "nsa": "fla's parallel_nsa needs flash-attn (absent by policy); baseline composes the pinned naive branch oracles",
     "deltaformer": "fla's DeltaFormerAttention layer needs flash-attn; baseline is the pinned naive deltaformer op",
     "moba": "fla's parallel_moba needs flash-attn; baseline is the pinned law as a block-sparse SDPA mask",
     "mla_attention": "fla's MLA layer hard-requires flash-attn; baseline is the pinned prefill equation in torch",
     "bit_attention": "fla's BitAttention layer needs flash-attn; baseline is pinned fused-BitLinear kernels (production) + SDPA attention",
     "tucker_attention": "the pinned fused kernel is H100-targeted (294KB SMEM); baseline transcribes the pinned equation in torch",
-    "rwkv7": "fla's chunk kernel exceeds A10G SMEM (131KB) and fused_recurrent is inference-only; baseline is the pinned naive recurrence",
+    "rwkv7": "pinned chunk_rwkv7 with supported chunk_size=16; same projections and low-rank frontend as URM",
     "sdm": "the lingua CUDA extension is toolchain-blocked (nvcc 12.9 vs cu13 headers; source builds excluded); baseline is the pinned law in torch",
     "tpa_attention": "the pin ships decode-only kernels (n==1 assert); baseline generalizes the pinned factorized equation to training",
     "dsa": "the pinned fla naive_dsa op (lightning indexer + top-k selection + attention); fla's fast DSA kernel is indexer-coupled to a specific head tiling",
@@ -1228,9 +1282,10 @@ UPSTREAM_NOTES = {
     "hopfield_association": "the pinned hflayers Hopfield module, self-association mode (research code)",
     "longformer": "the pinned longformer sliding-chunk torch path (the TVM kernel needs Apache TVM, not installed)",
     "pattention": "the pinned tokenformer Pattention equation hosted at reference tier (megatron source needs neox/mpu)",
-    "mamba2": "fla's own Triton Mamba2 (mamba_ssm has no prebuilt torch-2.14/cu130 wheel); causal_conv1d absent so its conv falls back to Triton",
-    "samba_attention": "fla mamba branch (Triton backend) + SDPA sliding-window attention (fla's attention layer needs flash-attn)",
+    "mamba2": "pinned Mamba SSD Triton kernel imported without CUDA-extension package initialization; same selective frontend as URM",
+    "samba_attention": "matched native schedule: pinned Mamba-2 SSD on even layers and causal SDPA with the same RoPE frontend on odd layers",
     "attnres": "fla fused_attnres — the pinned production kernel, full tier match",
+    "raven": "shared deterministic eight-slot/top-k-two frontend and pinned chunk GSA; equal slot duplication meets the backward tensor-core minimum without changing the slot law",
 }
 
 # Rows whose upstream runs at a non-mixer granularity (the MixerSpec must carry it so the
@@ -1269,6 +1324,11 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--head-dim", type=int, default=64)
     p.add_argument("--sequence-length", type=int, default=512)
     p.add_argument("--microbatch-tokens", type=int, default=8192)
+    p.add_argument("--batch-tokens", type=int, default=8192)
+    p.add_argument("--eager", action="store_true")
+    p.add_argument("--include-reference", action="store_true",
+                   help="run research/reference implementations as separate diagnostics")
+    p.add_argument("--allow-oom-fallback", action="store_true")
     p.add_argument("--timeout", type=int, default=1500)
     p.add_argument("--subprocess", action="store_true",
                    help="run each row in its own process (CUDA memory isolation)")
@@ -1279,6 +1339,8 @@ def _run_one(row: str, args: argparse.Namespace) -> dict:
     """Train one upstream row in-process (called directly or via --subprocess child)."""
     rec_extra = {"baseline_tier": UPSTREAM_TIER.get(row, "unknown"),
                  "granularity": UPSTREAM_GRANULARITY.get(row, "mixer")}
+    from extra.comparators.fla_k2 import fla_k2_source_identity
+    rec_extra["fla_source_identity"] = fla_k2_source_identity()
     granularity = UPSTREAM_GRANULARITY.get(row, "mixer")
     stateful = row in UPSTREAM_STATEFUL
     if granularity == "block":
@@ -1298,10 +1360,12 @@ def _run_one(row: str, args: argparse.Namespace) -> dict:
     cfg = TrainConfig(
         mixer=row, vocab_size=50304, sequence_length=args.sequence_length,
         layers=args.layers, width=args.width, num_heads=args.num_heads,
-        head_dim=args.head_dim, batch_tokens=args.microbatch_tokens,
+        head_dim=args.head_dim, batch_tokens=args.batch_tokens,
         microbatch_tokens=args.microbatch_tokens, steps=args.steps, seed=0,
-        compile_model=False,  # fla chunk kernels fail torch.compile here (measured)
+        compile_model=not args.eager,
+        activation_checkpointing=__import__("train.campaign", fromlist=["use_checkpointing"]).use_checkpointing(row),
     )
+    get_data("finewebedu_train_000001.bin")
     data = data_generator("data/finewebedu10B/finewebedu_train_*.bin",
                           cfg.microbatch_tokens, cfg.sequence_length)
     rec = train(cfg, spec, data, device="cuda").to_dict()
@@ -1310,82 +1374,99 @@ def _run_one(row: str, args: argparse.Namespace) -> dict:
 
 
 def main() -> None:
+    from dataclasses import asdict
+    from train.campaign import use_checkpointing, valid_cached_result
     args = _parse_args()
-    # Record the baseline tier in each row's JSON for the report.
-    args._baseline_tier = UPSTREAM_TIER
     all_rows = sorted(set(UPSTREAM_BUILDERS) | set(UPSTREAM_BLOCK_BUILDERS)
-                      | set(UPSTREAM_RESIDUAL_BUILDERS) | set(UPSTREAM_STATEFUL_BUILDERS))
+                      | set(UPSTREAM_RESIDUAL_BUILDERS) | set(UPSTREAM_STATEFUL_BUILDERS)
+                      | set(UPSTREAM_BLOCKED))
     rows = ([r.strip() for r in args.rows.split(",") if r.strip()]
             if args.rows else all_rows)
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    get_data("finewebedu_train_000001.bin")
     print(f"[upstream] {len(rows)} rows -> {out_dir}", flush=True)
-
-    # Single-row in-process mode (used by the subprocess driver).
     if os.environ.get("URM_UPSTREAM_CHILD") == "1":
         rec = _run_one(rows[0], args)
-        (out_dir / f"{rows[0]}.json").write_text(json.dumps(rec, indent=2))
+        (out_dir / f"{rows[0]}.json").write_text(json.dumps(rec, indent=2, allow_nan=False))
         return
 
     summary = []
     for i, row in enumerate(rows, 1):
         out_file = out_dir / f"{row}.json"
         log_file = out_dir / f"{row}.log"
+        if row not in all_rows:
+            raise ValueError(f"unknown upstream row {row!r}")
+        tier = UPSTREAM_TIER.get(row, "unavailable")
+        if row in UPSTREAM_BLOCKED or (tier != "production-kernel" and not args.include_reference):
+            rec = dict(mixer=row, measurement_version=2, baseline_tier=tier,
+                       status="production-unavailable",
+                       reason=UPSTREAM_BLOCKED.get(row, UPSTREAM_NOTES.get(row, "no production training kernel")))
+            out_file.write_text(json.dumps(rec, indent=2))
+            log_file.write_text(rec["reason"] + "\n")
+            summary.append(rec)
+            print(f"[upstream] {i}/{len(rows)} {row}: production unavailable", flush=True)
+            continue
+        expected = asdict(TrainConfig(
+            mixer=row, layers=args.layers, width=args.width, num_heads=args.num_heads,
+            head_dim=args.head_dim, sequence_length=args.sequence_length,
+            steps=args.steps, batch_tokens=args.batch_tokens,
+            microbatch_tokens=args.microbatch_tokens, compile_model=not args.eager,
+            activation_checkpointing=use_checkpointing(row),
+        ))
         if out_file.exists():
             rec = json.loads(out_file.read_text())
-            print(f"[upstream] {i}/{len(rows)} {row}: cached "
-                  f"(mfu={rec.get('mfu', 0):.3f})", flush=True)
-            summary.append(rec)
-            continue
+            if valid_cached_result(rec, expected) and rec.get("baseline_tier") == tier:
+                print(f"[upstream] {i}/{len(rows)} {row}: cached (mfu={rec['mfu']:.3f})", flush=True)
+                summary.append(rec)
+                continue
+        log_file.write_text("")
         t0 = time.time()
-        if args.subprocess:
-            # Same microbatch OOM ladder as the sweep driver (the naive-recurrence
-            # baselines keep the full T-loop autograd graph — memory-heavy at 8192).
-            ladder = (args.microbatch_tokens, 2048, 1024)
-            rec = {"mixer": row, "error": "OOM at all fallback microbatches"}
-            for attempt, mb in enumerate(ladder):
-                cmd = [sys.executable, "-m", "train.upstream", "--rows", row,
-                       "--out-dir", str(out_dir), "--steps", str(args.steps),
-                       "--layers", str(args.layers), "--width", str(args.width),
-                       "--num-heads", str(args.num_heads), "--head-dim", str(args.head_dim),
-                       "--sequence-length", str(args.sequence_length),
-                       "--microbatch-tokens", str(mb)]
-                env = dict(os.environ, PYTHONPATH="src:.", URM_UPSTREAM_CHILD="1")
-                try:
-                    with log_file.open("w") as log:
-                        proc = subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT,
-                                              env=env, timeout=args.timeout)
-                except subprocess.TimeoutExpired:
-                    rec = {"mixer": row, "error": f"timeout after {args.timeout}s"}
-                    break
-                if proc.returncode == 0:
-                    rec = json.loads(out_file.read_text())
-                    if attempt:
-                        rec["microbatch_fallback"] = mb
-                        out_file.write_text(json.dumps(rec, indent=2))
-                    break
-                log_text = log_file.read_text() if log_file.exists() else ""
-                if "out of memory" not in log_text.lower():
-                    rec = {"mixer": row, "error": f"exit {proc.returncode} (see {log_file})"}
-                    break
-                print(f"[upstream] {row}: OOM at {mb}, retrying smaller", flush=True)
-        else:
+        ladder = (args.microbatch_tokens,)
+        if args.allow_oom_fallback:
+            ladder += tuple(mb for mb in (2048, 1024, 512)
+                            if mb < args.microbatch_tokens and args.batch_tokens % mb == 0)
+        attempts = []
+        rec = dict(mixer=row, error="no successful attempt")
+        for mb in ladder:
+            attempts.append(mb)
+            cmd = [sys.executable, "-m", "train.upstream", "--rows", row,
+                   "--out-dir", str(out_dir), "--steps", str(args.steps),
+                   "--layers", str(args.layers), "--width", str(args.width),
+                   "--num-heads", str(args.num_heads), "--head-dim", str(args.head_dim),
+                   "--sequence-length", str(args.sequence_length),
+                   "--batch-tokens", str(args.batch_tokens), "--microbatch-tokens", str(mb)]
+            if args.eager:
+                cmd.append("--eager")
+            env = dict(os.environ, PYTHONPATH="src:.", URM_UPSTREAM_CHILD="1")
             try:
-                rec = _run_one(row, args)
-            except Exception as e:  # noqa: BLE001 — record and continue
-                rec = {"mixer": row, "error": f"{type(e).__name__}: {str(e)[:200]}"}
-            out_file.write_text(json.dumps(rec, indent=2))
-        dt = time.time() - t0
+                with log_file.open("a") as log:
+                    log.write(f"\nCOMMAND: {cmd!r}\n")
+                    log.flush()
+                    proc = subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT,
+                                          env=env, timeout=args.timeout)
+            except subprocess.TimeoutExpired:
+                rec = dict(mixer=row, error=f"timeout after {args.timeout}s")
+                break
+            if proc.returncode == 0:
+                rec = json.loads(out_file.read_text())
+                if mb != args.microbatch_tokens:
+                    rec["microbatch_fallback"] = mb
+                break
+            log_text = log_file.read_text()
+            rec = dict(mixer=row, error=f"exit {proc.returncode} (see {log_file})")
+            if "out of memory" not in log_text.lower():
+                break
+        rec["attempted_microbatches"] = attempts
+        if "error" in rec:
+            rec.update(measurement_version=2, config=expected, baseline_tier=tier)
+        out_file.write_text(json.dumps(rec, indent=2, allow_nan=False))
         status = (f"mfu={rec['mfu']:.3f} tok/s={rec['throughput_tokens_s']:.0f} "
                   f"mem={rec['peak_memory_gib']:.1f}GiB" if "mfu" in rec
-                  else f"ERROR: {rec['error'][:80]}")
-        print(f"[upstream] {i}/{len(rows)} {row}: {status} ({dt:.0f}s)", flush=True)
+                  else f"ERROR: {rec['error'][:100]}")
+        print(f"[upstream] {i}/{len(rows)} {row}: {status} ({time.time()-t0:.0f}s)", flush=True)
         summary.append(rec)
-
-    (out_dir / "_summary.json").write_text(json.dumps(summary, indent=2))
-    n_ok = sum(1 for r in summary if "mfu" in r)
-    print(f"[upstream] done: {n_ok}/{len(summary)} rows ok", flush=True)
+    (out_dir / "_summary.json").write_text(json.dumps(summary, indent=2, allow_nan=False))
+    print(f"[upstream] done: {sum('mfu' in r for r in summary)}/{len(summary)} measured", flush=True)
 
 
 if __name__ == "__main__":

@@ -43,6 +43,7 @@ class MoMLayer(torch.nn.Module):
         self.head_v_dim = head_v_dim
         self.n_memories = n_memories
         self.topk = topk
+        self._dynamic_routing = True
         self.gate = torch.nn.Linear(hidden_size, n_memories, bias=False)  # router
         # Per-memory gated-delta mixers.
         self.memories = torch.nn.ModuleList([
@@ -62,7 +63,7 @@ class MoMLayer(torch.nn.Module):
 
         # Per-memory weight of (token t → memory e): sum of the top-k weights
         # whose selected memory is e. [B,T,E]; zero where e is not selected.
-        w_e_full = torch.zeros(B, T, self.n_memories, device=device)
+        w_e_full = topk_w.new_zeros(B, T, self.n_memories)
         w_e_full.scatter_add_(2, topk_idx, topk_w)              # scatter topk_w into memory slots
 
         # Each memory runs its U2.D mixer over ONLY the tokens routed to it, in
@@ -73,29 +74,29 @@ class MoMLayer(torch.nn.Module):
         # cu_seqlens varlen streams for the same reason. Outputs scatter back to
         # the routed token positions and merge by the routing weight.
         out = torch.zeros(B, T, self.hidden_size, device=device)
-        for e in range(self.n_memories):
-            routed = w_e_full[:, :, e] > 0                      # [B,T] tokens routed to e
-            if not routed.any():
+        routed_all = w_e_full > 0
+        # One small host transfer per layer chooses a common padded length.
+        # Padding follows every real causal stream and cannot affect its outputs.
+        # Keep empty experts skipped so their optimizer state remains untouched.
+        max_lengths = routed_all.sum(dim=1).amax(dim=0).tolist()
+        max_len = max(max_lengths)
+        positions = torch.arange(T, device=device).expand(B, T)
+        for e, length in enumerate(max_lengths):
+            if not length:
                 continue
-            # Pack each batch element's routed tokens (time-ordered, since t ascends).
-            lengths = routed.sum(dim=1)                          # [B]
-            max_len = int(lengths.max().item())
-            packed = hidden_states.new_zeros(B, max_len, self.hidden_size)
-            backpos = torch.zeros(B, max_len, dtype=torch.long, device=device)
-            for b in range(B):
-                pos = routed[b].nonzero(as_tuple=False).squeeze(-1)  # time-ordered positions
-                packed[b, : pos.numel()] = hidden_states[b, pos]
-                backpos[b, : pos.numel()] = pos
+            routed = routed_all[:, :, e]
+            # One batched pack/merge instead of a nonzero and .item() sync for
+            # every sequence. Sentinel positions sort after the causal stream.
+            backpos = positions.masked_fill(~routed, T).sort(dim=1).values[:, :max_len]
+            valid = backpos < T
+            backpos = backpos.clamp_max(T - 1)
+            gather = backpos[..., None].expand(B, max_len, self.hidden_size)
+            packed = hidden_states.gather(1, gather) * valid[..., None]
             o_packed = self.memories[e](packed)                  # [B, max_len, hidden]
             # Scatter each packed output back to its original token position,
             # weighted by the routing weight for that (token, memory) pair.
-            for b in range(B):
-                n = int(lengths[b].item())
-                if n == 0:
-                    continue
-                pos = backpos[b, :n]                             # original token positions
-                w_b = w_e_full[b, pos, e].unsqueeze(-1)          # [n,1]
-                out[b, pos] = out[b, pos] + o_packed[b, :n] * w_b
+            packed_weights = w_e_full[:, :, e].gather(1, backpos) * valid
+            out = out.scatter_add(1, gather, (o_packed * packed_weights[..., None]).to(out.dtype))
         return out
 
 

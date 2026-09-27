@@ -1,14 +1,7 @@
 {
   "mixer": "longformer",
-  "steps": 10,
-  "final_loss": 11.969881057739258,
-  "mfu": 0.23152323366718258,
-  "params": 102742272,
-  "checkpoint_aligned": false,
-  "kl_divergence": null,
-  "wallclock_s": 3.1294183710124344,
-  "throughput_tokens_s": 26177.38834756604,
-  "peak_memory_gib": 8.422237396240234,
+  "measurement_version": 2,
   "baseline_tier": "reference-implementation",
-  "granularity": "mixer"
+  "status": "production-unavailable",
+  "reason": "the pinned longformer sliding-chunk torch path (the TVM kernel needs Apache TVM, not installed)"
 }

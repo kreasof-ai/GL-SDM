@@ -1,1 +1,3 @@
-[upstream] 1 rows -> results_upstream
+
+COMMAND: ['/opt/conda/bin/python', '-m', 'train.upstream', '--rows', 'dense_attention', '--out-dir', 'results/upstream', '--steps', '10', '--layers', '9', '--width', '768', '--num-heads', '12', '--head-dim', '64', '--sequence-length', '512', '--batch-tokens', '8192', '--microbatch-tokens', '8192']
+[upstream] 1 rows -> results/upstream

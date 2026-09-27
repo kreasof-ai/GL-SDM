@@ -1,1 +1,15 @@
-[upstream] 1 rows -> results_upstream
+
+COMMAND: ['/opt/conda/bin/python', '-m', 'train.upstream', '--rows', 'bit_attention', '--out-dir', 'results/upstream', '--steps', '10', '--layers', '9', '--width', '768', '--num-heads', '12', '--head-dim', '64', '--sequence-length', '512', '--batch-tokens', '8192', '--microbatch-tokens', '8192']
+[upstream] 1 rows -> results/upstream
+/opt/conda/lib/python3.12/site-packages/torch/_dynamo/variables/functions.py:2762: UserWarning: Dynamo detected a call to a `functools.lru_cache`-wrapped function at 'fused_bitlinear.py:344'. Dynamo ignores the cache wrapper and directly traces the wrapped function. Silent incorrectness is only a *potential* risk, not something we have observed. Enable TORCH_LOGS=+dynamo for a DEBUG stack trace.
+
+This call originates from:
+  File "/tmp/urm-comparator-pins/fla/fla/modules/fused_bitlinear.py", line 344, in layer_norm_bwd
+    sm_count = get_multiprocessor_count(x.device.index)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  torch._dynamo.utils.warn_once(msg)
+/opt/conda/lib/python3.12/site-packages/torch/_dynamo/variables/functions.py:2604: UserWarning: Dynamo does not know how to trace the builtin `cuda_utils.get_device_properties.` This function is either a Python builtin (e.g. _warnings.warn) or a third-party C/C++ Python extension (perhaps created with pybind).
+If it is a Python builtin, please file an issue on GitHub so the PyTorch team can add support for it and see the next case for a workaround.
+If it is a third-party C/C++ Python extension, please either wrap it into a PyTorch-understood custom operator (see https://pytorch.org/tutorials/advanced/custom_ops_landing_page.html for more details) or, if it is traceable, use `torch.compiler.allow_in_graph`.
+  torch._dynamo.utils.warn_once(explanation + "\n" + "\n".join(hints))

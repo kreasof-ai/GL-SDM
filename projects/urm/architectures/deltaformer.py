@@ -46,8 +46,12 @@ def strict_tril_softmax(q, k):
     scores = torch.matmul(q.float(), k.float().transpose(-1, -2)) * (1.0 / math.sqrt(D))
     strict = torch.triu(torch.ones(T, T, device=q.device, dtype=torch.bool), diagonal=0)
     scores = scores.masked_fill(strict, float("-inf"))
+    # An all-masked softmax row has NaN derivatives even if nan_to_num repairs
+    # its forward value. Give the first row finite logits and mask it afterward.
+    scores = torch.where(torch.arange(T, device=q.device).view(1, 1, T, 1) == 0,
+                         torch.zeros_like(scores), scores)
     P = torch.softmax(scores, dim=-1)
-    return torch.nan_to_num(P, nan=0.0)
+    return P.masked_fill(strict, 0.0)
 
 
 def strict_causal_value_correction(q, k, v, beta):
@@ -140,15 +144,16 @@ class DeltaFormerLayer(torch.nn.Module):
         B, H, T, D = q.shape
         P = strict_tril_softmax(q, k)
         betaf = beta.float() if beta is not None else torch.ones(B, H, T, device=q.device)
-        return self._solve.execute(probs=P, beta=betaf, value=v.float())["u"]
+        from architectures.triangular_schedule import solve_in_blocks
+        return solve_in_blocks(self._solve, P, betaf, v.float(), "u")
 
     def forward(self, q, k, v, beta=None):
         """q/k/v [B,H,T,D] (head-first); beta [B,H,T] or None → output [B,H,T,D]."""
         u_hf = self.correct_values(q, k, v, beta)                    # stage 1 (UT solve) [B,H,T,D]
         out = self._attn.execute(                                    # stage 2 (K1) over [B,T,H,D]
-            query=q.transpose(1, 2).float(),
-            key=k.transpose(1, 2).float(),
-            u=u_hf.transpose(1, 2).float(),
+            query=q.transpose(1, 2),
+            key=k.transpose(1, 2),
+            u=u_hf.transpose(1, 2).to(q.dtype),
         )["output"]
         return out.transpose(1, 2)                                   # back to [B,H,T,D]
 
