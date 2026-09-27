@@ -1,0 +1,38 @@
+{
+  "checkpoint_step": 3,
+  "generated_shape": [
+    1,
+    8
+  ],
+  "reference": {
+    "arch_type": "gl_sdm",
+    "status": "passed",
+    "batch": 2,
+    "length": 65,
+    "logits_max_abs": 0.0,
+    "logits_relative_l2": 0.0,
+    "gradient_max_abs": 0.0,
+    "continuation_max_abs": 0.00766444206237793
+  },
+  "val_stream_prefix_ce": {
+    "65": 10.821079664963943,
+    "129": 10.822496517684108
+  },
+  "val_stream_prefix_tokens": {
+    "65": 65,
+    "129": 129
+  },
+  "needle_val_stream": {
+    "65": {
+      "ce": 10.82544469833374,
+      "acc": 0.0,
+      "trials": 2
+    },
+    "129": {
+      "ce": 10.82544469833374,
+      "acc": 0.0,
+      "trials": 2
+    }
+  },
+  "needle_absent_ce": 10.825443267822266
+}

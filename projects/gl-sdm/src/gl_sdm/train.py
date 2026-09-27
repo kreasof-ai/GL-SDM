@@ -62,13 +62,16 @@ def update(model, opts, inputs, targets, cfg):
     if inputs.shape[0] % mbs:
         raise ValueError("sequences per token batch must be divisible by mbs")
     total = 0.0
+    depths = []
     for i in range(0, inputs.shape[0], mbs):
         loss, reg, align = model(inputs[i:i + mbs], targets[i:i + mbs])
+        if model.cfg["arch_type"] == "gl_sdm":
+            depths.append(model.blocks[0].last_depth)
         if not torch.isfinite(loss):
             raise FloatingPointError("non-finite training loss")
         alpha = cfg.get("sigr_alpha", 0.0)
         # Keep ATMA's summed CE/backward scale identical across accumulation.
-        objective = (1 - alpha) * loss + alpha * reg + cfg.get("dist_align_loss_weight", 0.0) * align
+        objective = (1 - alpha) * loss + alpha * reg + cfg.get("auxiliary_loss_weight", cfg.get("dist_align_loss_weight", 0.0)) * align
         objective.backward()
         total += loss.detach().item()
     grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -77,6 +80,8 @@ def update(model, opts, inputs, targets, cfg):
     for opt in opts:
         opt.step()
     model.zero_grad(set_to_none=True)
+    if depths:
+        model.last_training_depth = torch.cat(depths).flatten()
     return total / targets.numel()
 
 
@@ -133,19 +138,21 @@ def run(cfg, device, directory, emit, resume=None, peak=None):
     curve = []
     interval = cfg.get("val_freq", max(1, min(125, steps // 4)))
     seconds, measured_tokens = 0.0, 0
+    measured_depth = []
     training_time = 0.0
     for step in range(start, steps + 1):
         if step == start or step == steps or step % interval == 0:
             val_loss = validate(model, cfg, device)
             row = {"step": step, "val_loss": val_loss, "wall_s": training_time}
             if measured_tokens:
-                row.update(utilization(model, measured_tokens, seconds, peak))
+                row.update(utilization(model, measured_tokens, seconds, peak, torch.cat(measured_depth) if measured_depth else None))
                 row["mfu"] = row["mfu_6nd_pct"]
                 row["step_ms"] = 1000 * seconds / (measured_tokens / cfg["batch_size"])
             curve.append(row)
             emit("VALIDATION_JSON", row)
             checkpoint.save(model, directory, opts, step, data_batches)
             seconds, measured_tokens = 0.0, 0
+            measured_depth = []
         if step == steps:
             break
         x, y = next(loader)
@@ -162,6 +169,8 @@ def run(cfg, device, directory, emit, resume=None, peak=None):
         if step > start:
             seconds += elapsed
             measured_tokens += y.numel()
+            if cfg["arch_type"] == "gl_sdm":
+                measured_depth.append(model.last_training_depth)
         emit("TRAIN_STEP_JSON", {"step": step + 1, "train_loss": train_loss, "seconds": elapsed})
     emit("ABLATION_CURVE_JSON", curve)
     if cfg.get("eval_after_train", False):

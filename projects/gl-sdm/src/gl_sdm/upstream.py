@@ -59,7 +59,9 @@ def sdm_layer():
 def metadata(arch):
     import torch
     info = {"torch": torch.__version__, "cuda": torch.version.cuda, "reference_fallback": False}
-    if arch != "transformer":
+    if arch == "gl_sdm":
+        info.update(implementation="project-owned PyTorch GL-SDM", transaction="one token", state_dtype="float32", optimized_kernel=False)
+    if arch in {"sdm", "gdn2"}:
         name = "sdm" if arch == "sdm" else "fla"
         info.update(repository=PINS[name][0], revision=PINS[name][1], source=str(source(name)))
     if arch == "sdm":

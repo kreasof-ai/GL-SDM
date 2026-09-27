@@ -17,12 +17,16 @@ def shard(path, vocab=128):
     path.write_bytes(header.tobytes() + tokens.tobytes())
 
 
-def test_data_training_resume_eval_and_generation(tmp_path):
+@pytest.mark.parametrize("architecture", ["transformer", "gl_sdm"])
+def test_data_training_resume_eval_and_generation(tmp_path, architecture):
     path = tmp_path / "tokens.bin"
     shard(path)
     cfg = {**config(), "run_id": "test", "train_data": str(path), "val_data": str(path),
            "seq_len": 16, "batch_size": 32, "mbs": 1, "num_chunks": 1,
            "max_steps": 3, "val_tokens": 32, "val_freq": 1, "eval_lengths": [16, 32], "num_eval_docs": 2}
+    if architecture == "gl_sdm":
+        cfg.update(arch_type="gl_sdm", num_hidden_layers=1, gl_reasoning="adaptive", gl_max_steps=3,
+                   gl_slots=16, gl_reads=2, gl_writes=2, auxiliary_loss_weight=0.001)
     generator = data_generator(str(path), 32, 16, "cpu")
     x, y = next(generator)
     assert torch.equal(x.flatten()[1:], y.flatten()[:-1])

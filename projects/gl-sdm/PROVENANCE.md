@@ -42,3 +42,22 @@ MFU is explicit 6ND with the sparse learned memory bank excluded from active N.
 No Transformer attention FLOP proxy is assigned to recurrent baselines. A10G
 uses 70 dense BF16 TFLOP/s. All parameter counts are also recorded. Equal-width
 configs are starting points, **not parameter-matched quality claims**.
+
+## GL-SDM
+
+`global_model.py` and `memory.py` implement this repository's proposed model;
+they do not wrap a baseline as GL-SDM. They reuse the ATMA model/head/block
+interfaces and MLP form, with a tied reasoner, product-key routes, one global
+learned FP32 bank, token-level frozen snapshots and weighted delta commits.
+The adaptive variant uses ACT's cumulative halt probabilities, remainder mass,
+weighted latent output and ponder cost. Fixed depth, final-only writes and
+write-every-step controls are configurable within GL-SDM.
+
+The PyTorch memory implementation uses stable address sorting, per-address
+segmented reduction and unique-address index updates. Its explicit oracle uses
+dense one-hot reads and writes. Snapshot identity and version are checked;
+memory and routing parameters are never changed during a forward transaction.
+Benchmark logs report actual reasoning depth and retain unique-parameter 6ND.
+Repeated tied-weight applications are not counted in that MFU estimate.
+This is a modeling and correctness implementation; optimized GL-SDM kernels
+and converged, resource-matched architecture comparisons remain future work.

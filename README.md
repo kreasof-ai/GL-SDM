@@ -24,7 +24,10 @@ experiments, and acceptance tests stay within their project directory.
 
 The [GL-SDM baseline suite](projects/gl-sdm/README.md#models-and-experiments)
 uses ordinary PyTorch SDPA, upstream CUDA SDM, and FLA GDN2, independently of URM.
-The planned GL-SDM architecture defines its own transactional memory operator;
+The [GL-SDM model](projects/gl-sdm/src/gl_sdm/global_model.py) has a tied reasoner,
+adaptive or fixed depth and one global memory bank with snapshot-and-commit
+writes. It uses the same experiment interfaces as the three baselines.
+GL-SDM defines its own [transactional memory operator](projects/gl-sdm/src/gl_sdm/memory.py);
 future compiler integration uses the frozen URM dependency. CSDM consumes the
 GL-SDM memory contract and the same URM dependency.
 URM source is maintained in its own repository.

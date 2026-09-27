@@ -22,9 +22,11 @@ def peak_flops(explicit=None):
     raise ValueError(f"specify --peak-tflops for GPU {name}")
 
 
-def utilization(model, tokens, seconds, peak):
+def utilization(model, tokens, seconds, peak, depth=None):
     counts = parameter_counts(model)
-    return {**counts, "tokens": tokens, "seconds": seconds, "tok_s": tokens / seconds,
+    reasoning = model.blocks[0].reasoning_metrics(depth) if model.cfg["arch_type"] == "gl_sdm" else {}
+    interpretation = {"mfu_interpretation": "unique-parameter 6ND; repeated applications of tied reasoner weights are not counted"} if reasoning else {}
+    return {**counts, **reasoning, **interpretation, "tokens": tokens, "seconds": seconds, "tok_s": tokens / seconds,
             "mfu_6nd_pct": None if peak is None else 100 * 6 * counts["active_params"] * tokens / seconds / peak,
             "peak_tflops": None if peak is None else peak / 1e12,
             "mfu_formula": "6 * active_params * tokens / seconds / peak_flops; excludes sparse learned memory bank and state work"}

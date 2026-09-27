@@ -6,7 +6,7 @@ import torch
 
 
 def main():
-    parser = argparse.ArgumentParser(description="ATMA-compatible Transformer, upstream CUDA SDM and FLA GDN2")
+    parser = argparse.ArgumentParser(description="GL-SDM and ATMA-compatible Transformer, upstream CUDA SDM and FLA GDN2 baselines")
     parser.add_argument("command", choices=("train", "infer", "eval", "verify", "benchmark"))
     parser.add_argument("--config", type=Path)
     parser.add_argument("--checkpoint", type=Path)

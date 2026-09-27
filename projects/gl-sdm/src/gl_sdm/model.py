@@ -76,7 +76,13 @@ class Model(nn.Module):
         if layers < 1 or dim % cfg["head_dim"]:
             raise ValueError("positive layer count and hidden_size divisible by head_dim required")
         self.embed = nn.Embedding(cfg["vocab_size"], dim)
-        self.blocks = nn.ModuleList(Block(cfg, i) for i in range(layers))
+        if cfg["arch_type"] == "gl_sdm":
+            from .global_model import GlobalMemoryBlock
+            if layers != 1:
+                raise ValueError("GL-SDM uses one tied block; set num_hidden_layers=1 and gl_max_steps for depth")
+            self.blocks = nn.ModuleList([GlobalMemoryBlock(cfg)])
+        else:
+            self.blocks = nn.ModuleList(Block(cfg, i) for i in range(layers))
         self.norm = RMSNorm(dim)
         self.proj = nn.Linear(dim, cfg["vocab_size"], bias=False)
         self.num_attn_layers = layers
@@ -101,6 +107,8 @@ class Model(nn.Module):
         return F.cross_entropy(logits.reshape(-1, logits.shape[-1]), targets.reshape(-1), reduction="sum"), reg, align
 
     def new_cache(self, batch_size):
+        if self.cfg["arch_type"] == "gl_sdm":
+            return [self.blocks[0].bank.new_cache(batch_size)]
         if self.cfg["arch_type"] == "gdn2":
             return FLACache()
         if self.cfg["arch_type"] == "transformer":

@@ -1,0 +1,10 @@
+{
+  "arch_type": "gl_sdm",
+  "status": "passed",
+  "batch": 2,
+  "length": 65,
+  "logits_max_abs": 0.0,
+  "logits_relative_l2": 0.0,
+  "gradient_max_abs": 0.0,
+  "continuation_max_abs": 0.00766444206237793
+}

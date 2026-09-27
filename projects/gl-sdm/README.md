@@ -10,14 +10,16 @@ quality-compute-capacity frontier?
 
 ## Models and experiments
 
+The proposed [GL-SDM model](src/gl_sdm/global_model.py) is registered as
+`arch_type: gl_sdm` and runs through the same training, inference, reference,
+evaluation and benchmark commands as its baselines.
+
 The baseline suite has exactly three models: a full Transformer using ordinary
 PyTorch and SDPA, Meta's upstream CUDA SDM, and FLA's GDN2. Every layer uses the
-chosen mixer. These baselines do not depend on URM. The future GL-SDM architecture
-and transactional memory operator are separate work; they are not implemented
-by calling the SDM baseline "global".
+chosen mixer. Neither GL-SDM nor these baselines depends on URM.
 
 Models follow ATMA's `embed`, `blocks`, `norm`, `proj` structure.
-`model(inputs, targets)` returns summed CE, regularization loss and alignment
+`model(inputs, targets)` returns summed CE, regularization loss and an auxiliary
 loss; each block returns hidden states and the two auxiliary losses. ATMA-style
 evaluation can traverse the blocks directly. Checkpoints contain `config.json`,
 `run_config.json`, `weights.pt` with a `model` state dict, and tokenizer metadata.
@@ -47,17 +49,18 @@ header followed by uint16/uint32 tokens. All commands run from the repo root:
 ```bash
 python -m pytest -q projects/gl-sdm/tests
 gl-sdm verify --config projects/gl-sdm/configs/sdm_smoke.json
-gl-sdm train --config projects/gl-sdm/configs/sdm.json \
-  --output projects/gl-sdm/checkpoints/sdm --log projects/gl-sdm/runs/sdm.log
-gl-sdm infer --checkpoint projects/gl-sdm/checkpoints/sdm \
+gl-sdm verify --config projects/gl-sdm/configs/gl_sdm_smoke.json
+gl-sdm train --config projects/gl-sdm/configs/gl_sdm.json \
+  --output projects/gl-sdm/checkpoints/gl_sdm --log projects/gl-sdm/runs/gl_sdm.log
+gl-sdm infer --checkpoint projects/gl-sdm/checkpoints/gl_sdm \
   --prompt 'The research question is' --tokens 64
-gl-sdm eval --checkpoint projects/gl-sdm/checkpoints/sdm \
-  --output projects/gl-sdm/results/sdm_eval.json
-gl-sdm benchmark --config projects/gl-sdm/configs/sdm.json \
-  --output projects/gl-sdm/results/sdm_benchmark.json
+gl-sdm eval --checkpoint projects/gl-sdm/checkpoints/gl_sdm \
+  --output projects/gl-sdm/results/gl_sdm_eval.json
+gl-sdm benchmark --config projects/gl-sdm/configs/gl_sdm.json \
+  --output projects/gl-sdm/results/gl_sdm_benchmark.json
 ```
 
-Replace `sdm` with `transformer` or `gdn2` for the other baselines. Add
+Replace `gl_sdm` with `transformer`, `sdm` or `gdn2` for the baselines. Add
 `--checkpoint <directory>` to `train` to resume with the same config. Use the
 `*_smoke.json` configs for short integration runs. Training configs use AdamW
 by default; `optimizer: atma_muon` selects ATMA's optimizer arrangement, keeping
@@ -91,6 +94,49 @@ with a 5% bound rather than claiming bitwise equivalence. References are explici
 test modes and never selected by production runners.
 
 [Smoke results](results/report.md) record the checked paths and their limits.
+
+## GL-SDM model
+
+GL-SDM has one learned memory bank, partitioned into heads, and one reasoner
+whose projections, normalization and MLP weights are reused at every reasoning
+step. It processes tokens in causal order. All steps for a token read the same
+FP32 snapshot. Product-key addressing selects sparse read/write slots; the
+reasoner conditions on both the current token and retrieved memory values.
+
+Writes are delta proposals computed against that snapshot. The default
+`gl_write_policy: merged` combines them with weights summing to one and commits
+once at the token boundary. Duplicate addresses use stable ordering and a sum
+within each address before a unique-address update. A commit returns a new
+version and preserves the previous snapshot; stale or unrelated buffers are
+rejected. Requests have independent states initialized from the same learned
+bank. Routing parameters change at optimizer boundaries, not during a token's
+transaction. The [memory API](src/gl_sdm/memory.py) is project-owned and reusable
+by CSDM.
+
+`gl_reasoning: adaptive` uses ACT halting, a weighted latent output, and a
+maximum `gl_max_steps`. Finished requests leave subsequent reasoner calls.
+The third training loss is the summed ACT ponder cost, weighted explicitly by
+`auxiliary_loss_weight`. Logs report mean, 95th percentile and maximum executed
+depth. [The fixed-depth config](configs/gl_sdm_fixed.json) uses the same tied
+reasoner and bank, with exactly `gl_max_steps` calls and no halting head.
+
+`gl_write_policy: final` commits only the final step's proposal. `every_step`
+applies each weighted proposal immediately and lets later steps read it. These
+are write-timing controls within GL-SDM, alongside the three external baselines.
+The token boundary keeps results independent of how prefill is split into
+chunks; the entire token/reasoning loop lives inside one ATMA-compatible block.
+
+This is the initial PyTorch model and transaction implementation. Its token
+loop, routing and memory commits are not yet fused or tuned for large-model
+throughput. The configs and smoke comparisons establish working modeling and
+correctness, not a quality or performance advantage. Adaptive halting has not
+been validated on converged training. Memory capacity, active parameters and
+compute must be matched for the architecture study.
+
+The reported 6ND uses unique active parameters. For GL-SDM it excludes repeated
+applications of tied weights, so it is not a complete estimate of its executed
+FLOPs. Use measured tokens/s and recorded reasoning depth alongside it; no depth
+multiplier is used to inflate the reported MFU.
 
 ## URM boundary
 
