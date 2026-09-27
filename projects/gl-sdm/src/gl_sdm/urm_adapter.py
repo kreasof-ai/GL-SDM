@@ -50,3 +50,42 @@ def snapshot_read(values, addresses, weights):
             weights = weights.clone()
         return plan.execute(memory=flat, read_addresses=addresses.view(1, queries, width),
                             read_weights=weights.view(1, queries, width))["readings"].view(*weights.shape[:-1], dim)
+
+
+@lru_cache(maxsize=128)
+def routed_read_plan(partitions, sequence, slots, dim, width):
+    """Compose the public route and read operations, including URM backward."""
+    verify_dependency()
+    from urm.compiler.pipeline import CompilationIntent, compile_graph
+    from urm.ir.program import (DType, TensorHandle, SemanticProgram,
+        SparseRouteGeneration, SparseRouteSelectionSpec, SparseStateMixerAccess,
+        SparseStateMixerSpec, SparseStateOperation, SparseReadTiming, SparseStateExecutionMode)
+    route = SparseRouteSelectionSpec(partitions, sequence, slots, width, DType.FLOAT32)
+    read = SparseStateMixerSpec(partitions, sequence, slots, dim, 0, width,
+        DType.FLOAT32, SparseStateOperation.READ_ONLY, SparseReadTiming.CURRENT_STATE,
+        SparseStateExecutionMode.TRAINING)
+    program = SemanticProgram.build(name="gl_sdm_routed_snapshot_read", inputs=(
+        TensorHandle("scores", DType.FLOAT32, (partitions, sequence, route.score_width)),
+        TensorHandle("memory", DType.FLOAT32, (partitions, slots, dim))), ops=(
+        SparseRouteGeneration(name="router", inputs=("scores",),
+            outputs=("read_addresses", "read_weights"), spec=route),
+        SparseStateMixerAccess(name="snapshot", inputs=("read_addresses", "read_weights", "memory"),
+            outputs=("readings", "updated_memory"), spec=read)),
+        outputs=("readings", "read_addresses", "read_weights"))
+    return compile_graph(program, target="native", intent=CompilationIntent.TRAINING)
+
+
+def routed_snapshot_read(values, scores, width):
+    import torch
+    B, H, S, D = values.shape
+    T = scores.shape[1]
+    plan = routed_read_plan(B * H, T, S, D, width)
+    grad_enabled = torch.is_grad_enabled()
+    with torch.inference_mode(False), torch.set_grad_enabled(grad_enabled):
+        memory = values.reshape(B * H, S, D)
+        scores = scores.permute(0, 2, 1, 3).contiguous().reshape(B * H, T, -1)
+        # Equal signed zeros must have the same logical tie rank.
+        scores = scores + 0.0
+        result = plan.execute(memory=memory, scores=scores)
+        return tuple(result[name].reshape(B, H, T, -1).transpose(1, 2)
+                     for name in ("readings", "read_addresses", "read_weights"))

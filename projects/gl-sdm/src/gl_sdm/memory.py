@@ -1,6 +1,6 @@
 """Project-owned versioned sparse memory; all updates are functional.
 
-A transaction is one token. Reads/proposals share its frozen view; weighted
+A transaction is one token or chunk. Reads/proposals share its frozen view; weighted
 row deltas are merged in proposal order and committed once. Duplicate addresses
 use stable sorting and segmented sums, followed by unique-address index_copy.
 There are no atomic scatter additions in the forward commit.
@@ -28,6 +28,7 @@ class WriteProposal:
     addresses: torch.Tensor  # flattened request/head/slot addresses
     deltas: torch.Tensor     # [entries, value_dim], already weighted
     lineage: object
+    sort_keys: torch.Tensor | None = None  # optional address/token/depth order
 
 
 @dataclass(frozen=True)
@@ -42,6 +43,8 @@ class MemoryCache:
     view: MemoryView
     owner: object
     tokens: int = 0
+    pending: tuple[WriteProposal, ...] = ()
+    local: dict = field(default_factory=dict)
 
 
 def addresses(view, requests, indices):
@@ -108,16 +111,20 @@ def commit(view, buffer, reference=False, backend="torch"):
     flat = view.values.flatten(0, 2)
     idx = torch.cat([p.addresses for p in buffer.proposals])
     delta = torch.cat([p.deltas for p in buffer.proposals]).float()
+    keyed = [p.sort_keys is not None for p in buffer.proposals]
+    if any(keyed) and not all(keyed):
+        raise ValueError("cannot mix keyed and unkeyed proposals")
+    keys = torch.cat([p.sort_keys for p in buffer.proposals]) if all(keyed) else idx
     if backend == "urm" and not reference:
         from .kernels import commit as native_commit
-        updated = native_commit(view.values, idx, delta)
+        updated = native_commit(view.values, idx, delta, keys)
         return MemoryView(updated, view.version + 1, view.lineage)
     if reference:
         # Independent dense reduction, including cross-step address collisions.
         update = F.one_hot(idx.long(), flat.shape[0]).float().T @ delta
         updated = flat + update
     else:
-        order = idx.argsort(stable=True)
+        order = keys.argsort(stable=True)
         idx, delta = idx[order], delta[order]
         unique, lengths = idx.unique_consecutive(return_counts=True)
         # Sum within each address. Subtracting a global cumulative sum would

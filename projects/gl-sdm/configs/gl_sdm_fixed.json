@@ -7,7 +7,7 @@
   "num_hidden_layers": 1,
   "dtype": "bfloat16",
   "tokenizer_name": "gpt2",
-  "seq_len": 512,
+  "seq_len": 2048,
   "batch_size": 8192,
   "mbs": 4,
   "num_chunks": 1,
@@ -54,5 +54,8 @@
   "gl_halt_epsilon": 0.01,
   "gl_halt_bias": -2.0,
   "auxiliary_loss_weight": 0.0,
-  "gl_memory_backend": "urm"
+  "gl_memory_backend": "urm",
+  "gl_chunk_size": 1024,
+  "gl_compile": true,
+  "gl_cuda_graph": true
 }

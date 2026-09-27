@@ -63,22 +63,35 @@ def metadata(arch, cfg=None):
         backend = (cfg or {}).get("gl_memory_backend", "torch")
         info.update(implementation="GL-SDM transaction kernels + frozen URM" if backend == "urm" else "project-owned PyTorch GL-SDM",
                     memory_backend=backend, transaction="one token", state_dtype="float32", optimized_kernel=backend == "urm")
+        chunk = (cfg or {}).get("gl_chunk_size", 1)
+        info["dense_compilation"] = (cfg or {}).get("gl_compile", False)
+        info["training_cuda_graph"] = (cfg or {}).get("gl_cuda_graph", False)
+        if chunk > 1:
+            info.update(transaction=f"one commit per {chunk} tokens", local_context="causal SDPA within chunk",
+                        write_mass="per-token reasoning mass divided by chunk size", routing="highest-address ties")
         digest = hashlib.sha256()
         for path in sorted(Path(__file__).parent.glob("*.py")):
             digest.update(path.name.encode())
             digest.update(path.read_bytes())
         info["source_sha256"] = digest.hexdigest()
         if backend == "urm":
-            from .urm_adapter import verify_dependency, read_plan
+            from .urm_adapter import verify_dependency, read_plan, routed_read_plan
             info["urm"] = verify_dependency()
             if cfg and "hidden_size" in cfg:
                 heads = cfg["hidden_size"] // cfg["head_dim"]
                 queries = cfg["mbs"] * heads
-                info["initial_batch_read_plan"] = read_plan(queries * cfg.get("gl_slots", 1024), queries,
-                                                            cfg["head_dim"], cfg.get("gl_reads", 8)).serialized_plan()
-            info["routing"] = "GL-SDM stable product-key top-k; smaller address wins ties"
+                if chunk > 1:
+                    physical_dim = 128 if cfg["head_dim"] == 64 else cfg["head_dim"]
+                    info["logical_value_dim"] = cfg["head_dim"]
+                    info["physical_read_value_dim"] = physical_dim
+                    info["initial_batch_read_plan"] = routed_read_plan(queries, min(chunk, cfg["seq_len"]),
+                        cfg.get("gl_slots", 1024), physical_dim, cfg.get("gl_reads", 8)).serialized_plan()
+                else:
+                    info["initial_batch_read_plan"] = read_plan(queries * cfg.get("gl_slots", 1024), queries,
+                        cfg["head_dim"], cfg.get("gl_reads", 8)).serialized_plan()
+            info["routing"] = "URM product-key top-k; highest address wins ties" if chunk > 1 else "GL-SDM stable product-key top-k; smaller address wins ties"
             info["commit"] = "stable ordered sum per address; no forward atomics"
-            info["backward_storage"] = "selected rows; full bank versions are not saved"
+            info["backward_storage"] = "URM saves one aliased snapshot per chunk; selected write rows" if chunk > 1 else "selected rows; full bank versions are not saved"
     if arch in {"sdm", "gdn2"}:
         name = "sdm" if arch == "sdm" else "fla"
         info.update(repository=PINS[name][0], revision=PINS[name][1], source=str(source(name)))

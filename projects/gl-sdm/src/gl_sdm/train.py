@@ -58,6 +58,11 @@ def schedule(opts, cfg, step, steps):
 
 
 def update(model, opts, inputs, targets, cfg):
+    if cfg.get("gl_cuda_graph", False):
+        from .training_graph import TrainingGraph
+        if not hasattr(model, "_training_graph"):
+            model._training_graph = TrainingGraph(model, inputs, targets, cfg)
+        return model._training_graph.update(opts, inputs, targets)
     mbs = cfg["mbs"]
     if inputs.shape[0] % mbs:
         raise ValueError("sequences per token batch must be divisible by mbs")

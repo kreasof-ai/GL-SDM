@@ -28,8 +28,9 @@ The [GL-SDM model](projects/gl-sdm/src/gl_sdm/global_model.py) has a tied reason
 adaptive or fixed depth and one global memory bank with snapshot-and-commit
 writes. It uses the same experiment interfaces as the three baselines.
 GL-SDM defines its own [transactional memory operator](projects/gl-sdm/src/gl_sdm/memory.py);
-its native path compiles snapshot reads with frozen URM and implements routing,
-proposals and deterministic commits inside GL-SDM. CSDM consumes the GL-SDM
+its chunk path compiles routing and snapshot reads, including backward, with
+frozen URM. PyTorch compiles the tied reasoner and proposal arithmetic; GL-SDM
+owns deterministic buffered commits. Token transactions remain a control. CSDM consumes the GL-SDM
 memory contract and the same URM dependency.
 URM source is maintained in its own repository.
 

@@ -16,9 +16,9 @@ evaluation and benchmark commands as its baselines.
 
 The baseline suite has exactly three models: a full Transformer using ordinary
 PyTorch and SDPA, Meta's upstream CUDA SDM, and FLA's GDN2. Every layer uses the
-chosen mixer. These baselines have no URM calls. GL-SDM's native memory path
-uses the frozen URM compiler for snapshot reads and project-owned CUDA kernels
-for stable routing, write proposals and transaction commits.
+chosen mixer. These baselines have no URM calls. GL-SDM's chunk path uses frozen URM for routing and snapshot reads, including
+backward. PyTorch compiles the dense reasoner and write arithmetic; the project
+owns ordered sparse commits.
 
 Models follow ATMA's `embed`, `blocks`, `norm`, `proj` structure.
 `model(inputs, targets)` returns summed CE, regularization loss and an auxiliary
@@ -90,100 +90,106 @@ quality comparisons. The runner records total, active and memory parameters.
 
 Reference checks compare outputs and every parameter gradient, verify causality,
 split-prefill/decode continuation, request reset and strict checkpoint reload.
+Chunk GL-SDM shares production SDPA in its BF16 memory reference, keeps the
+existing output/gradient limits, and independently checks dense attention and
+continuation in FP32. BF16 split continuation has a separate 1% relative L2
+bound: changing GEMM/SDPA shapes can change a discrete route even with the
+PyTorch memory control. Measured drift is recorded.
 The BF16 SDM check also runs FP32: chunked and sequential BF16 rounding can
 change later top-k routes, so its end-to-end check records relative L2 drift
 with a 5% bound rather than claiming bitwise equivalence. References are explicit
 test modes and never selected by production runners.
 
-[Smoke results](results/report.md) record the checked paths and their limits.
+[Kernel results](results/report.md) record the checked paths and their limits.
+The optimized four-step configuration reaches the 40% MFU target; eight steps
+does not. Large-bank whole-model reference gates still fail despite passing
+read-operand checks. Keep that precision limitation separate from throughput.
 
 ## GL-SDM model
 
-GL-SDM has one learned memory bank, partitioned into heads, and one reasoner
-whose projections, normalization and MLP weights are reused at every reasoning
-step. It processes tokens in causal order. All steps for a token read the same
-FP32 snapshot. Product-key addressing selects sparse read/write slots; the
-reasoner conditions on both the current token and retrieved memory values.
+GL-SDM has one learned FP32 memory bank, partitioned into heads, and one tied
+reasoner. `gl_max_steps` controls fixed reasoning depth or the maximum ACT depth.
+ACT removes finished tokens from later dense reasoner calls and returns a
+weighted latent output plus a summed ponder loss. The runner weights that loss
+with `auxiliary_loss_weight` and records actual depth.
 
-Writes are delta proposals computed against that snapshot. The default
-`gl_write_policy: merged` combines them with weights summing to one and commits
-once at the token boundary. Duplicate addresses use stable ordering and a sum
-within each address before a unique-address update. A commit returns a new
-version and preserves the previous snapshot; stale or unrelated buffers are
-rejected. Requests have independent states initialized from the same learned
-bank. Routing parameters change at optimizer boundaries, not during a token's
-transaction. The [memory API](src/gl_sdm/memory.py) is project-owned and reusable
-by CSDM.
+`gl_chunk_size` chooses when writes become visible. The main configs now use
+one transaction per chunk; `gl_sdm_token*` retains the per-token control. In
+chunk transactions, tokens reason in parallel against the chunk-start snapshot, then
+commit together at its absolute boundary. A causal SDPA surround runs once per
+chunk to supply within-chunk context. Its KV cache holds only the unfinished
+chunk and resets at commit. Chunking changes the model's write clock; it is an
+explicit architecture choice, not equivalent to the token control.
 
-`gl_reasoning: adaptive` uses ACT halting, a weighted latent output, and a
-maximum `gl_max_steps`. Finished requests leave subsequent reasoner calls.
-The third training loss is the summed ACT ponder cost, weighted explicitly by
-`auxiliary_loss_weight`. Logs report mean, 95th percentile and maximum executed
-depth. [The fixed-depth config](configs/gl_sdm_fixed.json) uses the same tied
-reasoner and bank, with exactly `gl_max_steps` calls and no halting head.
+Each proposal computes a sparse delta against the frozen snapshot. Merged
+writes have reasoning weights summing to one per token, divided by the fixed
+chunk size. `final` selects the last reasoning proposal with weight 1/chunk_size.
+`every_step` is available only for token transactions: exposing other tokens'
+writes during chunk reasoning would violate causality. Commits sum collisions
+in canonical address/token/depth order, return a new version and preserve the
+previous snapshot. Stale or unrelated buffers are rejected. Requests maintain
+independent states initialized from the same learned bank. The
+[memory API](src/gl_sdm/memory.py) remains reusable by CSDM.
 
-`gl_write_policy: final` commits only the final step's proposal. `every_step`
-applies each weighted proposal immediately and lets later steps read it. These
-are write-timing controls within GL-SDM, alongside the three external baselines.
-The token boundary keeps results independent of how prefill is split into
-chunks; the entire token/reasoning loop lives inside one ATMA-compatible block.
+Prefill and decode use the same absolute chunk boundaries. An unfinished chunk
+retains its snapshot, sparse proposals and local KV tensors across calls. Future
+tokens cannot affect earlier outputs. When training has no outgoing-state
+consumer, the final chunk omits unused writes; all preceding writes and their
+gradients remain connected.
 
-The supplied GL-SDM configs select `gl_memory_backend: urm`. Native memory
-operations execute on CUDA; missing dependencies or unsupported inputs fail.
-The explicit `torch` backend supports CPU execution and supplies a performance
-control. Older checkpoints without this field retain the PyTorch backend.
-The dense reasoner and causal token/ACT controller still run through PyTorch;
-this is not a fully fused decoder or serving engine.
-The configs and smoke comparisons establish working modeling and
-correctness, not a quality or performance advantage. Adaptive halting has not
-been validated on converged training. Memory capacity, active parameters and
-compute must be matched for the architecture study.
+## URM integration and optimization
 
-The reported 6ND uses unique active parameters. For GL-SDM it excludes repeated
-applications of tied weights, so it is not a complete estimate of its executed
-FLOPs. Use measured tokens/s and recorded reasoning depth alongside it; no depth
-multiplier is used to inflate the reported MFU.
+The chunk path composes URM's public product-key route and read operations into
+one native graph. Both operators and their backwards execute in frozen URM;
+ties choose the highest address, with selected addresses in ascending order.
+Token controls retain their earlier smaller-address tie rule and project read
+backward. These are explicit differences between configurations.
 
-## URM boundary
+URM remains pinned by [shared/requirements-urm.txt](../../shared/requirements-urm.txt).
+The adapter checks the installed package's exact Git origin and revision. It
+pads width-64 read values with zero channels to width 128: this selects URM's
+existing vector schedule instead of its four-value gradient fragments. Returned
+values and bank capacity retain their logical width. Runtime metadata records
+both widths and the actual compiled plan. No URM source or pin is changed.
 
-[URM](https://github.com/kreasof-ai/urm) remains frozen at the revision in
-[shared/requirements-urm.txt](../../shared/requirements-urm.txt). The adapter
-checks the installed package's exact Git revision and compiles its public
-read-only sparse-state graph. Requests/heads have disjoint address ranges;
-adaptive request removal does not copy the whole bank. This project does not
-carry or modify URM source. The three baselines remain independent of URM.
+Fixed-depth writes are projected and routed together after reasoning finishes,
+since all their proposals use the same snapshot. `gl_compile: true` fuses dense
+reasoner, proposal and vocabulary-loss arithmetic through PyTorch, preserving
+BF16 rounding casts. `gl_cuda_graph: true` additionally captures fixed-depth
+forward/backward at a fixed batch shape. Gradient clipping, optimizer updates,
+data copies and finite checks remain in the measured training step. ACT uses
+the regular runner because its active token count varies.
 
-The project's kernels preserve smaller-address tie-breaking and accumulate
-colliding proposals in stable proposal order, without forward atomics. Reads
-and proposals save selected rows for backward rather than full bank versions;
-initial-memory, routing, target, decay, beta and ACT-mass gradients remain
-connected. Accurate FP32 exponentials prevent approximate math from changing
-later BF16 routes. Fixed depth avoids unnecessary request-selection GPU
-synchronizations; adaptive depth still removes finished requests.
+The project still owns sparse commit: frozen URM has no executable lowering for
+buffered versioned sparse transactions. The three baselines have no URM calls.
+Unsupported native workloads fail; reference execution is an explicit test mode.
 
-Native read inputs are contiguous, normalized routes with ascending unique
-local slots and distinct request IDs. The router guarantees these conditions;
-the adapter performs structural checks without scanning GPU route values.
-Version/lineage checks remain in the public memory API for CSDM reuse.
-
-Compare the two GL-SDM implementations with the same model and workload:
+The optimized configs keep width 512, vocabulary 50,304, 4,096 slots/head and
+eight read/write routes. They use length 2,048, 8,192 tokens/update and microbatch
+4. [Four steps](configs/gl_sdm_chunk_r4.json) and
+[eight steps](configs/gl_sdm_chunk_r8.json) are separate depth controls; their
+performance must be reported separately. The `gl_sdm_token*` configs retain the earlier token controls.
+No depth multiplier or memory-state FLOPs are added to unique-parameter 6ND.
+The four-step PyTorch/URM control pair disables CUDA graphs for both; reproduce
+it with `scripts/benchmark_chunk_controls.py --output-dir projects/gl-sdm/results`.
+See [results](results/report.md) for measured performance and limitations.
 
 ```bash
-gl-sdm verify --config projects/gl-sdm/configs/gl_sdm_smoke.json
-gl-sdm benchmark --config projects/gl-sdm/configs/gl_sdm_smoke.json \
-  --memory-backend torch --warmup 2 --iterations 5
-gl-sdm benchmark --config projects/gl-sdm/configs/gl_sdm_smoke.json \
-  --memory-backend urm --warmup 2 --iterations 5
-python projects/gl-sdm/scripts/benchmark_memory.py \
-  --output projects/gl-sdm/results/gl_sdm_memory_benchmark.json
+gl-sdm verify --config projects/gl-sdm/configs/gl_sdm_chunk_smoke.json
+gl-sdm train --config projects/gl-sdm/configs/gl_sdm_chunk_r4.json \
+  --output projects/gl-sdm/checkpoints/gl_sdm_chunk_r4
+gl-sdm benchmark --config projects/gl-sdm/configs/gl_sdm_chunk_r4.json \
+  --warmup 10 --iterations 20 \
+  --output projects/gl-sdm/results/gl_sdm_chunk_r4_benchmark.json
 ```
 
-Use `gl_sdm_fixed_smoke.json` for the fixed-depth pair. Run GPU measurements
-alone. The memory script checks all operand gradients and times one transaction
-with eight colliding proposals at 4,096 slots/head, eight heads and width 64.
-Its timings exclude model projections and the optimizer and have no MFU claim.
-Whole-model results include the optimizer, report actual depth, and record
-step-end allocation to distinguish peak workspace from retained state.
+Use `gl_sdm_chunk_r8.json` for the original eight-step depth. A reference check
+must span a commit boundary to exercise write gradients; `verify` defaults to
+at least chunk_size+1 tokens, or accepts `--length`. Small fixtures independently
+check dense memory equations. Full chunk-model checks use vectorized PyTorch
+routing/gather and segmented commits, with independent dense causal attention
+in FP32, avoiding enormous
+one-hot matrices. Converged quality and learned adaptive depth remain unproven.
 
 ## This project owns
 

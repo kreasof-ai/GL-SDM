@@ -1,5 +1,5 @@
 {
-  "run_id": "gl_sdm",
+  "run_id": "gl_sdm_token_fixed",
   "arch_type": "gl_sdm",
   "vocab_size": 50304,
   "hidden_size": 512,
@@ -7,7 +7,7 @@
   "num_hidden_layers": 1,
   "dtype": "bfloat16",
   "tokenizer_name": "gpt2",
-  "seq_len": 2048,
+  "seq_len": 512,
   "batch_size": 8192,
   "mbs": 4,
   "num_chunks": 1,
@@ -45,7 +45,7 @@
   "needle_val_len": 5,
   "eval_seed": 1234,
   "eval_after_train": false,
-  "gl_reasoning": "adaptive",
+  "gl_reasoning": "fixed",
   "gl_max_steps": 8,
   "gl_slots": 4096,
   "gl_reads": 8,
@@ -53,8 +53,6 @@
   "gl_write_policy": "merged",
   "gl_halt_epsilon": 0.01,
   "gl_halt_bias": -2.0,
-  "auxiliary_loss_weight": 0.001,
-  "gl_memory_backend": "urm",
-  "gl_chunk_size": 1024,
-  "gl_compile": true
+  "auxiliary_loss_weight": 0.0,
+  "gl_memory_backend": "urm"
 }

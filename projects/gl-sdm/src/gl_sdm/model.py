@@ -6,6 +6,17 @@ from torch import nn
 import torch.nn.functional as F
 from .mixers import make_mixer
 from .regularization import sigreg
+from .compilation import compiled
+
+
+def _head_loss(x, targets, norm, weight):
+    x = F.rms_norm(x, (x.shape[-1],), norm, eps=1e-6)
+    logits = F.linear(x, weight).float()
+    logits = 15 * logits * (logits.square() + 225).rsqrt()
+    return F.cross_entropy(logits.flatten(0, 1), targets.flatten(), reduction="sum")
+
+
+_compiled_head_loss = compiled(_head_loss)
 
 
 class RMSNorm(nn.Module):
@@ -103,6 +114,8 @@ class Model(nn.Module):
 
     def forward(self, inputs, targets):
         x, reg, align = self.hidden(inputs)
+        if self.cfg["arch_type"] == "gl_sdm" and self.cfg.get("gl_compile", False) and x.is_cuda and not self.blocks[0].attn.reference:
+            return _compiled_head_loss(x, targets, self.norm.weight, self.proj.weight), reg, align
         logits = self.head(x)
         return F.cross_entropy(logits.reshape(-1, logits.shape[-1]), targets.reshape(-1), reduction="sum"), reg, align
 
@@ -141,10 +154,17 @@ class Model(nn.Module):
             try:
                 for block in self.blocks:
                     block.attn.reference = True
+                    if hasattr(block, "local_context"):
+                        # BF16 memory integration shares its SDPA surround;
+                        # discrete routes amplify tiny dense-vs-flash rounding.
+                        # FP32 checks independently exercise dense attention.
+                        block.local_context.reference = self.cfg.get("dtype") == "float32"
                 yield
             finally:
                 for block in self.blocks:
                     block.attn.reference = False
+                    if hasattr(block, "local_context"):
+                        block.local_context.reference = False
 
 
 def create_model(cfg):

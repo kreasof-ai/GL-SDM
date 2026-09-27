@@ -50,5 +50,8 @@
   "gl_halt_epsilon": 0.01,
   "gl_halt_bias": -2.0,
   "auxiliary_loss_weight": 0.0,
-  "gl_memory_backend": "urm"
+  "gl_memory_backend": "urm",
+  "gl_chunk_size": 16,
+  "gl_compile": true,
+  "gl_cuda_graph": true
 }

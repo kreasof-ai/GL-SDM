@@ -30,6 +30,16 @@ def compare_bf16_sdm(actual, expected, label):
 
 def check(cfg, device="cuda", length=65):
     if cfg["arch_type"] == "gl_sdm" and cfg.get("gl_memory_backend", "torch") == "urm":
+        if cfg.get("gl_chunk_size", 1) > 1:
+            from . import urm_adapter, kernels
+            name = "routed_snapshot_read"
+            with patch.object(urm_adapter, name, wraps=getattr(urm_adapter, name)) as reads, patch.object(kernels, "commit", wraps=kernels.commit) as commits:
+                result = _check(cfg, device, length)
+                if not reads.call_count or not commits.call_count:
+                    raise AssertionError("chunk check must execute URM route/read and native commit")
+                result["native_calls"] = {"urm_route_read": reads.call_count, "commit": commits.call_count}
+                result["memory_backend"] = "urm"
+                return result
         from . import kernels
         with ExitStack() as stack:
             observed = {name: stack.enter_context(patch.object(kernels, name, wraps=getattr(kernels, name)))
@@ -66,6 +76,7 @@ def _check(cfg, device="cuda", length=65):
         rh, _, _ = oracle.hidden(x)
         expected = oracle.head(rh)
     bf16_sdm = cfg["arch_type"] == "sdm" and cfg.get("dtype") == "bfloat16"
+    bf16_chunk = cfg["arch_type"] == "gl_sdm" and cfg.get("gl_chunk_size", 1) > 1 and cfg.get("dtype") == "bfloat16"
     errors = {}
     if bf16_sdm:
         errors["logits_max_abs"], errors["logits_relative_l2"] = compare_bf16_sdm(logits, expected, "reference logits")
@@ -96,6 +107,17 @@ def _check(cfg, device="cuda", length=65):
         continued = torch.cat((first, second, third, fourth), 1)
         if bf16_sdm:
             errors["continuation_max_abs"], errors["continuation_relative_l2"] = compare_bf16_sdm(continued, full, "prefill/decode continuation")
+        elif bf16_chunk:
+            # Changing GEMM/SDPA batch shapes can change a BF16 route even with
+            # the pure PyTorch backend. Bound this separately and independently
+            # require strict FP32 continuation below; output/gradient reference
+            # limits are unchanged.
+            delta = continued.float() - full.float()
+            relative = delta.norm() / full.float().norm().clamp_min(1e-12)
+            if not torch.isfinite(relative) or relative > 0.01:
+                raise AssertionError(f"BF16 chunk continuation relative L2 {relative.item():.6f} exceeds 1%")
+            errors["continuation_max_abs"] = delta.abs().max().item()
+            errors["continuation_relative_l2"] = relative.item()
         else:
             errors["continuation_max_abs"] = compare(continued, full, "prefill/decode continuation", atol=1e-4 if cfg.get("dtype") == "float32" else 0.05, rtol=0.003 if cfg.get("dtype") == "float32" else 0.05)
         fresh, _ = model.prefill(x)
@@ -128,4 +150,7 @@ def _check(cfg, device="cuda", length=65):
         fp32_cfg = {**cfg, "dtype": "float32"}
         errors["fp32_check"] = check(fp32_cfg, device, length)
         errors["bf16_note"] = "5% relative L2 limit; strict FP32 check independently validates routing/recurrence integration"
+    if bf16_chunk:
+        errors["fp32_check"] = check({**cfg, "dtype": "float32"}, device, length)
+        errors["bf16_note"] = "output/gradient limits unchanged; BF16 uses the production SDPA surround and bounds split continuation at 1% relative L2; strict FP32 independently checks dense attention and continuation"
     return {"arch_type": cfg["arch_type"], "status": "passed", "batch": 2, "length": length, **errors}

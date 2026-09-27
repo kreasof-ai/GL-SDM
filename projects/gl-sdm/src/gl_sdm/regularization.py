@@ -64,7 +64,7 @@ def sigreg_strong_loss(x, sketch_dim=64):
     return loss.mean()
 
 def sigreg(x, REG_MODE, sketch_dim=64):
-    reg_loss = torch.tensor(0.0, device=x.device)
+    reg_loss = x.new_zeros((), dtype=torch.float32)
 
     if REG_MODE != 'baseline':
         batch_size, seq_len, hidden_dim = x.shape

@@ -60,21 +60,34 @@ memory and routing parameters are never changed during a forward transaction.
 Benchmark logs report actual reasoning depth and retain unique-parameter 6ND.
 Repeated tied-weight applications are not counted in that MFU estimate.
 
-The native path uses the external frozen
-[URM revision 604bfdf](https://github.com/kreasof-ai/urm/tree/604bfdf5d2c827266a32ef142ca996cc712d70f0).
-`urm_adapter.py` compiles its public read-only sparse-state program. URM's normal
-read backward retains the full input bank; the project's read wrapper instead
-saves selected rows and supplies the corresponding exact read gradients.
-Inference route tensors acquire normal version counters at the package boundary
-because the frozen route certificate requires them.
+The chunk path in `chunk.py` composes routing and snapshot reads from the public
+frozen [URM revision 604bfdf](https://github.com/kreasof-ai/urm/tree/604bfdf5d2c827266a32ef142ca996cc712d70f0),
+including both backwards. It adopts URM's highest-address ties. Physical zero
+padding of width-64 values selects its existing width-128 schedule; logical
+values and memory capacity remain unchanged. The actual plan and both widths
+are recorded. No URM source, baseline kernel or dependency pin was copied or
+changed. Chunk boundaries and bounded local causal SDPA follow the proposal's
+chunk-commit clock. The token-clock control retains its earlier implementation.
 
-`kernels.py` implements the project's stable product-key router and its softmax
-backward, snapshot delta proposals and their operand gradients, and ordered
-duplicate-address commits. URM's existing router chooses larger indices on ties;
-GL-SDM keeps its documented smaller-address rule. URM's sequential decayed-delta
-update is not substituted for GL-SDM's snapshot/commit law. No URM sources or
-legacy SDM kernels were copied or changed. These memory kernels are integrated
-into the existing GL-SDM block, training, inference and checking interfaces.
-The token controller and dense reasoner remain PyTorch. Converged,
-resource-matched architecture comparisons and further model throughput work
-remain experimental work.
+Dense reasoner/proposal/head-loss arithmetic uses ordinary PyTorch compilation
+with eager BF16 rounding casts preserved. Fixed writes batch across reasoning
+steps because their snapshot is immutable. `training_graph.py` captures only
+fixed-shape forward/backward; data copies, finite checks, clipping and optimizer
+updates are timed by the same runner. Warmup/capture do not update parameters or
+consume training data. The project-owned `kernels.py` continues to lower ordered
+sparse commits, for which the frozen URM package has no executable lowering.
+
+The token path still uses the project's stable smaller-address router,
+selected-row read/proposal backwards and ordered commits. Chunk-model reference
+checks use independent PyTorch route/gather equations, segmented commits and
+dense attention in FP32; BF16 shares production SDPA to isolate memory kernels.
+Its output/gradient limits stay unchanged. Split continuation records a separate
+1% relative L2 bound, with an independent strict FP32 check: the same BF16
+route drift reproduces in the pure PyTorch memory control. Separate small
+fixtures use dense one-hot memory equations.
+Large-bank whole-model checks expose failures in the unchanged output/gradient
+gates, including a long FP32 check; these are preserved in the diagnostic
+artifacts rather than reported as passing. Production-bank read operands and
+their gradients independently pass stricter comparisons.
+Changing the write clock or reasoning depth is reported explicitly. Quality
+comparisons and learned adaptive depth require converged training.

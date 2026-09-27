@@ -1,7 +1,7 @@
-"""GL-SDM: a tied reasoner, one global bank and token transactions.
+"""GL-SDM: a tied reasoner, one global bank and causal transactions.
 
-Tokens execute in causal order. Recurrence is contained inside one ATMA block,
-so a caller traversing embed/blocks/norm/proj cannot leak future-token writes.
+Token transactions remain a control; chunk.py implements parallel chunk reads
+and one commit per absolute chunk boundary inside the same ATMA block.
 """
 import math
 import torch
@@ -95,8 +95,25 @@ class GlobalMemoryBlock(nn.Module):
             nn.init.constant_(self.halt.bias, cfg.get("gl_halt_bias", -2.0))
         self.reg_mode, self.sketch_dim = cfg.get("reg_mode", "baseline"), cfg.get("sketch_dim", 64)
         self.last_depth = None
+        self.chunk_size = cfg.get("gl_chunk_size", 1)
+        self.compile_dense = cfg.get("gl_compile", False)
+        if self.chunk_size < 1:
+            raise ValueError("gl_chunk_size must be positive")
+        if self.chunk_size > 1:
+            if self.write_policy == "every_step":
+                raise ValueError("chunk transactions require merged or final writes for causality")
+            if max(self.attn.num_reads, self.attn.num_writes) > self.attn.half:
+                raise ValueError("URM chunk routes cannot exceed the product-key factor extent")
+            if self.attn.backend == "urm" and self.chunk_size > 2048:
+                raise ValueError("frozen URM supports at most 2048 tokens per chunk")
+            from .mixers import Transformer
+            self.local_context = Transformer(cfg, 0)
+            self.local_norm = RMSNorm(dim)
 
     def forward(self, inputs, cache=None):
+        if self.chunk_size > 1:
+            from .chunk import forward
+            return forward(self, inputs, cache)
         B, T, _ = inputs.shape
         if B < 1 or T < 1:
             raise ValueError("GL-SDM requires a nonempty token batch")

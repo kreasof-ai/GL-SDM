@@ -1,121 +1,123 @@
-# GL-SDM and baseline checks
+# GL-SDM kernel results
 
-GL-SDM now uses frozen URM for compiled snapshot reads and project-owned CUDA
-kernels for routing, delta proposals and deterministic commits. The supplied
-GL-SDM configs enable this path. The Transformer still uses ordinary PyTorch
-SDPA, SDM uses Meta’s actual pinned CUDA layer, and GDN2 uses FLA. URM source and
-its dependency pin are unchanged.
+The optimized **four-step GL-SDM reaches 41.48% MFU** on an NVIDIA A10G.
+Eight steps reaches **25.08%**, so the 40% target is met only by the four-step
+configuration. Long whole-model reference checks still fail their strict
+elementwise limits; this is a performance result with an unresolved precision
+limitation, not a claim that GL-SDM is ready to freeze for quality comparisons.
 
-All 47 tests pass on an NVIDIA A10G with PyTorch 2.14.0+cu130 and Triton 3.8.
-They cover outputs and every parameter gradient, causal prefixes, request reset,
-split-prefill/decode, strict checkpoints, exact resumed training on CPU/CUDA,
-evaluation and generation. Native tests also cover stable route ties, signed
-zero, non-power-of-two routes, inactive requests, all write policies, FP32/BF16,
-colliding commits, snapshot preservation and compact backward storage.
-SDM verification observed both actual upstream CUDA extensions executing.
+## Complete training steps
 
-## Whole-model timings
+All rows use BF16, width 512, vocabulary 50,304, eight heads, 4,096 slots/head,
+eight read/write routes, chunk size 1,024, sequence length 2,048 and 8,192
+tokens/update with microbatch 4. They time forward, backward, clipping and AdamW.
+MFU uses unchanged **6ND** with 57,823,824 unique active parameters and A10G's
+70 dense BF16 TFLOP/s. The 2,097,152 learned memory parameters are excluded;
+reasoning depth and state work do not inflate the numerator.
 
-These are integration workloads: width 64, vocabulary 50,304, batch 2 and length
-65. Baselines have two layers; GL-SDM has one tied block and three reasoning
-steps. Capacity, parameter counts and compute are not matched for a quality
-comparison. Adaptive GL-SDM used all three steps in these short runs; controlled
-tests separately verify removal of requests that halt early.
+| Configuration | CUDA graph | Median step | 6ND MFU |
+| --- | --- | ---: | ---: |
+| [Four steps, URM](gl_sdm_chunk_r4_benchmark.json) | Yes | 97.88 ms | **41.48%** |
+| [Eight steps, URM](gl_sdm_chunk_r8_benchmark.json) | Yes | 161.91 ms | **25.08%** |
+| [Four steps, PyTorch control](gl_sdm_chunk_r4_torch_control.json) | No | 125.85 ms | 32.30% |
+| [Four steps, URM control](gl_sdm_chunk_r4_urm_control.json) | No | 99.83 ms | 40.67% |
 
-| Model | Active parameters | Learned memory parameters | Training step | Prefill | Decode |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Transformer | 6,580,288 | 0 | 8.79 ms | 2.84 ms | 2.51 ms |
-| SDM CUDA | 6,572,624 | 8,192 | 26.37 ms | 9.51 ms | 3.39 ms |
-| GDN2 FLA | 6,606,084 | 0 | 17.66 ms | 6.41 ms | 3.48 ms |
-| [GL-SDM adaptive, PyTorch](gl_sdm_adaptive_torch_benchmark.json) | 6,505,829 | 4,096 | 1,373.58 ms | 504.90 ms | 8.05 ms |
-| [GL-SDM adaptive, native](gl_sdm_adaptive_urm_benchmark.json) | 6,505,829 | 4,096 | 1,059.76 ms | 384.21 ms | 6.47 ms |
-| [GL-SDM fixed, PyTorch](gl_sdm_fixed_torch_benchmark.json) | 6,505,764 | 4,096 | 1,047.64 ms | 401.90 ms | 6.52 ms |
-| [GL-SDM fixed, native](gl_sdm_fixed_urm_benchmark.json) | 6,505,764 | 4,096 | 720.20 ms | 272.93 ms | 4.79 ms |
+The first two rows have 10 warmups and 20 samples. The control pair has three
+warmups and five samples, with identical code/config except the memory backend;
+URM improves this matched training step by **1.26×**. GPU measurements run alone.
+Step-end allocated memory is exactly flat in each artifact. Whole-benchmark
+peak allocation is about 8 GiB; peak reservation is 12.47 GiB for four steps and
+15.02 GiB for eight. Graph pools account for additional reserved memory.
+There are no OOM retries, smaller-workload substitutions or reference fallbacks.
+Four-step URM prefill processes 8,192 tokens in 86.13 ms. Four-request decode
+after a 2,048-token context takes 5.97 ms. The matched PyTorch control takes
+114.48 ms and 6.70 ms respectively; inference uses the ordinary serving runner.
 
-The GL-SDM pairs use identical code and configs except `gl_memory_backend`, with
-five samples after two warmups. Training includes forward, backward, gradient
-clipping and AdamW. Prefill processes 130 tokens; decode processes two tokens
-after a 65-token context. The baseline rows retain their earlier three-sample,
-two-warmup measurements. No workload retry or reference substitution is used.
+## What changed
 
-Native GL-SDM improves training latency by **1.30× adaptive / 1.45× fixed** and
-prefill by **1.31× / 1.47×** against its current PyTorch controls. All four
-GL-SDM step-end allocation traces are exactly flat across five measured steps.
-Their artifacts share source SHA-256
-`f9d443e7eccda9071aeb301db97ae514b6ff103494bcfd519a099fb2fc64332f`,
-include full configs and record the frozen URM revision and compiled read plan.
+Tokens within a chunk reason in parallel against its immutable starting bank.
+A local causal SDPA surround supplies context within the chunk. Reasoning steps
+and chunk boundaries remain sequential. Writes become visible only at an
+absolute chunk boundary; this changes the write clock from the earlier token
+model. The token controls remain available as `gl_sdm_token*` configs. Their
+[historical results](token_results.md) are not a matched speed comparison.
 
-The decoder remains slow: its causal token loop, ACT controller and dense
-reasoner still execute through PyTorch at a small batch size. Native adaptive
-and fixed unique-parameter 6ND MFU are 0.00630% and 0.01007%. This formula excludes
-repeated applications of tied weights; actual reasoning depth is recorded
-separately. These runs establish integration and a measured improvement, not
-converged quality, learned adaptive depth or high large-model utilization.
+The chunk path uses frozen URM's public product-key routing and snapshot-read
+operators, including both backwards. Its compiled graph contains two native
+operators and zero escapes. Padding logical read width 64 to physical width 128
+selects URM's existing vector schedule and avoids fragmented bank-gradient
+launches; retrieved width and capacity remain unchanged. URM source and its
+[dependency pin](../../../shared/requirements-urm.txt) are unchanged.
 
-## Memory kernels
+The project owns versioned buffered commits, which frozen URM cannot execute.
+Fixed-depth write projections are batched after reasoning; PyTorch compiles
+dense reasoning, proposal arithmetic and vocabulary loss. Optional CUDA graphs
+capture fixed-depth forward/backward. ACT compacts finished tokens and uses the
+regular runner. No new architecture-specific Triton kernel was added.
 
-The [transaction benchmark](gl_sdm_memory_benchmark.json) uses batch 2, eight
-heads, 4,096 slots/head, width 64, eight routes and eight reasoning steps, all
-FP32. Every step proposes to the same addresses, testing cross-step collisions.
-Reads and proposals use one snapshot, followed by one commit. Initial-state and
-all operand gradients are checked against the PyTorch equations.
+## Correctness and precision
 
-| One transaction, forward + backward | PyTorch | Native |
-| --- | ---: | ---: |
-| Median time, 10 samples after 3 warmups | 12.28 ms | 8.19 ms |
-| Peak allocated memory | 98.49 MiB | 82.03 MiB |
-| Saved operator storage for backward | 1.42 MiB | 0.56 MiB |
+All **66 tests pass**, including the three independent upstream baselines,
+causality, absolute chunk boundaries, cache continuation, canonical collision
+order, ACT compaction, checkpoints and CUDA-graph optimizer updates. The new
+production-bank operand test independently checks URM addresses, weights, reads
+and all read gradients against PyTorch at 4,096 slots/head and width 64, including
+the padded schedule. Native backward execution is observed explicitly.
 
-This is **1.50× faster** with 16.7% lower peak allocation. Step-end allocations
-are flat. Maximum state error is 2.38e-7; the largest operand-gradient error is
-3.73e-9 with the recorded cotangents. The timing excludes model projections and
-the optimizer and carries no MFU claim.
+The [full-vocabulary smoke reference](gl_sdm_chunk_reference.json) passes its
+output and parameter-gradient gates. It records 0.158% BF16 relative L2 output
+drift and 0.790% split-continuation drift. BF16 shares production SDPA in this
+memory reference; an independent strict FP32 check also exercises dense causal
+attention. Changing SDPA/GEMM shapes reproduces approximately the same 0.790%
+continuation drift with the pure PyTorch memory backend. BF16 chunk continuation
+therefore has an explicit 1% relative L2 bound; output/gradient gates are unchanged.
 
-Forward commits sum deltas in stable proposal order within each address. No
-forward atomics or global cumulative-sum subtraction are used, so a large update
-at one address cannot erase a small update at another. The read wrapper retains
-selected rows instead of the full bank versions URM’s ordinary backward saves.
+The [large-bank diagnostic](gl_sdm_chunk_large_bank_precision.json), at width
+512, four steps and 1,025 tokens spanning a commit, **fails** its strict output
+gate: BF16 relative L2 drift is 0.560%, but maximum logit difference is 0.160.
+Every BF16 parameter-gradient gate passes in that run. Its independent FP32
+whole-model check also fails, with maximum logit difference 0.0461. The
+[shorter-chunk diagnostic](gl_sdm_chunk_short_bank_precision.json) also fails
+BF16 output/gradient gates, while its strict FP32 check passes. Sparse route
+sensitivity is consistent with these results, but the long-model discrepancy
+is unresolved. Failed checks remain failed in their artifacts; passing operand
+tests and MFU do not replace a passing whole-model reference gate.
+The BF16 trace starts with identical selected addresses and a read difference
+of only 1.49e-8; later steps select different addresses. It records the propagation
+of that precision difference explicitly.
 
-The full-vocabulary BF16 [native reference check](gl_sdm_native_reference.json)
-had zero logit difference, maximum parameter-gradient difference 0.000214 and
-maximum split-prefill/decode difference 0.00766, within the existing tolerances.
-Accurate FP32 exponentials eliminated divergence caused by approximate
-exponentials changing later BF16 routes; checking limits were not loosened.
-A [width-512, 4,096-slot check](gl_sdm_large_bank_reference.json), with vocabulary
-256 and two fixed steps over 23 tokens, also had zero reference logit difference
-and maximum parameter-gradient difference 0.000183.
+## Training and inference
 
-Native GL-SDM completed three real FineWeb-Edu training steps, checkpoint reload,
-four-token generation, validation at lengths 65/129 and the needle/absent-control
-protocol. See [training and integration](gl_sdm_native_validation.json) and
-[validation CE](gl_sdm_native_eval.json). The needle smoke check uses a validation
-stream haystack. These short runs do not establish retrieval quality.
-
-## Upstream SDM precision
-
-Upstream SDM BF16 rounding can change later layers’ discrete top-k routes.
-The baseline full-vocabulary check measured 4.07% relative L2 logit drift and
-3.12% split-prefill/decode drift, with maximum reference logit difference 0.681.
-The explicit BF16 test bounds relative L2 drift at 5%; it does not establish
-bitwise equivalence or BF16 determinism.
-
-The separate FP32 check measured 0.00399% relative L2 drift, maximum logit error
-0.000200, maximum gradient error 0.00000203 and maximum continuation error
-0.0000747. Production BF16 runs execute CUDA sparse inner products and CUDA warp
-gathering. This upstream numerical limitation remains separate from GL-SDM’s
-FP32 transaction state and deterministic commit tests.
+[Three real FineWeb-Edu updates](gl_sdm_chunk_validation.json) process 24,576
+tokens, reaching about 41.8–41.9% MFU after capture initialization. Validation
+CE falls from 10.8258 to 10.7670 nats/token. Strict checkpoint parameters reload
+exactly. A trained 1,030-token prefill crosses a commit boundary, split
+continuation differs by 0.241% relative L2, and four-token generation completes.
+Evaluation at lengths 1,024/2,048 and needle/absent-control execution also complete.
+The needle haystack is a validation stream for a protocol smoke check. These
+short runs establish execution, not converged quality or retrieval ability.
 
 ## Reproduction
 
-Use the [configs and commands](../README.md#models-and-experiments), including
-`--memory-backend torch` for explicit GL-SDM controls and
-[scripts/benchmark_memory.py](../scripts/benchmark_memory.py) for transactions.
-Run GPU measurements alone. Keep tokenizer, data, prefixes and seeds fixed.
-Resource matching and converged architecture comparisons remain experimental
-work. The three baselines’ [integration results](smoke_validation.json) and
-[Transformer](transformer_smoke_benchmark.json), [SDM](sdm_smoke_benchmark.json)
-and [GDN2](gdn2_smoke_benchmark.json) timings are preserved.
+PyTorch 2.14.0+cu130, Triton 3.8, A10G; dense TF32 disabled. All new timing and
+training artifacts record complete configs, native plans, frozen URM revision
+`604bfdf5d2c827266a32ef142ca996cc712d70f0`, and the same source SHA-256
+`8440659792d33cb59ba909c36f55a7b99d787b2b45c00a866e445b59c1661122`.
 
-The initial PyTorch GL-SDM artifacts (`gl_sdm_smoke_*` and
-`gl_sdm_fixed_smoke_benchmark.json`) remain archived from commit `154a82c`.
-The current comparisons above use the four explicitly named backend artifacts.
+```bash
+python -m pytest -q projects/gl-sdm/tests
+gl-sdm benchmark --config projects/gl-sdm/configs/gl_sdm_chunk_r4.json \
+  --warmup 10 --iterations 20 --output /tmp/gl_sdm_r4.json
+gl-sdm benchmark --config projects/gl-sdm/configs/gl_sdm_chunk_r8.json \
+  --warmup 10 --iterations 20 --output /tmp/gl_sdm_r8.json
+python projects/gl-sdm/scripts/benchmark_chunk_controls.py --output-dir /tmp/gl_sdm_controls
+gl-sdm verify --config projects/gl-sdm/configs/gl_sdm_chunk_smoke.json
+python projects/gl-sdm/scripts/check_chunk_precision.py --output /tmp/gl_sdm_precision.json
+python projects/gl-sdm/scripts/check_chunk_precision.py --chunk-size 16 --length 65 \
+  --output /tmp/gl_sdm_short_precision.json
+```
+
+The last two commands return nonzero when their unchanged strict gates fail,
+after saving the diagnostic. The Transformer remains ordinary PyTorch SDPA,
+SDM uses Meta's actual CUDA extensions, and GDN2 uses FLA; none uses URM.
+Their earlier [baseline integration results](smoke_validation.json) are preserved.

@@ -318,9 +318,9 @@ def _commit_forward(memory, indices, order, deltas, output, E: tl.constexpr,
 
 class _Commit(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, memory, indices, deltas):
+    def forward(ctx, memory, indices, deltas, keys):
         require_cuda(memory)
-        order = indices.argsort(stable=True)
+        order = keys.argsort(stable=True)
         output = memory.clone()
         _commit_forward[(indices.numel(),)](memory, indices, order, deltas, output, indices.numel(),
                                             memory.shape[-1], triton.next_power_of_2(memory.shape[-1]), enable_fp_fusion=False)
@@ -334,8 +334,8 @@ class _Commit(torch.autograd.Function):
         incoming = incoming.contiguous()
         gd = torch.empty((indices.numel(), ctx.dim), device=incoming.device, dtype=torch.float32)
         _gather[(indices.numel(),)](incoming, indices, gd, ctx.dim, triton.next_power_of_2(ctx.dim))
-        return incoming, None, gd
+        return incoming, None, gd, None
 
 
-def commit(memory, indices, deltas):
-    return _Commit.apply(memory, indices, deltas)
+def commit(memory, indices, deltas, keys=None):
+    return _Commit.apply(memory, indices, deltas, indices if keys is None else keys)
