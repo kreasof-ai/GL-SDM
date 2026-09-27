@@ -23,7 +23,7 @@ def metadata(arch, cfg=None):
         if cfg and "gl_layer_pattern" in cfg:
             info.update(layer_pattern=cfg["gl_layer_pattern"], physical_layers=cfg["num_hidden_layers"],
                         weight_loops=0, shared_memory_banks=1,
-                        local_context=f"rolling causal SDPA, window {cfg.get('gl_local_window', 128)} including current token",
+                        local_context=f"rolling causal SDPA, window {cfg.get('gl_local_window', 512)} including current token",
                         write_mass="sum token/layer deltas; no averaging",
                         route_projection="model-dtype GEMM, FP32 scores for URM top-k",
                         inference_read_value_dim=cfg["head_dim"],

@@ -7,7 +7,7 @@
   "num_hidden_layers": 16,
   "dtype": "bfloat16",
   "tokenizer_name": "gpt2",
-  "seq_len": 512,
+  "seq_len": 2048,
   "batch_size": 8192,
   "mbs": 1,
   "num_chunks": 1,

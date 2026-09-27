@@ -53,8 +53,9 @@ parameter capacity, not FLOPs.
 global read/MLP blocks according to the repeated local/local/global/local
 pattern. One learned FP32 bank is registered on the model. All global layers
 read a chunk-start snapshot; token/layer write deltas are summed without
-averaging and committed once per 128 tokens. Local attention has a rolling
-128-token window and absolute RoPE positions across commits.
+averaging and committed once per 512 tokens. Local attention has a rolling
+512-token window and absolute RoPE positions across commits. The saved initial
+16-layer measurements used a 128-token window and commit interval.
 
 Routing and snapshot reads, including backward, use the installed frozen URM
 package. The project adapter temporarily extends only the factor-512,

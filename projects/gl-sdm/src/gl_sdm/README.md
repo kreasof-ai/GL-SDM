@@ -22,9 +22,9 @@ gl_sdm/
 The primary configs select the untied 16-layer stack. Read
 [layers/stack.py](layers/stack.py) for its complete execution order:
 
-1. Freeze one shared memory bank at the start of each 128-token chunk.
+1. Freeze one shared memory bank at the start of each 512-token chunk.
 2. Execute `local → local → global → local` four times, with distinct weights.
-3. Local blocks have rolling 128-token attention and an MLP; their KV history
+3. Local blocks have rolling 512-token attention and an MLP; their KV history
    persists across memory commits.
 4. All four global layers read the same snapshot. Each proposes a write from
    its updated hidden state; proposals do not affect other layers in the chunk.

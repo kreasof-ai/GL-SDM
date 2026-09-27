@@ -17,11 +17,11 @@ def make_layers(cfg):
         raise ValueError("gl_layer_pattern must include global and repeat to cover num_hidden_layers")
     if cfg.get("gl_max_steps", 1) != 1 or cfg.get("gl_reasoning", "fixed") != "fixed":
         raise ValueError("the physical GL-SDM stack has no reasoning loops")
-    if cfg.get("gl_chunk_size", 128) < 1 or cfg.get("gl_local_window", 128) < 1:
+    if cfg.get("gl_chunk_size", 512) < 1 or cfg.get("gl_local_window", 512) < 1:
         raise ValueError("positive GL-SDM chunk and local window required")
     if cfg.get("gl_cuda_graph", False):
         raise ValueError("physical GL-SDM stack currently uses ordinary training, not legacy loop CUDA graphs")
-    local_cfg = {**cfg, "arch_type": "transformer", "attention_window": cfg.get("gl_local_window", 128)}
+    local_cfg = {**cfg, "arch_type": "transformer", "attention_window": cfg.get("gl_local_window", 512)}
     return [GlobalLayer(cfg) if pattern[i % len(pattern)] == "global" else Block(local_cfg, i)
             for i in range(count)]
 
@@ -35,7 +35,7 @@ def forward(model, inputs, cache=None):
     model.bank.validate_cache(cache, B)
     outputs = []
     reg, align = inputs.new_zeros(()), inputs.new_zeros(())
-    C = model.cfg.get("gl_chunk_size", 128)
+    C = model.cfg.get("gl_chunk_size", 512)
     backend = model.cfg.get("gl_memory_backend", "torch")
     position = 0
     while position < T:

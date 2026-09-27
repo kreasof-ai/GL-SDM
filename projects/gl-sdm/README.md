@@ -31,9 +31,9 @@ The layer pattern **local → local → global → local** repeats four times:
 Every block has its own weights. Only the learned memory and runtime bank are
 shared: eight heads, 262,144 slots/head, width 64, eight read/write routes.
 
-1. Freeze the shared bank at the start of each 128-token chunk.
+1. Freeze the shared bank at the start of each 512-token chunk.
 2. Execute layers 1 through 16 once. Each local layer attends to the current
-   token and up to 127 preceding tokens, including tokens in earlier chunks.
+   token and up to 511 preceding tokens, including tokens in earlier chunks.
 3. Each global layer reads the same chunk-start snapshot and proposes a delta
    from its updated hidden state. Writes are not visible between global layers.
 4. After the chunk finishes, sum token/layer deltas by address and commit once.
@@ -82,16 +82,18 @@ python -m pytest -q projects/gl-sdm/tests
 
 Put ATMA-format GPT-2 FineWeb-Edu token shards under `data/finewebedu10B`.
 The four primary configs are `configs/{transformer,gdn2,sdm,gl_sdm}.json`.
-They all use length 512, 8,192 tokens/update and microbatch one. These are
-explicit common workloads, not retries after OOM. The `*_smoke.json` configs
-retain 16 layers with smaller widths and banks for integration checks.
+They all use length 2,048, 8,192 tokens/update and microbatch one: four sequences
+accumulated per update. GL-SDM processes four 512-token chunks per sequence,
+so later chunks consume and train the earlier writes. The `*_smoke.json`
+configs retain 16 layers with smaller widths and banks, using length 513 to
+cross the same write boundary.
 
 ```bash
 python projects/gl-sdm/scripts/run_layer_experiments.py   --phases verify verify-fp32 benchmark train --warmup 3 --iterations 5 --train-steps 20
 ```
 
 This runs models serially in separate GPU processes and records every command,
-exit status and artifact in `results/sixteen_layers/manifest.json`. The suite
+exit status and artifact in `results/sequence_2048/manifest.json`. The suite
 uses the same `max_split_size_mb:512` CUDA allocator setting for all models,
 preventing small workspaces from splitting multi-GiB state blocks. Failures
 retain their logs; the runner never reduces a workload or substitutes a kernel.
@@ -103,7 +105,7 @@ Individual commands use the same ATMA-style model, loss and checkpoint contract:
 
 ```bash
 export PYTORCH_ALLOC_CONF=max_split_size_mb:512
-gl-sdm verify --config projects/gl-sdm/configs/gl_sdm.json   --verify-batch-size 1 --length 129
+gl-sdm verify --config projects/gl-sdm/configs/gl_sdm.json   --verify-batch-size 1 --length 513
 gl-sdm train --config projects/gl-sdm/configs/gl_sdm.json   --output projects/gl-sdm/checkpoints/gl_sdm
 gl-sdm benchmark --config projects/gl-sdm/configs/gl_sdm.json
 gl-sdm infer --checkpoint projects/gl-sdm/checkpoints/gl_sdm   --prompt 'The research question is' --tokens 64
@@ -126,6 +128,9 @@ this is not exact instruction accounting. A10G's denominator is 70 dense BF16
 TFLOP/s. Complete-step timings include backward, clipping and optimizer updates.
 Training, prefill and decode speeds are reported separately. Fewer FLOPs do not
 guarantee faster execution when sparse memory or state movement dominates.
+Benchmarks record peak allocated/reserved memory separately for training,
+prefill and decode; the top-level peak is the maximum across those stages.
+The saved initial 16-layer measurements used length 512 and window/chunk 128.
 
 The [earlier tied-weight controls](LOOP_CONTROLS.md) and
 [their results](results/loop_results.md) are preserved separately. Their four

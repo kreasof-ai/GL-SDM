@@ -7,12 +7,12 @@
   "num_hidden_layers": 16,
   "dtype": "bfloat16",
   "tokenizer_name": "gpt2",
-  "seq_len": 129,
-  "batch_size": 258,
+  "seq_len": 513,
+  "batch_size": 1026,
   "mbs": 2,
   "num_chunks": 1,
   "max_steps": 3,
-  "val_tokens": 258,
+  "val_tokens": 1026,
   "val_freq": 1,
   "optimizer": "adamw",
   "adamw_lr": 0.0003,
@@ -29,12 +29,12 @@
   "val_data": "data/finewebedu10B/finewebedu_val_*.bin",
   "clean_dataset": "codelion/finepdfs-100M",
   "eval_lengths": [
-    129,
-    257
+    513,
+    1025
   ],
   "needle_distances": [
-    129,
-    257
+    513,
+    1025
   ],
   "num_eval_docs": 2,
   "num_needle_trials": 2,

@@ -26,7 +26,7 @@ The [GL-SDM baseline suite](projects/gl-sdm/README.md#models-and-experiments)
 uses ordinary PyTorch SDPA, upstream CUDA SDM, and FLA GDN2, independently of URM.
 The [GL-SDM model](projects/gl-sdm/src/gl_sdm/layers/stack.py) currently uses
 16 distinct local/global layers, rolling local attention and one shared memory
-bank with a 128-token snapshot-and-commit clock. Weight loops and adaptive
+bank with a 512-token snapshot-and-commit clock. Weight loops and adaptive
 per-token depth are deferred. It uses the same experiment interfaces as the
 three baselines. GL-SDM defines its own
 [transactional memory operator](projects/gl-sdm/src/gl_sdm/memory/__init__.py),

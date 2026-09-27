@@ -1,0 +1,46 @@
+{
+  "config": {
+    "sequence_length": 2048,
+    "tokens_per_update": 8192,
+    "microbatch_sequences": 1,
+    "sequences_accumulated_per_update": 4,
+    "gl_local_window": 512,
+    "gl_write_chunk": 512
+  },
+  "cpu_tests": {
+    "command": "CUDA_VISIBLE_DEVICES='' pytest -q projects/gl-sdm/tests/test_layer_stack.py -k 'not large_route'",
+    "passed": 8,
+    "deselected": 3,
+    "seconds": 7.65
+  },
+  "native_integration": {
+    "dtype": "float32",
+    "device": "cuda",
+    "batch": 1,
+    "sequence_length": 1025,
+    "hidden_size": 32,
+    "head_dim": 16,
+    "slots_per_head": 16,
+    "physical_layers": 16,
+    "global_layers": 4,
+    "memory_backend": "urm",
+    "window": 512,
+    "write_chunk": 512,
+    "checks": [
+      "split prefill at 511/512/513/1024/1025",
+      "commits at 512 and 1024",
+      "local KV retained across commits with absolute positions",
+      "token outside local window excluded",
+      "finite nonzero k/v/beta/decay weight gradients in every global layer"
+    ],
+    "maximum_continuation_logit_error": 8.344650268554688e-07
+  },
+  "precision": "These changes retain the prior production precision; no BF16 state conversion or full-size BF16 parity claim.",
+  "urm_source_or_pin_changed": false,
+  "full_tests": {
+    "command": "pytest -q projects/gl-sdm/tests",
+    "passed": 92,
+    "failed": 0,
+    "seconds": 70.7
+  }
+}

@@ -17,7 +17,7 @@ def main():
                         default=["transformer", "gdn2", "sdm", "gl_sdm"])
     parser.add_argument("--phases", nargs="+", choices=("verify", "verify-fp32", "benchmark", "train"),
                         default=["verify", "verify-fp32", "benchmark", "train"])
-    parser.add_argument("--output-dir", type=Path, default=Path("projects/gl-sdm/results/sixteen_layers"))
+    parser.add_argument("--output-dir", type=Path, default=Path("projects/gl-sdm/results/sequence_2048"))
     parser.add_argument("--train-steps", type=int, default=20, help="explicit short pilot; use 1000 for the configured training budget")
     parser.add_argument("--iterations", type=int, default=10)
     parser.add_argument("--warmup", type=int, default=3)
@@ -43,7 +43,8 @@ def main():
                 cfg_path.write_text(json.dumps(cfg, indent=2) + "\n")
             command = [sys.executable, "-m", "gl_sdm.cli", "verify" if phase == "verify-fp32" else phase, "--config", str(cfg_path)]
             if phase.startswith("verify"):
-                command += ["--verify-batch-size", "1", "--length", "129"]
+                length = max(129, cfg.get("gl_chunk_size", 1) + 1)
+                command += ["--verify-batch-size", "1", "--length", str(length)]
             if phase == "benchmark":
                 command += ["--iterations", str(args.iterations), "--warmup", str(args.warmup)]
             if phase == "train":
@@ -53,7 +54,7 @@ def main():
                 cfg_path = args.output_dir / f"{arch}_pilot_config.json"
                 cfg_path.write_text(json.dumps(cfg, indent=2) + "\n")
                 command[command.index("--config") + 1] = str(cfg_path)
-                artifact = Path(f"projects/gl-sdm/checkpoints/sixteen_layers/{arch}")
+                artifact = Path("projects/gl-sdm/checkpoints") / args.output_dir.name / arch
             else:
                 artifact = args.output_dir / f"{name}.json"
             command += ["--output", str(artifact)]
