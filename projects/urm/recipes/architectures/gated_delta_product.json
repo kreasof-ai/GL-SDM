@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "name": "gated_delta_product",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.fla_k2",
+    "notes": "arch-029 (A8 transition breadth). Gated DeltaProduct: per token, head-scalar decay h ← h·exp(g_t), then R ordered Householder delta factors h ← h + (v_tj − hᵀk_tj)·β_tj ⊗ k_tj (each retrieving from the state the previous factor produced), read o_t = (scale·q_t)ᵀ·h after update. The within-token transition is the ORDERED PRODUCT of R deltas — the typed LinearDeltaSpec with num_deltas=R; k/v/beta carry R factors per token (T*R time axis). Verified against fla/ops/gated_delta_product/naive.py @ 864a87f6. Layer module: architectures/gated_delta_product.py."
+  },
+  "layers": [
+    {
+      "id": "gated_delta_product_layer",
+      "operation": "linear_delta_state",
+      "external_component": "architectures.gated_delta_product.GatedDeltaProductLayer",
+      "params": {
+        "axis": "A8 transition breadth: ordered multi-delta (rank-R) transition",
+        "delta": true, "gate_scope": "head", "num_deltas": "R", "read_timing": "after_update",
+        "external_stages": ["factor construction (k/v/beta over T*R)", "Q/K/V projections"]
+      },
+      "state": {"h": "[K, V]"},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Parity vs the pinned naive_recurrent_gated_delta_product (fp32) in tests/test_architectures_gated_delta_product.py; the ordered-factor invariant (permuting factors changes the output); gradients. The chunked/varlen kernels and cache modes are residual, not claimed."
+  }
+}

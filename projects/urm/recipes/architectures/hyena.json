@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "name": "hyena",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.hyena",
+    "notes": "arch-077. Verified in the sweep against src/models/sequence/hyena.py @ 02220c69: the mixer is entirely external ordinary operators — implicit long filter (positional embedding → Sin MLP → exponential modulation), depthwise short conv, per-order causal FFT convs, gate multiplies — with NO URM kernel call. The pinned HyenaOperator is runnable only via the CUDA fftconv extension (its reference path has a bias-layout broadcast bug making the non-fused operator non-executable at every configuration, verified empirically this batch); the oracle is therefore the pinned HyenaFilter (AST-extracted) for filter generation plus an equation-level transcription of the pinned forward. Layer module: architectures/hyena_operator.py."
+  },
+  "layers": [
+    {
+      "id": "hyena_operator_layer",
+      "operation": "external",
+      "external_component": "architectures.hyena_operator.HyenaOperatorLayer",
+      "params": {
+        "external_stages": [
+          "in_proj / out_proj",
+          "depthwise short conv (kernel 3, sliced to l_filter)",
+          "implicit long filter (pinned HyenaFilter: pos emb + Sin MLP + ExponentialModulation)",
+          "per-order gate multiply + causal FFT conv (fftconv_ref) + bias",
+          "final gate by x_0"
+        ],
+        "note": "no URM kernel call; FFT convs are external ordinary ops; no compact U2 realization claimed"
+      },
+      "state": {},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Implicit-filter parity vs the pinned HyenaFilter and operator parity vs the equation transcription (driven by the pinned filter's kernel/bias) in tests/test_architectures_hyena.py; gradients flow through the filter and projections. The pinned configuration exercised is order-2, num_heads=1, num_blocks=1, inner_factor=1 (the sweep's open question: one configuration must be pinned — this is it). outer_mixing, post_order_ffn, num_blocks>1, fused_fft_conv (CUDA) and any recurrent distillation of the implicit filter are residual variants, not claimed."
+  }
+}

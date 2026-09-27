@@ -1,0 +1,7 @@
+{
+  "mixer": "conformer_attention",
+  "measurement_version": 2,
+  "baseline_tier": "reference-implementation",
+  "status": "production-unavailable",
+  "reason": "the pinned espnet rel-pos attention module (research code)"
+}

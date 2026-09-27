@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "name": "comba",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.fla_k2",
+    "notes": "arch-037 (A8 transition breadth). Comba: S' = exp(g_t)·S_{t-1} (per-head scalar log decay); delta = β_t·(v_t − p_tᵀ·S') (read off the predict key p); S_t = S' + k_t⊗delta (write along the write key k); o_t = (scale·q_t)ᵀ·S_t. The retrieval/erase key p and write key k are DISTINCT operands — the typed LinearDeltaSpec with the predict_key role and head-scope decay. Verified against fla/ops/comba/naive.py @ 864a87f6. Layer module: architectures/comba.py."
+  },
+  "layers": [
+    {
+      "id": "comba_layer",
+      "operation": "linear_delta_state",
+      "external_component": "architectures.comba.CombaLayer",
+      "params": {
+        "axis": "A8 transition breadth: dual-key delta (independent predict/erase key p and write key k)",
+        "delta": true, "gate_scope": "head", "read_timing": "after_update",
+        "external_stages": ["β=sigmoid, g=logsigmoid(a_proj) frontend", "optional q/k L2-norm", "Q/K/V/p projections"]
+      },
+      "state": {"h": "[K, V]"},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Parity vs the pinned naive_recurrent_comba (fp32) in tests/test_architectures_a8_rank1.py; the predict key is independent of the write key (p:=k collapses toward the canonical delta); gradients to the predict key. Chunked kernels, cache modes and the layer frontend are residual, not claimed."
+  }
+}

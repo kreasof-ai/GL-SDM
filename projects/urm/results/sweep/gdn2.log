@@ -1,0 +1,66 @@
+
+COMMAND: ['/opt/conda/bin/python', '-m', 'train.run', '--mixer', 'gdn2', '--steps', '10', '--layers', '9', '--width', '768', '--num-heads', '12', '--head-dim', '64', '--sequence-length', '512', '--batch-tokens', '8192', '--microbatch-tokens', '8192', '--out', 'results/sweep/gdn2.json', '--activation-checkpointing']
+{
+  "mixer": "gdn2",
+  "steps": 10,
+  "final_loss": 8.83387279510498,
+  "mfu": 0.17456918796942014,
+  "params": 113372928,
+  "checkpoint_aligned": true,
+  "grad_trace": {},
+  "kl_divergence": null,
+  "wallclock_s": 4.578004281007452,
+  "throughput_tokens_s": 17894.26024345534,
+  "peak_memory_gib": 3.62888240814209,
+  "loss_trace": [
+    9.263764381408691,
+    9.284212112426758,
+    8.948936462402344,
+    8.924583435058594,
+    8.778176307678223,
+    9.227547645568848,
+    9.258766174316406,
+    8.984382629394531,
+    9.065792083740234,
+    8.83387279510498
+  ],
+  "memory_trace_gib": [
+    1.0079960823059082,
+    1.0079960823059082,
+    1.0079960823059082,
+    1.0079960823059082,
+    1.0079960823059082,
+    1.0079960823059082,
+    1.0079960823059082,
+    1.0079960823059082,
+    1.0079960823059082,
+    1.0079960823059082
+  ],
+  "config": {
+    "mixer": "gdn2",
+    "vocab_size": 50304,
+    "sequence_length": 512,
+    "layers": 9,
+    "width": 768,
+    "num_heads": 12,
+    "head_dim": 64,
+    "mlp_ratio": 4,
+    "batch_tokens": 8192,
+    "microbatch_tokens": 8192,
+    "steps": 10,
+    "seed": 0,
+    "target_mfu": 0.5,
+    "capture_gradients": false,
+    "compile_model": true,
+    "bf16": true,
+    "activation_checkpointing": true,
+    "target": null
+  },
+  "measurement_version": 2,
+  "source_fingerprint": "345b161d5a9866e94c1ff1686d5b9156ce4c0aa404149c80ec35f81a08a601c1",
+  "environment": {
+    "torch": "2.14.0+cu130",
+    "device": "NVIDIA A10G",
+    "peak_flops": 70000000000000.0
+  }
+}

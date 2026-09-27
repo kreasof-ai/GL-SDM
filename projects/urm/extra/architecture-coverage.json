@@ -1,0 +1,1776 @@
+{
+ "schema_version": 4,
+ "audit_date": "2026-09-27",
+ "purpose": "Source identity and construction backlog for the architecture catalog: pinned upstream sources, mapping status, and per-row construction work. Not a support claim or executable benchmark configuration. Parity and performance evidence for the current rows is the training-harness campaign (results/sweep/, results/upstream/, results_report.md); the prior harness's per-row qualification artifacts were retired with it.",
+ "sources": {
+  "fla": {
+   "repository": "https://github.com/fla-org/flash-linear-attention",
+   "revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+   "audit": "Source candidate is pinned by full Git revision. Direct unified-plan versus upstream parity and paired A10G profiles exist for linear attention, Simple GLA, GLA, DeltaNet, and Gated DeltaNet in results/unified-mixer/fla-k2.json. The loaded FLA module is 0.6.0 at this revision; the environment distribution metadata reports 0.5.2 and is recorded separately. These are kernel-slice results, not full-layer qualification."
+  },
+  "flash": {
+   "repository": "https://github.com/Dao-AILab/flash-attention",
+   "revision": "1bda8f9290cd48d030f1516f0e680cd464ef3554"
+  },
+  "mamba": {
+   "repository": "https://github.com/state-spaces/mamba",
+   "revision": "e9594ce1c732d97440f0332fdc43170a2294dbfa"
+  },
+  "sdm": {
+   "repository": "https://github.com/facebookresearch/sparse-delta-memory",
+   "revision": "183e7df809131b80ad4393741029d0f20fc3640b"
+  },
+  "pattention": {
+   "repository": "https://github.com/Haiyang-W/TokenFormer",
+   "revision": "4d56c73f407635e62f6df16b97dc897b4477129e"
+  },
+  "xma": {
+   "repository": "https://github.com/open-lm-engine/accelerated-model-architectures",
+   "revision": "384ed0a7bd82ced1f40609603dd541cac5416844",
+   "audit": "Pinned XMA source includes pointwise SwiGLU activation, token MoE grouped projections and the RNN/GRU/M2RNN mixer recurrences; only its sequence-state recurrences are in K1/K2/K3 scope."
+  },
+  "bdh": {
+   "repository": "https://github.com/pathwaycom/bdh",
+   "revision": "2b0d7a45b058d4309c84a10e0768d541fe18bdc2"
+  },
+  "samba": {
+   "repository": "https://github.com/microsoft/Samba",
+   "revision": "617c7a0f8c71f1b7cb6180b86f9543d146f5c66f",
+   "audit": "Pinned Samba source includes an executable no-PE attention branch profiled at Samba_421M dimensions. The Mamba/GLA/Retention alternatives, short-convolution and rotary paths, and complete Block/cache graph still require separate profiles."
+  },
+  "fwpkm": {
+   "repository": "https://github.com/SakanaAI/fast-weight-product-key-memory",
+   "revision": "b1c8e234b523d70245fa197eed4b80a985c413a8",
+   "audit": "Pinned FastWeightProductKeyMemory source performs product-key top-k routing, retrieval from fast-weight values, and an inner SGD update with optional entropy/addressing loss and write clipping. It is outside the current K3 sparse-delta contract until those route and optimizer semantics are represented."
+  },
+  "differential": {
+   "repository": "https://github.com/microsoft/unilm",
+   "revision": "50224e387211f15ac6a3b2685730b9a0c850f145",
+   "audit": "Differential Transformer V1 is pinned explicitly; V2 has a different lambda and normalization contract."
+  },
+  "tda": {
+   "repository": "https://github.com/snap-research/TDA",
+   "revision": "cd8ddc9d5b43a1dcf86f9cfda302edb5cc108da2",
+   "audit": "Pinned threshold differential attention Triton source; source implements normalized, causal power-two thresholded rectification with scalar beta and lambda."
+  },
+  "tpa": {
+   "repository": "https://github.com/tensorgi/TPA",
+   "revision": "c276c80d5ad807881dedb4707d8d3c20b4e97ec6",
+   "audit": "Pinned T6 CausalSelfAttention implementation; exact factorized Q/K/V, source RoPE, causal SDPA and output projection comparison recorded in tpa-k1.json."
+  },
+  "tucker": {
+   "repository": "https://github.com/ScSteffen/Tucker-Attention",
+   "revision": "c3e3d3cec991f4303b824c7fb7cbb95e3748d5c7",
+   "audit": "Pinned Tucker Attention Triton implementation; exact source identity and BF16 fused-kernel output/gradient/profile comparison recorded in tucker-k1.json."
+  },
+  "longformer": {
+   "repository": "https://github.com/allenai/longformer",
+   "revision": "caefee668e39cacdece7dd603a0bebf24df6d8ca",
+   "audit": "Pinned AllenAI sliding-chunks source; local no-global attention kernel profile uses upstream QK/PV functions. Full Longformer model import is blocked by the pinned code depending on a removed transformers.modeling_roberta import."
+  },
+  "sparse_transformer": {
+   "repository": "https://github.com/openai/sparse_attention",
+   "revision": "c53f3bdbf6225be0582f0357072e82b13c69be7d",
+   "audit": "Pinned attention.py dense all/local/strided equations and exact fixed-mode layout/callback semantics are checked and profiled through a TensorFlow 2 eager bridge. The optimized TensorFlow 1 BlocksparseTransformer traversal remains unavailable."
+  },
+  "hla_higher_order": {
+   "repository": "https://github.com/yifanzhang-pro/HLA",
+   "revision": "484fef2bb40d4ed58f7656e545cf5ef64c40c962",
+   "audit": "Pinned Higher-order Linear Attention project repository. It contains a paper/project page but no executable operator or kernel."
+  },
+  "kata": {
+   "repository": "https://github.com/ayghri/KATA",
+   "revision": "f93fe75750be6400a0068749794985d70666926d",
+   "audit": "Pinned KATA normalized positive causal attention and Triton backward kernels; exact output/gradient parity and 21-pair A10G profiles at BF16 B4/T1024/H8/D=64/M=4 are recorded in kata-k1.json."
+  },
+  "atma": {
+   "repository": "https://github.com/kreasof-ai/atma",
+   "revision": "28bb3de8afbe7c0b00115e0fbff36afc9ad49c11",
+   "audit": "Checkout identity only; benchmark worktree dirtiness and callable source hashes before use. Public repository confirmed against the pinned revision's tests (provision via extra/provision_comparators.py)."
+  },
+  "conformer": {
+   "repository": "https://github.com/espnet/espnet",
+   "revision": "2950325ea62c8052f448aaf11affdabe169ec8ab",
+   "audit": "Pinned ESPnet Conformer MultiHeadedAttention. Bidirectional standard self-attention with the source SDPA path matches the unified K1 plan exactly at FP32 B2/T1024/H4/D32; full Conformer convolution, positionwise FFN, positional encoding and residual block are outside this profile."
+  },
+  "h3": {
+   "repository": "https://github.com/HazyResearch/H3",
+   "revision": "5c4d06b5795405170387c80998b58d76179a8a1a",
+   "audit": "Pinned H3.forward and SSKernel filter generation run through the PyTorch FFT path. URM now matches the head_dim=1 training mixer with an independent two-stage K2 FFT adapter; head_dim>1, fast fused FFT convolution and inference cache/step remain open."
+  },
+  "safari": {
+   "repository": "https://github.com/HazyResearch/safari",
+   "revision": "02220c69d247e5473616cd053a443ad99fd2559b",
+   "audit": "Pinned standalone HyenaOperator.forward and learned implicit-filter FFT path are executable and profiled at order 2; higher orders, low-precision fused FFT and streaming/cache remain outside the comparison."
+  },
+  "hopfield": {
+   "repository": "https://github.com/ml-jku/hopfield-layers",
+   "revision": "f56f929c95b77a070ae675ea4f56b6d54d36e730",
+   "audit": "Pinned HopfieldCore and hopfield_core_forward source. The single update_steps_max=0 association is a projected unscaled softmax K1 operation; exact source output/gradient and paired profile are in hopfield-k1.json."
+  },
+  "maml": {
+   "repository": "https://github.com/cbfinn/maml",
+   "revision": "a7f45f1bcd7457fe97b227a21e89b8a82cc5fa49",
+   "audit": "Pinned Model-Agnostic Meta-Learning training algorithm source. The objective is inner-loop adaptation and outer meta-gradient optimization, not a sequence mixer."
+  },
+  "reptile": {
+   "repository": "https://github.com/openai/supervised-reptile",
+   "revision": "8f2b71c67a31c1a605ced0cecb76db876b607a7a",
+   "audit": "Pinned OpenAI Reptile training algorithm source. It performs task-specific training followed by parameter interpolation, not sequence mixing."
+  }
+ },
+ "architectures": [
+  {
+   "id": "arch-001",
+   "architecture": "Transformer MHA",
+   "source": "flash",
+   "source_path": null,
+   "proposed_lowering": "K1",
+   "wave": 1,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Cache ownership/position offsets, decode, eager dispatch latency, and full-layer training/inference qualification",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "resolve_before_execution",
+   "tolerances": "freeze_before_execution",
+   "prototype_status": "kernel_prototype_only",
+   "prototype_kernel": "K1_softmax_reduction",
+   "prototype_scope": "Native tiled online-softmax core; validated on the declared BF16 prefill fixture. Full layer and cache ABI remain external.",
+   "prototype_validated_anchors": [
+    "urm.unified.k1.softmax_reference.v1",
+    "torch.nn.functional.scaled_dot_product_attention",
+    "urm_native_k1_online_softmax_v1"
+   ],
+   "prototype_reference_test": "tests/test_graph_vertical_slice.py::test_every_graph_recipe_runs_forward_and_backward_through_the_graph_path"
+  },
+  {
+   "id": "arch-002",
+   "architecture": "Transformer MQA",
+   "source": "flash",
+   "source_path": null,
+   "proposed_lowering": "K1",
+   "wave": 1,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Cache ownership/position offsets, decode, eager dispatch latency, and full-layer training/inference qualification",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "resolve_before_execution",
+   "tolerances": "freeze_before_execution",
+   "prototype_status": "kernel_prototype_only",
+   "prototype_kernel": "K1_softmax_reduction",
+   "prototype_scope": "Native tiled online-softmax core; validated on the declared BF16 prefill fixture. Full layer and cache ABI remain external.",
+   "prototype_validated_anchors": [
+    "urm.unified.k1.softmax_reference.v1",
+    "torch.nn.functional.scaled_dot_product_attention",
+    "urm_native_k1_online_softmax_v1"
+   ],
+   "prototype_reference_test": "tests/test_graph_vertical_slice.py::test_every_graph_recipe_runs_forward_and_backward_through_the_graph_path"
+  },
+  {
+   "id": "arch-003",
+   "architecture": "Transformer GQA",
+   "source": "flash",
+   "source_path": null,
+   "proposed_lowering": "K1",
+   "wave": 1,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Cache ownership/position offsets, decode, eager dispatch latency, and full-layer training/inference qualification",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "resolve_before_execution",
+   "tolerances": "freeze_before_execution",
+   "prototype_status": "kernel_prototype_only",
+   "prototype_kernel": "K1_softmax_reduction",
+   "prototype_scope": "Native tiled online-softmax core; validated on the declared BF16 prefill fixture. Full layer and cache ABI remain external.",
+   "prototype_validated_anchors": [
+    "urm.unified.k1.softmax_reference.v1",
+    "torch.nn.functional.scaled_dot_product_attention",
+    "urm_native_k1_online_softmax_v1"
+   ],
+   "prototype_reference_test": "tests/test_graph_vertical_slice.py::test_every_graph_recipe_runs_forward_and_backward_through_the_graph_path"
+  },
+  {
+   "id": "arch-004",
+   "architecture": "MLA",
+   "source": "fla",
+   "source_path": "fla/layers/mla.py",
+   "proposed_lowering": "K1+composition",
+   "wave": 2,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Preserve latent KV and positional branches; do not inflate cache for a false parity win",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.layers.mla.MultiheadLatentAttention.forward (causal attention stage: flash_attn.flash_attn_interface.flash_attn_func)",
+   "tolerances": "BF16 output and input gradients atol/rtol 2e-2 for the padded FlashAttention value layout",
+   "prototype_status": "kernel_prototype_only",
+   "prototype_kernel": "K1_softmax_reduction",
+   "prototype_scope": "Softmax attention core after MLA latent/positional preparation; compression and cache branches remain external.",
+   "prototype_validated_anchors": [
+    "urm.unified.k1.softmax_reference.v1",
+    "torch.nn.functional.scaled_dot_product_attention"
+   ],
+   "prototype_reference_test": "tests/test_graph_vertical_slice.py::test_every_graph_recipe_runs_forward_and_backward_through_the_graph_path"
+  },
+  {
+   "id": "arch-005",
+   "architecture": "NSA",
+   "source": "fla",
+   "source_path": "fla/ops/nsa",
+   "proposed_lowering": "K1+route/compression",
+   "wave": 2,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Compression selection and local branches; include indexer and auxiliary routing work",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.nsa.parallel.parallel_nsa@864a87f6ce5be8828bef81eb22baafd41937cdf2",
+   "tolerances": "BF16 output atol 2e-2 / rtol 2e-2 and input gradients atol 2e-2 / rtol 2e-2; max output error 7.81e-3 and max input-gradient error 7.63e-6 against the pinned selected-only NSA callable",
+   "prototype_status": "kernel_prototype_only",
+   "prototype_kernel": "K1_softmax_reduction",
+   "prototype_scope": "Causal K1 attention under precomputed NSA selected-block routes and per-token block counts; compression, indexer and sparse traversal remain external.",
+   "prototype_validated_anchors": [
+    "urm.unified.k1.softmax_reference.v1",
+    "torch.nn.functional.scaled_dot_product_attention"
+   ],
+   "prototype_reference_test": "tests/test_graph_vertical_slice.py::test_every_graph_recipe_runs_forward_and_backward_through_the_graph_path"
+  },
+  {
+   "id": "arch-006",
+   "architecture": "MoBA",
+   "source": "fla",
+   "source_path": "fla/ops/moba",
+   "proposed_lowering": "K1+route",
+   "wave": 2,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Block scoring, route selection and full-layer/cache integration remain outside the supplied-route attention slice; the compiler library adapter delegates exact sparse traversal to pinned FLA.",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.moba.parallel.parallel_moba@864a87f6ce5be8828bef81eb22baafd41937cdf2",
+   "tolerances": "BF16 output and Q/K/V gradients atol/rtol 2e-2; 10% paired median overhead gate",
+   "prototype_status": "kernel_prototype_only",
+   "prototype_kernel": "K1_softmax_reduction",
+   "prototype_scope": "Masked attention core given selected blocks; block scoring and sparse traversal remain external.",
+   "prototype_validated_anchors": [
+    "urm.unified.k1.softmax_reference.v1",
+    "torch.nn.functional.scaled_dot_product_attention"
+   ],
+   "prototype_reference_test": "tests/test_graph_vertical_slice.py::test_every_graph_recipe_runs_forward_and_backward_through_the_graph_path"
+  },
+  {
+   "id": "arch-007",
+   "architecture": "DSA",
+   "source": "fla",
+   "source_path": "fla/ops/dsa",
+   "proposed_lowering": "K1+route",
+   "wave": 2,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "DSA indexer objective and top-k token selection, upstream sparse traversal and full-layer comparison remain outside the measured supplied-route mask slice",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.dsa.naive.naive_dsa@864a87f6ce5be8828bef81eb22baafd41937cdf2",
+   "tolerances": "BF16 output atol 2e-2 / rtol 2e-2; active gradients atol 2e-2 / rtol 2e-2; the masked equation matches the pinned naive DSA callable exactly, while SDPA max output error is 7.81e-3 and max input-gradient error is 7.63e-6",
+   "prototype_status": "kernel_prototype_only",
+   "prototype_kernel": "K1_softmax_reduction",
+   "prototype_scope": "Causal softmax over the exact precomputed DSA token-route mask; indexer objective and route selection remain external.",
+   "prototype_validated_anchors": [
+    "urm.unified.k1.softmax_reference.v1",
+    "torch.nn.functional.scaled_dot_product_attention"
+   ],
+   "prototype_reference_test": "tests/test_graph_vertical_slice.py::test_every_graph_recipe_runs_forward_and_backward_through_the_graph_path"
+  },
+  {
+   "id": "arch-008",
+   "architecture": "Forgetting Transformer / FoX",
+   "source": "fla",
+   "source_path": "fla/ops/forgetting_attn",
+   "proposed_lowering": "K1+gate",
+   "wave": 2,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Measure supplied-gate training and prefill across head sizes; full layer projections and gate production remain open",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.forgetting_attn.parallel.parallel_forgetting_attn@864a87f6ce5be8828bef81eb22baafd41937cdf2",
+   "tolerances": "BF16 output and input gradients atol 2e-2 / rtol 2e-2; reference-equation max output error 7.81e-3 and max gradient error 1.53e-5; pinned adapter output and gradients exact",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-009",
+   "architecture": "Log-linear attention",
+   "source": "fla",
+   "source_path": "fla/ops/log_linear_attn",
+   "proposed_lowering": "extension audit",
+   "wave": 3,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Training and the dyadic chunk core are compared at aligned 64-token boundaries; qualify streaming decode and the complete layer/cache ABI",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.log_linear_attn.chunk.chunk_log_linear_attn",
+   "tolerances": "results/unified-mixer/log-linear-k2.json",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-010",
+   "architecture": "PaTH attention",
+   "source": "fla",
+   "source_path": "fla/ops/path_attn",
+   "proposed_lowering": "K1+transform recurrence",
+   "wave": 3,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Integrate model-side q/k/v/w/beta/g projections, w short convolution, optional q/k normalization, cache/decode and full layer",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.path_attn.parallel.parallel_path_attn",
+   "tolerances": "BF16 equation output atol/rtol 2e-2 and input gradients atol/rtol 3e-2; adapter parity exact; 10% paired median overhead gate",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-011",
+   "architecture": "Wall attention",
+   "source": "fla",
+   "source_path": "fla/ops/wall_attn",
+   "proposed_lowering": "K1 per-channel decay attention",
+   "wave": 3,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Qualify supported head sizes, optional scalar gate, sink and window branches, decode/cache path and full model integration",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.wall_attn.parallel.parallel_wall_attn@864a87f6ce5be8828bef81eb22baafd41937cdf2",
+   "tolerances": "FP32 output atol 5e-3 / rtol 5e-3 and active gradients atol 2e-2 / rtol 2e-2; independent per-channel-decay equation max output error 4.77e-7 and max gradient error 1.17e-9; pinned adapter output and gradients exact",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-012",
+   "architecture": "Parallax",
+   "source": "fla",
+   "source_path": "fla/ops/parallax",
+   "proposed_lowering": "extension audit",
+   "wave": 3,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Qualify the supplied secondary-query operator at more head sizes and with GQA; model-side r construction, positional transforms, full layer and other modes remain open",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.parallax.parallel.parallel_parallax@864a87f6ce5be8828bef81eb22baafd41937cdf2",
+   "tolerances": "BF16 output and input gradients atol 2e-2 / rtol 2e-2; independent equation max output error 7.81e-3 and maximum gradient error 1.53e-5; pinned adapter output and gradients exact",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-013",
+   "architecture": "DeltaFormer",
+   "source": "fla",
+   "source_path": "fla/ops/deltaformer",
+   "proposed_lowering": "K1 causal softmax after strict-causal triangular K2 value correction",
+   "wave": 3,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Integrate Q/K/V and beta projections, reproduce the coupled DeltaFormer layer, and qualify full-layer training/prefill/decode",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.deltaformer.parallel.deltaformer_attn@864a87f6ce5be8828bef81eb22baafd41937cdf2",
+   "tolerances": "BF16 B1/T64/H2/K=V=32: independent two-stage equation output atol/rtol 2e-2 and input-gradient atol/rtol 2e-2; compiler adapter output and input gradients exact; 10% paired median overhead gate",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-014",
+   "architecture": "BitAttention",
+   "source": "fla",
+   "source_path": "fla/layers/bitattn.py",
+   "proposed_lowering": "K1 causal softmax attention after BitLinear Q/K/V projections and RoPE",
+   "wave": 3,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Cache ownership/position offsets, decode, eager dispatch latency, and full-layer training/inference qualification",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "flash_attn.flash_attn_func@1bda8f9290cd48d030f1516f0e680cd464ef3554",
+   "tolerances": "BF16 output and Q/K/V gradient atol/rtol 2e-2; 10% paired median overhead gate",
+   "prototype_status": "kernel_prototype_only",
+   "prototype_kernel": "K1_softmax_reduction",
+   "prototype_scope": "Native tiled online-softmax core; validated on the declared BF16 prefill fixture. Full layer and cache ABI remain external.",
+   "prototype_validated_anchors": [
+    "urm.unified.k1.softmax_reference.v1",
+    "torch.nn.functional.scaled_dot_product_attention",
+    "urm_native_k1_online_softmax_v1"
+   ],
+   "prototype_reference_test": "tests/test_graph_vertical_slice.py::test_every_graph_recipe_runs_forward_and_backward_through_the_graph_path"
+  },
+  {
+   "id": "arch-015",
+   "architecture": "Linear attention",
+   "source": "fla",
+   "source_path": "fla/ops/linear_attn",
+   "proposed_lowering": "K2 additive",
+   "wave": 1,
+   "audit_status": "source_inventory",
+   "mapping_status": "proposed",
+   "work_required": "Feature maps and denominator state; prefill and recurrent decode",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "resolve_before_execution",
+   "tolerances": "freeze_before_execution",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-016",
+   "architecture": "Lightning Attention",
+   "source": "fla",
+   "source_path": "fla/ops/lightning_attn",
+   "proposed_lowering": "K2 additive candidate",
+   "wave": 2,
+   "audit_status": "source_inventory",
+   "mapping_status": "proposed",
+   "work_required": "Layer-index decay schedule and projections are supplied by the layer; qualify complete layer and remaining dtype/mode combinations.",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.lightning_attn.chunk.chunk_lightning_attn",
+   "tolerances": "results/unified-mixer/fla-k2.json",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-017",
+   "architecture": "RetNet / retention",
+   "source": "fla",
+   "source_path": "fla/ops/retention",
+   "proposed_lowering": "K2+frontend",
+   "wave": 2,
+   "audit_status": "source_inventory",
+   "mapping_status": "proposed",
+   "work_required": "Multiscale head scheduling, positional transforms and layer normalization remain outside the recurrence kernel.",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.retention.fused_chunk.fused_chunk_retention",
+   "tolerances": "results/unified-mixer/fla-k2.json",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-018",
+   "architecture": "Simple GLA",
+   "source": "fla",
+   "source_path": "fla/ops/simple_gla",
+   "proposed_lowering": "K2 head-decayed additive state",
+   "wave": 2,
+   "audit_status": "source_inventory",
+   "mapping_status": "proposed",
+   "work_required": "Qualify fp16/bf16 chunk prefill/backward and full-layer projection/gate composition against the pinned caller",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "resolve_before_execution",
+   "tolerances": "freeze_before_execution",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-019",
+   "architecture": "GLA",
+   "source": "fla",
+   "source_path": "fla/ops/gla",
+   "proposed_lowering": "K2 key-channel-decayed additive state",
+   "wave": 2,
+   "audit_status": "source_inventory",
+   "mapping_status": "proposed",
+   "work_required": "Qualify fp16/bf16 chunk prefill/backward and full-layer projection/gate composition against the pinned caller",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "resolve_before_execution",
+   "tolerances": "freeze_before_execution",
+   "prototype_status": "kernel_prototype_only",
+   "prototype_kernel": "K2_state_recurrence",
+   "prototype_scope": "Reference-tier public graph path (canonical K2 linear-delta law); forward+backward through compile_graph/BoundGraphPlan. Native schedule is a separate tier.",
+   "prototype_validated_anchors": [
+    "urm.unified.k2.state_reference.v1"
+   ],
+   "prototype_reference_test": "tests/test_graph_vertical_slice.py::test_every_graph_recipe_runs_forward_and_backward_through_the_graph_path"
+  },
+  {
+   "id": "arch-020",
+   "architecture": "Based",
+   "source": "fla",
+   "source_path": "fla/ops/based/fused_chunk.py",
+   "proposed_lowering": "K2+feature map",
+   "wave": 2,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Architecture-level Q/K/V projections and surrounding layer remain outside this kernel slice",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.based.fused_chunk.fused_chunk_based",
+   "tolerances": "results/unified-mixer/based-k2.json",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-021",
+   "architecture": "ReBased",
+   "source": "fla",
+   "source_path": "fla/ops/rebased/parallel.py",
+   "proposed_lowering": "K2+feature map",
+   "wave": 2,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Architecture-level Q/K/V projections and surrounding layer remain outside this kernel slice",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.rebased.parallel.parallel_rebased",
+   "tolerances": "results/unified-mixer/rebased-k2.json",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-022",
+   "architecture": "LightNet",
+   "source": "fla",
+   "source_path": "fla/layers/lightnet.py",
+   "proposed_lowering": "K2 GLA state recurrence plus frontend",
+   "wave": 2,
+   "audit_status": "source_inventory",
+   "mapping_status": "proposed",
+   "work_required": "Full layer projections, optional short convolutions, cumulative key normalization, gate production and output normalization/projection remain external.",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.gla.chunk.chunk_gla",
+   "tolerances": "results/unified-mixer/fla-k2.json",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-023",
+   "architecture": "HGRN",
+   "source": "fla",
+   "source_path": "fla/ops/hgrn",
+   "proposed_lowering": "K2 vector-state extension",
+   "wave": 2,
+   "audit_status": "source_inventory",
+   "mapping_status": "proposed",
+   "work_required": "Input gate/projections, normalization and output projection remain outside the recurrent kernel",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.hgrn.fused_recurrent_hgrn",
+   "tolerances": "results/unified-mixer/hgrn-k2.json",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-024",
+   "architecture": "HGRN2",
+   "source": "fla",
+   "source_path": "fla/layers/hgrn2.py",
+   "proposed_lowering": "K2+frontend audit",
+   "wave": 2,
+   "audit_status": "source_inventory",
+   "mapping_status": "proposed",
+   "work_required": "Q/K/input projections, gate activation, HGRN2 value-first state layout and layer norm remain external",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "resolve_before_execution",
+   "tolerances": "freeze_before_execution",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-025",
+   "architecture": "DeltaNet",
+   "source": "fla",
+   "source_path": "fla/ops/delta_rule",
+   "proposed_lowering": "K2 delta",
+   "wave": 1,
+   "audit_status": "source_inventory",
+   "mapping_status": "proposed",
+   "work_required": "Stable triangular solve; initial/final-state and key gradients",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "resolve_before_execution",
+   "tolerances": "freeze_before_execution",
+   "prototype_status": "kernel_prototype_only",
+   "prototype_kernel": "K2_state_recurrence",
+   "prototype_scope": "Reference-tier public graph path (canonical K2 linear-delta law); forward+backward through compile_graph/BoundGraphPlan. Native schedule is a separate tier.",
+   "prototype_validated_anchors": [
+    "urm.unified.k2.state_reference.v1"
+   ],
+   "prototype_reference_test": "tests/test_graph_vertical_slice.py::test_every_graph_recipe_runs_forward_and_backward_through_the_graph_path"
+  },
+  {
+   "id": "arch-026",
+   "architecture": "Gated DeltaNet",
+   "source": "fla",
+   "source_path": "fla/ops/gated_delta_rule",
+   "proposed_lowering": "K2 delta",
+   "wave": 1,
+   "audit_status": "source_inventory",
+   "mapping_status": "proposed",
+   "work_required": "The FLA kernel slice covers chunk training/prefill; ATMA slot-table decode is now profiled as a forward-only K2 anchor. Full-block frontends and training backward through ATMA decode remain external.",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "resolve_before_execution",
+   "tolerances": "freeze_before_execution",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-027",
+   "architecture": "GDN2",
+   "source": "fla",
+   "source_path": "fla/ops/gdn2",
+   "proposed_lowering": "K2 extension audit",
+   "wave": 3,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Full-layer Q/K/V projections, erase/write/decay gate production, normalization and output projection remain outside the measured recurrence",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.gdn2.chunk.chunk_gdn2",
+   "tolerances": "results/unified-mixer/gdn2-k2.json",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-028",
+   "architecture": "KDA",
+   "source": "fla",
+   "source_path": "fla/ops/kda",
+   "proposed_lowering": "K2 transition extension",
+   "wave": 2,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Complete KDA A_log/dt/bias gate generation, optional Q/K normalization, gated normalization and output projection; qualify prefill and recurrent decode",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.kda.chunk.chunk_kda",
+   "tolerances": "results/unified-mixer/kda-k2.json",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-029",
+   "architecture": "Gated DeltaProduct",
+   "source": "fla",
+   "source_path": "fla/ops/gated_delta_product",
+   "proposed_lowering": "K2 multi-update",
+   "wave": 3,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Per-update projection and gate production plus full-layer training/prefill/decode integration",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.gated_delta_product.chunk.chunk_gated_delta_product@864a87f6ce5be8828bef81eb22baafd41937cdf2",
+   "tolerances": "BF16 reference equation: output atol 2e-2 / rtol 2e-2, final state atol 1e-2 / rtol 2e-2, active gradients atol 2e-2 / rtol 3e-2; library adapter exact parity",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-030",
+   "architecture": "Momentum DeltaNet",
+   "source": "fla",
+   "source_path": "fla/ops/momentum_delta_rule",
+   "proposed_lowering": "K2 augmented state",
+   "wave": 3,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Qualify default q/k/p normalization and p-times-alpha modes, full frontend/projections, recurrent decode/cache and full-layer training/prefill/decode",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.momentum_delta_rule.chunk.chunk_momentum_delta_rule",
+   "tolerances": "BF16 recurrence equation atol/rtol 2e-2; pinned adapter parity exact; paired median slowdown gate 10%",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-031",
+   "architecture": "Generalized delta IPLR",
+   "source": "fla",
+   "source_path": "fla/ops/generalized_delta_rule/iplr",
+   "proposed_lowering": "K2 low-rank transition",
+   "wave": 3,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Full-layer factor generation/projections and architecture training/prefill/decode integration remain outside the measured K2 kernel slice",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.generalized_delta_rule.iplr.fused_recurrent.fused_recurrent_iplr_delta_rule@864a87f6ce5be8828bef81eb22baafd41937cdf2",
+   "tolerances": "reference equation output atol 0.0003, final state atol 0.0005, active gradients atol 0.002; library adapter exact parity",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-032",
+   "architecture": "Generalized delta DPLR",
+   "source": "fla",
+   "source_path": "fla/ops/generalized_delta_rule/dplr",
+   "proposed_lowering": "K2 low-rank transition",
+   "wave": 3,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Full-layer factor generation/projections and architecture training/prefill/decode integration remain outside the measured K2 kernel slice",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.generalized_delta_rule.dplr.chunk.chunk_dplr_delta_rule@864a87f6ce5be8828bef81eb22baafd41937cdf2",
+   "tolerances": "reference equation output atol 0.002, final state atol 0.001, active gradients atol 0.02; library adapter exact parity",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-033",
+   "architecture": "Gated Oja rule",
+   "source": "fla",
+   "source_path": "fla/ops/gated_oja_rule",
+   "proposed_lowering": "K2 value-channel-decayed Oja state",
+   "wave": 3,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Integrate Q/K/V/gate projections and full Gated Oja layer; the pinned fused recurrent forward has no backward, so the measured training slice uses the chunk operator; qualify prefill and decode.",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.gated_oja_rule.chunk.chunk_gated_oja_rule",
+   "tolerances": "BF16 recurrence equation output, final-state and active-gradient atol/rtol 2e-2; pinned adapter parity exact; paired median overhead gate 10%",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-034",
+   "architecture": "PGDN",
+   "source": "fla",
+   "source_path": "fla/ops/precond_gated_delta_rule",
+   "proposed_lowering": "K2 ATK-preconditioned gated delta state",
+   "wave": 3,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Integrate ATK parameter generation, projections and full PGDN layer; the measured kernel slice assumes one value head per key head and default squash parameters",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.precond_gated_delta_rule.chunk.chunk_precond_gated_delta_rule@864a87f6ce5be8828bef81eb22baafd41937cdf2",
+   "tolerances": "BF16 independent recurrence output/state/active-gradient atol and rtol 2e-2; pinned adapter parity exact; 10% paired median overhead gate",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-035",
+   "architecture": "PKDA",
+   "source": "fla",
+   "source_path": "fla/ops/precond_kda",
+   "proposed_lowering": "K2 key-channel ATK-preconditioned delta state",
+   "wave": 3,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Integrate ATK parameter generation, KDA gate frontend and full PKDA layer; the measured kernel slice uses explicit gates and default squash parameters",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.precond_kda.chunk.chunk_precond_kda@864a87f6ce5be8828bef81eb22baafd41937cdf2",
+   "tolerances": "BF16 independent recurrence output/state/active-gradient atol and rtol 2e-2; pinned adapter parity exact; 10% paired median overhead gate",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-036",
+   "architecture": "Rodimus",
+   "source": "fla",
+   "source_path": "fla/layers/rodimus.py",
+   "proposed_lowering": "K2 BF16 key-channel GLA with V-first state and source-default 1/sqrt(K) read scale",
+   "wave": 3,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Integrate Rodimus input/gate projections, short convolution, normalization and output projection; qualify full-layer training/prefill/decode and cache state including nonzero initial state",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.gla.chunk.chunk_gla@864a87f6ce5be8828bef81eb22baafd41937cdf2",
+   "tolerances": "BF16 output, final-state and input-gradient atol/rtol 2e-2; reference equation uses the same tolerance; 10% paired median overhead gate",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-037",
+   "architecture": "Comba",
+   "source": "fla",
+   "source_path": "fla/ops/comba",
+   "proposed_lowering": "K2 head-decayed dual-key delta state",
+   "wave": 3,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Integrate COMBA feature projections and full architecture layers; qualify model-side training/prefill/decode paths",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.comba.chunk.chunk_comba@864a87f6ce5be8828bef81eb22baafd41937cdf2",
+   "tolerances": "BF16 independent recurrence output/state/active-gradient atol and rtol 2e-2; pinned adapter parity exact; 10% paired median overhead gate",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-038",
+   "architecture": "MesaNet",
+   "source": "fla",
+   "source_path": "fla/ops/mesa_net",
+   "proposed_lowering": "K2 dual covariance-state recurrence plus regularized key-space solve",
+   "wave": 3,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Qualify nonzero initial-state gradients and streaming decode; integrate model-side Q/K normalization and lambda construction, then qualify the full layer and architecture modes",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.mesa_net.chunk.chunk_mesa_net@864a87f6ce5be8828bef81eb22baafd41937cdf2",
+   "tolerances": "BF16 B1/T64/H2/K=V=16: independent solve equation atol/rtol 3e-3 for output and states and 2e-2 for input gradients; pinned adapter exact; 10% paired median overhead gate",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-039",
+   "architecture": "Titans",
+   "source": "fla",
+   "source_path": "fla/ops/titans",
+   "proposed_lowering": "typed update composition",
+   "wave": 3,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Qualify the complete Titans block, projections and gate frontend, memory hierarchy, and full-model prefill/decode/cache integration. This comparison covers only FLA chunked associative memory.",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.titans.naive.chunk_titans_linear_ref(use_chunk=True)@864a87f6ce5be8828bef81eb22baafd41937cdf2",
+   "tolerances": "FP32 B1/T64/H1/D=16, chunk_size=16: independent tokenwise reference output/state atol 3e-5 and input-gradient atol 3e-3, rtol 1e-2; pinned FLA adapter output/state/all gradients exact; paired median overhead limit 10%.",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-040",
+   "architecture": "RWKV-4",
+   "source": "fla",
+   "source_path": "fla/ops/rwkv4",
+   "proposed_lowering": "K2+stable normalized state",
+   "wave": 2,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Time-mix and channel-mixing frontend, output gate, and complete layer/cache integration remain outside the measured recurrence core",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.rwkv4.fused_recurrent.fused_recurrent_rwkv4@864a87f6ce5be8828bef81eb22baafd41937cdf2",
+   "tolerances": "FP32 reference equation output atol 3e-4, state atol 5e-4, gradients atol 2e-3; library adapter exact parity",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-041",
+   "architecture": "RWKV-6",
+   "source": "fla",
+   "source_path": "fla/ops/rwkv6",
+   "proposed_lowering": "K2 key-channel-decayed matrix state plus static bonus read correction",
+   "wave": 2,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Time-mix frontend, projections and output gate; the pinned source backward differentiates output and does not consume a final-state cotangent",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.rwkv6.fused_recurrent.fused_recurrent_rwkv6",
+   "tolerances": "freeze_before_execution",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-042",
+   "architecture": "RWKV-7",
+   "source": "fla",
+   "source_path": "fla/ops/rwkv7",
+   "proposed_lowering": "K2 low-rank extension",
+   "wave": 3,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Model-side time/value mixing and low-rank factor construction, projections, output gate and training/prefill/decode cache integration remain external",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.rwkv7.chunk.chunk_rwkv7@864a87f6ce5be8828bef81eb22baafd41937cdf2",
+   "tolerances": "BF16 reference equation output atol 5e-3 / rtol 2e-2, state atol 1e-3 / rtol 2e-2, active gradients atol 2e-2 / rtol 3e-2; library adapter exact parity",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-043",
+   "architecture": "Mamba-1",
+   "source": "mamba",
+   "source_path": "mamba_ssm/ops/selective_scan_interface.py; csrc/selective_scan",
+   "proposed_lowering": "K2/SSM+convolution",
+   "wave": 3,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Full-layer convolution, projections, activation gate and cache ABI remain outside the measured selective scan",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "mamba_ssm.ops.selective_scan_interface.selective_scan_fn",
+   "tolerances": "results/unified-mixer/mamba-k2.json",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-044",
+   "architecture": "Mamba-2 / SSD",
+   "source": "mamba",
+   "source_path": "mamba_ssm/ops/triton/ssd_combined.py; ssd_chunk_state.py; ssd_state_passing.py; ssd_chunk_scan.py; ssd_bmm.py",
+   "proposed_lowering": "K2/semiseparable+convolution",
+   "wave": 3,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Full-layer convolution, projections, dt bias/softplus, skip/output gate and cache/chunk-boundary ABI remain outside the measured SSD scan core",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "mamba_ssm.ops.triton.ssd_combined.mamba_chunk_scan_combined",
+   "tolerances": "results/unified-mixer/mamba2-k2.json",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-045",
+   "architecture": "Mamba-3",
+   "source": "mamba",
+   "source_path": "mamba_ssm/ops/triton/mamba3/mamba3_siso_combined.py; mamba3_siso_fwd.py; mamba3_siso_bwd.py",
+   "proposed_lowering": "K2 SISO rotary angle accumulator with trapezoidal four-state SSM recurrence",
+   "wave": 3,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Qualify MIMO/TileLang separately; integrate input/output projections and A/dt/trap parameter frontend, then qualify full-layer prefill, decode and cache ABI",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "mamba_ssm.ops.triton.mamba3.mamba3_siso_combined.mamba3_siso_combined@e9594ce1c732d97440f0332fdc43170a2294dbfa",
+   "tolerances": "BF16 B1/T64/H2/K=V=16: independent recurrence atol/rtol 2e-2 for output/four states and 5e-2 for input gradients; pinned SISO adapter exact; 10% paired median overhead gate",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-046",
+   "architecture": "LogLinearMamba2",
+   "source": "fla",
+   "source_path": "fla/layers/log_linear_mamba2.py",
+   "proposed_lowering": "K2+structured composition",
+   "wave": 3,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Complete Mamba-2 projection/dt frontend and training layer parity; qualify partial-chunk streaming cache, prefill and decode",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.layers.log_linear_mamba2.hmamba_chunk_scan_combined",
+   "tolerances": "results/unified-mixer/log-linear-k2.json",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-047",
+   "architecture": "Sparse Delta Memory",
+   "source": "sdm",
+   "source_path": "lingua/sparse_delta_memory",
+   "proposed_lowering": "K3 delta",
+   "wave": 1,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "The compiler-selected native K3 decayed-delta chunk schedule and actual pinned CUDA/Triton baseline have full-state and all-operand gradient tests, including overlapping routes, autocast, padding and terminal-state lifetime (tests/test_k3_chunked_native.py; tests/test_sdm_chunked.py; tests/test_sdm_cuda_baseline.py). The pin uses default TF32 matmuls for FP32 inputs, with a separate numerical budget. Decoder measurements are in results/report.md. Complete source-model, prefill/decode, global-bank capacity and GL-SDM/CSDM transaction policies remain unqualified.",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "resolve_before_execution",
+   "tolerances": "freeze_before_execution",
+   "prototype_status": "kernel_prototype_only",
+   "prototype_kernel": "K3_sparse_delta_state",
+   "prototype_scope": "Ordered sparse-slot delta state core given certified routes; product-key route generation remains external.",
+   "prototype_validated_anchors": [
+    "urm.unified.k3.sparse_delta_reference.v1",
+    "urm_native_sparse_state_mixer_v0"
+   ],
+   "prototype_reference_test": "tests/test_graph_vertical_slice.py::test_every_graph_recipe_runs_forward_and_backward_through_the_graph_path",
+   "prototype_accelerated_test": "tests/test_sparse_memory_native_gpu.py::test_fully_native_e2e_forward_matches_pinned_upstream"
+  },
+  {
+   "id": "arch-048",
+   "architecture": "ABC",
+   "source": "fla",
+   "source_path": "fla/ops/abc",
+   "proposed_lowering": "K2 two-stage slot attention",
+   "wave": 2,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Integrate slot and gate frontend, query/key/value projections, and qualify full layer training/prefill/decode",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.abc.chunk.chunk_abc@864a87f6ce5be8828bef81eb22baafd41937cdf2",
+   "tolerances": "BF16 independent two-state slot recurrence output/state/active-gradient atol and rtol 2e-2; pinned adapter parity exact; 10% paired median overhead gate",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-049",
+   "architecture": "GSA",
+   "source": "fla",
+   "source_path": "fla/ops/gsa",
+   "proposed_lowering": "K2 two-stage slot attention",
+   "wave": 2,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Integrate slot and gate frontend, query/key/value projections, and qualify full layer training/prefill/decode",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.gsa.chunk.chunk_gsa@864a87f6ce5be8828bef81eb22baafd41937cdf2",
+   "tolerances": "BF16 independent two-state slot recurrence output/state/active-gradient atol and rtol 2e-2; pinned adapter parity exact; 10% paired median overhead gate",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-050",
+   "architecture": "Raven",
+   "source": "fla",
+   "source_path": "fla/ops/gsa",
+   "proposed_lowering": "K2 shared GSA kernel",
+   "wave": 2,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Integrate Raven router top-k/score, decay selection, feature maps, normalization, projections and full training/prefill/decode layer; profile GQA on supported hardware",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.gsa.chunk.chunk_gsa@864a87f6ce5be8828bef81eb22baafd41937cdf2",
+   "tolerances": "BF16 independent two-state slot recurrence output/state/active-gradient atol and rtol 2e-2; pinned adapter parity exact; 10% paired median overhead gate",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-051",
+   "architecture": "Mixture of Memories / MoM",
+   "source": "fla",
+   "source_path": "fla/layers/mom.py",
+   "proposed_lowering": "K2 route-dispatched gated-delta memory core",
+   "wave": 3,
+   "audit_status": "source_inventory",
+   "mapping_status": "proposed",
+   "work_required": "The measured core covers one already routed memory stream. Qualify MoM router scores/top-k selection, route packing/dispatch/merge, expert projections/convolutions, shared-memory composition, cache and full-layer gradients.",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.gated_delta_rule.chunk.chunk_gated_delta_rule@864a87f6ce5be8828bef81eb22baafd41937cdf2 (as called by fla.layers.mom.MoM.forward)",
+   "tolerances": "BF16 routed-stream B2/T64/H2/K32/V16: reference equation output/state atol/rtol 1e-2 and gradients atol 2e-2/rtol 2e-2; pinned adapter exact.",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-052",
+   "architecture": "YOCO",
+   "source": "fla",
+   "source_path": "fla/ops/simple_gla",
+   "proposed_lowering": "K2 shared Simple GLA kernel",
+   "wave": 2,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Integrate YOCO RoPE/gate projections, normalization/output gates, shared-KV construction, decoder cross-attention and cache ABI; qualify YOCO low-precision full-layer modes",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.simple_gla.chunk.chunk_simple_gla@864a87f6ce5be8828bef81eb22baafd41937cdf2",
+   "tolerances": "freeze_before_execution",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-053",
+   "architecture": "Samba",
+   "source": "samba",
+   "source_path": "lit_gpt/model.py",
+   "proposed_lowering": "Samba no-PE attention branch with QKV/output projections plus causal K1",
+   "wave": 3,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Qualify the complete hybrid Block graph, Mamba recurrent/cache branch, short-convolution and rotary attention variants, plus normalization, residual and MLP stages.",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "CausalSelfAttention.forward (Samba_421M_nope attention branch)@617c7a0f8c71f1b7cb6180b86f9543d146f5c66f",
+   "tolerances": "exact FP32 output and input/parameter gradients for the pinned no-PE attention branch",
+   "prototype_status": "kernel_prototype_only",
+   "prototype_kernel": "K1_softmax_reduction",
+   "prototype_scope": "Pinned Samba_421M_nope attention branch: the exact 12-head, 1536-wide FP32 CausalSelfAttention source class including QKV/output projections maps to causal K1. The enclosing hybrid Block and its Mamba/MLP/cache alternatives remain external.",
+   "prototype_validated_anchors": [
+    "urm.unified.k1.softmax_reference.v1",
+    "torch.nn.functional.scaled_dot_product_attention"
+   ],
+   "prototype_reference_test": "tests/test_graph_vertical_slice.py::test_every_graph_recipe_runs_forward_and_backward_through_the_graph_path"
+  },
+  {
+   "id": "arch-054",
+   "architecture": "Attention Residuals / AttnRes",
+   "source": "fla",
+   "source_path": "fla/ops/attnres",
+   "proposed_lowering": "depth-axis reduction",
+   "wave": 3,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Layer-axis dependencies normalization and gradient accumulation",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.attnres.fused.fused_attnres",
+   "tolerances": "BF16 output and input gradients atol/rtol 2e-2; reference-equation output max error 3.91e-3 and max gradient error 3.82e-6",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-055",
+   "architecture": "TTT",
+   "source": "fla",
+   "source_path": "fla/ops/ttt",
+   "proposed_lowering": "typed inner-update extension",
+   "wave": 4,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Qualify the MLP variant, full TTT layer projections and normalization, upstream training schedule, higher-order gradients, and complete prefill/decode/cache integration. This comparison covers only FLA TTT-Linear chunk recurrence.",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.ops.ttt.chunk.chunk_ttt_linear@864a87f6ce5be8828bef81eb22baafd41937cdf2",
+   "tolerances": "BF16 B1/T64/H2/D=16, chunk_size=16: independent naive reference output/state atol and rtol 1e-2, input-gradient atol and rtol 2e-2; pinned adapter output/state/all gradients exact; paired median overhead limit 10%.",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-056",
+   "architecture": "FwPKM",
+   "source": "fwpkm",
+   "source_path": "src/models/fwpkm/fwpkm.py",
+   "proposed_lowering": "K1 fused softmax/value reduction over exact product-key selected logits",
+   "wave": 4,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Implement and qualify fast-weight writes, addressing-entropy updates, optimizer and chunk/cache boundaries; the current profile covers the selected-memory read.",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "FastWeightProductKeyMemory.retrieve_values@b1c8e234b523d70245fa197eed4b80a985c413a8",
+   "tolerances": "source output atol=1e-6, gradient atol=2e-6 and rtol=2e-5 for dot-product and IDW product-key routes",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-057",
+   "architecture": "TokenFormer / Pattention",
+   "source": "pattention",
+   "source_path": "megatron/model/tokenformer.py",
+   "proposed_lowering": "parameter-axis contraction",
+   "wave": 3,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Qualify GELU/L2 normalization modes, routed parameter tokens and full parameter initialization; do not infer automatic SwiGLU equivalence",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "megatron.model.tokenformer.Pattention.forward (norm_activation_type=softmax)",
+   "tolerances": "BF16 output and parameter gradients atol/rtol 2e-2",
+   "prototype_status": "kernel_prototype_only",
+   "prototype_kernel": "K1_softmax_reduction",
+   "prototype_scope": "Softmax contraction core for caller-supplied parameter tokens; parameter construction remains external.",
+   "prototype_validated_anchors": [
+    "urm.unified.k1.softmax_reference.v1",
+    "torch.nn.functional.scaled_dot_product_attention"
+   ],
+   "prototype_reference_test": "tests/test_graph_vertical_slice.py::test_every_graph_recipe_runs_forward_and_backward_through_the_graph_path"
+  },
+  {
+   "id": "arch-058",
+   "architecture": "SwiGLU MLP",
+   "source": "xma",
+   "source_path": "xma/functional/swiglu/triton_implementation",
+   "proposed_lowering": "parameter-axis grouped contractions",
+   "wave": 3,
+   "audit_status": "source_identified",
+   "mapping_status": "not_applicable",
+   "work_required": "Track the XMA SwiGLU activation and MLP under a separate pointwise/GEMM compiler comparison.",
+   "mode_qualification": {
+    "training": "not_applicable",
+    "prefill": "not_applicable",
+    "decode": "not_applicable"
+   },
+   "callable": "xma.functional.swiglu.triton_implementation.SwiGLU.forward@384ed0a7bd82ced1f40609603dd541cac5416844",
+   "tolerances": "freeze_before_execution"
+  },
+  {
+   "id": "arch-059",
+   "architecture": "Top-k MoE",
+   "source": "xma",
+   "source_path": "xma/layers/moe/triton_implementation",
+   "proposed_lowering": "route+grouped expert compute",
+   "wave": 3,
+   "audit_status": "source_identified",
+   "mapping_status": "not_applicable",
+   "work_required": "Track XMA top-k MoE routing and expert GEMMs under a separate routing/GEMM compiler comparison.",
+   "mode_qualification": {
+    "training": "not_applicable",
+    "prefill": "not_applicable",
+    "decode": "not_applicable"
+   },
+   "callable": "xma.layers.moe.MoE.forward@384ed0a7bd82ced1f40609603dd541cac5416844",
+   "tolerances": "freeze_before_execution"
+  },
+  {
+   "id": "arch-060",
+   "architecture": "RNN",
+   "source": "xma",
+   "source_path": "xma/layers/rnn",
+   "proposed_lowering": "K2 nonlinear recurrent state",
+   "wave": 4,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Qualify multi-head input/weight replication, packed variable-length sequences, gradient clipping, full model frontend, and recurrent cache integration. This profile covers the fixed-length, single-head nonlinear state operator.",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "xma.layers.rnn.op.rnn@384ed0a7bd82ced1f40609603dd541cac5416844",
+   "tolerances": "FP32 fixed-length comparison: independent reference and XMA torch backend output/state/gradient atol/rtol 3e-6; XMA Triton adapter output/state/gradient atol/rtol 3e-6; paired median overhead limit 10%.",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-061",
+   "architecture": "GRU",
+   "source": "xma",
+   "source_path": "xma/layers/gru",
+   "proposed_lowering": "K2 nonlinear recurrent state",
+   "wave": 4,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Qualify multi-head input/weight replication, packed variable-length sequences, gradient clipping, full model frontend, and recurrent cache integration. This profile covers the reset/update-gated fixed-length single-head state operator.",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "xma.layers.gru.op.gru@384ed0a7bd82ced1f40609603dd541cac5416844",
+   "tolerances": "FP32 fixed-length comparison: independent reference and XMA torch backend output/state/gradient atol/rtol 3e-6; XMA Triton adapter output/state/gradient atol/rtol 3e-6; paired median overhead limit 10%.",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-062",
+   "architecture": "M2RNN",
+   "source": "xma",
+   "source_path": "xma/layers/m2rnn",
+   "proposed_lowering": "K2 nonlinear recurrent state",
+   "wave": 4,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Qualify multi-head input/weight replication, packed variable-length sequences, gradient clipping, full model frontend, and recurrent cache integration. This profile covers the fixed-length, single-head matrix-memory nonlinear state operator.",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "xma.layers.m2rnn.op.m2rnn@384ed0a7bd82ced1f40609603dd541cac5416844",
+   "tolerances": "FP32 fixed-length comparison: independent reference and XMA torch backend output/state/gradient atol/rtol 3e-6; XMA Triton adapter output/state/gradient atol/rtol 3e-6; paired median overhead limit 10%.",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-063",
+   "architecture": "BDH",
+   "source": "bdh",
+   "source_path": "bdh.py",
+   "proposed_lowering": "K2 strict-past rotary linear attention",
+   "wave": 4,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "The measured core covers pinned Attention.forward. Integrate BDH encoder/value projections, layer norms, gated MLP, dropout, residual graph and full-model modes.",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "bdh.Attention.forward@2b0d7a45b058d4309c84a10e0768d541fe18bdc2",
+   "tolerances": "FP32 B1/T64/H2/QK32/V16: recurrence output atol/rtol 3e-5 and query/value gradient atol/rtol 3e-5; pinned source adapter exact for output and gradients.",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-064",
+   "architecture": "POLAR attention",
+   "source": "atma",
+   "source_path": "kernel/polar_triton.py",
+   "proposed_lowering": "K1 online polar reduction",
+   "wave": 3,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Integrate Q/K/V projections, GQA expansion, canonical convolution, output gating and direction/count projections; profile the full layer and qualify low-precision and windowed training modes. This comparison covers only the direction/magnitude K1 reduction.",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "kernel.polar_triton.polar_attention@28bb3de8afbe7c0b00115e0fbff36afc9ad49c11",
+   "tolerances": "FP32 B1/T64/H2/D=16: independent materialized equation and pinned Triton adapter output, auxiliary magnitude and all input gradients match exactly on the profiled fixture; paired median plan overhead limit 10%.",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-065",
+   "architecture": "Foveal sparse attention",
+   "source": "atma",
+   "source_path": "kernel/polar_triton.py",
+   "proposed_lowering": "K1 block-sparse polar reduction over supplied routes",
+   "wave": 3,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Integrate geometric routing and selection gradients, variable route capacity, projections, GQA expansion, output/count projections, and full-layer/cache modes. This comparison consumes exact precomputed routes and measures only selected local/remote-page attention.",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "kernel.polar_triton.polar_attention_sparse@28bb3de8afbe7c0b00115e0fbff36afc9ad49c11",
+   "tolerances": "FP32 B1/T64/H2/D=16: independent materialized equation and pinned Triton adapter output, auxiliary magnitude and all input gradients match exactly on the profiled fixture; paired median plan overhead limit 10%.",
+   "prototype_status": "kernel_prototype_only",
+   "prototype_kernel": "K1_softmax_reduction",
+   "prototype_scope": "ATMA Foveal local-window plus caller-supplied selected remote-page Polar reduction, FP32 B1/T64/H2/D=16, page/local window 16, remote route capacity 2. The independent materialized equation and pinned Triton adapter match output, magnitude and all input gradients exactly on this fixture. Across 21 paired measurements, median plan overhead is +5.8% forward and +0.4% forward/backward. Geometric route generation and full-layer integration remain external.",
+   "prototype_validated_anchors": [
+    "urm.unified.k1.softmax_reference.v1",
+    "atma_polar_sparse_triton_adapter"
+   ],
+   "prototype_reference_test": "tests/test_graph_vertical_slice.py::test_every_graph_recipe_runs_forward_and_backward_through_the_graph_path"
+  },
+  {
+   "id": "arch-066",
+   "architecture": "CAT / Compress-and-Attend",
+   "source": "fla",
+   "source_path": "fla/models/cat/modeling_cat.py",
+   "proposed_lowering": "compression+K1 composition",
+   "wave": 4,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Integrate CAT chunk compression, adaptive/separator tokens, rotary frontend and Q/K/V projections; qualify complete decoder block, cache and model modes",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "fla.models.cat.modeling_cat.flex_attention_compiled@864a87f6ce5be8828bef81eb22baafd41937cdf2",
+   "tolerances": "BF16 output and Q/K/V gradients atol/rtol 2e-2; 10% paired median overhead gate",
+   "prototype_status": "kernel_prototype_only",
+   "prototype_kernel": "K1_softmax_reduction",
+   "prototype_scope": "CAT causal attention over prior compressed tokens and the current local block, using the source BlockMask for two decoder blocks plus the final special-token pair. Compression and frontend transformations are excluded.",
+   "prototype_validated_anchors": [
+    "urm.unified.k1.softmax_reference.v1",
+    "torch.nn.functional.scaled_dot_product_attention"
+   ],
+   "prototype_reference_test": "tests/test_graph_vertical_slice.py::test_every_graph_recipe_runs_forward_and_backward_through_the_graph_path"
+  },
+  {
+   "id": "arch-067",
+   "architecture": "Differential Attention",
+   "source": "differential",
+   "source_path": "Diff-Transformer/multihead_diffattn.py",
+   "proposed_lowering": "multiple K1+combine",
+   "wave": 3,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Integrate source lambda parameterization, RoPE, per-head normalization and output projection; qualify decode/cache behavior and V2 separately",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "Diff-Transformer.multihead_diffattn.MultiheadDiffAttn.forward (V1)@50224e387211f15ac6a3b2685730b9a0c850f145",
+   "tolerances": "FP32 two-branch output/gradient parity atol 2e-5 / rtol 2e-4; paired median overhead gate 10%",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-068",
+   "architecture": "TDA",
+   "source": "tda",
+   "source_path": "triton_threshold_attention.py",
+   "proposed_lowering": "multiple K1+combine",
+   "wave": 3,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Integrate threshold beta/lambda frontend and full Q/K/V projection layer; qualify low precision and variable-length masks",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "triton_threshold_attention.differential_threshold_rela_triton@cd8ddc9d5b43a1dcf86f9cfda302edb5cc108da2",
+   "tolerances": "FP32 equation output/gradient atol 2e-4 / rtol 1e-2; pinned adapter exact; paired median overhead gate 10%",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-069",
+   "architecture": "TPA",
+   "source": "tpa",
+   "source_path": "model/T6.py",
+   "proposed_lowering": "factorized projection+K1 audit",
+   "wave": 3,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Qualify TPA decode/cache behavior and full decoder/model composition; kernel slice includes CP factorized projections, RoPE, K1 attention and output projection.",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "model.T6.CausalSelfAttention.forward@c276c80d5ad807881dedb4707d8d3c20b4e97ec6",
+   "tolerances": "freeze_before_execution",
+   "prototype_status": "kernel_prototype_only",
+   "prototype_kernel": "K1_softmax_reduction",
+   "prototype_scope": "Pinned TPA T6 CP factorized Q/K/V, source RoPE, causal K1 attention and output projection; profile includes the complete CausalSelfAttention call. Full decoder cache, training schedule and model integration remain outside this slice.",
+   "prototype_validated_anchors": [
+    "urm.unified.k1.softmax_reference.v1",
+    "torch.nn.functional.scaled_dot_product_attention"
+   ],
+   "prototype_reference_test": "tests/test_graph_vertical_slice.py::test_every_graph_recipe_runs_forward_and_backward_through_the_graph_path"
+  },
+  {
+   "id": "arch-070",
+   "architecture": "Tucker attention",
+   "source": "tucker",
+   "source_path": "ViT/src/attn/triton/tucker_attn.py",
+   "proposed_lowering": "factorized projection+K1 audit",
+   "wave": 3,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Qualify Tucker frontend/output projection, decode/cache expansion and full model integration; attention core is pinned and source-profiled.",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "src.attn.triton.tucker_attn.FlashAttentionTucker.forward@c3e3d3cec991f4303b824c7fb7cbb95e3748d5c7",
+   "tolerances": "freeze_before_execution",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-071",
+   "architecture": "Longformer",
+   "source": "longformer",
+   "source_path": "longformer/sliding_chunks.py",
+   "proposed_lowering": "K1 sparse-mask fixtures",
+   "wave": 2,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Qualify global-token selection, padding masks, projections and full encoder/cache behavior; the no-global local attention core is profiled.",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "longformer.sliding_chunks.sliding_chunks_matmul_qk + sliding_chunks_matmul_pv@caefee668e39cacdece7dd603a0bebf24df6d8ca",
+   "tolerances": "freeze_before_execution",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-072",
+   "architecture": "Sparse Transformer",
+   "source": "sparse_transformer",
+   "source_path": "attention.py",
+   "proposed_lowering": "K1 masked softmax for exact all/local/strided/fixed source masks",
+   "wave": 2,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Profile the optimized TensorFlow 1 BlocksparseTransformer traversal in an isolated compatible runtime; add fixed and variable-length full-layer/cache qualification.",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "attention_impl / blocksparse_attention_impl@c53f3bdbf6225be0582f0357072e82b13c69be7d",
+   "tolerances": "cross-framework dense source output atol=2e-4, gradient atol=3e-4 and rtol=5e-4",
+   "prototype_status": "kernel_prototype_only",
+   "prototype_kernel": "K1_softmax_reduction",
+   "prototype_scope": "Generic caller-mask K1 core checked against pinned all/local/strided source functions and the fixed mode layout/callback expanded to a dense mask. Optimized block traversal, fixed mask full layer, variable-length batches and cache remain unqualified.",
+   "prototype_validated_anchors": [
+    "urm.unified.k1.softmax_reference.v1",
+    "torch.nn.functional.scaled_dot_product_attention"
+   ],
+   "prototype_reference_test": "tests/test_graph_vertical_slice.py::test_every_graph_recipe_runs_forward_and_backward_through_the_graph_path"
+  },
+  {
+   "id": "arch-073",
+   "architecture": "KATA",
+   "source": "kata",
+   "source_path": "kata/parallel_kata_attn.py",
+   "proposed_lowering": "K1 normalized positive attention with grouped squared-dot scores",
+   "wave": 4,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Qualify GQA, packed variable-length inputs, model projection/frontend, and cache integration; current source profile covers BF16 MHA core with M=4.",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "kata.parallel_kata_attn.parallel_kata_attn@f93fe75750be6400a0068749794985d70666926d",
+   "tolerances": "exact for pinned adapter; BF16 equation tolerance atol=rtol=2e-2",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-074",
+   "architecture": "HLA",
+   "source": "hla_higher_order",
+   "source_path": "README.md",
+   "proposed_lowering": "K2 masked second-order causal attention using the HLA paper streaming summaries",
+   "wave": 4,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Qualify higher-order and asymmetric HLA, decay variants, parallel chunk scheduling, multi-head layouts and streaming/cache ABI.",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "HLA paper Equation (3.3) masked second-order streaming identity@484fef2bb40d4ed58f7656e545cf5ef64c40c962; HLA.pdf sha256 574242e6b6694e1ef87440f588cbe364517b76bcd9e771b2fb93b0d38feb822b",
+   "tolerances": "paper-equation output atol=2e-5, input-gradient atol=3e-5 and rtol=5e-5",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-075",
+   "architecture": "Conformer",
+   "source": "conformer",
+   "source_path": "espnet2/legacy/nets/pytorch_backend/transformer/attention.py",
+   "proposed_lowering": "K1 bidirectional softmax attention",
+   "wave": 4,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Qualify relative positional attention, the Conformer convolution module, positionwise FFN, positional encoding and the complete encoder residual graph; this profile covers standard self-attention with SDPA.",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "MultiHeadedAttention.forward (Conformer self-attention configuration, use_sdpa=True)@2950325ea62c8052f448aaf11affdabe169ec8ab",
+   "tolerances": "exact FP32 output and parameter/input gradients for the pinned SDPA configuration",
+   "prototype_status": "kernel_prototype_only",
+   "prototype_kernel": "K1_softmax_reduction",
+   "prototype_scope": "Pinned ESPnet MultiHeadedAttention with Q/K/V and output projections; the profiled self-attention configuration is a standard bidirectional K1 block.",
+   "prototype_validated_anchors": [
+    "urm.unified.k1.softmax_reference.v1",
+    "torch.nn.functional.scaled_dot_product_attention"
+   ],
+   "prototype_reference_test": "tests/test_graph_vertical_slice.py::test_every_graph_recipe_runs_forward_and_backward_through_the_graph_path"
+  },
+  {
+   "id": "arch-076",
+   "architecture": "H3",
+   "source": "h3",
+   "source_path": "src/models/ssm/h3.py",
+   "proposed_lowering": "K2 two-stage causal FFT convolution with H3 multiplicative query/key/value composition",
+   "wave": 4,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Extend the current source-matched head_dim=1 FP32 core to head_dim>1 layouts, inference states/step/cache and low-precision fused FFT convolution.",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "H3.forward (use_fast_fftconv=False, head_dim=1)@5c4d06b5795405170387c80998b58d76179a8a1a",
+   "tolerances": "source output atol=2e-6, gradient atol=3e-6 and rtol=3e-5",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-077",
+   "architecture": "Hyena",
+   "source": "safari",
+   "source_path": "standalone_hyena.py",
+   "proposed_lowering": "K2 implicit-filter causal FFT convolution with source short-convolution, gating and projections",
+   "wave": 4,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Extend the qualified order=2 FP32 FFT core to higher-order filter-bank routing, low-precision fused FFT, streaming/cache and variable-length filter policies.",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "HyenaOperator.forward@02220c69d247e5473616cd053a443ad99fd2559b",
+   "tolerances": "source output atol=2e-6, gradient atol=3e-6 and rtol=3e-5",
+   "prototype_status": "pending_graph_migration"
+  },
+  {
+   "id": "arch-078",
+   "architecture": "Hopfield",
+   "source": "hopfield",
+   "source_path": "hflayers/functional.py",
+   "proposed_lowering": "K1 unscaled softmax association with one retrieval update",
+   "wave": 4,
+   "audit_status": "source_identified",
+   "mapping_status": "proposed",
+   "work_required": "Qualify Hopfield iterative retrieval beyond the first association update, learned scaling vectors, pattern normalization, masks and static-memory modes; one source update with scalar scaling 1.0 is profiled.",
+   "mode_qualification": {
+    "training": "unqualified",
+    "prefill": "unqualified",
+    "decode": "unqualified"
+   },
+   "callable": "HopfieldCore.forward -> hopfield_core_forward, update_steps_max=0@f56f929c95b77a070ae675ea4f56b6d54d36e730",
+   "tolerances": "source output atol=1e-6 and gradient atol=2e-6, rtol=2e-5",
+   "prototype_status": "kernel_prototype_only",
+   "prototype_kernel": "K1_softmax_reduction",
+   "prototype_scope": "Pinned HopfieldCore one-update association: projected Q/K/V, unscaled softmax retrieval and output projection. This maps to noncausal K1 with scale=1.0.",
+   "prototype_validated_anchors": [
+    "urm.unified.k1.softmax_reference.v1",
+    "torch.nn.functional.scaled_dot_product_attention"
+   ],
+   "prototype_reference_test": "tests/test_graph_vertical_slice.py::test_every_graph_recipe_runs_forward_and_backward_through_the_graph_path"
+  },
+  {
+   "id": "arch-079",
+   "architecture": "MAML",
+   "source": "maml",
+   "source_path": "README.md",
+   "proposed_lowering": "iterative update composition audit",
+   "wave": 4,
+   "audit_status": "source_identified",
+   "mapping_status": "not_applicable",
+   "work_required": "Remove MAML from mixer-kernel qualification and track its optimizer/training loop separately if required.",
+   "mode_qualification": {
+    "training": "not_applicable",
+    "prefill": "not_applicable",
+    "decode": "not_applicable"
+   },
+   "callable": "MAML meta-learning training loop@a7f45f1bcd7457fe97b227a21e89b8a82cc5fa49",
+   "tolerances": "freeze_before_execution"
+  },
+  {
+   "id": "arch-080",
+   "architecture": "Reptile",
+   "source": "reptile",
+   "source_path": "README.md",
+   "proposed_lowering": "iterative update composition audit",
+   "wave": 4,
+   "audit_status": "source_identified",
+   "mapping_status": "not_applicable",
+   "work_required": "Remove Reptile from mixer-kernel qualification and track its optimizer/training loop separately if required.",
+   "mode_qualification": {
+    "training": "not_applicable",
+    "prefill": "not_applicable",
+    "decode": "not_applicable"
+   },
+   "callable": "Reptile parameter-interpolation training loop@8f2b71c67a31c1a605ced0cecb76db876b607a7a",
+   "tolerances": "freeze_before_execution"
+  }
+ ]
+}

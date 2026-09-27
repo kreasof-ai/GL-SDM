@@ -14,19 +14,21 @@ pytest.importorskip("triton")
 if not torch.cuda.is_available():
     pytest.skip("CUDA is required", allow_module_level=True)
 
-from urm.backends.triton.sparse_state.backend import (
+from urm.runtime.certification import (
     CertifiedSparseStateRoutes,
     SparseState,
+)
+from urm.backends.triton.k3.sparse_state import (
     TritonSparseStateMixerBackend,
 )
-from urm.backends.pytorch.sparse_state import torch_sparse_state_mixer
-from urm.compiler.semantic import (
+from urm.backends.torch.k3.sparse_state import torch_sparse_state_mixer
+from urm.ir.program import (
     DType,
     SparseReadTiming,
     SparseStateMixerSpec,
     SparseStateOperation,
 )
-from urm.sparse_state_mixer import numpy_sparse_state_mixer
+from urm.backends.numpy.k3.sparse_state import numpy_sparse_state_mixer
 
 TOLERANCES = {
     torch.float32: {"atol": 2e-5, "rtol": 2e-5},
@@ -233,6 +235,32 @@ def test_native_int32_routes_match_reference(dtype) -> None:
     torch.testing.assert_close(actual.float(), expected.float(), **TOLERANCES[dtype])
     torch.testing.assert_close(
         state.memory.float(), expected_state.float(), **TOLERANCES[dtype]
+    )
+
+
+@pytest.mark.parametrize("parallel", [16, 32, 80, 160])
+def test_native_mixer_parallel_dim_scaling(parallel) -> None:
+    """P beyond the pre-tuning v0 bound (16): exact parity with the reference.
+
+    The P dim is pure data parallelism (banks never interact), admitted to 4096 in the
+    capability envelope on this evidence: parity at P ∈ {16, 32, 80, 160} — 80 is the
+    training-harness point (B=8 × H=10) — plus flat wall-clock scaling in P.
+    """
+    backend, prepared, memory, values, beta, log_decay = _case(
+        dtype=torch.float32,
+        parallel=parallel,
+        sequence=9,
+        slots=257,
+        dim=73,
+        writes=7,
+        reads=5,
+        index_dtype=torch.int32,
+    )
+    expected, expected_state = _reference(prepared, memory, values, beta, log_decay)
+    actual, state = backend.execute(SparseState(memory.clone()), prepared)
+    torch.testing.assert_close(actual, expected, **TOLERANCES[torch.float32])
+    torch.testing.assert_close(
+        state.memory, expected_state, **TOLERANCES[torch.float32]
     )
 
 
@@ -482,7 +510,7 @@ def test_preallocated_output_is_validated_before_dispatch(monkeypatch) -> None:
         torch.empty((1, 7, 3), device="cuda").transpose(1, 2),
         values,
     ]
-    import urm.backends.triton.sparse_state.mixer as kernels
+    import urm.backends.triton.k3.sparse_state as kernels
 
     launches = 0
 
@@ -623,8 +651,9 @@ def test_native_executes_in_process_with_upstream_checkout_absent() -> None:
 import importlib.util
 import torch
 assert importlib.util.find_spec('lingua') is None
-from urm.backends.triton.sparse_state.backend import CertifiedSparseStateRoutes, SparseState, TritonSparseStateMixerBackend
-from urm.compiler.semantic import DType, SparseReadTiming, SparseStateMixerSpec, SparseStateOperation
+from urm.runtime.certification import CertifiedSparseStateRoutes, SparseState
+from urm.backends.triton.k3.sparse_state import TritonSparseStateMixerBackend
+from urm.ir.program import DType, SparseReadTiming, SparseStateMixerSpec, SparseStateOperation
 spec = SparseStateMixerSpec(1, 1, 8, 7, 0, 1, DType.FLOAT32, SparseStateOperation.READ_ONLY, SparseReadTiming.CURRENT_STATE)
 indices = torch.tensor([[[3]]], device='cuda')
 weights = torch.ones((1, 1, 1), device='cuda')

@@ -1,0 +1,5 @@
+
+COMMAND: ['/opt/conda/bin/python', '-m', 'train.upstream', '--rows', 'log_linear_attention', '--out-dir', 'results/upstream', '--steps', '10', '--layers', '9', '--width', '768', '--num-heads', '12', '--head-dim', '64', '--sequence-length', '512', '--batch-tokens', '8192', '--microbatch-tokens', '8192']
+[upstream] 1 rows -> results/upstream
+/tmp/urm-comparator-pins/fla/fla/ops/log_linear_attn/chunk.py:1157: UserWarning: Triton>3.2.0 detected, which is known to have worse performance. For optimal performance, it is recommended to install Triton==3.2.0 (if possible).
+  warnings.warn("Triton>3.2.0 detected, which is known to have worse performance. "

@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from urm.compiler.constraints import (
+from urm.compiler.solve.constraints import (
     AllowedSet,
     Assignment,
     AtMostOne,
@@ -137,7 +137,7 @@ def test_every_constraint_kind_evaluates_imperatively() -> None:
 
 
 def ConstraintHeader_stub(name: str, explanation: str):
-    from urm.compiler.constraints import ConstraintHeader
+    from urm.compiler.solve.constraints import ConstraintHeader
 
     return ConstraintHeader(
         name=name,

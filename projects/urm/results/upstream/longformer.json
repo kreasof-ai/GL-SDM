@@ -1,0 +1,7 @@
+{
+  "mixer": "longformer",
+  "measurement_version": 2,
+  "baseline_tier": "reference-implementation",
+  "status": "production-unavailable",
+  "reason": "the pinned longformer sliding-chunk torch path (the TVM kernel needs Apache TVM, not installed)"
+}

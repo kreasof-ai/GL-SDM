@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "name": "linear_attention",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.fla_k2",
+    "notes": "arch-015. U2.A additive (no decay): S_t = S_{t-1} + k_t v_t, o_t = (q_t·scale) S_t, after-update read; the optional normalized variant keeps a cumulative-key denominator and divides by (q·scale)·k_cum + ε. Verified against fla/ops/linear_attn + fla/layers/linear_attn.py @ 864a87f6. The q/k feature map (default elu+1) is external. Layer module: architectures/linear_attention.py."
+  },
+  "layers": [
+    {
+      "id": "linear_attention_layer",
+      "operation": "linear_delta_state",
+      "external_component": "architectures.linear_attention.LinearAttentionLayer",
+      "params": {
+        "external_stages": ["Q/K/V projections", "q/k feature map (elu+1)", "output projection"],
+        "delta": false,
+        "gate_scope": "none",
+        "read_timing": "after_update",
+        "scale_rule": "key_dim_rsqrt",
+        "normalized": "optional (denominator-state variant)"
+      },
+      "state": {"initial_state": "zero (cache modes are residual)"},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Mixer parity vs the pinned fused_recurrent_linear_attn (GPU) in both plain and normalized variants in tests/test_architectures_linear_attention.py; full-layer composition + gradients. This row also corrected the K2 normalized law across the torch executor and numpy oracle (scale inside the denominator, additive ε) to match the pinned fla source. Short conv, cache/chunked paths, and the t2r/dpfp feature-map variants are residual external work, not claimed."
+  }
+}

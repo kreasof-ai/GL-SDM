@@ -12,8 +12,8 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from urm.compiler.rewrite import DELAY_ROW_SCALE_THROUGH_GEMM, RewriteEngine
-from urm.compiler.semantic import (
+from urm.compiler.rewrite.engine import DELAY_ROW_SCALE_THROUGH_GEMM, RewriteEngine
+from urm.ir.program import (
     DType,
     Matmul,
     SemanticProgram,

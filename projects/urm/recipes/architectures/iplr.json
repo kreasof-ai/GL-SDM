@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "name": "iplr",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.fla_k2",
+    "notes": "arch-031 (A8 transition breadth). Generalized delta IPLR: kv_t = k_t⊗v_t + (α_tᵀS_{t-1})⊗β_t; S_t = S_{t-1} + kv_t; o_t = (scale·q_t)ᵀ·S_t. An identity-plus-rank-1 transition (read α off the pre-update state, written back along β) plus the additive rank-1 write — NO diagonal decay. The no-decay special case of DPLR (arch-032). The typed LinearDeltaSpec with low_rank=True, gate_scope=none. Verified against fla/ops/generalized_delta_rule/iplr/naive.py @ 864a87f6. Layer module: architectures/iplr.py."
+  },
+  "layers": [
+    {
+      "id": "iplr_layer",
+      "operation": "linear_delta_state",
+      "external_component": "architectures.iplr.IPLRLayer",
+      "params": {
+        "axis": "A8 transition breadth: identity-plus-rank-1 low-rank transition, no decay",
+        "delta": false, "gate_scope": "none", "low_rank": true, "read_timing": "after_update",
+        "external_stages": ["Q/K/V projections", "α/β factor construction"]
+      },
+      "state": {"S": "[K, V]"},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Parity vs the pinned iplr_recurrence naive (fp32) in tests/test_architectures_a8_rank1.py; the rank-1 transition is active. Chunked kernels, initial_state carry and cache modes are residual, not claimed."
+  }
+}

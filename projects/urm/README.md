@@ -1,61 +1,39 @@
-# Unified Routed Mixer compiler
+# URM
 
-URM compiles routing, state, and communication semantics into verified execution
-plans. Model semantics remain independent of backend kernels. The normative
-rules are in [the compiler charter](docs/compiler/compiler-charter.md).
+URM is a semantic-to-execution compiler for routed sequence models. Its core represents and lowers four mixer execution families: K1 streamed reduction, K2 compact fixed-address state, K3 indexed mutable state, and K4 exact feedback substitution over an op's own history. Model architectures compose public kernel calls with projections, convolution, FFT, MLPs and cache logic **outside** `src/urm`. The taxonomy is an organizing hypothesis, not a claim of universal GPU binaries or coverage of every combination.
 
-Start with the [documentation index](docs/README.md) for the reading order and
-separation between compiler contracts, kernels, adapters, validation and planning.
+Start with the [documentation index](docs/README.md). The [compiler charter](docs/charter.md) defines core boundaries; the [pipeline](docs/compiler.md) and [backend inventory](docs/backends.md) mirror the code; the [catalog](docs/catalog.md) covers the 52-row architecture registry at its HF-modeling granularities. The [benchmark page](docs/benchmark.md) documents the training-harness campaign and the [evidence policy](docs/evidence.md) distinguishes representation, reference execution, native execution, performance and complete source-model parity.
 
-```text
-frontend specification → semantic IR → verified rewrites → planning
-  → execution anchors → backend/library binding → runtime invocation
-```
+## Current boundary
+
+The [architecture registry](train/registry.py) carries 52 rows — 51 native-tier plus `mamba1` (reference-tier charter debt). The training-harness benchmark (`train/sweep.py`, `train/upstream.py`) measures 10-step decoder training on the A10G, rejects non-finite trajectories, and compares only verified production kernels under a matched measurement protocol — see the generated [training-harness report](results/report.md). This is harness-level measurement, not complete source-model qualification; [evidence.md](docs/evidence.md) states the exact claim boundaries. The machine-readable [architecture register](extra/architecture-coverage.json) tracks 80 named rows, 76 of them mixer-relevant.
 
 ## Code map
 
 | Location | Responsibility |
 |---|---|
-| `src/urm/frontend/` | Declarative model specification (`MixerSpec`) |
-| `src/urm/compiler/` | Semantic IR, effects, rewrites, legality, planning and verification |
-| `src/urm/runtime/` | Backend protocols, explicit runtime registry, and executable plan binding |
-| `src/urm/backends/`, `src/urm/adapters/` | Native implementations and external-library boundaries |
-| `src/urm/oracles/` | NumPy correctness references, including sparse-slot algebra and VJP |
-| `tests/`, `benchmarks/` | Contract regressions and maintained acceptance harnesses |
-| `results/` | Retained acceptance evidence and provenance consumed by regressions |
-
-`urm.ir` is the canonical IR module; the former `urm.backend` and `urm.reference`
-wildcard compatibility shims were removed. Import `BackendRegistry` from
-`urm.runtime` and the NumPy oracle (`execute`, `merge_writes`) from `urm.oracles`.
-Existing semantic IR and executable binders retain their public paths. The
-distribution name `urm-kernel-lab` is retained for installation compatibility.
-Production selection uses the validated sparse-state mixer backend.
-
-## Implementation scope
-
-The first three lowering families are softmax attention, linear/delta recurrence,
-and sparse-slot memory. These are engineering boundaries, not a proof of universal
-coverage or a promise of three universal kernel source files.
-
-- [Runtime and lowering contracts](docs/runtime/execution.md)
-- [Unified mixer kernel compiler](docs/compiler/unified-mixer.md)
-- [Coverage and remaining work](docs/planning/lowering-roadmap.md)
-- [Verified sparse-slot formulation](docs/kernels/sparse-delta.md)
-- [Compiler architecture](docs/compiler/architecture.md)
-- [Kernel generation](docs/compiler/kernel-generation.md)
-- [Compiler acceptance requirements](docs/validation/acceptance.md)
-- [Master coverage table](docs/validation/master-table.md)
+| `src/urm/frontend/`, `ir/` | Name-agnostic typed fragments and semantic graph |
+| `src/urm/compiler/` | Verified rewrites, partition, constraints, placement, cost, provider and schedule selection |
+| `src/urm/runtime/` | Serialized plan binding and state sessions |
+| `src/urm/backends/` | Independent NumPy/Torch references and admitted native K1/K2/K3/K4 implementations |
+| `recipes/kernels/` | External declarative kernel-call fragments |
+| `architectures/`, `train/` | The 52-row catalog modules and the benchmark harness |
+| `extra/` | Pinned upstream comparators, provisioning, the architecture register and coverage generator |
+| `results/sweep/`, `results/upstream/` | Committed per-row campaign measurements feeding `results/report.md` |
+| `data/finewebedu10B/` | The finewebedu shards the harness trains on |
 
 ## CPU verification
 
-From `projects/urm` with the project and test extras installed:
+SDM has a [native K3 chunk schedule and verified upstream CUDA baseline](docs/sdm-optimization.md),
+including a reproduction of the historical `sdm-reparam` MFU accounting. These
+generic optimization runs through the complete public compile path and retains
+state/operand gradients for later GL-SDM/CSDM experiments.
+
+From `projects/urm`, with the test extra installed:
 
 ```sh
 python -m pip install -e '.[test]'
 python -m pytest tests
-python -m pytest tests/test_sparse_slot_formulation.py
 ```
 
-GPU tests require their optional dependencies and supported hardware. Compiler
-imports and NumPy references require neither PyTorch nor Triton. Training support
-requires complete backward coverage; inference support requires state continuity.
+GPU and pinned upstream comparisons require their optional dependencies and supported hardware. A passing CPU suite does not qualify native performance or full source-model behavior.

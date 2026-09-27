@@ -1,0 +1,73 @@
+{
+  "schema_version": 2,
+  "name": "conformer_attention_core",
+  "kind": "kernel_fragment",
+  "architecture_ids": [
+    "arch-075"
+  ],
+  "component_scope": "bidirectional Conformer self-attention K1 core",
+  "required_external_stages": [
+    "Conformer convolution module and positionwise feed-forward block",
+    "encoder frontend, positional encoding and complete layer residual graph"
+  ],
+  "graph": {
+    "inputs": [
+      {
+        "name": "query",
+        "dtype": "float32",
+        "shape": [
+          "B",
+          "T",
+          "H",
+          "D"
+        ]
+      },
+      {
+        "name": "key",
+        "dtype": "float32",
+        "shape": [
+          "B",
+          "S",
+          "H",
+          "D"
+        ]
+      },
+      {
+        "name": "value",
+        "dtype": "float32",
+        "shape": [
+          "B",
+          "S",
+          "H",
+          "D"
+        ]
+      }
+    ],
+    "nodes": [
+      {
+        "id": "attend",
+        "op": "weighted_reduce",
+        "inputs": [
+          "query",
+          "key",
+          "value"
+        ],
+        "outputs": [
+          "output"
+        ],
+        "params": {
+          "query_domain": "sequence",
+          "source_domain": "sequence",
+          "selection": "dense",
+          "normalization": "softmax",
+          "capacity_policy": "dropless",
+          "deterministic": true,
+          "causal": false
+        }
+      }
+    ],
+    "outputs": [
+      "output"
+    ]
+  }
+}

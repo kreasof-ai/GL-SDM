@@ -1,0 +1,74 @@
+{
+  "mixer": "tda",
+  "steps": 10,
+  "final_loss": 10.032666206359863,
+  "mfu": 0.12941473495982045,
+  "params": 102742272,
+  "checkpoint_aligned": true,
+  "grad_trace": {},
+  "kl_divergence": null,
+  "wallclock_s": 5.598536062985659,
+  "throughput_tokens_s": 14632.396590531678,
+  "peak_memory_gib": 5.599971771240234,
+  "loss_trace": [
+    10.462180137634277,
+    9.242504119873047,
+    9.626201629638672,
+    9.52862548828125,
+    9.811820030212402,
+    9.751758575439453,
+    9.795354843139648,
+    9.554082870483398,
+    10.141468048095703,
+    10.032666206359863
+  ],
+  "memory_trace_gib": [
+    0.9432578086853027,
+    0.9432578086853027,
+    0.9432578086853027,
+    0.9432578086853027,
+    0.9432578086853027,
+    0.9432578086853027,
+    0.9432578086853027,
+    0.9432578086853027,
+    0.9432578086853027,
+    0.9432578086853027
+  ],
+  "config": {
+    "mixer": "tda",
+    "vocab_size": 50304,
+    "sequence_length": 512,
+    "layers": 9,
+    "width": 768,
+    "num_heads": 12,
+    "head_dim": 64,
+    "mlp_ratio": 4,
+    "batch_tokens": 8192,
+    "microbatch_tokens": 8192,
+    "steps": 10,
+    "seed": 0,
+    "target_mfu": 0.5,
+    "capture_gradients": false,
+    "compile_model": true,
+    "bf16": true,
+    "activation_checkpointing": false,
+    "target": null
+  },
+  "measurement_version": 2,
+  "source_fingerprint": "345b161d5a9866e94c1ff1686d5b9156ce4c0aa404149c80ec35f81a08a601c1",
+  "environment": {
+    "torch": "2.14.0+cu130",
+    "device": "NVIDIA A10G",
+    "peak_flops": 70000000000000.0
+  },
+  "baseline_tier": "production-kernel",
+  "granularity": "mixer",
+  "fla_source_identity": {
+    "repository": "https://github.com/fla-org/flash-linear-attention",
+    "revision": "864a87f6ce5be8828bef81eb22baafd41937cdf2",
+    "source_path": "/tmp/urm-comparator-pins/fla/fla"
+  },
+  "attempted_microbatches": [
+    8192
+  ]
+}

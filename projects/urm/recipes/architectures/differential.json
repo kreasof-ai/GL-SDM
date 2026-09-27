@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "name": "differential",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.differential",
+    "notes": "arch-067 (flagship Diff combinator). Diff Transformer V1: two typed U1.S calls (softmax over each half of the 2H map) merged as attn1 − λ_full·attn2 by the typed Merge op, with λ_full = exp(λq1·λk1) − exp(λq2·λk2) + λ_init external. Verified against Diff-Transformer/multihead_diffattn.py @ 50224e38. The 2H head dim splits as [H, 2] (interleaved even/odd heads, not first/second H). Layer module: architectures/differential_attention.py."
+  },
+  "layers": [
+    {
+      "id": "differential_attention_layer",
+      "operation": "weighted_reduce",
+      "external_component": "architectures.differential_attention.DifferentialAttentionLayer",
+      "params": {
+        "external_stages": [
+          "Q/K/V projections (2H q/k, 2·head_dim v)",
+          "GPT-J interleaved rotary (pinned CUDA kernel)",
+          "λ frontend (λ_full = exp(λq1·λk1) − exp(λq2·λk2) + λ_init)",
+          "subln (RMSNorm over 2·head_dim) + (1−λ_init) rescale + out_proj"
+        ],
+        "combinator": "Diff: two U1.S calls + typed merge (coefficients (1, −1), λ as scale operand)",
+        "normalization": "softmax",
+        "selection": "dense",
+        "causal": true,
+        "head_map": "equal (per half; the 2H split is [H, 2] interleaved)"
+      },
+      "state": {},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Layer parity vs the pinned MultiheadDiffAttn (with the pinned CUDA interleaved rotary kernel) in tests/test_architectures_differential.py; λ_init/λ_full identities and gradients to the λ parameters and projections. The V2 paired-head one-call fusion is a later proven rewrite (separately gated with VJP + cost), not claimed."
+  }
+}

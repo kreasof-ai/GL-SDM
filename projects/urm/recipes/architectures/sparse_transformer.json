@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "name": "sparse_transformer",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.sparse_transformer",
+    "notes": "arch-072 (A2 indexed-K1). Sparse Transformer: plain causal softmax attention with exact static sparsity patterns — 'all' (full causal band), 'local' (bandwidth local_attn_ctx), 'strided' (keys j ≤ i with (i−j) mod stride == 0). The pattern→index route is external; the mixer is the shared typed indexed-K1 call. The 'fixed' per-head block layout and the blockwise strided-transposed implementation detail are residual. Layer module: architectures/sparse_transformer.py."
+  },
+  "layers": [{"id": "sparse_transformer_layer", "operation": "weighted_reduce", "external_component": "architectures.sparse_transformer.SparseTransformerLayer", "params": {"axis": "A2 indexed-K1: static pattern route (all/local/strided) + gather-attend", "external_stages": ["pattern→index route", "'fixed' per-head block layout", "blockwise strided-transposed layout"], "selection": "gathered (indexed)", "normalization": "softmax"}, "state": {}, "cache": {}}],
+  "coverage": {"level": "generic_model_integration", "validated": true, "notes": "Gather-attend parity vs the equation oracle for all/local/strided patterns and the strided-pattern index invariant in tests/test_architectures_a2_indexed.py. The 'fixed' pattern and the blockwise layout are residual, not claimed."}
+}

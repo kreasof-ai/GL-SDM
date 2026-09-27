@@ -1,90 +1,85 @@
-"""Execution-capability backend selection with visible declines and fallbacks.
+"""Backend auto-discovery: one directory per backend, one per family, one file per op.
 
-This registry is distinct from :class:`urm.runtime.registry.BackendRegistry`,
-which selects a backend by *semantic-family* support over a frontend
-``MixerSpec``. This one selects a backend by *execution capability* - whether
-an implementation honors a concrete operation, semantic contract, device,
-dtype, layout, and execution mode. The two selection APIs answer different
-questions and are deliberately not interchangeable.
+The dispatch table is built from the filesystem, not from a central registry
+that a new backend must edit. Each backend lives in ``backends/<name>/`` and
+implements each family it supports in ``backends/<name>/<family>/`` — a family
+directory whose ``__init__.py`` re-exports the combined ``PROVIDERS`` tuple of its
+op modules (one op per file). Ordinary (non-recurrence) typed operators live in a
+flat ``<name>/<op>.py`` module at the backend root. The registry imports every
+``<name>/<family>/`` package and every flat ``<name>/<op>.py`` module and indexes
+the declared providers by anchor name.
+
+Adding a backend (e.g. ``tilelang``) is one new directory with the family
+subdirectories it supports — no edit to any shared file. Adding an op to a family
+is one new file in the family directory plus a line in its ``__init__.py``. A
+backend that does not implement a family simply omits the directory; its providers
+decline.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+import importlib
+import pkgutil
+from typing import Any
 
-from urm.backends.interface import (
-    BackendImplementation,
-    BackendRequest,
-    ExecutionPlan,
-)
+from .contract import Provider
+
+# Directories that are not live backends. ``historical`` preserves unadmitted
+# variants that are never dispatched; anything else with an ``__init__.py`` is
+# a live backend.
+_EXCLUDED_DIRS = frozenset({"historical", "__pycache__"})
 
 
-class BackendDeclined(ValueError):
-    """Raised when an explicit backend cannot honor a request."""
+def _live_backends() -> tuple[str, ...]:
+    """Every subdirectory of ``backends/`` with an ``__init__.py`` is live."""
+    import pathlib
 
-
-class CapabilityRegistry:
-    """Select a backend implementation by its declared execution capability."""
-
-    def __init__(self, backends: Iterable[BackendImplementation] = ()) -> None:
-        self._backends: dict[str, BackendImplementation] = {}
-        for backend in backends:
-            self.register(backend)
-
-    def register(self, backend: BackendImplementation) -> None:
-        if not backend.name.strip():
-            raise ValueError("backend name must not be empty")
-        if backend.name in self._backends:
-            raise ValueError(f"backend already registered: {backend.name}")
-        self._backends[backend.name] = backend
-
-    def select(
-        self,
-        request: BackendRequest,
-        *,
-        backend: str | None = None,
-        allow_fallback: bool = False,
-    ) -> tuple[BackendImplementation, ExecutionPlan]:
-        if backend is not None:
-            implementation = self._backends.get(backend)
-            if implementation is None:
-                raise BackendDeclined(f"unknown backend: {backend}")
-            reason = implementation.capability.decline_reason(request)
-            if reason is not None:
-                raise BackendDeclined(f"backend {backend} declined: {reason}")
-            return implementation, ExecutionPlan(
-                requested_backend=backend,
-                selected_backend=backend,
-                request=request,
-                attempted_backends=(backend,),
-                fallback_used=False,
-            )
-
-        attempted: list[str] = []
-        compatible: list[BackendImplementation] = []
-        for implementation in self._backends.values():
-            attempted.append(implementation.name)
-            if implementation.capability.supports(request):
-                compatible.append(implementation)
-        if not compatible:
-            raise BackendDeclined(
-                "no registered backend supports operation, semantics, device, "
-                "dtype, layout, and mode"
-            )
-        if len(compatible) > 1 and not allow_fallback:
-            raise BackendDeclined(
-                "automatic selection is ambiguous; request a backend explicitly "
-                "or enable visible fallback ordering"
-            )
-        selected = compatible[0]
-        attempted = attempted[: attempted.index(selected.name) + 1]
-        return selected, ExecutionPlan(
-            requested_backend=None,
-            selected_backend=selected.name,
-            request=request,
-            attempted_backends=tuple(attempted),
-            fallback_used=len(attempted) > 1,
+    here = pathlib.Path(__file__).resolve().parent
+    return tuple(
+        sorted(
+            child.name
+            for child in here.iterdir()
+            if child.is_dir()
+            and child.name not in _EXCLUDED_DIRS
+            and (child / "__init__.py").exists()
         )
+    )
 
 
-__all__ = ["BackendDeclined", "CapabilityRegistry"]
+def discover_providers() -> dict[str, Provider]:
+    """Import every family package and flat op module per backend, and index providers.
+
+    Every ``backends/<backend>/<family>/`` package and every flat
+    ``backends/<backend>/<op>.py`` module is scanned; anything exposing a
+    ``PROVIDERS`` tuple contributes its providers. The walk is bounded — backend,
+    then family, then the family's op modules; no arbitrary-depth recursion. Adding
+    a backend is creating its directory; adding an op is adding one file to a family
+    directory. The mapping is anchor name → provider; an anchor name collision
+    across backends is an error.
+    """
+    providers: dict[str, Provider] = {}
+
+    def _index(module) -> None:
+        for provider in getattr(module, "PROVIDERS", ()):
+            if provider.name in providers:
+                raise ValueError(
+                    f"anchor name {provider.name!r} is provided by two backends"
+                )
+            providers[provider.name] = provider
+
+    for backend in _live_backends():
+        package = f"urm.backends.{backend}"
+        package_module = importlib.import_module(package)
+        for info in pkgutil.iter_modules(package_module.__path__):
+            if info.ispkg:
+                # Family directory: the family's __init__ re-exports the combined
+                # PROVIDERS of its op modules (one op per file, no deeper nesting).
+                _index(importlib.import_module(f"{package}.{info.name}"))
+            else:
+                # Flat module at the backend root: an ordinary (non-recurrence)
+                # typed operator or a not-yet-family-classified provider.
+                _index(importlib.import_module(f"{package}.{info.name}"))
+    return providers
+
+
+__all__ = ["discover_providers"]

@@ -7,7 +7,7 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from urm.adapters.sparse_delta_memory import (
+from extra.comparators.sdm.upstream import (
     MODE_INFERENCE,
     MODE_READ_ONLY,
     MODE_TRAINING,
@@ -15,7 +15,7 @@ from urm.adapters.sparse_delta_memory import (
     UrmSparseDeltaMemoryAdapter,
     probe_sdm_support,
 )
-from urm.adapters.sparse_delta_memory_reference import (
+from extra.comparators.sdm.reference import (
     deterministic_tie_free_product_key_scores,
     end_to_end_differential_backward_report,
     oracle_product_key,
@@ -25,7 +25,7 @@ from urm.adapters.sparse_delta_memory_reference import (
     torch_sparse_read,
     torch_write_read,
 )
-from urm.compiler.execution import SDM_EXTERNAL_ANCHOR_NAME, TRUSTED_ANCHORS
+from extra.comparators.anchors import SDM_EXTERNAL_ANCHOR_NAME, UPSTREAM_ANCHORS
 
 BACKWARD_TOLERANCES = {
     torch.float32: {
@@ -316,7 +316,7 @@ def test_training_backward_is_differentially_certified(dtype) -> None:
 
 def test_advertised_backward_dtypes_equal_differential_gate_coverage() -> None:
     anchor = next(
-        item for item in TRUSTED_ANCHORS if item.name == SDM_EXTERNAL_ANCHOR_NAME
+        item for item in UPSTREAM_ANCHORS if item.name == SDM_EXTERNAL_ANCHOR_NAME
     )
     advertised = {str(dtype).removeprefix("torch.") for dtype in BACKWARD_TOLERANCES}
     assert anchor.backward_verified_dtypes == advertised

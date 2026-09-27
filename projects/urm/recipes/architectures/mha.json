@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "name": "mha",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.fla_attention_naive",
+    "notes": "arch-001. Mixer equation verified in the sweep against fla/ops/attn/naive.py @ 864a87f6: exact U1.S with an identity query->KV head map. Layer module: architectures/head_map_attention.py (head_map='equal')."
+  },
+  "layers": [
+    {
+      "id": "mha_layer",
+      "operation": "weighted_reduce",
+      "external_component": "architectures.head_map_attention.HeadMapAttention",
+      "params": {
+        "head_map": "equal",
+        "query_domain": "sequence",
+        "source_domain": "sequence",
+        "normalization": "softmax",
+        "selection": "dense",
+        "causal": true
+      },
+      "state": {},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Layer parity vs pinned fla naive_parallel_attn (fwd CPU+CUDA, grads) in tests/test_architectures_head_map_attention.py. Residual blocker per sweep: full layer/cache/decode modes (B[full_layer_and_cache_modes]) \u2014 KV cache ownership and decode are NOT claimed here."
+  }
+}

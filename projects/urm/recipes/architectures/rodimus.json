@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "name": "rodimus",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.fla_k2",
+    "notes": "arch-036. U2.A channel-decay with an external input-gate frontend: k = l2norm(k)·it_gate (it_gate = softplus(g_gate)**sigmoid(τ_gate)), channel decay rt_gate_log = −softplus(g_gate)·sigmoid(τ_gate), mixer fused_recurrent_gla(gk=rt_gate_log, state_v_first=True) — verified against fla/layers/rodimus.py @ 864a87f6 (no fla/ops/rodimus; the mixer is the GLA call). Layer module: architectures/rodimus.py."
+  },
+  "layers": [
+    {
+      "id": "rodimus_layer",
+      "operation": "linear_delta_state",
+      "external_component": "architectures.rodimus.RodimusLayer",
+      "params": {
+        "external_stages": ["d_inner expansion", "q/k projections + L2-norm × input gate", "input/tau gate projections (softplus/sigmoid)", "v = i_gate ⊙ hidden", "rt_gate_log channel decay"],
+        "delta": false,
+        "gate_scope": "channel",
+        "read_timing": "after_update",
+        "scale_rule": "one"
+      },
+      "state": {"initial_state": "zero (cache modes are residual)"},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Mixer parity vs the pinned fused_recurrent_gla (gk=rt_gate_log, state_v_first=True, GPU) in tests/test_architectures_rodimus.py; full-layer composition + gradients. The d_inner expansion wrapper, MLP/short-conv, multi-head (num_heads) repetition and cache/chunked paths are residual external work, not claimed."
+  }
+}

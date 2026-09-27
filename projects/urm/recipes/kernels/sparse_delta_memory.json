@@ -1,0 +1,64 @@
+{
+  "schema_version": 2,
+  "name": "sparse_delta_memory",
+  "kind": "kernel_fragment",
+  "architecture_ids": ["arch-047"],
+  "component_scope": "ordered sparse-slot decayed delta update and weighted read",
+  "required_external_stages": ["product-key route score generation"],
+  "graph": {
+    "inputs": [
+      {"name": "read_scores", "dtype": "bfloat16", "shape": ["P", "T", "W"]},
+      {"name": "write_scores", "dtype": "bfloat16", "shape": ["P", "T", "W"]},
+      {"name": "values", "dtype": "bfloat16", "shape": ["P", "T", "D"]},
+      {"name": "beta", "dtype": "float32", "shape": ["P", "T", "1"]},
+      {"name": "log_decay", "dtype": "float32", "shape": ["P", "T", "1"]},
+      {"name": "memory", "dtype": "bfloat16", "shape": ["P", "S", "D"]}
+    ],
+    "nodes": [
+      {
+        "id": "read_routes",
+        "op": "sparse_route_generation",
+        "inputs": ["read_scores"],
+        "outputs": ["read_addresses", "read_weights"],
+        "params": {"source_extent": 4096, "route_width": 4}
+      },
+      {
+        "id": "write_routes",
+        "op": "sparse_route_generation",
+        "inputs": ["write_scores"],
+        "outputs": ["write_addresses", "write_weights"],
+        "params": {"source_extent": 4096, "route_width": 4}
+      },
+      {
+        "id": "update_and_read",
+        "op": "sparse_state_mixer",
+        "inputs": [
+          "memory",
+          "read_addresses",
+          "read_weights",
+          "write_addresses",
+          "write_weights",
+          "values",
+          "beta",
+          "log_decay"
+        ],
+        "outputs": ["output", "final_state"],
+        "params": {
+          "slots_per_partition": 4096,
+          "value_dim": 128,
+          "writes": 4,
+          "reads": 4,
+          "operation": "update",
+          "read_timing": "after_update",
+          "update_rule": "decayed_delta",
+          "collision_policy": "ordered",
+          "mode": "inference"
+        }
+      }
+    ],
+    "outputs": ["output"],
+    "state": [
+      {"name": "memory", "dtype": "bfloat16", "init": "zeros", "persistent": true}
+    ]
+  }
+}

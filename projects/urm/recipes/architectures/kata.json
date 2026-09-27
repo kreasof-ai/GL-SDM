@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "name": "kata",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.kata",
+    "notes": "arch-073 (A13 score/reducer). Flash-KATA / KATA-SPD: causal score A[t,s] = Σ_g (scale·q_g·k_g)² (concat-SPD; head splits into num_groups groups), scale = 1/sqrt(E) with E = head_dim/num_groups, all scores ≥ 0, future masked to 0; output o = (Σ_s A·v_s)/max(Σ_s A, 1) — a positive squared-group-dot score with sum normalization (no softmax, no epsilon). The typed K1ReducerLaw.SQUARED_SUM reducer with squared_sum_groups. Verified against the pinned kata parallel_kata_attn.py. Layer module: architectures/kata.py."
+  },
+  "layers": [
+    {
+      "id": "kata_layer",
+      "operation": "weighted_reduce",
+      "external_component": "architectures.kata.KATALayer",
+      "params": {
+        "axis": "A13 score/reducer: SQUARED_SUM reducer (positive squared-group-dot score, sum normalization)",
+        "external_stages": ["Q/K/V projections", "group split (num_groups)"],
+        "reducer_law": "squared_sum",
+        "causal": true
+      },
+      "state": {},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Parity vs the independent torch reference of the SPD-concat identity, the non-negative/causal invariants (future-token perturbation leaves earlier outputs unchanged), and gradients in tests/test_architectures_kata.py. The offset gate (<q,k> + a_t·a_s)², GDN-style decay A·exp(min(c_t−c_s,0)), qk-norm, the quadratic_sum variant and any native kernel are residual, not claimed."
+  }
+}

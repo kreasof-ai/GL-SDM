@@ -1,0 +1,7 @@
+{
+  "mixer": "mla_attention",
+  "measurement_version": 2,
+  "baseline_tier": "reference-implementation",
+  "status": "production-unavailable",
+  "reason": "fla's MLA layer hard-requires flash-attn; baseline is the pinned prefill equation in torch"
+}

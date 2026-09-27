@@ -1,0 +1,44 @@
+{
+  "schema_version": 2,
+  "name": "gla",
+  "kind": "kernel_fragment",
+  "architecture_ids": ["arch-019"],
+  "component_scope": "additive linear-attention state with channel-diagonal decay: Z_t = G_t M_(t-1), M_t = Z_t + k_t v_t^T, y_t = q_t^T M_t",
+  "required_external_stages": [
+    "Q/K/V projections",
+    "channel gate projection (log_decay)"
+  ],
+  "graph": {
+    "inputs": [
+      {"name": "query", "dtype": "float32", "shape": ["B", "H", "T", "K"]},
+      {"name": "key", "dtype": "float32", "shape": ["B", "H", "T", "K"]},
+      {"name": "value", "dtype": "float32", "shape": ["B", "H", "T", "V"]},
+      {"name": "beta", "dtype": "float32", "shape": ["B", "H", "T"]},
+      {"name": "log_decay", "dtype": "float32", "shape": ["B", "H", "T", "K"]},
+      {"name": "initial_state", "dtype": "float32", "shape": ["B", "H", "K", "V"]}
+    ],
+    "nodes": [
+      {
+        "id": "gated_state",
+        "op": "linear_delta_state",
+        "inputs": ["query", "key", "value", "beta", "log_decay", "initial_state"],
+        "outputs": ["output", "final_state"],
+        "params": {
+          "delta": false,
+          "gate_scope": "channel",
+          "read_timing": "after_update",
+          "scale_rule": "key_dim_rsqrt",
+          "roles": {
+            "query": "query",
+            "key": "key",
+            "value": "value",
+            "beta": "beta",
+            "log_decay": "log_decay",
+            "initial_state": "initial_state"
+          }
+        }
+      }
+    ],
+    "outputs": ["output", "final_state"]
+  }
+}

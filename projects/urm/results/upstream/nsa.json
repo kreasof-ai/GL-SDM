@@ -1,0 +1,7 @@
+{
+  "mixer": "nsa",
+  "measurement_version": 2,
+  "baseline_tier": "reference-implementation",
+  "status": "production-unavailable",
+  "reason": "fla's parallel_nsa needs flash-attn (absent by policy); baseline composes the pinned naive branch oracles"
+}

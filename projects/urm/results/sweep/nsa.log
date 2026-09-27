@@ -1,0 +1,74 @@
+
+COMMAND: ['/opt/conda/bin/python', '-m', 'train.run', '--mixer', 'nsa', '--steps', '10', '--layers', '9', '--width', '768', '--num-heads', '12', '--head-dim', '64', '--sequence-length', '512', '--batch-tokens', '8192', '--microbatch-tokens', '8192', '--out', 'results/sweep/nsa.json']
+W0927 11:37:45.839000 265906 site-packages/torch/_dynamo/convert_frame.py:2008] [8/8] torch._dynamo hit config.recompile_limit (8)
+W0927 11:37:45.839000 265906 site-packages/torch/_dynamo/convert_frame.py:2008] [8/8]    function: 'torch_dynamo_resume_in_execute_indexed_k1_at_325' (/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k1/indexed.py:325)
+W0927 11:37:45.839000 265906 site-packages/torch/_dynamo/convert_frame.py:2008] [8/8]    last reason: 8/7: ___check_obj_id(___stack0, 94461167650272), type=<class 'urm.backends.triton.k1.indexed.execute_indexed_k1.<locals>._IndexedK1'>  # return _IndexedK1.apply(query, key, value, gather)  # ome/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k1/indexed.py:408 in torch_dynamo_resume_in_execute_indexed_k1_at_325
+W0927 11:37:45.839000 265906 site-packages/torch/_dynamo/convert_frame.py:2008] [8/8] User stack trace:
+W0927 11:37:45.839000 265906 site-packages/torch/_dynamo/convert_frame.py:2008] [8/8]   File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k1/indexed.py", line 408, in torch_dynamo_resume_in_execute_indexed_k1_at_325
+W0927 11:37:45.839000 265906 site-packages/torch/_dynamo/convert_frame.py:2008] [8/8]     return _IndexedK1.apply(query, key, value, gather)
+W0927 11:37:45.839000 265906 site-packages/torch/_dynamo/convert_frame.py:2008] [8/8] To log all recompilation reasons, use TORCH_LOGS="recompiles".
+W0927 11:37:45.839000 265906 site-packages/torch/_dynamo/convert_frame.py:2008] [8/8] To diagnose recompilation issues, see https://docs.pytorch.org/docs/main/user_guide/torch_compiler/compile/programming_model.recompilation.html
+{
+  "mixer": "nsa",
+  "steps": 10,
+  "final_loss": 16.71491813659668,
+  "mfu": 0.23020612194685638,
+  "params": 102991104,
+  "checkpoint_aligned": true,
+  "grad_trace": {},
+  "kl_divergence": null,
+  "wallclock_s": 3.154913005011622,
+  "throughput_tokens_s": 25965.85068110245,
+  "peak_memory_gib": 5.962579727172852,
+  "loss_trace": [
+    13.481175422668457,
+    16.50833511352539,
+    15.6947603225708,
+    14.194913864135742,
+    14.513422012329102,
+    15.580668449401855,
+    17.217304229736328,
+    16.257190704345703,
+    16.69510269165039,
+    16.71491813659668
+  ],
+  "memory_trace_gib": [
+    0.9458441734313965,
+    0.9458441734313965,
+    0.9458441734313965,
+    0.9458441734313965,
+    0.9458441734313965,
+    0.9458441734313965,
+    0.9458441734313965,
+    0.9458441734313965,
+    0.9458441734313965,
+    0.9458441734313965
+  ],
+  "config": {
+    "mixer": "nsa",
+    "vocab_size": 50304,
+    "sequence_length": 512,
+    "layers": 9,
+    "width": 768,
+    "num_heads": 12,
+    "head_dim": 64,
+    "mlp_ratio": 4,
+    "batch_tokens": 8192,
+    "microbatch_tokens": 8192,
+    "steps": 10,
+    "seed": 0,
+    "target_mfu": 0.5,
+    "capture_gradients": false,
+    "compile_model": true,
+    "bf16": true,
+    "activation_checkpointing": false,
+    "target": null
+  },
+  "measurement_version": 2,
+  "source_fingerprint": "345b161d5a9866e94c1ff1686d5b9156ce4c0aa404149c80ec35f81a08a601c1",
+  "environment": {
+    "torch": "2.14.0+cu130",
+    "device": "NVIDIA A10G",
+    "peak_flops": 70000000000000.0
+  }
+}

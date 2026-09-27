@@ -1,33 +1,11 @@
-"""Unified Routed Mixer compiler frontend and compatibility exports."""
+"""URM: semantic-to-execution compiler for routed sequence models.
 
-from .frontend.spec import (
-    BalanceStrategy,
-    CapacityPolicy,
-    CollisionPolicy,
-    DecayGranularity,
-    Domain,
-    EditGateKind,
-    ExpertFunction,
-    ExpertRoutingSpec,
-    ExpertScoreKind,
-    ExpertSelection,
-    MixerSpec,
-    MutationKind,
-    Normalization,
-    RecurrentAlgorithm,
-    RecurrentSpec,
-    Residency,
-    RoutingKind,
-    ScanMode,
-    ScoreActivation,
-    SelectionGranularity,
-    SelectionScope,
-    SparseAttentionSpec,
-    SparseIndexerKind,
-    StateLayout,
-)
-from .oracles.routed import ReferenceResult, execute, merge_writes
-from .routed_reduction import (
+Public surface: the shared semantic IR and the routed-reduction tensor
+contract. Compilation and plan binding live under :mod:`urm.compiler` and
+:mod:`urm.runtime`; backends live under :mod:`urm.backends`.
+"""
+
+from .ir.types import (
     DeviceType,
     RoutedReductionRegistry,
     RoutedReductionResult,
@@ -37,45 +15,14 @@ from .routed_reduction import (
     TensorLayout,
     TensorMetadata,
 )
-from .runtime.registry import Backend, BackendRegistry, BackendResult
 
 __all__ = [
-    "Backend",
-    "BackendRegistry",
-    "BackendResult",
-    "BalanceStrategy",
-    "CapacityPolicy",
-    "CollisionPolicy",
-    "DecayGranularity",
     "DeviceType",
-    "Domain",
-    "EditGateKind",
-    "ExpertFunction",
-    "ExpertRoutingSpec",
-    "ExpertScoreKind",
-    "ExpertSelection",
-    "MixerSpec",
-    "MutationKind",
-    "Normalization",
-    "RecurrentAlgorithm",
-    "RecurrentSpec",
-    "ReferenceResult",
-    "Residency",
     "RoutedReductionRegistry",
     "RoutedReductionResult",
     "RoutedReductionSignature",
-    "RoutingKind",
     "ScalarType",
-    "ScanMode",
-    "ScoreActivation",
-    "SelectionGranularity",
-    "SelectionScope",
-    "SparseAttentionSpec",
-    "SparseIndexerKind",
-    "StateLayout",
     "SupportStatus",
     "TensorLayout",
     "TensorMetadata",
-    "execute",
-    "merge_writes",
 ]

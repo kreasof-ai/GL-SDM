@@ -1,0 +1,93 @@
+
+COMMAND: ['/opt/conda/bin/python', '-m', 'train.run', '--mixer', 'based_attention', '--steps', '10', '--layers', '9', '--width', '768', '--num-heads', '12', '--head-dim', '64', '--sequence-length', '512', '--batch-tokens', '8192', '--microbatch-tokens', '8192', '--out', 'results/sweep/based_attention.json']
+W0927 11:26:44.716000 264559 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0] Graph break from `Tensor.item()`, consider setting:
+W0927 11:26:44.716000 264559 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]     torch._dynamo.config.capture_scalar_outputs = True
+W0927 11:26:44.716000 264559 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0] or:
+W0927 11:26:44.716000 264559 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]     env TORCHDYNAMO_CAPTURE_SCALAR_OUTPUTS=1
+W0927 11:26:44.716000 264559 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0] to include these operations in the captured graph.
+W0927 11:26:44.716000 264559 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]
+W0927 11:26:44.716000 264559 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0] Graph break: from user code at:
+W0927 11:26:44.716000 264559 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]   File "/home/sagemaker-user/GL-SDM/projects/urm/train/model.py", line 208, in forward
+W0927 11:26:44.716000 264559 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]     logits = self.lm_head(self._hidden(tokens))
+W0927 11:26:44.716000 264559 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]                           ^^^^^^^^^^^^^^^^^^^^^
+W0927 11:26:44.716000 264559 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]   File "/home/sagemaker-user/GL-SDM/projects/urm/train/model.py", line 170, in _hidden
+W0927 11:26:44.716000 264559 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]     x = block(x)
+W0927 11:26:44.716000 264559 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]         ^^^^^^^^
+W0927 11:26:44.716000 264559 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]   File "/home/sagemaker-user/GL-SDM/projects/urm/train/model.py", line 90, in forward
+W0927 11:26:44.716000 264559 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]     x = x + self.mixer(self.norm1(x))
+W0927 11:26:44.716000 264559 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]             ^^^^^^^^^^^^^^^^^^^^^^^^^
+W0927 11:26:44.716000 264559 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]   File "/home/sagemaker-user/GL-SDM/projects/urm/architectures/based_attention.py", line 77, in forward
+W0927 11:26:44.716000 264559 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]     out = self._run_mixer({
+W0927 11:26:44.716000 264559 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]           ^^^^^^^^^^^^^^^^^
+W0927 11:26:44.716000 264559 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]   File "/home/sagemaker-user/GL-SDM/projects/urm/architectures/k2_linear_state.py", line 129, in _run_mixer
+W0927 11:26:44.716000 264559 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]     out, final = linear_delta_state(
+W0927 11:26:44.716000 264559 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]                  ^^^^^^^^^^^^^^^^^^^
+W0927 11:26:44.716000 264559 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]   File "/home/sagemaker-user/GL-SDM/projects/urm/src/urm/backends/triton/k2/matrix_scan.py", line 1718, in linear_delta_state
+W0927 11:26:44.716000 264559 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]     scale = float(scale)
+W0927 11:26:44.716000 264559 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]             ^^^^^^^^^^^^
+W0927 11:26:44.716000 264559 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]
+W0927 11:26:44.716000 264559 site-packages/torch/_dynamo/variables/tensor.py:1841] [0/0]
+{
+  "mixer": "based_attention",
+  "steps": 10,
+  "final_loss": 16.266433715820312,
+  "mfu": 0.11885574901083196,
+  "params": 94779648,
+  "checkpoint_aligned": true,
+  "grad_trace": {},
+  "kl_divergence": null,
+  "wallclock_s": 5.625489684985951,
+  "throughput_tokens_s": 14562.287834006505,
+  "peak_memory_gib": 6.994569778442383,
+  "loss_trace": [
+    14.526585578918457,
+    14.373552322387695,
+    13.972729682922363,
+    16.876937866210938,
+    14.577092170715332,
+    16.907228469848633,
+    16.155685424804688,
+    15.435857772827148,
+    15.404609680175781,
+    16.266433715820312
+  ],
+  "memory_trace_gib": [
+    0.8728232383728027,
+    0.8728232383728027,
+    0.8728232383728027,
+    0.8728232383728027,
+    0.8728232383728027,
+    0.8728232383728027,
+    0.8728232383728027,
+    0.8728232383728027,
+    0.8728232383728027,
+    0.8728232383728027
+  ],
+  "config": {
+    "mixer": "based_attention",
+    "vocab_size": 50304,
+    "sequence_length": 512,
+    "layers": 9,
+    "width": 768,
+    "num_heads": 12,
+    "head_dim": 64,
+    "mlp_ratio": 4,
+    "batch_tokens": 8192,
+    "microbatch_tokens": 8192,
+    "steps": 10,
+    "seed": 0,
+    "target_mfu": 0.5,
+    "capture_gradients": false,
+    "compile_model": true,
+    "bf16": true,
+    "activation_checkpointing": false,
+    "target": null
+  },
+  "measurement_version": 2,
+  "source_fingerprint": "345b161d5a9866e94c1ff1686d5b9156ce4c0aa404149c80ec35f81a08a601c1",
+  "environment": {
+    "torch": "2.14.0+cu130",
+    "device": "NVIDIA A10G",
+    "peak_flops": 70000000000000.0
+  }
+}

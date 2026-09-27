@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "name": "forgetting_attention",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.fla_k2",
+    "notes": "arch-008 (A13 score/reducer). FoX / Forgetting Attention: K1 score = qk^T·scale + gc_i − gc_j with gc = cumsum(logsigmoid(f)) (per head), causal (optionally windowed), softmax, @v. The cumulative-log-gate bias is data-dependent — no softmax-only or fixed-pairwise-bias materialization claim (sweep verdict). The bias is computed externally (cumsum) and passed as the K1 score_bias operand: the existing additive-score-bias K1 contract already covers this score algebra (no new descriptor field). Verified against fla/ops/forgetting_attn/naive.py @ 864a87f6. Layer module: architectures/forgetting_attention.py."
+  },
+  "layers": [
+    {
+      "id": "forgetting_attention_layer",
+      "operation": "weighted_reduce",
+      "external_component": "architectures.forgetting_attention.ForgettingAttentionLayer",
+      "params": {
+        "axis": "A13 score/reducer: data-dependent cumulative-log-gate additive score bias (gc_i − gc_j) via the K1 score_bias operand",
+        "external_stages": ["forget-gate projection f_proj(x)", "logsigmoid", "cumulative gate gc = cumsum(g)", "bias gc_i − gc_j", "grouped-KV expansion"],
+        "normalization": "softmax",
+        "selection": "dense",
+        "causal": true,
+        "head_map": "equal (grouped KV supported by the K1 descriptor)"
+      },
+      "state": {},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Parity vs the pinned naive_forgetting_attn (fp32) and the zero-gate-reduces-to-causal-softmax invariant in tests/test_architectures_fox.py; gradients to the forget gate. The windowed variant, decode (attn_decoding_one_step) and any native/tiled cumulative-gate formula are residual, not claimed."
+  }
+}

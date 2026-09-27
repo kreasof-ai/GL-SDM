@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "name": "gla",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.fla_k2",
+    "notes": "arch-019. U2.A channel-diagonal gate: additive linear attention with gk = logsigmoid(gk_proj(x))/gate_logit_normalizer, h_t = exp(gk_t) ⊗ h_{t-1} + k_t v_t, after-update read — verified against fla/ops/gla + fla/layers/gla.py @ 864a87f6. External stages: Q/K/V projections, low-rank gate projection + logsigmoid/normalizer, output gate and output projection. Layer module: architectures/gla.py."
+  },
+  "layers": [
+    {
+      "id": "gla_layer",
+      "operation": "linear_delta_state",
+      "external_component": "architectures.gla.GLALayer",
+      "params": {
+        "external_stages": [
+          "Q/K/V projections",
+          "low-rank gate projection (gk_proj) + logsigmoid/normalizer",
+          "output gate (swish) + output projection"
+        ],
+        "delta": false,
+        "gate_scope": "channel",
+        "read_timing": "after_update",
+        "scale_rule": "key_dim_rsqrt"
+      },
+      "state": {"initial_state": "zero (cache modes are residual)"},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Mixer parity vs the pinned fused_recurrent_gla (GPU) and full-layer composition in tests/test_architectures_gla.py. The short convolution, multi-kv-group repetition, clamp_min variant, GQA (num_kv_groups), cache/chunked paths and the FusedRMSNormGated output norm are residual external work, not claimed."
+  }
+}

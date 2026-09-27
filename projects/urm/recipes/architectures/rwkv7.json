@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "name": "rwkv7",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.fla_k2",
+    "notes": "arch-042 (A8 transition breadth). RWKV-7: S_t = Diag(exp w_t)·S_{t-1} + (a_tᵀS_{t-1})⊗b_t + v_t⊗k_t, o_t = (scale·r_t)ᵀ·S_t (read after update). A DPLR (diagonal + rank-1) low-rank transition — the typed LinearDeltaSpec with low_rank=True (the α/β roles) and channel decay. Verified against fla/ops/rwkv7/fused_recurrent.py @ 864a87f6 (which maps to fused_recurrent_dplr_delta_rule with gk=w) via the pinned dplr_recurrence naive. The input-precomputable token-shift/lerp frontend (producing r/w/k/v/a/b) is external. Layer module: architectures/rwkv7.py."
+  },
+  "layers": [
+    {
+      "id": "rwkv7_layer",
+      "operation": "linear_delta_state",
+      "external_component": "architectures.rwkv7.RWKV7Layer",
+      "params": {
+        "axis": "A8 transition breadth: DPLR low-rank transition (diagonal decay + rank-1 (a⊗b) read off the pre-decay state + additive rank-1 write)",
+        "delta": false,
+        "gate_scope": "channel",
+        "low_rank": true,
+        "read_timing": "after_update",
+        "external_stages": ["token-shift/lerp frontend (input-precomputable coefficients)", "Q/K/V-equivalent projections"]
+      },
+      "state": {"S": "[K, V]"},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Parity vs the pinned dplr_recurrence naive (fp32) in tests/test_architectures_rwkv7.py; the rank-1 transition term is active (alpha=0 changes the output); gradients to the α/β factors. The chunked/varlen kernels, the full RWKV-7 layer (channel mixing, token-shift, value residual, gate/output correction) and cache modes are residual, not claimed."
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "mixer": "moba",
+  "measurement_version": 2,
+  "baseline_tier": "reference-implementation",
+  "status": "production-unavailable",
+  "reason": "fla's parallel_moba needs flash-attn; baseline is the pinned law as a block-sparse SDPA mask"
+}

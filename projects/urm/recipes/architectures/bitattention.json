@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "name": "bitattention",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.fla_bitlinear",
+    "notes": "arch-014. Verified in the sweep against fla/layers/bitattn.py @ 864a87f6: FusedBitLinear projections + rotary are external; the mixer is plain causal U1.S (flash_attn path) with a GQA-capable head map. Layer module: architectures/bit_attention.py."
+  },
+  "layers": [
+    {
+      "id": "bitattention_layer",
+      "operation": "weighted_reduce",
+      "external_component": "architectures.bit_attention.BitAttentionLayer",
+      "params": {
+        "external_stages": [
+          "BitLinear Q/K/V/O projections (RMSNorm + 8-bit activation / 1.58-bit weight quantization, STE gradient policy)",
+          "rotary position embedding"
+        ],
+        "head_map": "equal|single|grouped (derived from num_heads/num_kv_heads)",
+        "normalization": "softmax",
+        "selection": "dense",
+        "causal": true
+      },
+      "state": {},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Projection forward + STE gradient parity vs the pinned fused Triton kernel (LayerNormLinearQuantFn) and layer-level mixer parity vs pinned fla naive attention in tests/test_architectures_bit_attention.py. Rotary, sliding-window and KV-cache/decode modes of the pinned module are residual external work, not claimed."
+  }
+}

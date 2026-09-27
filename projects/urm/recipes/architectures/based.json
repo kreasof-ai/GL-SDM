@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "name": "based",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.fla_k2",
+    "notes": "arch-020. U2.A normalized linear attention after an external second-order Taylor feature map phi (approximating exp(q·k) ≈ 1 + q·k + (q·k)²/2), mixer chunk_linear_attn(normalize=True, scale=1) — verified against fla/layers/based.py + fla/modules/feature_map.py (TaylorFeatureMap) @ 864a87f6. The feature map is external. Layer module: architectures/based_attention.py (BasedLayer)."
+  },
+  "layers": [
+    {
+      "id": "based_layer",
+      "operation": "linear_delta_state",
+      "external_component": "architectures.based_attention.BasedLayer",
+      "params": {
+        "external_stages": ["Q/K/V projections", "Taylor-2 feature map on q/k", "output projection"],
+        "delta": false,
+        "gate_scope": "none",
+        "read_timing": "after_update",
+        "scale_rule": "explicit_operand (scale=1)",
+        "normalized": true
+      },
+      "state": {"initial_state": "zero (cache modes are residual)"},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Feature map transcribed from the pinned TaylorFeatureMap (verified exact, 0.0) and mixer parity vs pinned fused_recurrent_linear_attn (normalize=True, scale=1, GPU) in tests/test_architectures_based.py; full-layer composition + gradients. Cache/chunked paths and the parallel Taylor path are residual external work, not claimed."
+  }
+}

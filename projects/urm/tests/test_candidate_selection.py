@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from urm.compiler.constraints import ConstraintModel
-from urm.compiler.diagnostics import CompilerError, DiagnosticCode
-from urm.compiler.planner import (
+from urm.compiler.solve.constraints import ConstraintModel
+from urm.compiler.common.diagnostics import CompilerError, DiagnosticCode
+from urm.compiler.pipeline import (
     BASE_CANDIDATE_ID,
     CompilationIntent,
     ScheduleParams,
@@ -14,7 +14,7 @@ from urm.compiler.planner import (
     UrmCompiler,
     validate_schedule_params,
 )
-from urm.compiler.semantic import (
+from urm.ir.program import (
     DType,
     SemanticProgram,
     Transform,
@@ -107,7 +107,7 @@ def test_training_accepts_certified_backward_rewrite() -> None:
 
 
 def test_forward_only_rewrites_are_rejected_for_training() -> None:
-    from urm.compiler.rewrite import (
+    from urm.compiler.rewrite.engine import (
         EquivalenceClass,
         ForwardOnlyRestriction,
         RewriteRule,
@@ -230,7 +230,7 @@ def test_override_that_cannot_honor_visitor_is_declined() -> None:
 
 def test_training_rejects_anchor_without_verified_dtype_backward() -> None:
     """Training dispatch requires the anchor's backward to cover the dtype."""
-    from urm.compiler.execution import (
+    from urm.compiler.select.anchors import (
         AnchorKind,
         AnchorRegistry,
         ExecutionAnchor,
@@ -270,7 +270,7 @@ def test_deterministic_flag_flows_into_metadata() -> None:
 
 def test_schedule_params_change_selected_plans() -> None:
     """Acceptance gate: hints demonstrably alter or constrain plans."""
-    from urm.compiler.kernel_plan import exhaustive_schedule_sweep
+    from urm.compiler.select.model import exhaustive_schedule_sweep
 
     compiler = UrmCompiler()
     baseline = compiler.build_constraints(_program(), FUSED_ID)
@@ -364,8 +364,8 @@ def test_base_v1_does_not_report_launch_parameters_that_it_ignores() -> None:
 
 
 def test_capability_registry_fails_closed_for_unknown_rewrite_bindings() -> None:
-    from urm.compiler.kernel_plan import plan_kinds_for_candidate
-    from urm.compiler.planner import CompilationCandidate
+    from urm.compiler.select.model import plan_kinds_for_candidate
+    from urm.compiler.pipeline import CompilationCandidate
 
     dummy = CompilationCandidate(
         candidate_id="rewrite:dummy_unknown@op",
@@ -406,7 +406,7 @@ def test_valid_explicit_fused_override_compiles_successfully() -> None:
 
 def test_explicit_override_with_missing_semantic_inputs_declines_cleanly() -> None:
     """Overriding to fused anchor when row scale input is absent fails with structured error."""
-    from urm.compiler.semantic import routed_reduction_program
+    from urm.ir.program import routed_reduction_program
 
     program = routed_reduction_program(
         queries=8, route_width=2, sources=8, value_dim=16
@@ -441,7 +441,7 @@ def test_unconsumed_explicit_overrides_are_rejected() -> None:
     assert "rewritten or fused" in exc1.value.diagnostics[0].message
 
     # 2. Known interior gather (fused into routed-reduction dispatch)
-    from urm.compiler.semantic import routed_reduction_program
+    from urm.ir.program import routed_reduction_program
 
     gather_prog = routed_reduction_program(
         queries=8, route_width=2, sources=8, value_dim=16
@@ -457,7 +457,7 @@ def test_unconsumed_explicit_overrides_are_rejected() -> None:
     assert "interior gather" in exc2.value.diagnostics[0].message
 
     # 3. Known non-anchorable operation (Transform without anchor site)
-    from urm.compiler.semantic import TransformKind
+    from urm.ir.program import TransformKind
 
     base = routed_reduction_program(queries=8, route_width=2, sources=8, value_dim=16)
     nonlin_prog = SemanticProgram.build(
@@ -508,7 +508,7 @@ def test_unconsumed_explicit_overrides_are_rejected() -> None:
 
 def test_schedule_knobs_rejected_for_unscheduled_lowerings() -> None:
     """Providing block, warp, or stage hints when lowering unscheduled base raises error."""
-    from urm.compiler.semantic import routed_reduction_program
+    from urm.ir.program import routed_reduction_program
 
     program = routed_reduction_program(
         queries=8, route_width=2, sources=8, value_dim=16
@@ -539,8 +539,8 @@ def test_schedule_knobs_rejected_for_unscheduled_lowerings() -> None:
 
 def test_anchor_capability_is_schedule_domain_source_of_truth() -> None:
     """Changing an anchor's declared capabilities alters the generated constraint model."""
-    from urm.compiler.execution import AnchorKind, ExecutionAnchor
-    from urm.compiler.kernel_plan import exhaustive_schedule_sweep
+    from urm.compiler.select.anchors import AnchorKind, ExecutionAnchor
+    from urm.compiler.select.model import exhaustive_schedule_sweep
 
     # Custom anchor with constrained warps=(4,) and blocks=(128,)
     custom_anchor = ExecutionAnchor(
@@ -569,7 +569,7 @@ def test_anchor_capability_is_schedule_domain_source_of_truth() -> None:
 
 def test_incomplete_schedulable_anchor_fails_construction() -> None:
     """Schedulable anchors fail closed if any capability dimension is missing or empty."""
-    from urm.compiler.execution import AnchorKind, ExecutionAnchor
+    from urm.compiler.select.anchors import AnchorKind, ExecutionAnchor
 
     # consumes_launch_config is False
     with pytest.raises(ValueError, match="consumes_launch_config=True"):
@@ -679,7 +679,7 @@ def test_incomplete_schedulable_anchor_fails_construction() -> None:
 
 def test_schedulable_anchor_with_duplicate_or_invalid_values_fails() -> None:
     """Schedulable anchors reject invalid domain values and duplicate capability entries."""
-    from urm.compiler.execution import AnchorKind, ExecutionAnchor
+    from urm.compiler.select.anchors import AnchorKind, ExecutionAnchor
 
     # Duplicate blocks
     with pytest.raises(ValueError, match="duplicate blocks"):
@@ -759,8 +759,8 @@ def test_schedulable_anchor_with_duplicate_or_invalid_values_fails() -> None:
 
 def test_candidate_and_anchor_plan_mismatch_fails_with_candidate_illegal() -> None:
     """Pairing a candidate with an anchor of conflicting plan kind fails closed."""
-    from urm.compiler.execution import TRUSTED_ANCHORS
-    from urm.compiler.kernel_plan import build_schedule_model
+    from urm.compiler.select.anchors import TRUSTED_ANCHORS
+    from urm.compiler.select.model import build_schedule_model
 
     program = _program()
     compiler = UrmCompiler()
@@ -801,7 +801,7 @@ def test_candidate_and_anchor_plan_mismatch_fails_with_candidate_illegal() -> No
 
 def test_unscheduled_anchor_remains_valid_without_schedule_capabilities() -> None:
     """Unscheduled anchors are valid with empty schedule capabilities."""
-    from urm.compiler.execution import AnchorKind, ExecutionAnchor
+    from urm.compiler.select.anchors import AnchorKind, ExecutionAnchor
 
     unscheduled = ExecutionAnchor(
         kind=AnchorKind.ROUTED_REDUCTION,
@@ -816,7 +816,7 @@ def test_unscheduled_anchor_remains_valid_without_schedule_capabilities() -> Non
 
 def test_current_fused_anchor_yields_expected_144_legal_points() -> None:
     """Current fused anchor yields exactly the certified 144 legal points."""
-    from urm.compiler.kernel_plan import exhaustive_schedule_sweep
+    from urm.compiler.select.model import exhaustive_schedule_sweep
 
     compiler = UrmCompiler()
     program = _program()

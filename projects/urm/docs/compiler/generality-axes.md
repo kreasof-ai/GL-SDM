@@ -1,76 +1,25 @@
-# Generality axes for production construction
+# Generality axes (mechanically referenced by tests)
 
-These are the full-version IR extension tasks. The unified mixer compiler
-implements bounded parts of several axes below; it does not close those axes or
-establish named architecture coverage. The goal is shared typed semantics and
-reusable lowerings, not a universal mega-kernel. See the
-[source audit](../planning/unification-audit.md).
+The catalog's 13 generality axes — the typed variation dimensions along which mixer
+laws differ. Admission status mirrors `src/urm/backends/` and
+`extra/architecture-coverage.json`; the current native/references inventory is
+in [../backends.md](../backends.md), the per-row mapping in [../catalog.md](../catalog.md).
 
-## Implemented
+| Axis | Typed dimension | Admission status at HEAD |
+|---|---|---|
+| **A1: slot/channel** | Logical slot, key-channel and value domains; gate broadcast; per-domain state layout | Admitted — the K1/K2 descriptors carry per-domain state layout (GLA/KDA/Rodimus clients) |
+| **A2: locality / indexed K1** | Exact or approximate metric, route ties, capacity, geometric metadata; the indexed gather-attend schedule | Admitted — `K1Descriptor.indexed` + the `gather_indices` operand; native `triton/k1/indexed.py` (relaxed-atomic backward). Clients: NSA, Longformer, MoBA, DSA, Sparse Transformer |
+| **A3: coordinated routing** | Assignment, ownership, collision/merge, deterministic tie and return protocol | Reference tier — MoM/external compositions |
+| **A4: hierarchical chunks** | Architectural pooling versus schedule subdivision, level identity and boundary state | Admitted — the typed DyadicBankedState op (decay-forward carry cascade) with the native `triton/k2/dyadic_banks.py` branch. Clients: log-linear, LogLinearMamba2 |
+| **A5: timescale banks** | Independent state instances, decay schedules and explicit weighted combination | Admitted — multi-state K2 (RetNet) with both state VJPs |
+| **A6: slot interaction graph** | Edge domain, ordered propagation and state effects | External — graph-memory candidates |
+| **A7: adaptive cardinality** | Allocation, birth/death, identity, reset and ragged cache ABI | External — CAT/dynamic memory |
+| **A8: read/write coupling** | Independent factors, low-rank rank, augmented states, input-precomputable versus state-dependent coefficients | Admitted — generalized rank-1 K2 transition (`LinearDeltaSpec` low_rank / num_deltas); native `triton/k2/matrix_scan.py`. Clients: GDN2, RWKV-7/DPLR, IPLR, Comba, Gated DeltaProduct, Mamba-2 |
+| **A9: complex/block-real state** | Rotation representation, conjugate rules, phase state and VJP | External — phase-bearing SSMs |
+| **A10: stochastic routes** | RNG state, replay, estimator and distribution | External — sampled routing |
+| **A11: parameter/expert/depth** | Static parameter domain, depth dependencies, grouped GEMM/dispatch and gradient accumulation | Admitted at frontend granularity — PAttention (block) and AttnRes (residual) rows; the parameter-domain K1 `map_normalize` reducer is reference-tier |
+| **A12: inner optimization** | Closed loss/update/optimizer state, loop bounds, checkpoint and outer-gradient policy | External — Titans/TTT |
+| **A13: score/reduction algebra** | Score map, normalization, neutral element, all-masked behavior, sum/LSE/max/positive or iterative reduction and VJP | Admitted — `K1ScoreLaw` (DOT, CHANNEL_DECAY) and `K1ReducerLaw` (SOFTMAX, THRESHOLD_RELU_POWER, SQUARED_SUM, MAP_NORMALIZE); native kernels `triton/k1/{channel_decay,threshold_relu,squared_sum,map_normalize}.py`. Clients: FoX, Wall, TDA, KATA, PAttention |
 
-`compiler/unified_mixer.py` provides executable, serialized contracts for:
-
-- shared and grouped Q/K/V heads in K1 and K2, plus scalar/head/channel gate
-  broadcasting (part of A1);
-- separate matrix and diagonal state layouts, ordered rank-R updates, and
-  factored left/right state transitions (bounded A8 support);
-- stable softmax attention and a query/key denominator for additive linear
-  state (part of A13);
-- ordered token updates and explicit within-token collision rejection for K3.
-
-Timescale banks and weighted multi-state combination (A5), coordinated
-multi-head/expert routing (A3), general score reductions, complex state, and
-the remaining axes are still open. See the
-[coverage table](unified-mixer.md#named-kernel-recipes) for the exact
-architecture-kernel boundaries.
-
-## Shared descriptor boundary
-
-Extend existing IR with typed descriptors for logical axis/domain, state bundle,
-transition algebra, score/normalizer/reduction, routing policy and update region.
-Provider and tile choices remain schedule properties. A serialized descriptor
-must reconstruct semantics; an arbitrary callback cannot substitute for it.
-
-| Axis | Required contract / implementation | Coverage fixtures | Acceptance obligation | Wave |
-|---|---|---|---|---|
-| A1: slot/channel | Explicit slot, channel and value domains; gate broadcasting and shared/independent transitions | GLA/KDA candidates, channel-routed memory | Prove legal flattening or use separate solves; all gate gradients | 2-3 |
-| A2: locality | Metric, exact/approximate selection, ties, capacity and geometric metadata | Foveal, nearest-neighbor memory | Exact oracle; approximation is a separate semantic with quality tests; include index construction | 3 |
-| A3: coordinated routing | Multi-head assignment, ownership, collision merge and deterministic ties | MoM/MoE, exclusive slots | Assignment oracle, conservation, route gradients and coordination cost | 3 |
-| A4: hierarchical chunks | Distinguish schedule subdivision from architectural pooling; explicit boundary maps | Long-context recurrence, compressed attention | Nested schedule preserves recurrence; model hierarchy needs a new reference; bound rank/memory growth | 3-4 |
-| A5: timescale banks | Parallel states, decay schedules and explicit weighted combination | RetNet, multi-memory fixtures | Independent-bank oracle, combination gradients and state continuation | 2 |
-| A6: slot interaction graph | Edge propagation, ordering and state effects | BDH/graph-memory candidates | Derive graph update and VJP; collision and edge-traffic budgets | 4 |
-| A7: adaptive cardinality | Ragged-state ABI, allocation, birth/death, identity and reset policy | CAT/compression, dynamic memory | Cache migration, bounded capacity and discrete-event differentiation policy | 4 |
-| A8: read/write coupling | Independent low-rank factors, augmented state, precomputable versus state-dependent coefficients | RWKV-7, generalized delta, momentum, preconditioning | Derive transition closure or rank growth; no scalar-beta substitution without proof | 3 |
-| A9: complex/block-real state | Rotations, representations and conjugate/adjoint rules | Phase-bearing SSM candidates | Complex/block-real reference parity, phase state and gradients | 3 audit, 4 broader support |
-| A10: stochastic routes | RNG state, distribution, replay and gradient estimator | Sampled-routing fixtures | Replay and estimator tests; distinguish estimator from exact discrete-selection derivative | 4 |
-| A11: parameter/expert/depth | Static operands, pointwise gates, grouped matmul, dispatch/combine and depth dependencies | Pattention, SwiGLU, MoE, AttnRes | Full subgraph and parameter-gradient parity including every projection | 3 |
-| A12: inner optimization | Typed loss/update region, loop bounds, optimizer state, checkpointing and outer-gradient policy | TTT, FwPKM, MesaNet audit, MAML/Reptile | Update-trace and outer-gradient tests; explicit loop or external anchor, no callback escape hatch | 3 audit, 4 implementation |
-| A13: score/reduction algebra | Separate score map, normalization and sum/LSE/max or iterative aggregation | POLAR, normalized linear, Hopfield candidates | Neutral elements, stable masking and gradients; dedicated kernels when needed | 2 common, 4 broader support |
-
-## Avoid false equivalences
-
-A channel axis is not merely a shape change when it changes transition factors.
-SwiGLU requires two input projections, a SiLU/product gate and an output projection;
-one bare attention contraction is insufficient. Static parameter memory and mutable
-sequence state have different effects. Depth reduction is not sequence recurrence.
-
-Hierarchical schedules can optimize a fixed operation; hierarchical memories can
-change the model. Approximate locality selection must not replace exact routing
-under an unchanged contract. Inner optimizer state and differentiability cannot
-be inferred from a function pointer. Shared semantics can require different
-physical kernels to preserve performance.
-
-## Deliverables per axis
-
-1. Descriptor, shape/effect validation, serialization and structured declines.
-2. Independent reference and differential/adjoint tests across state boundaries.
-3. One named architecture fixture and a synthetic boundary case demonstrating
-   reuse without an architecture-specific condition in the kernel.
-4. Capability matching and an executable compiler plan.
-5. Native, adapter and end-to-end parity evidence on applicable workloads.
-
-Start with A1/A5 and ordinary composition, then A3/A8/A11. Graph and stochastic
-extensions do not block the initial three vertical slices, but remain explicit
-full-version work. Publish which axes and [named targets](../planning/coverage.md)
-are qualified and which remain blocked. Do not replace qualification with a claim
-that an interface could theoretically express the operation.
+The taxonomy is closed under the four read-domains (charter invariant 2); the axes
+are typed descriptor fields, never architecture-name dispatch.

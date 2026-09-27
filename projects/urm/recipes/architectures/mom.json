@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "name": "mom",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.fla_k2",
+    "notes": "arch-051. Routed-expert (MoE-shaped) combinator: external softmax top-k router (gate(x), top-k, renormalized weights); each selected memory runs the gated delta rule (U2.D, reusing architectures/gated_deltanet.py); external scatter-add weighted merge. Verified against fla/layers/mom.py @ 864a87f6. The pack (argsort/gather/pad into per-memory varlen streams with cu_seqlens) and per-memory state gather/scatter + cache shuffling are external. Layer module: architectures/mom.py."
+  },
+  "layers": [
+    {
+      "id": "mom_layer",
+      "operation": "linear_delta_state",
+      "external_component": "architectures.mom.MoMLayer",
+      "params": {
+        "combinator": "routed-expert: external router → per-memory U2.D calls → external scatter-add merge",
+        "external_stages": ["softmax top-k router (renormalized weights)", "per-memory gated-delta mixers (U2.D)", "scatter-add weighted merge", "pack/unpack (varlen cu_seqlens)", "per-memory state gather/scatter + cache shuffling"],
+        "note": "no-shared-mem branch; per-memory U2.D calls (the pinned packed varlen single-call form is a physical schedule, residual)"
+      },
+      "state": {"per_memory": "one recurrent state per memory (residual)"},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Router semantics (top-k, renormalized weights), the scatter-add merge structure, and per-memory mixer composition with gradients through the routing weights in tests/test_architectures_mom.py. The packed varlen execution (single chunk_gated_delta_rule over concatenated streams with cu_seqlens), per-memory state gather/scatter, cache shuffling, the shared_mem branch, and the no-one-stream-equivalence are residual external work, not claimed."
+  }
+}

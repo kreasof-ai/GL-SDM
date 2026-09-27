@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "name": "gqa",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.fla_attention_naive",
+    "notes": "arch-003. U1.S with an explicit grouped head map (HQ query heads in H groups of G=HQ//H sharing one KV head); verified against fla/ops/attn/naive.py [B,T,H,G,D] reshape. Layer module: architectures/head_map_attention.py (head_map='grouped', group_size=HQ//H)."
+  },
+  "layers": [
+    {
+      "id": "gqa_layer",
+      "operation": "weighted_reduce",
+      "external_component": "architectures.head_map_attention.HeadMapAttention",
+      "params": {
+        "head_map": "grouped",
+        "query_domain": "sequence",
+        "source_domain": "sequence",
+        "normalization": "softmax",
+        "selection": "dense",
+        "causal": true
+      },
+      "state": {},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Layer parity vs pinned fla naive in tests/test_architectures_head_map_attention.py; descriptor legality (grouped map requires group_size; group_size illegal on other maps) gated in the same file. Residual: B[grouped-head gradients_and_decode] decode/cache not claimed."
+  }
+}

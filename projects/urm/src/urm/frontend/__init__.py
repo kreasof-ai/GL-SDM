@@ -1,5 +1,11 @@
-"""Backend-independent model specification frontend."""
+"""Versioned JSON recipe loaders.
 
-from .spec import MixerSpec
+The recipe catalog is declarative JSON only (``recipes/kernels/*.json``,
+``recipes/architectures/*.json``); this package holds the loading and
+validation machinery and nothing else. Compilation entry points live in
+:mod:`urm.compiler.pipeline` (:func:`compile_graph`).
+"""
 
-__all__ = ["MixerSpec"]
+from . import recipes
+
+__all__ = ["recipes"]

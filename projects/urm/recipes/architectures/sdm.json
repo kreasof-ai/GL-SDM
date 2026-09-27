@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "name": "sdm",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.sdm",
+    "notes": "arch-047 — composition-now WITH A RECORDED CAVEAT (sweep row-047). The update/read law is exactly U3.D decayed-delta with a certified external route trace and the product-key router is external by design (verified against lingua/sparse_delta_memory/layer.py @ 183e7df8). CAVEAT: the pinned router's tie policy is backend-dependent torch.topk (not R.PK HIGHEST_ADDRESS) and route weights use a scaled softmax; an exact R.PK claim additionally requires a highest-address tie realization. This row claims the update/read law + external route composition, NOT router tie-policy identity. Layer module: architectures/sdm_memory.py."
+  },
+  "layers": [
+    {
+      "id": "sparse_delta_memory_layer",
+      "operation": "sparse_state_mixer",
+      "external_component": "architectures.sdm_memory.SparseDeltaMemoryLayer",
+      "params": {
+        "external_stages": [
+          "product-key score projection + read/write score biases",
+          "value/beta/log-decay gate projection",
+          "output projection",
+          "persistent-memory state lifecycle (detach_state/reset_state)"
+        ],
+        "route": "product-key top-k per factor, combined top-k, address = idx1*half + idx2, sorted ascending (CAVEAT: torch.topk tie policy)",
+        "update_rule": "decayed_delta",
+        "read_timing": "after_update",
+        "collision_policy": "ordered"
+      },
+      "state": {"persistent_memory": "[batch*heads, slots_per_partition, value_dim]"},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Layer executes the typed K3 route→update→read graph (two sparse_route_generation + one sparse_state_mixer node) on the native tier with the external projections and explicit state lifecycle, in tests/test_architectures_sdm.py. The router tie-policy/scale identity vs R.PK (HIGHEST_ADDRESS, frozen SOFTMAX) is the sweep-recorded open question and is NOT claimed; key_weighted_decay=True variants and deployed configs with non-unit act scales are out of scope."
+  }
+}

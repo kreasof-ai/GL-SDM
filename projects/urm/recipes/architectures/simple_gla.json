@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "name": "simple_gla",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.fla_k2",
+    "notes": "arch-018. U2.A additive with a per-head, per-token data-dependent gate g = logsigmoid(gk_proj(x))/gate_logit_normalizer (head scope) — verified against fla/ops/simple_gla + fla/layers/simple_gla.py @ 864a87f6. External stages: Q/K/V projections, gate projection + logsigmoid/normalizer, output projection. Layer module: architectures/simple_gla.py."
+  },
+  "layers": [
+    {
+      "id": "simple_gla_layer",
+      "operation": "linear_delta_state",
+      "external_component": "architectures.simple_gla.SimpleGLALayer",
+      "params": {
+        "external_stages": ["Q/K/V projections", "gate projection + logsigmoid/normalizer", "output projection"],
+        "delta": false,
+        "gate_scope": "head",
+        "read_timing": "after_update",
+        "scale_rule": "key_dim_rsqrt"
+      },
+      "state": {"initial_state": "zero (cache modes are residual)"},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Mixer parity vs the pinned fused_recurrent_simple_gla (GPU) and full-layer composition in tests/test_architectures_simple_gla.py. Short conv, cache/chunked paths and the gated output norm are residual external work, not claimed."
+  }
+}

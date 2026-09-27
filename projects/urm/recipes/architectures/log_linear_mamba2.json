@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "name": "log_linear_mamba2",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.fla_k2",
+    "notes": "arch-046 (A4 hierarchical chunks). LogLinearMamba2: shares the hierarchical dyadic level state with arch-009 (same o = (H ∘ qkᵀ)·v law), driven by the Mamba-2 frontend — g = -exp(A_log)·softplus(a_proj(x)+dt_bias) discretization and the level transform. The hierarchical mixer reuses architectures/log_linear_attention.py; the Mamba-2 frontend, conv short-circuit, norm/gate and the chunked streaming kernel are external. Verified against fla/layers/log_linear_mamba2.py + fla/ops/log_linear_attn/naive.py @ 864a87f6. Layer module: architectures/log_linear_mamba2.py."
+  },
+  "layers": [{"id": "log_linear_mamba2_layer", "operation": "linear_delta_state", "external_component": "architectures.log_linear_mamba2.LogLinearMamba2Layer", "params": {"axis": "A4 hierarchical: shared dyadic level state (with arch-009) + Mamba-2 frontend", "external_stages": ["Mamba-2 discretization (A_log/dt_bias/a_proj)", "level transform", "conv short-circuit", "norm/gate"], "note": "hierarchical K2 level state"}, "state": {"levels": "one [K,V] state per dyadic level"}, "cache": {}}],
+  "coverage": {"level": "generic_model_integration", "validated": true, "notes": "Frontend→hierarchical-law composition in tests/test_architectures_a4.py (the shared law is verified against the pinned naive_log_linear_attn). The full Mamba-2 layer, conv, and the chunked kernel are residual, not claimed."}
+}

@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "name": "nsa",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.fla_k2",
+    "notes": "arch-005 (A2 indexed-K1). NSA selected branch: gather the top-k selected block tokens (block_indices*block_size + arange, padded -1 for causally-invisible/surplus slots) and softmax-attend over the gathered set — the typed K1 indexed call (gather_indices operand). The route (top-k over group-mean softmax probs with forced first/current/previous blocks), the compressed branch (mean-pooled K/V), the sliding-window branch, the weighted gated merge (o = g_cmp·o_cmp + g_slc·o_slc + g_swa·o_swa), and the GQA power-of-2/≥16 tile constraint are external. Verified against fla/ops/nsa/naive.py @ 864a87f6. Layer module: architectures/nsa.py."
+  },
+  "layers": [
+    {
+      "id": "nsa_selected_layer",
+      "operation": "weighted_reduce",
+      "external_component": "architectures.nsa.NSASelectedLayer",
+      "params": {
+        "axis": "A2 indexed-K1: gather the per-query top-k block-token set, attend over the gathered sources",
+        "external_stages": ["top-k block selection route", "block→token expansion + causal/padding mask", "compressed branch (mean-pool)", "sliding-window branch", "weighted gated merge", "GQA head mapping"],
+        "selection": "gathered (indexed)",
+        "normalization": "softmax"
+      },
+      "state": {},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Selected-branch parity vs the pinned naive_nsa (fp32, CUDA) in tests/test_architectures_nsa.py; padding-slot masking; gradients. The full three-branch composition, the route, the compression pooling, the gated merge and the tile constraint are residual external work, not claimed."
+  }
+}

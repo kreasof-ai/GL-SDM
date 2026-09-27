@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "name": "attnres",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.attnres",
+    "notes": "arch-054 — composition-now as a typed depth-domain U1.S instance. AttnRes aggregates previous-layer residual sources over the DEPTH domain: RMSNorm keys, softmax over depth (dim=0), weighted sum of unnormalized residuals, optional fused output RMSNorm. Verified against fla/ops/attnres/naive.py @ 864a87f6. Depth is the source domain — no sequence state, recurrence or causal mask. Layer module: architectures/attnres.py."
+  },
+  "layers": [
+    {
+      "id": "attnres_layer",
+      "operation": "weighted_reduce",
+      "external_component": "architectures.attnres.AttnResLayer",
+      "params": {
+        "external_stages": [
+          "per-source RMSNorm key construction",
+          "optional fused output RMSNorm (the following prenorm)"
+        ],
+        "query_domain": "depth",
+        "source_domain": "depth",
+        "normalization": "softmax",
+        "selection": "dense",
+        "causal": false,
+        "head_map": "equal",
+        "scale_rule": "explicit_operand (pinned scale applied to q externally)"
+      },
+      "state": {},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Layer parity vs pinned naive_attnres (plain, fused-output-RMSNorm, non-unit scale) and gradients to residual sources in tests/test_architectures_attnres.py. This row admits the DEPTH logical domain into the IR (LogicalDomain.DEPTH; second client arch-065 Foveal) and the depth-domain softmax into the K1 anchor-kind gate. No sequence state or recurrence attaches to the depth axis (sweep blocker)."
+  }
+}

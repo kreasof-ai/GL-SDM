@@ -1,0 +1,72 @@
+{
+  "schema_version": 2,
+  "name": "tpa_attention_core",
+  "kind": "kernel_fragment",
+  "architecture_ids": [
+    "arch-069"
+  ],
+  "component_scope": "softmax attention after caller-supplied projections/transforms",
+  "required_external_stages": [
+    "TPA factorized Q/K/V production, RoPE, and compressed-cache ABI"
+  ],
+  "graph": {
+    "inputs": [
+      {
+        "name": "query",
+        "dtype": "float32",
+        "shape": [
+          "B",
+          "T",
+          "H",
+          "D"
+        ]
+      },
+      {
+        "name": "key",
+        "dtype": "float32",
+        "shape": [
+          "B",
+          "S",
+          "H",
+          "D"
+        ]
+      },
+      {
+        "name": "value",
+        "dtype": "float32",
+        "shape": [
+          "B",
+          "S",
+          "H",
+          "D"
+        ]
+      }
+    ],
+    "nodes": [
+      {
+        "id": "attend",
+        "op": "weighted_reduce",
+        "inputs": [
+          "query",
+          "key",
+          "value"
+        ],
+        "outputs": [
+          "output"
+        ],
+        "params": {
+          "query_domain": "sequence",
+          "source_domain": "sequence",
+          "selection": "dense",
+          "normalization": "softmax",
+          "capacity_policy": "dropless",
+          "deterministic": true,
+          "causal": true
+        }
+      }
+    ],
+    "outputs": [
+      "output"
+    ]
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "name": "gdn2",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.fla_k2",
+    "notes": "arch-027 (A8 transition breadth). GDN2 / Gated DeltaNet 2: h ← h·exp(g_t) (channel decay on the KEY axis), erase = (b_t⊙k_t)ᵀ·h, v_new = w_t⊙v_t − erase, h ← h + k_t⊗v_new, o_t = (scale·q_t)ᵀ·h. Distinct K-axis erase gate b and V-axis write gate w plus channel decay — collapsing b=w=scalar β recovers KDA (sweep verdict). The typed LinearDeltaSpec with the erase_gate and write_gate roles. Verified against fla/ops/gdn2/naive.py @ 864a87f6. Layer module: architectures/gdn2.py."
+  },
+  "layers": [
+    {
+      "id": "gdn2_layer",
+      "operation": "linear_delta_state",
+      "external_component": "architectures.gdn2.GDN2Layer",
+      "params": {
+        "axis": "A8 transition breadth: generalized rank-1 transition with distinct erase_gate (b) and write_gate (w)",
+        "delta": true,
+        "gate_scope": "channel",
+        "read_timing": "after_update",
+        "external_stages": ["gate projections (g, b, w)", "Q/K/V projections"]
+      },
+      "state": {"h": "[K, V]"},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Parity vs the pinned naive_recurrent_gdn2 (fp32) in tests/test_architectures_gdn2.py; the erase/write gates act on distinct axes (not collapsible to one beta); gradients to both gates. Chunked kernels, initial_state carry and cache modes are residual, not claimed."
+  }
+}

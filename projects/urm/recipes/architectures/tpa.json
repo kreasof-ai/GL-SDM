@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "name": "tpa",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.tpa",
+    "notes": "arch-069. Verified in the sweep against model/T6.py @ c276c80d: CPLinear factorizes Q/K/V (A = W_A(x) per head, B = W_B(x) per rank, RoPE on the B_q/B_k factors, q = bmm(A,B)/rank) — all external; the mixer is plain causal U1.S (F.scaled_dot_product_attention, is_causal=True). Layer module: architectures/tpa_attention.py."
+  },
+  "layers": [
+    {
+      "id": "tpa_attention_layer",
+      "operation": "weighted_reduce",
+      "external_component": "architectures.tpa_attention.TPAAttentionLayer",
+      "params": {
+        "external_stages": [
+          "CP-factorized Q/K/V projections (CPLinear: A/B factors, RoPE on B_q/B_k, bmm/rank)",
+          "output projection (c_proj)"
+        ],
+        "normalization": "softmax",
+        "selection": "dense",
+        "causal": true,
+        "head_map": "equal"
+      },
+      "state": {},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Layer parity vs the pinned CausalSelfAttention (identical CP + output-projection parameters) in tests/test_architectures_tpa.py; gradients flow through the factorized projections. The factorized low-rank KV-cache ABI the decomposition enables and the optional per-head RMSNorm (using_groupnorm) are residual external work, not claimed."
+  }
+}

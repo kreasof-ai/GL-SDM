@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://urm.dev/schema/architecture-recipe.schema.json",
+  "title": "URM architecture recipe",
+  "description": "A versioned, declarative description of a complete model graph: layer order, parameters, and cache/state contracts. Unlike a kernel fragment, a complete architecture recipe must state its full layer graph and explicitly list model-specific components that live outside URM core under architectures/<name>/. An unrepresentable component makes the full-model row unsupported rather than silently degrading to a generic mixer.",
+  "type": "object",
+  "required": ["schema_version", "name", "kind", "layers"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"type": "integer", "const": 1},
+    "name": {"type": "string", "minLength": 1},
+    "kind": {
+      "type": "string",
+      "const": "complete_model_graph",
+      "description": "Declares that this document describes a complete model graph, not a fragment."
+    },
+    "source": {
+      "type": "object",
+      "description": "Provenance for the source architecture this graph reproduces.",
+      "properties": {
+        "repository": {"type": "string"},
+        "revision": {"type": "string"},
+        "comparator": {"type": "string", "description": "The pinned comparator module under benchmarks/comparators/ that establishes parity."},
+        "notes": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "layers": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Ordered layer graph. Each layer references a registered typed operation or kernel-fragment recipe by name, plus any external (architecture-specific) component.",
+      "items": {
+        "type": "object",
+        "required": ["id", "operation"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "operation": {
+            "type": "string",
+            "description": "Name of a registered typed operation or kernel-fragment recipe."
+          },
+          "external_component": {
+            "type": "string",
+            "description": "Path under architectures/<name>/ supplying a model-specific component when a typed reusable operation is insufficient."
+          },
+          "params": {"type": "object", "additionalProperties": true},
+          "state": {"type": "object", "additionalProperties": true},
+          "cache": {"type": "object", "additionalProperties": true}
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "description": "Honest evidence scope for this architecture row.",
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["kernel_fragment", "generic_model_integration", "source_architecture"],
+          "description": "source_architecture requires full source-model validation; generic_model_integration is only a generic decoder swap."
+        },
+        "validated": {"type": "boolean"},
+        "notes": {"type": "string"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

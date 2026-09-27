@@ -1,0 +1,73 @@
+{
+  "schema_version": 2,
+  "name": "hopfield_attention_core",
+  "kind": "kernel_fragment",
+  "architecture_ids": [
+    "arch-078"
+  ],
+  "component_scope": "single-update modern Hopfield association core as unscaled softmax attention",
+  "required_external_stages": [
+    "Hopfield iterative retrieval beyond the first association update",
+    "memory-specific projections, normalization, masks and output composition"
+  ],
+  "graph": {
+    "inputs": [
+      {
+        "name": "query",
+        "dtype": "float32",
+        "shape": [
+          "B",
+          "T",
+          "H",
+          "D"
+        ]
+      },
+      {
+        "name": "key",
+        "dtype": "float32",
+        "shape": [
+          "B",
+          "S",
+          "H",
+          "D"
+        ]
+      },
+      {
+        "name": "value",
+        "dtype": "float32",
+        "shape": [
+          "B",
+          "S",
+          "H",
+          "D"
+        ]
+      }
+    ],
+    "nodes": [
+      {
+        "id": "attend",
+        "op": "weighted_reduce",
+        "inputs": [
+          "query",
+          "key",
+          "value"
+        ],
+        "outputs": [
+          "output"
+        ],
+        "params": {
+          "query_domain": "sequence",
+          "source_domain": "sequence",
+          "selection": "dense",
+          "normalization": "softmax",
+          "capacity_policy": "dropless",
+          "deterministic": true,
+          "causal": false
+        }
+      }
+    ],
+    "outputs": [
+      "output"
+    ]
+  }
+}

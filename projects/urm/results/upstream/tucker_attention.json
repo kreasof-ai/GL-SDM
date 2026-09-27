@@ -1,0 +1,7 @@
+{
+  "mixer": "tucker_attention",
+  "measurement_version": 2,
+  "baseline_tier": "reference-implementation",
+  "status": "production-unavailable",
+  "reason": "the pinned fused kernel is H100-targeted (294KB SMEM); baseline transcribes the pinned equation in torch"
+}

@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "name": "lightning",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.fla_k2",
+    "notes": "arch-016. U2.A additive with a STATIC per-head decay g_gamma[h] = -(8/H)(1 - layer_idx/num_layers)·h (constant over time) — the sweep confirmed it is a fixed head-scalar gate, NOT data-dependent — verified against fla/ops/lightning_attn + simple_gla @ 864a87f6. External stages: Q/K/V projections, the static schedule construction, output projection. Layer module: architectures/simple_gla.py (LightningAttentionLayer)."
+  },
+  "layers": [
+    {
+      "id": "lightning_layer",
+      "operation": "linear_delta_state",
+      "external_component": "architectures.simple_gla.LightningAttentionLayer",
+      "params": {
+        "external_stages": ["Q/K/V projections", "static per-head decay schedule (layer_idx/num_layers)", "output projection"],
+        "delta": false,
+        "gate_scope": "head",
+        "read_timing": "after_update",
+        "scale_rule": "key_dim_rsqrt",
+        "gate": "static g_gamma (not data-dependent)"
+      },
+      "state": {"initial_state": "zero (cache modes are residual)"},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Mixer parity vs the pinned fused_recurrent_simple_gla with static g_gamma (GPU) in tests/test_architectures_simple_gla.py. Short conv, cache/chunked paths and the layer-index schedule across a full stack are residual external work, not claimed."
+  }
+}

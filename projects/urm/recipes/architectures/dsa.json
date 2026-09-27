@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "name": "dsa",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.fla_k2",
+    "notes": "arch-007 (A2 indexed-K1). DSA (DeepSeek Sparse Attention): lightning indexer scores every causal key I[t,s] = Σ_j w_idx[t,j]·act(scale·q_idx[t,j]·k_idx[s]) (MQA shared index key), top-k causal keys per query (-1 padded, selection shared across query heads), then softmax(scale·q·k)·v over the gathered selected tokens only. The indexer route is external; the mixer is the shared typed indexed-K1 call. Verified against fla/ops/dsa/naive.py @ 864a87f6. Layer module: architectures/dsa.py."
+  },
+  "layers": [{"id": "dsa_layer", "operation": "weighted_reduce", "external_component": "architectures.dsa.DSALayer", "params": {"axis": "A2 indexed-K1: lightning indexer top-k route + gather-attend", "external_stages": ["q_idx/k_idx/w_idx indexer projections", "activation + top-k route", "GQA grouping"], "selection": "gathered (indexed)", "normalization": "softmax"}, "state": {}, "cache": {}}],
+  "coverage": {"level": "generic_model_integration", "validated": true, "notes": "Gather-attend parity vs the equation oracle and padding masking in tests/test_architectures_a2_indexed.py. The indexer projections and the full layer are residual, not claimed."}
+}

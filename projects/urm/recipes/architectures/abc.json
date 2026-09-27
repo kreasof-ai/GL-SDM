@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "name": "abc",
+  "kind": "complete_model_graph",
+  "source": {
+    "comparator": "benchmarks.comparators.fla_k2",
+    "notes": "arch-048. Two-stage slot-summary combinator: stage 1 hk_t = hk_{t-1}·exp(g_t)[None,:] + k_t⊗s_t (slot decay on the COLUMN axis), ok_t = (scale·q_t)ᵀhk_t, qv_t = softmax(ok_t) (external interstage); stage 2 hv_t = hv_{t-1}·exp(g_t)[:,None] + s_t⊗v_t (slot decay on the ROW axis), o_t = qv_tᵀhv_t. g derived from slot logits (z = logcumsumexp(s), g_t = z_{t-1} − z_t, s = exp(s−z)) — external. Verified against fla/ops/abc/naive.py @ 864a87f6. Layer module: architectures/abc_gsa.py."
+  },
+  "layers": [
+    {
+      "id": "abc_layer",
+      "operation": "linear_delta_state",
+      "external_component": "architectures.abc_gsa.ABCLayer",
+      "params": {
+        "combinator": "two additive per-slot-decayed accumulators + external interstage slot softmax",
+        "external_stages": ["stage-1 slot summary (column-axis slot decay, external recurrence)", "cumulative-softmax gate derivation (logcumsumexp)", "interstage slot softmax qv = softmax(ok)", "stage-2 value summary (typed K2 channel-gate, row-axis slot decay)"],
+        "structural_finding": "the K2 channel gate decays the KEY axis; it covers stage 2 (slot = key) but NOT stage 1 (slot = value axis) — stage 1 is external. The sweep's 'two U2.A calls' is imprecise on the stage-1 gate axis."
+      },
+      "state": {"hk": "[K, M]", "hv": "[M, V]"},
+      "cache": {}
+    }
+  ],
+  "coverage": {
+    "level": "generic_model_integration",
+    "validated": true,
+    "notes": "Parity vs the pinned naive_recurrent_abc (fp32) in tests/test_architectures_abc_gsa.py; gradients through both stages. The chunked kernel (chunk.py) reproduction of the two-pass coupling and initial_state handling for both hk and hv are residual external work, not claimed."
+  }
+}

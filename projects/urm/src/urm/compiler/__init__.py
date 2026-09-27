@@ -1,38 +1,28 @@
 """URM compiler: semantic-to-execution compilation for routed sequence models.
 
-Layering (docs/compiler/compiler-charter.md, docs/compiler/kernel-generation.md):
+Layering (docs/charter.md):
 
     architecture/NAS specification
-      -> semantic routing and state IR        (semantic.py)
-      -> verified algebraic reparameterization (rewrite.py)
-      -> rewrite/lowering candidate enumeration (planner.py)
-      -> backend-independent constraint IR      (constraints.py)
-      -> optional Z3 feasibility/optimization   (solver.py)
-      -> independent imperative verification    (verification.py)
-      -> placement, sharding, communication     (placement.py, planner.py,
-                                                 route_protocols.py)
-      -> trusted execution anchors + visitors   (execution.py)
-      -> FA / FLA / grouped GEMM / scan / SDM / collectives / generated kernels
+      -> semantic routing and state IR        (ir/program.py)
+      -> verified algebraic reparameterization (rewrite/)
+      -> rewrite/lowering candidate enumeration (pipeline.py)
+      -> backend-independent constraint IR      (solve/constraints.py)
+      -> optional Z3 feasibility/optimization   (solve/z3.py)
+      -> independent imperative verification    (verify/)
+      -> placement, sharding, communication     (placement/)
+      -> trusted execution anchors + visitors   (select/anchors.py)
 
 The compiler package is typed and declarative. It never accepts arbitrary
 tensor callables into the core IR; behavior enters only through registered,
 typed rules and anchors. Solver expressions never leak outside
-``compiler/solver.py``.
+``compiler/solve/z3.py``.
+
+Public names are exposed lazily so that importing a leaf stage (for example
+``compiler/common/diagnostics`` from the IR layer) does not eagerly pull in the
+full orchestration pipeline.
 """
 
-from urm.compiler.constraints import ConstraintModel
-from urm.compiler.cost import CostEstimate, DeviceLimits
-from urm.compiler.diagnostics import CompilerError, Diagnostic, DiagnosticCode
-from urm.compiler.unified_mixer import (
-    CompiledMixerPlan,
-    MixerBackend,
-    MixerIntent,
-    MixerKernelFamily,
-    UnifiedMixerSpec,
-    compile_frontend_mixer,
-    compile_mixer,
-    mixer_semantic_program,
-)
+from __future__ import annotations
 
 __all__ = [
     "CompilerError",
@@ -41,26 +31,20 @@ __all__ = [
     "DeviceLimits",
     "Diagnostic",
     "DiagnosticCode",
-    "CompiledMixerPlan",
-    "MixerBackend",
-    "MixerIntent",
-    "MixerKernelFamily",
-    "UnifiedMixerSpec",
-    "compile_frontend_mixer",
-    "compile_mixer",
-    "mixer_semantic_program",
-    "constraints",
-    "cost",
-    "diagnostics",
-    "effects",
-    "execution",
-    "kernel_plan",
-    "locality",
-    "placement",
-    "planner",
-    "rewrite",
-    "schedule_space",
-    "semantic",
-    "solver",
-    "verification",
 ]
+
+
+def __getattr__(name: str):
+    if name in {"CompilerError", "Diagnostic", "DiagnosticCode"}:
+        from urm.compiler.common import diagnostics
+
+        return getattr(diagnostics, name)
+    if name in {"CostEstimate", "DeviceLimits"}:
+        from urm.compiler.cost import model
+
+        return getattr(model, name)
+    if name == "ConstraintModel":
+        from urm.compiler.solve.constraints import ConstraintModel
+
+        return ConstraintModel
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

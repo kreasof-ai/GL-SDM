@@ -1,0 +1,7 @@
+{
+  "mixer": "tpa_attention",
+  "measurement_version": 2,
+  "baseline_tier": "reference-implementation",
+  "status": "production-unavailable",
+  "reason": "the pin ships decode-only kernels (n==1 assert); baseline generalizes the pinned factorized equation to training"
+}

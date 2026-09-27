@@ -1,100 +1,18 @@
-"""Typed operations and contracts for Unified Routed Mixers.
+"""Typed operations and contracts for the semantic program IR.
 
-The three semantic families each have a canonical IR home that owns its
-contract and validation boundary:
+The canonical homes:
 
-- :mod:`urm.ir.softmax` - K1 normalized routed reduction
-- :mod:`urm.ir.recurrence` - K2 structured recurrence
-- :mod:`urm.ir.sparse_state` - K3 ordered sparse-state operations
-
-The shared, backend independent :class:`UnifiedMixerSpec` and its enums live in
-:mod:`urm.ir.mixer`.
+- :mod:`urm.ir.program` - the typed operation graph (``SemanticProgram`` and
+  its closed op vocabulary) plus the family specs (K1 descriptor, K2
+  linear-delta spec/state, K3 sparse-state contract types).
+- :mod:`urm.ir.effects` - the explicit effect system.
+- :mod:`urm.ir.types` - shared scalar/shape types.
 """
 
-from urm.frontend.spec import (
-    BalanceStrategy,
-    CapacityPolicy,
-    CollisionPolicy,
-    Domain,
-    EditGateKind,
-    ExpertFunction,
-    ExpertRoutingSpec,
-    ExpertScoreKind,
-    ExpertSelection,
-    MixerSpec,
-    MutationKind,
-    Normalization,
-    RecurrentAlgorithm,
-    RecurrentSpec,
-    Residency,
-    RoutingKind,
-    ScanMode,
-    ScoreActivation,
-    SelectionGranularity,
-    SelectionScope,
-    SparseAttentionSpec,
-    SparseIndexerKind,
-    StateLayout,
-)
-from . import recurrence, softmax, sparse_state
-from .mixer import (
-    DecayGranularity,
-    FeatureMap,
-    K1Operation,
-    MixerBackend,
-    MixerIntent,
-    MixerKernelFamily,
-    PolynomialBasis,
-    ReadTiming,
-    RecurrenceOperator,
-    RecurrentLayout,
-    StateEffect,
-    StateNormalizer,
-    StateTransition,
-    StateUpdateRule,
-    UnifiedMixerSpec,
-)
+from . import effects, program, types
 
 __all__ = [
-    "BalanceStrategy",
-    "CapacityPolicy",
-    "CollisionPolicy",
-    "DecayGranularity",
-    "Domain",
-    "EditGateKind",
-    "ExpertFunction",
-    "ExpertRoutingSpec",
-    "ExpertScoreKind",
-    "ExpertSelection",
-    "FeatureMap",
-    "K1Operation",
-    "MixerBackend",
-    "MixerIntent",
-    "MixerKernelFamily",
-    "MixerSpec",
-    "MutationKind",
-    "Normalization",
-    "PolynomialBasis",
-    "ReadTiming",
-    "RecurrenceOperator",
-    "RecurrentAlgorithm",
-    "RecurrentLayout",
-    "RecurrentSpec",
-    "Residency",
-    "RoutingKind",
-    "ScanMode",
-    "ScoreActivation",
-    "SelectionGranularity",
-    "SelectionScope",
-    "SparseAttentionSpec",
-    "SparseIndexerKind",
-    "StateEffect",
-    "StateLayout",
-    "StateNormalizer",
-    "StateTransition",
-    "StateUpdateRule",
-    "UnifiedMixerSpec",
-    "recurrence",
-    "softmax",
-    "sparse_state",
+    "effects",
+    "program",
+    "types",
 ]
