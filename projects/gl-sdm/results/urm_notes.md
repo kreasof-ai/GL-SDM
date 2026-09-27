@@ -1,5 +1,8 @@
 # URM integration and the large-bank bottleneck
 
+Development is paused. The [optimization handoff](../OPTIMIZATION_PLAN.md)
+contains the implementation order and validation required on the next GPU.
+
 The current 16-layer GL-SDM stack compiles product-key routing and snapshot
 reads, including backward, through frozen URM revision
 `604bfdf5d2c827266a32ef142ca996cc712d70f0`. Local attention and dense projections
@@ -21,7 +24,7 @@ to select an existing faster URM read-backward schedule. All global layers reuse
 one padded snapshot per chunk. Inference has no backward and reads width 64
 directly. URM source and `shared/requirements-urm.txt` are unchanged.
 
-## Measured cost
+## Initial profile: length 512, write chunk 128
 
 The [profile](sixteen_layers/gl_sdm_memory_profile.json) covers one batch of one,
 length 512, forward/backward only. It excludes clipping and optimizer updates.
@@ -48,6 +51,26 @@ speed. The 128-token transaction clock and much larger bank expose costs that
 were small in the earlier tied-weight controls. The profile implicates the
 current composition and dense gradient representation; it does not prove that
 GL-SDM needs an architecture-specific URM kernel.
+
+## Current profile: length 2048, write chunk 512
+
+The [current GL-SDM profile](sequence_2048/gl_sdm_memory_profile.json) measures
+471.18 ms of cumulative GPU kernel time: FP32 additions account for 45.84%,
+fills 17.79% and copies 4.74%. The comparable
+[SDM profile](sequence_2048/sdm_memory_profile.json) measures 203.11 ms.
+Both are batch-one forward/backward diagnostics without clipping or optimizer;
+their kernel totals are not whole-update wall times or MFU.
+
+Four 512-token chunks retain 28 global query/write-prediction reads per sequence.
+The current profile again records 28 full-width-128 bank gradient fills and
+20 full-width-128 gradient `add_` calls. Increasing the chunk reduced this
+traffic per training update because fewer independent sequences are accumulated,
+but it did not remove the repeated full-bank gradients within each sequence.
+
+Frozen URM already supports BF16 sparse-state reads. The project's hardcoded
+FP32 bank/view/read plans remain to be changed. That precision conversion and
+the representation of shared gradients are distinct tasks; BF16 storage alone
+does not remove the native FP32 read-backward workspace.
 
 ## Next optimizations to investigate
 

@@ -4,6 +4,10 @@ This repository contains Global Liquid SDM and Consolidated SDM, two of the
 three proposals in the research program. The URM compiler and kernels live in
 the separate [kreasof-ai/urm repository](https://github.com/kreasof-ai/urm).
 
+GL-SDM development is paused as of 2026-09-27. The
+[optimization handoff](projects/gl-sdm/OPTIMIZATION_PLAN.md) records the current
+results and the work to resume on a larger GPU.
+
 ## Documentation
 
 - [Research program - Markdown edition](docs/research-program.md)

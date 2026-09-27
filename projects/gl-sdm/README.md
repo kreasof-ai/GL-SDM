@@ -1,5 +1,9 @@
 # Global Liquid SDM
 
+Development is paused as of 2026-09-27. Resume optimization on a larger GPU using
+the [optimization handoff](OPTIMIZATION_PLAN.md), which records the remaining
+BF16, compact-gradient, overlay and batching work.
+
 The current experiment compares four models with **16 distinct physical layers,
 no weight loops**: a full Transformer, FLA GDN2, upstream CUDA SDM and GL-SDM.
 Adaptive per-token depth is deferred. The original research proposal is in

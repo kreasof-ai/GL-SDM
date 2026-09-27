@@ -1,5 +1,8 @@
 # Sixteen-layer experiments
 
+Development is paused. The [optimization handoff](../OPTIMIZATION_PLAN.md)
+records the next work and the requirements for resuming on a larger GPU.
+
 The current configs use **length 2,048 and 8,192 tokens per update**, with a
 **512-token local window and write chunk** for GL-SDM. Microbatch one accumulates
 four sequences per update. Each GL-SDM sequence has four memory chunks; the
@@ -40,6 +43,13 @@ These checks do not resolve the full-size BF16 reference failures from the
 initial run. SDM's BF16 oracle also retains FP32 state, unlike upstream's BF16
 bank; that comparison does not establish an upstream bug.
 
+The latest [GL-SDM](sequence_2048/gl_sdm_memory_profile.json) and
+[SDM](sequence_2048/sdm_memory_profile.json) profiles cover one length-2048
+microbatch, forward/backward without clipping or optimizer. GL-SDM totals
+471.18 ms of GPU kernel time, with 45.84% in FP32 additions and 17.79% in fills;
+SDM totals 203.11 ms. These are instrumented diagnostics, not whole-update
+timings. They confirm that repeated full-bank gradient traffic remains a major
+cost under the current 512-token write clock.
 
 The [initial length-512 report](initial_sixteen_layers.md) retains the 20-update
 FineWeb-Edu pilot, full-size reference errors, failed OOM attempts and the
