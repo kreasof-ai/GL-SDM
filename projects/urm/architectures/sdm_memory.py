@@ -16,6 +16,12 @@ projection) are external; the K3 route→update→read graph (two
 ``sparse_route_generation`` nodes + one ``sparse_state_mixer`` node, decayed-
 delta update, after-update read) executes through the public compile path; the
 output projection is external.
+
+``execution="torch-chunked"`` retains the public route operators and runs the
+same decayed recurrence through the external PyTorch/TorchInductor schedule in
+``sdm_chunked.py``. ``upstream-cuda`` replaces only that state schedule with
+the original pinned Meta CUDA/Triton kernel. The default full K3 native path
+remains available, and no core compiler/backend change is required.
 """
 
 from __future__ import annotations
@@ -50,6 +56,9 @@ class SparseDeltaMemoryLayer(torch.nn.Module):
         bias: bool = False,
         target: str = "native",
         intent: str = "training",
+        execution: str = "native",
+        chunk_size: int = 64,
+        compile_state: bool = True,
     ) -> None:
         super().__init__()
         if width != heads * value_dim:
@@ -65,6 +74,12 @@ class SparseDeltaMemoryLayer(torch.nn.Module):
         self.reads = reads
         self.writes = writes
         self.batch_size = batch_size
+        if execution not in {"native", "torch-chunked", "upstream-cuda"}:
+            raise ValueError(f"unsupported SDM execution schedule: {execution}")
+        self.execution = execution
+        self.chunk_size = chunk_size
+        self.compile_state = compile_state
+        self._state_is_zero = True
 
         self.score = torch.nn.Linear(width, heads * 2 * factor, bias=bias)
         self.read_score_bias = torch.nn.Parameter(torch.zeros(heads, 2 * factor))
@@ -142,7 +157,26 @@ class SparseDeltaMemoryLayer(torch.nn.Module):
         }
         recipe = load_graph_recipe_document(document)
         program = normalize_graph_document(recipe.document)
-        self._plan = compile_graph(program, target=target, intent=CompilationIntent(intent))
+        self._plan = None
+        self._route_plan = None
+        self._upstream_kernel = None
+        if execution == "native":
+            self._plan = compile_graph(program, target=target, intent=CompilationIntent(intent))
+        else:
+            route_document = {
+                **document,
+                "graph": {
+                    "inputs": document["graph"]["inputs"][:2],
+                    "nodes": document["graph"]["nodes"][:2],
+                    "outputs": ["read_addresses", "read_weights", "write_addresses", "write_weights"],
+                },
+            }
+            route_program = normalize_graph_document(load_graph_recipe_document(route_document).document)
+            self._route_plan = compile_graph(route_program, target=target,
+                                            intent=CompilationIntent(intent))
+            if execution == "upstream-cuda":
+                from extra.comparators.sdm.cuda import load_pinned_sdm
+                self._upstream_kernel = load_pinned_sdm()
 
     def _project(self, x: torch.Tensor):
         b, t, _ = x.shape
@@ -165,22 +199,37 @@ class SparseDeltaMemoryLayer(torch.nn.Module):
             with torch.no_grad():
                 self.persistent_memory.copy_(self._pending_state.detach())
             self._pending_state = None
+            self._state_is_zero = False
 
     def reset_state(self) -> None:
         self.persistent_memory.zero_()
         self._pending_state = None
+        self._state_is_zero = True
+
+    @torch.compiler.disable
+    def _execute(self, read_scores, write_scores, values, beta, log_decay, memory):
+        if self.execution == "native":
+            return self._plan.execute(read_scores=read_scores, write_scores=write_scores,
+                values=values, beta=beta, log_decay=log_decay, memory=memory)
+        routes = self._route_plan.execute(read_scores=read_scores, write_scores=write_scores)
+        kwargs = dict(write_indices=routes["write_addresses"], write_weights=routes["write_weights"],
+                      values=values, beta=beta, log_decay=log_decay, chunk_size=self.chunk_size)
+        if self.execution == "torch-chunked":
+            from architectures.sdm_chunked import chunked_sparse_delta_memory
+            output, state = chunked_sparse_delta_memory(memory, routes["read_addresses"],
+                routes["read_weights"], **kwargs, compiled=self.compile_state,
+                zero_initial_state=self._state_is_zero)
+        else:
+            from extra.comparators.sdm.cuda import pinned_cuda_write_read
+            output, state = pinned_cuda_write_read(memory, routes["read_addresses"],
+                routes["read_weights"], **kwargs, kernel=self._upstream_kernel)
+        return {"output": output, "final_state": state}
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         b, t, _ = x.shape
         read_scores, write_scores, values, beta, log_decay = self._project(x)
-        result = self._plan.execute(
-            read_scores=read_scores.to(torch.bfloat16),
-            write_scores=write_scores.to(torch.bfloat16),
-            values=values.to(torch.bfloat16),
-            beta=beta,
-            log_decay=log_decay,
-            memory=self.persistent_memory.to(torch.bfloat16),
-        )
+        result = self._execute(read_scores.to(torch.bfloat16), write_scores.to(torch.bfloat16),
+            values.to(torch.bfloat16), beta, log_decay, self.persistent_memory.to(torch.bfloat16))
         self._pending_state = result["final_state"]
         readings = result["output"].view(b, self.heads, t, self.value_dim)
         readings = readings.permute(0, 2, 1, 3).reshape(b, t, self.width)

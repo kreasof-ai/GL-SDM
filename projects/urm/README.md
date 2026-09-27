@@ -24,6 +24,11 @@ The [architecture registry](train/registry.py) carries 52 rows — 51 native-tie
 
 ## CPU verification
 
+SDM has an [external compiled state schedule and verified upstream CUDA baseline](docs/sdm-optimization.md),
+including a reproduction of the historical `sdm-reparam` MFU accounting. These
+changes leave the core backend frozen and expose a differentiable snapshot API
+for later GL-SDM/CSDM experiments.
+
 From `projects/urm`, with the test extra installed:
 
 ```sh

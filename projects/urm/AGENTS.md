@@ -75,9 +75,14 @@ bf16 peak = 70 TFLOPS. Docs live in `docs/` (mirrors the code — see its README
   execute behind eager boundaries. Dynamic routing is also an eager boundary.
 - No flash-attn installs (too heavy for this box). Mamba-2's pinned pure Triton SSD
   kernel is loaded without its optional CUDA-extension package initializer.
-- No source builds that could destabilize the machine (the lingua SDM CUDA extension
-  is environment-blocked: nvcc 12.9 vs cu13 headers; sdm is excluded from production
-  comparison, with its reference implementation available only as a diagnostic).
+- No source builds that could destabilize the machine. The user-authorized SDM
+  production baseline uses an isolated, pinned CUDA 13 toolkit under
+  `~/.cache/urm/sdm-cuda13` and extension cache under `~/.cache/urm/sdm-extensions`;
+  it does not replace the base CUDA/Python environment. Provision it with
+  `python extra/provision_sdm_cuda.py`; see `docs/sdm-optimization.md`.
+- The SDM benchmark uses native public routes and an external compiled PyTorch
+  state schedule (`public_path=False`). Its actual pinned CUDA/Triton baseline
+  shares those routes/projections. Keep both schedules outside the frozen core.
 - Production comparisons require finite training, checkpoint gates, matching
   configs/environment/source fingerprints, and production kernels. Research and
   failed implementations have no paired throughput in the report.

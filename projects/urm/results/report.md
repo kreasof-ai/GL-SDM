@@ -1,6 +1,6 @@
 # URM training measurements — corrected campaign
 
-**Coverage.** 51/51 URM rows have finite training trajectories and passing checkpoint gates; 34 have eligible production-kernel measurements.
+**Coverage.** 51/51 URM rows have finite training trajectories and passing checkpoint gates; 35 have eligible production-kernel measurements.
 
 Each row trains a decoder surround on finewebedu for 10 measured steps after two full optimizer warmup steps. This measures the training harness; it does not claim source-model or serving parity. See the [evidence policy](../docs/evidence.md).
 
@@ -10,7 +10,9 @@ Memory-heavy rows use the same explicit activation-checkpointing policy in both 
 
 TDA and Differential Attention training use existing public native calls with external differentiable merges to retain projection and mixing-weight gradients. Two core autograd-wrapper fixes retain only flags/shapes rather than bias/mask or gate tensors, preventing graph retention after backward; kernel math is unchanged.
 
-**Provenance.** torch 2.14.0+cu130, NVIDIA A10G; measurement version 2; source fingerprint(s) `345b161d5a98`. Each JSON contains its actual config, full source hash, loss trajectory, memory trajectory, and attempted microbatches. FLA and Mamba production adapters verify their pinned sources.
+SDM uses native public product-key routes with an external compiled PyTorch state schedule (chunk size 128), including decay and its gradients. Its shared-frontend baseline calls the unmodified pinned Meta CUDA/Triton kernels (chunk size 64), built with an isolated matching CUDA toolkit. The core URM backend is unchanged by this SDM optimization. See [SDM measurements and historical MFU accounting](../docs/sdm-optimization.md). Accepted non-SDM measurements retain their original source fingerprints; each paired row still requires identical fingerprints in both arms.
+
+**Provenance.** torch 2.14.0+cu130, NVIDIA A10G; measurement version 2; source fingerprint(s) `345b161d5a98, e4b6d1444e12`. Each JSON contains its actual config, full source hash, loss trajectory, memory trajectory, and attempted microbatches. FLA and Mamba production adapters verify their pinned sources.
 
 **Memory audit.** The largest within-run step-end allocation range across verified URM rows is 0.000 GiB over the measured steps. This checks intermediate steps as well as the first-to-last drift.
 
@@ -65,7 +67,7 @@ The largest step-end allocation range among eligible upstream runs is 12.0 KiB.
 | rodimus | 87,038,352 | 0.302 | 40222 | ✓ | 5.23 | 9.226 | 0.000 | — |
 | rwkv7 | 118,688,256 | 0.238 | 23274 | ✓ | 19.82 | 8.723 | 0.000 | — |
 | samba_attention | 94,432,632 | 0.254 | 31269 | ✓ | 5.27 | 8.897 | 0.000 | — |
-| sdm | 94,952,448 | 0.161 | 19780 | ✓ | 7.04 | 9.173 | 0.000 | — |
+| sdm | 94,952,448 | 0.197 | 24215 | ✓ | 11.17 | 9.173 | 0.000 | external state schedule |
 | simple_gla | 102,825,900 | 0.233 | 26359 | ✓ | 5.41 | 9.108 | 0.000 | — |
 | sparse_transformer | 102,742,272 | 0.140 | 15814 | ✓ | 5.71 | 12.976 | 0.000 | — |
 | tda | 102,742,272 | 0.093 | 10514 | ✓ | 5.28 | 10.095 | 0.000 | slow |
@@ -120,6 +122,7 @@ Only verified runs with matching shapes, effective batch, microbatch, precision,
 | rodimus | family | 0.302 / 0.269 | 40222 / 26624 | 5.23 / 7.25 | 87,038,352 / 117,452,160 |
 | rwkv7 | shared | 0.238 / 0.275 | 23274 / 26898 | 19.82 / 6.08 | 118,688,256 / 118,688,256 |
 | samba_attention | shared | 0.254 / 0.323 | 31269 / 39766 | 5.27 / 5.12 | 94,432,632 / 94,432,632 |
+| sdm | shared | 0.197 / 0.169 | 24215 / 20747 | 11.17 / 7.80 | 94,952,448 / 94,952,448 |
 | simple_gla | family | 0.233 / 0.298 | 26359 / 32034 | 5.41 / 6.40 | 102,825,900 / 108,217,260 |
 | tda | shared | 0.093 / 0.129 | 10514 / 14632 | 5.28 / 5.60 | 102,742,272 / 102,742,272 |
 | wall_attention | family | 0.311 / 0.321 | 31865 / 32926 | 5.46 / 5.67 | 113,372,928 / 113,372,928 |
@@ -132,6 +135,8 @@ Only verified runs with matching shapes, effective batch, microbatch, precision,
 - Samba uses the same Mamba-2/RoPE schedule with pinned SSD and production SDPA. Raven shares the eight-slot/top-k-two deterministic frontend and uses pinned chunk GSA. Equal duplication of all slots meets its 16-slot backward minimum while preserving outputs and gradients.
 - TDA supplies contiguous head batches and gradients, applies the native query scaling, and matches the registered differential merge (identical paths with lambda=0.5). Supported Triton launch options select IEEE fp32 dots and one pipeline stage.
 - Log-linear attention uses independent heads as single-group batches and an A10G one-stage pipeline. Operands and level scales are bf16, and the last scale repeats for the capped bank. The upstream checkout remains unmodified.
+
+- SDM uses the verified original Meta sparse-IP/gather CUDA extensions and Triton WY kernels. Partition-local identity padding, autocast isolation, and a saved terminal snapshot adapt the production API without changing its source or substituting a reference kernel.
 
 ## Upstreams excluded from production comparison
 
@@ -149,7 +154,6 @@ Unavailable kernels, research implementations, failed training, and mismatched m
 - **moba**: fla's parallel_moba needs flash-attn; baseline is the pinned law as a block-sparse SDPA mask.
 - **nsa**: fla's parallel_nsa needs flash-attn (absent by policy); baseline composes the pinned naive branch oracles.
 - **pattention**: the pinned tokenformer Pattention equation hosted at reference tier (megatron source needs neox/mpu).
-- **sdm**: the lingua CUDA extension is toolchain-blocked (nvcc 12.9 vs cu13 headers; source builds excluded); baseline is the pinned law in torch.
 - **sparse_transformer**: the pin's attention_impl is TF1/blocksparse (not runnable); baseline applies the pinned strided+local mask via SDPA.
 - **tpa_attention**: the pin ships decode-only kernels (n==1 assert); baseline generalizes the pinned factorized equation to training.
 - **tucker_attention**: the pinned fused kernel is H100-targeted (294KB SMEM); baseline transcribes the pinned equation in torch.

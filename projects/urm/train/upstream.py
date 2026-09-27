@@ -843,6 +843,8 @@ def _production_builder(class_name):
 UPSTREAM_BUILDERS["mamba2"] = _production_builder("Mamba2Production")
 UPSTREAM_BUILDERS["rwkv7"] = _production_builder("RWKV7Production")
 UPSTREAM_BUILDERS["raven"] = _production_builder("RavenProduction")
+UPSTREAM_STATEFUL_BUILDERS["sdm"] = _production_builder("SDMProduction")
+UPSTREAM_TIER["sdm"] = "production-kernel"
 UPSTREAM_TIER["rwkv7"] = "production-kernel"
 UPSTREAM_BUILDERS["log_linear_attention"] = _production_builder("log_linear_production")
 UPSTREAM_TIER["log_linear_attention"] = "production-kernel"
@@ -1272,7 +1274,7 @@ UPSTREAM_NOTES = {
     "bit_attention": "fla's BitAttention layer needs flash-attn; baseline is pinned fused-BitLinear kernels (production) + SDPA attention",
     "tucker_attention": "the pinned fused kernel is H100-targeted (294KB SMEM); baseline transcribes the pinned equation in torch",
     "rwkv7": "pinned chunk_rwkv7 with supported chunk_size=16; same projections and low-rank frontend as URM",
-    "sdm": "the lingua CUDA extension is toolchain-blocked (nvcc 12.9 vs cu13 headers; source builds excluded); baseline is the pinned law in torch",
+    "sdm": "clean pinned Meta CUDA sparse-IP/gather extensions and Triton WY kernels; shared native public routes/projections, chunk_size=64; isolated matching CUDA 13 toolkit",
     "tpa_attention": "the pin ships decode-only kernels (n==1 assert); baseline generalizes the pinned factorized equation to training",
     "dsa": "the pinned fla naive_dsa op (lightning indexer + top-k selection + attention); fla's fast DSA kernel is indexer-coupled to a specific head tiling",
     "sparse_transformer": "the pin's attention_impl is TF1/blocksparse (not runnable); baseline applies the pinned strided+local mask via SDPA",
@@ -1341,6 +1343,11 @@ def _run_one(row: str, args: argparse.Namespace) -> dict:
                  "granularity": UPSTREAM_GRANULARITY.get(row, "mixer")}
     from extra.comparators.fla_k2 import fla_k2_source_identity
     rec_extra["fla_source_identity"] = fla_k2_source_identity()
+    if row == "sdm":
+        from extra.comparators.sdm.cuda import sdm_cuda_identity
+        rec_extra["sdm_source_identity"] = sdm_cuda_identity()
+        rec_extra["sdm_execution"] = {"schedule": "upstream-cuda", "chunk_size": 64,
+                                      "routes": "native-public", "reference_fallback": False}
     granularity = UPSTREAM_GRANULARITY.get(row, "mixer")
     stateful = row in UPSTREAM_STATEFUL
     if granularity == "block":

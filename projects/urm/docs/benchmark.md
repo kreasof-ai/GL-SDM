@@ -103,5 +103,10 @@ Its adapter also matches native query scaling and selects IEEE fp32 dot products
 with one pipeline stage through supported Triton launch options. The registered
 differential recipe uses identical paths with lambda 0.5; the production adapter
 implements the exact merge as half of one kernel call.
-No flash-attn installation or source build is required. Unavailable production
-training kernels remain explicit exclusions.
+SDM shares the public native product-key routes/projections between an external
+compiled PyTorch state schedule and the original pinned Meta CUDA/Triton state
+kernel. Its user-authorized CUDA build uses an isolated matching toolkit; the
+base environment and frozen core are unchanged. See [SDM optimization](sdm-optimization.md)
+for provisioning, historical MFU accounting, and numerical limits. No flash-attn
+installation is required. Other unavailable production training kernels remain
+explicit exclusions.

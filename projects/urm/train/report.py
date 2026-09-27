@@ -20,6 +20,7 @@ PROTOCOL_KEYS = (
 SHARED_FRONTEND_ROWS = {
     "comba", "gdn2", "gated_delta_product", "dplr", "rwkv7", "mamba2",
     "log_linear_attention", "log_linear_mamba2", "dense_attention", "attnres", "samba_attention", "raven", "tda",
+    "sdm",
 }
 SLOW_NOTES = {
     "attnres": "depth aggregation over full-width residual sources",
@@ -108,6 +109,14 @@ def render(ours, upstream):
               "differentiable merges to retain projection and mixing-weight gradients. "
               "Two core autograd-wrapper fixes retain only flags/shapes rather than bias/mask or gate tensors, "
               "preventing graph retention after backward; kernel math is unchanged.", ""]
+    if "sdm" in ok and ok["sdm"].get("sdm_execution"):
+        lines += ["SDM uses native public product-key routes with an external compiled PyTorch state schedule "
+                  "(chunk size 128), including decay and its gradients. Its shared-frontend baseline calls the "
+                  "unmodified pinned Meta CUDA/Triton kernels (chunk size 64), built with an isolated matching "
+                  "CUDA toolkit. The core URM backend is unchanged by this SDM optimization. "
+                  "See [SDM measurements and historical MFU accounting](../docs/sdm-optimization.md). "
+                  "Accepted non-SDM measurements retain their original source fingerprints; each paired row "
+                  "still requires identical fingerprints in both arms.", ""]
     if ok:
         env = next(iter(ok.values())).get("environment", {})
         hashes = sorted({r['source_fingerprint'][:12] for r in ok.values()})
@@ -143,6 +152,8 @@ def render(ours, upstream):
             flags.append("ckpt")
         if r.get('microbatch_fallback'):
             flags.append(f"diagnostic mb{r['microbatch_fallback']}")
+        if r.get('sdm_execution', {}).get('schedule') == 'torch-chunked':
+            flags.append("external state schedule")
         memory = r.get('memory_trace_gib', [])
         drift = memory[-1] - memory[0] if memory else None
         lines.append(f"| {name} | {r['params']:,} | {_fmt(r['mfu'])} | {_fmt(r['throughput_tokens_s'], 0)} | "
@@ -182,6 +193,9 @@ def render(ours, upstream):
               "- Log-linear attention uses independent heads as single-group batches and an A10G one-stage pipeline. "
               "Operands and level scales are bf16, and the last scale repeats for the capped bank. "
               "The upstream checkout remains unmodified.", "",
+              "- SDM uses the verified original Meta sparse-IP/gather CUDA extensions and Triton WY kernels. "
+              "Partition-local identity padding, autocast isolation, and a saved terminal snapshot adapt the "
+              "production API without changing its source or substituting a reference kernel.", "",
               "## Upstreams excluded from production comparison", "",
               "Unavailable kernels, research implementations, failed training, and mismatched measurements are listed "
               "without paired throughput. Reference implementations can be requested as separate diagnostics using "

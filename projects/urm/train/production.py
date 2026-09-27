@@ -7,6 +7,19 @@ import torch.nn.functional as F
 from architectures.mamba import Mamba2K2Layer
 from architectures.raven import RavenLayer
 from train.registry import _RWKV7Adapter
+from architectures.sdm_memory import SparseDeltaMemoryLayer
+
+
+class SDMProduction(SparseDeltaMemoryLayer):
+    """Shared native routes/projections with the clean pinned CUDA state kernel."""
+
+    def __init__(self, model_dim, num_heads, head_dim, intent="training",
+                 target="reference", batch_size=None):
+        if batch_size is None:
+            raise ValueError("SDM requires the microbatch batch size at construction")
+        super().__init__(model_dim, num_heads, head_dim, 256, 8, 8, batch_size,
+                         intent=intent, target="native", execution="upstream-cuda",
+                         chunk_size=64)
 
 
 class Mamba2Production(Mamba2K2Layer):

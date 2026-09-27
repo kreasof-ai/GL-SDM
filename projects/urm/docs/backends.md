@@ -44,9 +44,11 @@ certified backward. Reference tiers (numpy/torch) are the parity oracles the
   environment-blocked or run as reference implementations in the upstream arm
   ([catalog](catalog.md), [report](../results/report.md)).
 - The lingua SDM sparse inner-product core is a `load_inline` CUDA extension;
-  this environment's toolchain is mismatched (nvcc 12.9 vs cu13 headers, no toolkit
-  include path) and source builds are excluded by policy — the sdm upstream baseline
-  runs the pinned law in torch.
+  the system nvcc 12.9 is mismatched with Torch cu130. The user-authorized SDM
+  baseline now builds the untouched pinned sources with an isolated CUDA 13.0
+  toolkit and executes the original CUDA/Triton kernels. The optimized SDM row
+  uses an external compiled PyTorch state schedule with public native routes;
+  this changes no core backend. See [SDM measurements](sdm-optimization.md).
 
 ## Compile behavior
 

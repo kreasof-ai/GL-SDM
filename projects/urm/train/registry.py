@@ -115,6 +115,7 @@ def _build_sdm(model_dim, num_heads, head_dim, intent, target="native", batch_si
         width=model_dim, heads=num_heads, value_dim=head_dim,
         slots_per_partition=256, reads=8, writes=8,
         batch_size=batch_size, target=target, intent=intent,
+        execution="torch-chunked", chunk_size=128,
     )
 
 
@@ -645,8 +646,9 @@ MIXER_REGISTRY: dict[str, MixerSpec] = {
                                      "fla.ops.simple_gla.naive.naive_recurrent_simple_gla", True, True, tier="native"),
     # --- two-K2 graph (no upstream kernel: paper only) ---
     "hla": MixerSpec("hla", _build_hla, None, False, False, tier="native"),
-    # --- K3 native (persistent state; pinned router tie policy not claimed) ---
-    "sdm": MixerSpec("sdm", _build_sdm, None, False, True, stateful=True, tier="native"),
+    # Native public routes + external compiled SDM state schedule; core stays frozen.
+    "sdm": MixerSpec("sdm", _build_sdm, None, False, True, stateful=True,
+                     tier="native", public_path=False),
     # --- residual design (depth-domain AttnRes aggregation; not a sequence mixer —
     # registered at its faithful granularity per the HF-modeling convention) ---
     "attnres": MixerSpec("attnres", _build_attnres, "fla.ops.attnres", True, False,

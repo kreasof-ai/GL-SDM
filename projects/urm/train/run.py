@@ -65,6 +65,10 @@ def main() -> None:
                               cfg.microbatch_tokens, cfg.sequence_length)
     result = train(cfg, mixer, data, device="cuda" if torch.cuda.is_available() else "cpu")
     report = result.to_dict()
+    if args.mixer == "sdm":
+        report["sdm_execution"] = {"schedule": "torch-chunked", "chunk_size": 128,
+                                   "routes": "native-public", "compile_state": True,
+                                   "core_modified": False}
     print(json.dumps(report, indent=2, allow_nan=False))
     if args.out:
         with open(args.out, "w") as f:

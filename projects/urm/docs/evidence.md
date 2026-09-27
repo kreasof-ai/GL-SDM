@@ -32,10 +32,10 @@ policy, intent mode, shape and state initialization. Missing upstream modes are
 
 | Scope | Evidence | Claim allowed |
 |---|---|---|
-| Registry | 52 rows: 51 native-tier + 1 reference-tier (`mamba1`, charter debt) | Native execution of the 51 rows' mixers on the A10G |
-| Parity gates | `tests/` — 676 passed / 41 skipped; per-architecture gates verify each row against its pinned oracle | The rows' equations match the pinned sources at tested shapes |
-| Training-harness benchmark | 51/51 native rows complete the 10-step 100M-class run with checkpoint parity; 49 upstream baselines joined | Harness-level MFU/throughput/memory comparison at the stated config — **not** source-model performance qualification (verdict 5 is not claimed) |
-| Upstream coverage | 50/51 native rows have an upstream baseline (31 production-kernel, 18 reference-implementation, 1 environment-blocked); `hla` has no upstream anywhere | Row-level comparison at matched granularity with the labeled tier |
+| Registry | 52 rows: 51 native-tier + 1 reference-tier (`mamba1`, charter debt); external compositions are labeled in the catalog | Execution of the stated public/native or external schedule at measured shapes |
+| Parity gates | Per-architecture tests against pinned oracles; SDM includes independent FP64 full-state/all-gradient tests and actual pinned CUDA comparisons | Tested equations and numerical budgets; not untested shape/mode qualification |
+| Training-harness benchmark | 51/51 measured rows have finite ten-step trajectories and checkpoint gates; 35 eligible production pairs | Harness-level MFU/throughput/memory comparison at the stated config — **not** source-model performance qualification (verdict 5 is not claimed) |
+| Upstream coverage | 35 eligible production runs, 15 explicit production exclusions; `hla` has no upstream | Only matching verified production pairs supply comparison throughput |
 
 ### What is *not* claimed
 
@@ -45,12 +45,12 @@ policy, intent mode, shape and state initialization. Missing upstream modes are
 - **No decode/prefill-serving numbers**: the benchmark measures training steps only.
 - **KL gate** is wired for the 23 rows with a registry comparator; `—` elsewhere is
   "no comparator wired", not failure and not success.
-- **Upstream asymmetry**: upstream rows run eager (their kernels fail torch.compile
-  here) while URM rows compile — the upstream numbers are a lower bound on upstream
-  throughput, stated openly in the report.
-- Six native rows (comba, dplr, gated_delta_product, gdn2, iplr, rwkv7) diverge to
-  NaN loss within the 10 steps at width 768 — a training-stability finding; their
-  MFU is still a valid measurement of executed FLOPs and is reported as such.
+- Both arms compile their decoder surrounds; unsupported kernel calls execute
+  behind eager boundaries. Non-finite runs and fallback/reference kernels do not
+  supply production comparisons.
+- SDM's optimized state schedule is external compiled PyTorch, using public native
+  routes. It is not a new core compiler lowering. Its historical 40–50% dense-work
+  MFU proxy is not comparable to current decoder MFU; see [SDM accounting](sdm-optimization.md).
 
 ## Historical records
 

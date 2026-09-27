@@ -1075,7 +1075,7 @@
    "wave": 1,
    "audit_status": "source_identified",
    "mapping_status": "proposed",
-   "work_required": "The pinned SDM FP32 custom VJP exceeds tolerance for overlapping read/write routes (results/unified-mixer/sdm-k3-overlap-diagnostic.json); the qualified source profile therefore uses disjoint reads, while native K3 overlap behavior is checked against the equation reference. Product-key routing and full-layer work remain external.",
+   "work_required": "The external compiled decayed SDM schedule and actual pinned CUDA/Triton baseline have full-state and all-operand gradient tests, including overlapping routes, autocast, padding and terminal-state lifetime (tests/test_sdm_chunked.py; tests/test_sdm_cuda_baseline.py). The pin uses default TF32 matmuls for FP32 inputs, with a separate numerical budget. Decoder measurements are in results/report.md. Complete source-model, prefill/decode, global-bank capacity and GL-SDM/CSDM transaction policies remain unqualified.",
    "mode_qualification": {
     "training": "unqualified",
     "prefill": "unqualified",
