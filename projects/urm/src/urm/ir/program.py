@@ -203,7 +203,7 @@ class K2ScaleRule(StrEnum):
 class LinearDeltaSpec:
     """The closed K2 compact fixed-address ordered-state equation contract.
 
-    Canonical law per independent partition (see docs/kernels/linear-delta.md):
+    Canonical law per independent partition (see docs/backends.md):
     ``Z_t = G_t M_(t-1)``; ``h_t = k_tᵀ Z_t``; ``δ_t = β_t(v_t − c·h_t)``;
     ``M_t = Z_t + k_t δ_tᵀ``; ``y_t = scale · q_tᵀ M_t``. ``c=0`` is additive,
     ``c=1`` is delta correction. Decay precedes retrieval and the canonical read

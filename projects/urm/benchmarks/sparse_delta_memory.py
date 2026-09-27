@@ -937,7 +937,7 @@ def main() -> None:
             "warmup": args.warmup,
         },
         "semantics": {
-            "contract": "docs/kernels/sparse-delta.md",
+            "contract": "docs/backends.md",
             "address_layout": "global int64 [parallel,sequence,width], strictly ascending and unique within token",
             "mutation_order": "decay -> retrieve -> delta -> scatter/write -> post-update read",
             "collision_semantics": "ordered across tokens; within-token duplicate addresses rejected",

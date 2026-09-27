@@ -4,7 +4,7 @@ This is the Torch tier of the same typed request/result ABI as the NumPy
 oracle (:mod:`urm.backends.numpy.k2`) and the native Triton
 schedules: NumPy supplies the independent high-precision equation, Torch the
 transparent differentiable reference. Both implement the canonical law in
-docs/kernels/linear-delta.md — decay precedes retrieval, the canonical read is
+docs/backends.md — decay precedes retrieval, the canonical read is
 after the update, gate scope (none/scalar/head/channel) is a semantic field,
 and a normalized variant carries an explicit denominator state. Unsupported
 descriptor combinations raise rather than silently degrade.

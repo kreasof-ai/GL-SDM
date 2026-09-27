@@ -7,7 +7,7 @@ external operators to cover three verified composition-now ledger rows:
 - arch-002 MQA — all query heads share one KV head (``head_map="single"``)
 - arch-003 GQA — explicit grouped head map (``head_map="grouped"``, group_size=HQ//H)
 
-The sweep (docs/planning/direction-sweep.md) verified the mixer equation is
+The sweep (docs/catalog.md) verified the mixer equation is
 exactly U1.S; the Q/K/V projections and output projection are the declared
 external stages. The head map is a descriptor field of the K1 node, never a
 runtime shape guess. The compiled graph executes through the public path

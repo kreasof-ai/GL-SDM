@@ -51,16 +51,17 @@ harness (`train/`) work continue freely.
 ## Running the benchmark (from projects/urm, PYTHONPATH=src:.)
 
 ```sh
-python -m pytest tests/ -q                                   # full suite
+python -m pytest tests/ -q                                   # full suite (743 passed / 41 skipped)
 python -m train.sweep --out-dir results_sweep                # native rows (51)
-python -m train.upstream --out-dir results_upstream --subprocess   # upstream baselines (50)
+python -m train.upstream --out-dir results_upstream --subprocess   # upstream baselines (49 runnable + 1 blocked)
 python -m train.report --sweep-dir results_sweep --upstream-dir results_upstream --out results_report.md
 ```
 
-Sweep driver: per-row subprocess isolation, 8192→2048 microbatch fallback on CUDA OOM
-(the OOM text is sniffed from the subprocess log, not the exit path). Config:
-width=768, layers=9, heads=12, head_dim=64, seq=512, finewebedu, 10 steps. MFU
-denominator: A10G adopted achievable bf16 peak = 70 TFLOPS.
+Sweep driver: per-row subprocess isolation, 8192→2048→1024 microbatch fallback on
+CUDA OOM (the OOM text is sniffed from the subprocess log, not the exit path); the
+upstream driver has the same ladder. Config: width=768, layers=9, heads=12,
+head_dim=64, seq=512, finewebedu, 10 steps. MFU denominator: A10G adopted achievable
+bf16 peak = 70 TFLOPS. Docs live in `docs/` (mirrors the code — see its README).
 
 ## Conventions
 
@@ -74,5 +75,8 @@ denominator: A10G adopted achievable bf16 peak = 70 TFLOPS.
 - Upstream baselines are labeled `production-kernel` vs `reference-implementation`
   in the report; granularity-matched to the URM row.
 - hla has NO upstream (empty pin) — the sole principled exclusion.
+  log_linear_mamba2's upstream chunk kernel exceeds the A10G SMEM envelope and ships
+  no reference variant — recorded environment-blocked (`UPSTREAM_BLOCKED`), not
+  fabricated.
 - fla Triton JIT compiles are slow on first use (>120s/layer); the shared
   `~/.triton` cache warms subsequent runs. Pass generous shell timeouts.

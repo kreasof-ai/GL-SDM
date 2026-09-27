@@ -1,6 +1,6 @@
 """URM compiler: semantic-to-execution compilation for routed sequence models.
 
-Layering (docs/compiler/compiler-charter.md, docs/planning/roadmap.md):
+Layering (docs/charter.md):
 
     architecture/NAS specification
       -> semantic routing and state IR        (ir/program.py)

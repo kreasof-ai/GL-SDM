@@ -2,7 +2,7 @@
 
 Generated from the [machine register](../../benchmarks/architecture-coverage.json). This is the source identity and construction backlog. The [76-row composition ledger](architecture-composition.md) gives external call graphs and unresolved internal axes; [evidence rules](../validation/evidence.md) define what each status can claim. Inclusion is not model support.
 
-Of 80 catalog rows, 76 are mixer-relevant and 4 are outside mixer scope. 76 rows retain pinned **historical kernel-slice** comparisons; 4 retain native K1 fragment profiles. 17 rows map to live public-graph fragments and 59 retain the old `pending_graph_migration` label. These figures do not qualify a complete source model. No K2 graph recipe is live.
+Of 80 catalog rows, 76 are mixer-relevant and 4 are outside mixer scope. 76 rows retain pinned **historical kernel-slice** comparisons; 4 retain native K1 fragment profiles. 19 rows map to live public-graph fragments and 57 retain the old `pending_graph_migration` label. These figures do not qualify a complete source model. No K2 graph recipe is live.
 
 **Old slice** means parity and paired overhead for the preserved pinned kernel comparison, usually outside the present graph binder. **Native fragment** means a measured URM-generated K1 fragment, not a complete source model. Proposed lowerings in the register are hypotheses until closed descriptors, references and public plans qualify them.
 

@@ -1206,6 +1206,33 @@ UPSTREAM_BLOCKED = {
     "log_linear_mamba2": "upstream chunk kernel exceeds A10G SMEM (196KB > 101KB); no reference variant in the pin",
 }
 
+# Why a baseline is reference-tier (or a production-tier caveat) — the report prints
+# these verbatim so no upstream limitation is silently blended away.
+UPSTREAM_NOTES = {
+    "iplr": "fla's chunk_iplr_delta_rule backward is NotImplementedError upstream; baseline is the pinned naive recurrence",
+    "log_linear_attention": "fla's chunk kernel exceeds A10G SMEM (122KB > 101KB) at head_dim=64; baseline is the pinned naive",
+    "nsa": "fla's parallel_nsa needs flash-attn (absent by policy); baseline composes the pinned naive branch oracles",
+    "deltaformer": "fla's DeltaFormerAttention layer needs flash-attn; baseline is the pinned naive deltaformer op",
+    "moba": "fla's parallel_moba needs flash-attn; baseline is the pinned law as a block-sparse SDPA mask",
+    "mla_attention": "fla's MLA layer hard-requires flash-attn; baseline is the pinned prefill equation in torch",
+    "bit_attention": "fla's BitAttention layer needs flash-attn; baseline is pinned fused-BitLinear kernels (production) + SDPA attention",
+    "tucker_attention": "the pinned fused kernel is H100-targeted (294KB SMEM); baseline transcribes the pinned equation in torch",
+    "rwkv7": "fla's chunk kernel exceeds A10G SMEM (131KB) and fused_recurrent is inference-only; baseline is the pinned naive recurrence",
+    "sdm": "the lingua CUDA extension is toolchain-blocked (nvcc 12.9 vs cu13 headers; source builds excluded); baseline is the pinned law in torch",
+    "tpa_attention": "the pin ships decode-only kernels (n==1 assert); baseline generalizes the pinned factorized equation to training",
+    "dsa": "the pinned fla naive_dsa op (lightning indexer + top-k selection + attention); fla's fast DSA kernel is indexer-coupled to a specific head tiling",
+    "sparse_transformer": "the pin's attention_impl is TF1/blocksparse (not runnable); baseline applies the pinned strided+local mask via SDPA",
+    "cat_attention": "the fla modeling_cat decoder needs FlexAttention block-mask plumbing; baseline applies the pinned structural mask via SDPA",
+    "conformer_attention": "the pinned espnet rel-pos attention module (research code)",
+    "differential_attention": "the pinned Diff-Transformer MultiheadDiffAttn (research code, AST-extracted)",
+    "hopfield_association": "the pinned hflayers Hopfield module, self-association mode (research code)",
+    "longformer": "the pinned longformer sliding-chunk torch path (the TVM kernel needs Apache TVM, not installed)",
+    "pattention": "the pinned tokenformer Pattention equation hosted at reference tier (megatron source needs neox/mpu)",
+    "mamba2": "fla's own Triton Mamba2 (mamba_ssm has no prebuilt torch-2.14/cu130 wheel); causal_conv1d absent so its conv falls back to Triton",
+    "samba_attention": "fla mamba branch (Triton backend) + SDPA sliding-window attention (fla's attention layer needs flash-attn)",
+    "attnres": "fla fused_attnres — the pinned production kernel, full tier match",
+}
+
 # Rows whose upstream runs at a non-mixer granularity (the MixerSpec must carry it so the
 # surround model builds the same structure both arms).
 UPSTREAM_GRANULARITY = {

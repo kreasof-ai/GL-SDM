@@ -49,7 +49,7 @@ def load_frozen_config(*, diagnostic: bool = False):
 def _fineweb_tokens(path: Path) -> np.memmap:
     if not path.exists():
         raise FileNotFoundError(
-            f"cached FineWeb shard missing: {path}; see docs/planning/roadmap.md"
+            f"cached FineWeb shard missing: {path}; see docs/benchmark.md"
         )
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
     if digest != FINEWEB_SHA256:
