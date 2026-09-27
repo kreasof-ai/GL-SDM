@@ -15,7 +15,7 @@ import pytest
 torch = pytest.importorskip("torch")
 
 from architectures.tpa_attention import TPAAttentionLayer
-from benchmarks.comparators.tpa import tpa_attention_adapter
+from extra.comparators.tpa import tpa_attention_adapter
 
 CONFIG = SimpleNamespace(n_head=4, head_dim=8, n_embd=32, rank=2, q_rank=3)
 

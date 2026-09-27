@@ -15,7 +15,7 @@ invariants the code enforces today; each clause names where it lives.
 | `src/urm/compiler/` | Verified rewrite candidates, independent constraints, placement, region partition, provider/schedule selection, complete serialized plan and cost trace (`normalize/`, `rewrite/`, `partition/`, `placement/`, `cost/`, `select/`, `schedule/`, `solve/`, `verify/`, `lower/`) | Tensor-value checks, runtime state mutation, architecture names, GPU bodies |
 | `src/urm/runtime/` | Bind and validate the selected plan, own state sessions and invoke its provider (`bind.py`, `certification.py`, `opaque.py`, `result.py`) | New semantic selection, model scheduling or hidden fallback |
 | `src/urm/backends/` | Reference and native implementations of admitted typed axes and physical schedules (`numpy/`, `torch/`, `triton/`) | Model-named branches, compiler policy, profiler hooks or untyped callbacks |
-| `architectures/`, `train/`, `benchmarks/` | Model arrangements, ordinary operators, source adapters, application loops and measurement | Correctness rules for core providers |
+| `architectures/`, `train/`, `extra/` | Model arrangements, ordinary operators, source adapters, application loops and measurement | Correctness rules for core providers |
 
 ## Semantic invariants
 
@@ -44,7 +44,7 @@ invariants the code enforces today; each clause names where it lives.
    available. A schedule never changes semantics.
 5. **No arbitrary tensor callback, model name, source-specific flag or opaque
    library callable enters the serialized semantic IR.** Upstream implementations
-   are external comparators (`benchmarks/comparators/`) or explicitly labeled
+   are external comparators (`extra/comparators/`) or explicitly labeled
    library provider tiers; they do not define the equation.
 6. **Compilation intent and provider support are exact**: training requires a
    certified backward and state cotangent path; inference requires state

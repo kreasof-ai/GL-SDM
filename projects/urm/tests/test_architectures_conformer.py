@@ -13,7 +13,7 @@ import pytest
 torch = pytest.importorskip("torch")
 
 from architectures.conformer_attention import ConformerRelPosAttention
-from benchmarks.comparators.conformer import conformer_rel_pos_attention_adapter
+from extra.comparators.conformer import conformer_rel_pos_attention_adapter
 
 NUM_HEADS, EMBED = 4, 32
 

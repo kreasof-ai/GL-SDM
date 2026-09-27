@@ -9,7 +9,7 @@ pytest.importorskip("triton")
 if not torch.cuda.is_available():
     pytest.skip("CUDA is required", allow_module_level=True)
 
-from benchmarks.comparators.sdm.upstream import probe_sdm_support
+from extra.comparators.sdm.upstream import probe_sdm_support
 from train.loop import FP32AdamW, PretrainingConfig, URMDecoderLM
 
 

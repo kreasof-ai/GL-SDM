@@ -37,7 +37,7 @@ def test_nsa_selected_branch_matches_pinned():
     layer = NSASelectedLayer(HQ, K, BS)
     with torch.no_grad():
         actual = layer(q, k, v, block_indices)
-    from benchmarks.comparators.fla_k2 import fla_op
+    from extra.comparators.fla_k2 import fla_op
     naive = fla_op("fla.ops.nsa.naive.naive_nsa")
     g_slc = torch.ones(1, T, HQ, device=q.device)
     expected = naive(q, k, v, g_cmp=None, g_slc=g_slc, g_swa=None,

@@ -15,7 +15,7 @@ from pathlib import Path
 import torch
 
 
-def get_data(fname: str, repo_id: str = "kjj0/finewebedu10B-gpt2", local_dir: str = "finewebedu10B") -> str:
+def get_data(fname: str, repo_id: str = "kjj0/finewebedu10B-gpt2", local_dir: str = "data/finewebedu10B") -> str:
     """Download one shard if absent; returns the local path."""
     from huggingface_hub import hf_hub_download
 

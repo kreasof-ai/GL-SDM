@@ -29,7 +29,7 @@ def test_iplr_matches_pinned_naive():
     layer = IPLRLayer(H, K, V)
     with torch.no_grad():
         actual = layer(q, k, v, alpha, beta)
-    from benchmarks.comparators.fla_k2 import fla_op
+    from extra.comparators.fla_k2 import fla_op
     iplr = fla_op("fla.ops.generalized_delta_rule.iplr.naive.iplr_recurrence")
     expected, _ = iplr(q, k, v, alpha, beta)
     err = (actual - expected).abs().max().item()
@@ -60,7 +60,7 @@ def test_comba_matches_pinned_naive():
     layer = CombaLayer(H, K, V)
     with torch.no_grad():
         actual = layer(q, k, v, p, beta, g)
-    from benchmarks.comparators.fla_k2 import fla_op
+    from extra.comparators.fla_k2 import fla_op
     comba = fla_op("fla.ops.comba.naive.naive_recurrent_comba")
     # comba naive takes [B,T,H,*]
     expected, _ = comba(q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2),

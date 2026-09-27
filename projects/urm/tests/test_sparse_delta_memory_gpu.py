@@ -7,7 +7,7 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from benchmarks.comparators.sdm.upstream import (
+from extra.comparators.sdm.upstream import (
     MODE_INFERENCE,
     MODE_READ_ONLY,
     MODE_TRAINING,
@@ -15,7 +15,7 @@ from benchmarks.comparators.sdm.upstream import (
     UrmSparseDeltaMemoryAdapter,
     probe_sdm_support,
 )
-from benchmarks.comparators.sdm.reference import (
+from extra.comparators.sdm.reference import (
     deterministic_tie_free_product_key_scores,
     end_to_end_differential_backward_report,
     oracle_product_key,
@@ -25,7 +25,7 @@ from benchmarks.comparators.sdm.reference import (
     torch_sparse_read,
     torch_write_read,
 )
-from benchmarks.comparators.anchors import SDM_EXTERNAL_ANCHOR_NAME, UPSTREAM_ANCHORS
+from extra.comparators.anchors import SDM_EXTERNAL_ANCHOR_NAME, UPSTREAM_ANCHORS
 
 BACKWARD_TOLERANCES = {
     torch.float32: {

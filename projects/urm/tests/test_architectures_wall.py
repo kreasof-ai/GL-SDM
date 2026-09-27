@@ -40,7 +40,7 @@ def test_wall_matches_pinned_naive():
         # exp2(cumsum(g_log2)·RCP_LN2 diff) == exp(cumsum(g_log2) diff): pass g_log2
         # directly (the channel-decay law folds the base-2 RCP_LN2 into the score).
         actual = layer(q, k, v, g_log2)
-    from benchmarks.comparators.fla_k2 import fla_op
+    from extra.comparators.fla_k2 import fla_op
     naive = fla_op("fla.ops.wall_attn.naive.naive_wall_attn")
     expected = naive(q, k, v, g_log2, scale=D ** -0.5)
     err = (actual - expected).abs().max().item()

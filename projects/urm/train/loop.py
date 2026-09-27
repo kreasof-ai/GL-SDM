@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from dataclasses import asdict, dataclass
 from typing import Literal
 
@@ -14,6 +14,21 @@ from torch import nn
 from urm.ir.program import DType
 
 MixerBackend = Literal["upstream_sdm", "urm_native", "sdpa"]
+
+STATE_PROFILE_EVENTS: list = []
+
+
+@contextmanager
+def _state_stage(phase):
+    """CUDA-event span for one sparse-state phase (consumer-side profiler hook)."""
+    start, end = (torch.cuda.Event(enable_timing=True) for _ in range(2))
+    start.record()
+    with torch.autograd.profiler.record_function(
+        f"pretraining::sparse_memory::native_state_{phase}"
+    ):
+        yield
+    end.record()
+    STATE_PROFILE_EVENTS.append((phase, start, end))
 
 
 @dataclass(frozen=True, slots=True)
@@ -399,7 +414,7 @@ class SparseMemoryMixer(nn.Module):
                 )
                 object.__setattr__(self, "_executor", plan)
             else:
-                from benchmarks.comparators.sdm.upstream import (
+                from extra.comparators.sdm.upstream import (
                     MODE_TRAINING,
                     UrmSparseDeltaMemoryAdapter,
                 )
@@ -415,7 +430,7 @@ class SparseMemoryMixer(nn.Module):
                     dtype=torch.bfloat16,
                 )
                 object.__setattr__(self, "_executor", adapter)
-                from benchmarks.comparators.sdm.compiled import (
+                from extra.comparators.sdm.compiled import (
                     register_upstream_adapter,
                 )
 
@@ -515,7 +530,7 @@ class SparseMemoryMixer(nn.Module):
             read_addresses = read_addresses + offsets
             with self._profile("pretraining::sparse_memory::upstream_state"):
                 if torch.compiler.is_compiling():
-                    from benchmarks.comparators.sdm.compiled import (
+                    from extra.comparators.sdm.compiled import (
                         compiled_upstream_sdm_update,
                     )
 
@@ -625,12 +640,7 @@ class URMDecoderLM(nn.Module):
                 from urm.backends.triton.k3 import sparse_state as state_kernels
 
                 state_kernels.PROFILE_RANGES = enabled
-                if enabled:
-                    from benchmarks.profiling.state_stage import state_stage
-
-                    state_kernels.set_state_profiler(state_stage)
-                else:
-                    state_kernels.set_state_profiler(None)
+                state_kernels.set_state_profiler(_state_stage if enabled else None)
 
     @staticmethod
     def _initialize(module) -> None:

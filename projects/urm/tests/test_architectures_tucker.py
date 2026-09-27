@@ -14,7 +14,7 @@ import pytest
 torch = pytest.importorskip("torch")
 
 from architectures.tucker_attention import TuckerAttentionLayer
-from benchmarks.comparators.tucker import tucker_attention_adapter
+from extra.comparators.tucker import tucker_attention_adapter
 
 N_EMBD, N_HEAD = 32, 4
 

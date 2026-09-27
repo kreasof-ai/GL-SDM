@@ -34,7 +34,7 @@ def test_rwkv7_matches_pinned_dplr_naive():
     layer = RWKV7Layer(H, K, V)
     with torch.no_grad():
         actual = layer(r, w, k, v, a, b)
-    from benchmarks.comparators.fla_k2 import fla_op
+    from extra.comparators.fla_k2 import fla_op
     dplr = fla_op("fla.ops.generalized_delta_rule.dplr.naive.dplr_recurrence")
     # dplr takes [b,h,l,d] (head-first)
     expected, _ = dplr(r.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2),

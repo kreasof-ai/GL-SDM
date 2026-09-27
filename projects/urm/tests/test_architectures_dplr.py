@@ -37,7 +37,7 @@ def _operands(seed: int, device: str = "cpu"):
 
 
 def _pinned_dplr():
-    from benchmarks.comparators.fla_k2 import fla_op
+    from extra.comparators.fla_k2 import fla_op
     return fla_op("fla.ops.generalized_delta_rule.dplr.naive.dplr_recurrence")
 
 

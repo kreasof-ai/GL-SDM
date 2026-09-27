@@ -4,7 +4,7 @@ These are the Batch-0 verifying clients for the K2 `linear_delta_state` node:
 DeltaNet (arch-025) and GLA (arch-019) run through the public graph path
 (compile_graph + BoundGraphPlan, reference tier) and are checked against the
 pinned FLA source recurrences for both output and final state. The pinned
-checkout is provisioned by ``benchmarks/provision_comparators.py``; the tests
+checkout is provisioned by ``extra/provision_comparators.py``; the tests
 skip cleanly when it or torch/fla is unavailable.
 """
 

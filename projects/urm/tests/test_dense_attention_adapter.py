@@ -10,8 +10,8 @@ pytest.importorskip("triton")
 if not torch.cuda.is_available():
     pytest.skip("CUDA required for adapter tests", allow_module_level=True)
 
-from benchmarks.comparators.flash_attention import UrmDenseCausalAttentionAdapter
-from benchmarks.comparators.flash_attention import (
+from extra.comparators.flash_attention import UrmDenseCausalAttentionAdapter
+from extra.comparators.flash_attention import (
     DenseAttentionSpec,
     flash_attn_version,
 )

@@ -46,7 +46,7 @@ def test_router_masked_mixer_matches_pinned_naive_gsa():
             q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2),
             s.transpose(1, 2), f.transpose(1, 2), layer.scale,
         )
-    from benchmarks.comparators.fla_k2 import fla_op
+    from extra.comparators.fla_k2 import fla_op
     naive = fla_op("fla.ops.gsa.naive.naive_recurrent_gsa")
     expected, _ = naive(q, k, v, s, g=f, scale=None)  # naive takes [B,T,H,*]
     err = (actual.transpose(1, 2) - expected).abs().max().item()

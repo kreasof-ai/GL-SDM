@@ -13,7 +13,7 @@ import pytest
 torch = pytest.importorskip("torch")
 
 from architectures.attnres import AttnResLayer
-from benchmarks.comparators.attnres import attnres_adapter
+from extra.comparators.attnres import attnres_adapter
 
 D, L = 16, 3
 

@@ -9,14 +9,14 @@ pytest.importorskip("triton")
 if not torch.cuda.is_available():
     pytest.skip("CUDA is required", allow_module_level=True)
 
-from benchmarks.comparators.sdm.upstream import (
+from extra.comparators.sdm.upstream import (
     MODE_INFERENCE,
     MODE_READ_ONLY,
     MODE_TRAINING,
     UrmSparseDeltaMemoryAdapter,
     probe_sdm_support,
 )
-from benchmarks.comparators.sdm.sparse_state import SDMSparseStateMixerFallback
+from extra.comparators.sdm.sparse_state import SDMSparseStateMixerFallback
 
 SUPPORT = probe_sdm_support()
 if not SUPPORT.supported:

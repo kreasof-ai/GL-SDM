@@ -14,7 +14,7 @@ import pytest
 torch = pytest.importorskip("torch")
 
 from architectures.mla_attention import MLALayer
-from benchmarks.comparators.fla_mla import fla_mla_oracle
+from extra.comparators.fla_mla import fla_mla_oracle
 
 CFG = dict(
     hidden_size=32, num_heads=4, kv_lora_rank=8, qk_rope_head_dim=8,

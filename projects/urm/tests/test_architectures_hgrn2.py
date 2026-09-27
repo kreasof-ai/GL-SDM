@@ -13,7 +13,7 @@ import pytest
 torch = pytest.importorskip("torch")
 
 from architectures.hgrn2 import HGRN2Layer
-from benchmarks.comparators.fla_k2 import fla_op
+from extra.comparators.fla_k2 import fla_op
 
 HIDDEN, H, DK, DV = 32, 4, 8, 8
 

@@ -19,7 +19,7 @@ import pytest
 torch = pytest.importorskip("torch")
 
 from architectures.head_map_attention import HeadMapAttention
-from benchmarks.comparators.fla_attention_naive import fla_naive_attention_adapter
+from extra.comparators.fla_attention_naive import fla_naive_attention_adapter
 
 CONFIGS = {
     "mha": dict(query_heads=4, kv_heads=4, head_map="equal"),

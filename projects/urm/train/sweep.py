@@ -7,8 +7,8 @@ state history is the binding constraint). Rows that fail record an error JSON so
 sweep completes and reports honestly.
 
 Usage:
-    PYTHONPATH=src:. python -m train.sweep --out-dir results_sweep
-    PYTHONPATH=src:. python -m train.sweep --out-dir results_sweep --rows gla,deltanet
+    PYTHONPATH=src:. python -m train.sweep --out-dir results/sweep
+    PYTHONPATH=src:. python -m train.sweep --out-dir results/sweep --rows gla,deltanet
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ TIMEOUT_S = 1500              # per-row wallclock cap (compile + train + gates)
 
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="URM native-row benchmark sweep")
-    p.add_argument("--out-dir", default="results_sweep")
+    p.add_argument("--out-dir", default="results/sweep")
     p.add_argument("--rows", default=None, help="comma-separated subset (default: all native)")
     p.add_argument("--steps", type=int, default=10)
     p.add_argument("--layers", type=int, default=9)

@@ -4,7 +4,7 @@
 
 **Config.** width=768, layers=9, heads=12, head_dim=64, seq=512, vocab=50304, finewebedu, 10 steps, bf16 autocast with fp32 kernel accumulation. Microbatch 8192 tokens with an OOM fallback ladder 2048 → 1024 (fallback rows are marked `(mbNNNN)`). URM rows compile through the opaque-op boundary; upstream rows run eager (the fla chunk kernels fail torch.compile/Inductor here) — so upstream throughput is a *lower bound*. MFU denominator: A10G adopted achievable bf16 peak = 70 TFLOPS.
 
-**Environment.** torch 2.14.0+cu130, triton 3.8.0, NVIDIA A10G 22 GiB (101 KB shared-memory limit), git HEAD `c9b24f0`. Policy constraints: no flash-attn installs (bypassed to SDPA), no mamba_ssm (no torch-2.14/cu130 wheel), no source builds (the lingua SDM CUDA extension is toolchain-blocked).
+**Environment.** torch 2.14.0+cu130, triton 3.8.0, NVIDIA A10G 22 GiB (101 KB shared-memory limit), git HEAD `f017b36`. Policy constraints: no flash-attn installs (bypassed to SDPA), no mamba_ssm (no torch-2.14/cu130 wheel), no source builds (the lingua SDM CUDA extension is toolchain-blocked).
 
 
 ## URM native rows

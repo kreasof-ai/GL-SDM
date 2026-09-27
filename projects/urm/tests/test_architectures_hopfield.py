@@ -15,7 +15,7 @@ import pytest
 torch = pytest.importorskip("torch")
 
 from architectures.hopfield_association import HopfieldAssociationLayer
-from benchmarks.comparators.hopfield import _pinned_hopfield_module, hopfield_source_identity
+from extra.comparators.hopfield import _pinned_hopfield_module, hopfield_source_identity
 
 NUM_HEADS = 2
 EMBED_DIM = 16

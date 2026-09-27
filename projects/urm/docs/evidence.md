@@ -1,8 +1,8 @@
 # Evidence and claim policy
 
 What a measurement in this repo is allowed to claim. The machine catalog is
-`benchmarks/architecture-coverage.json`; the benchmark records are
-`results_sweep/` + `results_upstream/` + `results_report.md`.
+`extra/architecture-coverage.json`; the benchmark records are
+`results/sweep/` + `results/upstream/` + `results_report.md`.
 
 ## Five independent verdicts
 
@@ -54,11 +54,18 @@ policy, intent mode, shape and state initialization. Missing upstream modes are
 
 ## Historical records
 
-The retired generic-decoder table (`results/validation/`: direction-sweep rows and
-master-table), its reproduction script (`benchmarks/analysis/coverage_recovery.py`),
-and the rendered rollup pages (`docs/validation/`: alignment + inference-throughput,
-with their generators `benchmarks/alignment_report.py` / `inference_report.py`) were
-deleted — stale documentation of a prior harness, not current evidence (git history
-retains them). What remains under `results/` is live: committed
-qualification/benchmark artifacts the suite validates against schemas
-(`test_artifact_schemas.py`) and the release gate aggregates (`release_gate.py`).
+The prior qualification harness was retired in full (git history retains it): the
+release-gate aggregation (`release_gate.py`, `release_coverage.py`,
+`production-matrix.json`), the per-workload drivers and profiling tools
+(`dense_attention.py`, `gated_delta_rule.py`, `sparse_*.py`, `pretraining_step.py`,
+`measurement.py`, …), their committed artifacts (`results/attention/`,
+`results/compiler/`, `results/qualification/`, `results/unified-mixer/`,
+`results/sparse-*/`, `results/device-limits.json`) and the schema gates
+(`test_artifact_schemas.py` and the 14 `*-schema.json` files), plus the earlier
+stale-doc deletions (`results/validation/`, `docs/validation/` and their
+generators). The architecture register's per-row parity/profile evidence fields,
+which pointed at those artifacts, were stripped (schema v3 → v4); the register
+keeps its live role — source identity, pinned revisions and construction backlog.
+The current evidence is the training-harness campaign: `results/sweep/`,
+`results/upstream/`, `results_report.md`, gated by `tests/` (per-architecture
+parity against `extra/comparators/`, plus the harness gates).

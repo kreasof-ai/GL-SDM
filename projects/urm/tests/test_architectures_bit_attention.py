@@ -25,8 +25,8 @@ from architectures.bit_attention import (
     activation_quant,
     weight_quant,
 )
-from benchmarks.comparators.fla_attention_naive import fla_naive_attention_adapter
-from benchmarks.comparators.fla_bitlinear import fla_fused_bitlinear_adapter
+from extra.comparators.fla_attention_naive import fla_naive_attention_adapter
+from extra.comparators.fla_bitlinear import fla_fused_bitlinear_adapter
 
 
 def _bitlinear_pair(seed: int, device: str, in_f: int = 32, out_f: int = 32):

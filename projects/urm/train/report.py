@@ -9,8 +9,8 @@ upstream tier/granularity labels, per-row upstream limitation notes, blocked and
 missing upstreams, and the environment/provenance block.
 
 Usage:
-    PYTHONPATH=src:. python -m train.report --sweep-dir results_sweep \
-        --upstream-dir results_upstream --out results_report.md
+    PYTHONPATH=src:. python -m train.report --sweep-dir results/sweep \
+        --upstream-dir results/upstream --out results_report.md
 """
 
 from __future__ import annotations
@@ -70,8 +70,8 @@ def _is_nan(v) -> bool:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--sweep-dir", default="results_sweep")
-    ap.add_argument("--upstream-dir", default="results_upstream")
+    ap.add_argument("--sweep-dir", default="results/sweep")
+    ap.add_argument("--upstream-dir", default="results/upstream")
     ap.add_argument("--out", default="results_report.md")
     args = ap.parse_args()
 

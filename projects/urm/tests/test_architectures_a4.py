@@ -141,7 +141,7 @@ def test_log_linear_matches_pinned_naive():
     layer = LogLinearAttentionLayer(H, D)
     with torch.no_grad():
         actual = layer(q, k, v, g, ls)
-    from benchmarks.comparators.fla_k2 import fla_op
+    from extra.comparators.fla_k2 import fla_op
     naive = fla_op("fla.ops.log_linear_attn.naive.naive_log_linear_attn")
     expected = naive(q, k, v, g, ls)
     err = (actual - expected).abs().max().item()
@@ -185,7 +185,7 @@ def test_banked_public_op_matches_pinned_naive():
     mixer = BankedLogLinearMixer(H, D, L)
     with torch.no_grad():
         actual = mixer(q, k, v, g, ls)
-    from benchmarks.comparators.fla_k2 import fla_op
+    from extra.comparators.fla_k2 import fla_op
     naive = fla_op("fla.ops.log_linear_attn.naive.naive_log_linear_attn")
     expected = naive(q, k, v, g, ls)
     err = (actual - expected).abs().max().item()
@@ -229,7 +229,7 @@ def test_disjoint_block_form_matches_pinned_naive():
     state with within-chunk decay) is the residual schedule, recorded not claimed.
     """
     q, k, v, g, ls = _operands(seed=17)
-    from benchmarks.comparators.fla_k2 import fla_op
+    from extra.comparators.fla_k2 import fla_op
     naive = fla_op("fla.ops.log_linear_attn.naive.naive_log_linear_attn")
     with torch.no_grad():
         expected = naive(q, k, v, g, ls)

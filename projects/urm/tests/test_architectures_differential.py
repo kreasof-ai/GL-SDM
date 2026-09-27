@@ -16,7 +16,7 @@ import pytest
 torch = pytest.importorskip("torch")
 
 from architectures.differential_attention import DifferentialAttentionLayer, lambda_init_fn
-from benchmarks.comparators.differential import differential_attention_adapter
+from extra.comparators.differential import differential_attention_adapter
 
 EMBED, NUM_HEADS, DEPTH = 64, 4, 2
 HEAD_DIM = EMBED // NUM_HEADS // 2  # pinned: embed_dim // num_heads // 2

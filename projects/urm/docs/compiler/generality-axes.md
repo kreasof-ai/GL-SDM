@@ -2,7 +2,7 @@
 
 The catalog's 13 generality axes — the typed variation dimensions along which mixer
 laws differ. Admission status mirrors `src/urm/backends/` and
-`benchmarks/architecture-coverage.json`; the current native/references inventory is
+`extra/architecture-coverage.json`; the current native/references inventory is
 in [../backends.md](../backends.md), the per-row mapping in [../catalog.md](../catalog.md).
 
 | Axis | Typed dimension | Admission status at HEAD |

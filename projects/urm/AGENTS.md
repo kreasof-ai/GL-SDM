@@ -15,8 +15,13 @@ Architectures compose public kernel calls with external projections/MLP outside
   (native-row sweep driver), `upstream.py` (upstream baselines), `report.py` (join).
 - `tests/` — per-architecture parity gates (`test_architectures_<row>.py`) + the
   training-harness gate (`test_training_harness.py`).
-- `benchmarks/comparators/` — pinned upstream adapters (revision/SHA-verified,
-  AST-extracted). Forward-parity adapters, not trainable modules.
+- `extra/comparators/` — pinned upstream adapters (revision/SHA-verified,
+  AST-extracted). Forward-parity adapters, not trainable modules. Also in
+  `extra/`: `provision_comparators.py` (pins provisioning),
+  `architecture-coverage.json` + `coverage_register.py` (the source-identity
+  register and its generated doc), `recipe_catalog.py` (recipes access).
+- `results/sweep/`, `results/upstream/` — committed per-row campaign JSONs +
+  logs feeding `results_report.md`. `data/finewebedu10B/` — the training shards.
 - `/tmp/urm-comparator-pins/` — the pinned upstream checkouts (fla, mamba, sdm/lingua,
   tucker, tpa, samba, kata, differential, hopfield, conformer, longformer,
   sparse_transformer, hla_higher_order (empty — paper only), …).
@@ -51,10 +56,10 @@ harness (`train/`) work continue freely.
 ## Running the benchmark (from projects/urm, PYTHONPATH=src:.)
 
 ```sh
-python -m pytest tests/ -q                                   # full suite (743 passed / 41 skipped)
-python -m train.sweep --out-dir results_sweep                # native rows (51)
-python -m train.upstream --out-dir results_upstream --subprocess   # upstream baselines (49 runnable + 1 blocked)
-python -m train.report --sweep-dir results_sweep --upstream-dir results_upstream --out results_report.md
+python -m pytest tests/ -q                                   # full suite (676 passed / 41 skipped)
+python -m train.sweep --out-dir results/sweep                # native rows (51)
+python -m train.upstream --out-dir results/upstream --subprocess   # upstream baselines (49 runnable + 1 blocked)
+python -m train.report --sweep-dir results/sweep --upstream-dir results/upstream --out results_report.md
 ```
 
 Sweep driver: per-row subprocess isolation, 8192→2048→1024 microbatch fallback on

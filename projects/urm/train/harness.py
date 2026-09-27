@@ -262,7 +262,7 @@ def train(cfg: TrainConfig, mixer: MixerSpec, data_iter, *,
     final_loss = 0.0
     # Stateful lifecycle (SDM/K3): each step is a fresh stream (reset at step start);
     # within a step, microbatches form a continued stream — the memory carries across
-    # them DETACHED (benchmarks/pretraining_step.py's pattern). The detach is what keeps
+    # them DETACHED (train/harness.py's pattern). The detach is what keeps
     # the autograd graph step-local.
     def _maybe_reset():
         if mixer.stateful:

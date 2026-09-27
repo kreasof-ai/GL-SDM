@@ -14,7 +14,7 @@ import pytest
 torch = pytest.importorskip("torch")
 
 from architectures.pattention import PattentionLayer
-from benchmarks.comparators.pattention import patention_adapter
+from extra.comparators.pattention import patention_adapter
 
 IN_DIM, OUT_DIM, N_TOKENS = 16, 24, 8
 NORMALIZERS = ("softmax", "gelu_l2_norm", "l2_norm_gelu")

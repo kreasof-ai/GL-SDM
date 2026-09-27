@@ -14,7 +14,7 @@ import pytest
 torch = pytest.importorskip("torch")
 
 from architectures.cat_attention import CATDecoderAttention, cat_structural_mask
-from benchmarks.comparators.cat_attention import cat_attention_oracle, pinned_cat_mask
+from extra.comparators.cat_attention import cat_attention_oracle, pinned_cat_mask
 
 NUM_HEADS, HIDDEN, BLOCK = 4, 32, 4
 

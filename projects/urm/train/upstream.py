@@ -18,7 +18,7 @@ Honest scope:
   identical between arms.
 
 Usage:
-    PYTHONPATH=src:. python -m train.upstream --out-dir results_upstream
+    PYTHONPATH=src:. python -m train.upstream --out-dir results/upstream
 """
 
 from __future__ import annotations
@@ -247,7 +247,7 @@ class _BitAttentionUpstream(torch.nn.Module):
 
     def __init__(self, model_dim, num_heads, head_dim):
         super().__init__()
-        from benchmarks.comparators.fla_bitlinear import _pinned_fused_bitlinear
+        from extra.comparators.fla_bitlinear import _pinned_fused_bitlinear
         self._bitlinear = _pinned_fused_bitlinear()
         self.num_heads, self.head_dim = num_heads, head_dim
         inner = num_heads * head_dim
@@ -272,7 +272,7 @@ class _BitAttentionUpstream(torch.nn.Module):
 
 
 class _MLAUpstream(torch.nn.Module):
-    """The pinned MLA prefill equation (benchmarks.comparators.fla_mla.fl_mla_oracle's
+    """The pinned MLA prefill equation (extra.comparators.fla_mla.fl_mla_oracle's
     law) as a trainable module — fla's MultiheadLatentAttention hard-requires
     flash-attn (bypassed per the no-FA constraint), so the baseline is the pinned
     equation in torch. Reference-implementation. Dims match our mla row."""
@@ -502,7 +502,7 @@ def _nsa_upstream(model_dim, num_heads, head_dim, intent, target="reference"):
 
 class _TokenformerUpstreamBlock(torch.nn.Module):
     """The pinned megatron tokenformer block, AST-extracted by the comparator package
-    (benchmarks.comparators.pattention) — the exact upstream module, block granularity."""
+    (extra.comparators.pattention) — the exact upstream module, block granularity."""
 
     def __init__(self, model_dim, num_heads, head_dim, intent="training", target="reference"):
         super().__init__()
@@ -847,7 +847,7 @@ class _DifferentialUpstream(torch.nn.Module):
 
     def __init__(self, model_dim, num_heads, head_dim):
         super().__init__()
-        from benchmarks.comparators.differential import _pinned_diffattn_class
+        from extra.comparators.differential import _pinned_diffattn_class
         cls = _pinned_diffattn_class()
         # Pinned convention: num_heads is HALF the baseline transformer's head count.
         self._module = cls(embed_dim=model_dim, depth=0, num_heads=max(1, num_heads // 2))
@@ -912,7 +912,7 @@ class _LongformerUpstream(torch.nn.Module):
         self.o_proj = torch.nn.Linear(num_heads * head_dim, model_dim, bias=False)
 
     def forward(self, hidden):
-        from benchmarks.comparators.longformer import longformer_attention_adapter
+        from extra.comparators.longformer import longformer_attention_adapter
         B, T, _ = hidden.shape
         H, D = self.num_heads, self.head_dim
         # The pinned kernel requires T % (2*window) == 0; the harness trains on
@@ -987,7 +987,7 @@ class _ConformerUpstream(torch.nn.Module):
 
     def __init__(self, model_dim, num_heads, head_dim):
         super().__init__()
-        from benchmarks.comparators.conformer import _pinned_rel_pos_attention_class
+        from extra.comparators.conformer import _pinned_rel_pos_attention_class
         cls = _pinned_rel_pos_attention_class()
         self._module = cls(num_heads=num_heads, embed_size=model_dim, dropout_rate=0.0)
 
@@ -1259,7 +1259,7 @@ UPSTREAM_RESIDUAL_BUILDERS = {
 
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="URM upstream-kernel baseline sweep")
-    p.add_argument("--out-dir", default="results_upstream")
+    p.add_argument("--out-dir", default="results/upstream")
     p.add_argument("--rows", default=None,
                    help="comma-separated subset (default: all with a fast upstream)")
     p.add_argument("--steps", type=int, default=10)
@@ -1302,7 +1302,7 @@ def _run_one(row: str, args: argparse.Namespace) -> dict:
         microbatch_tokens=args.microbatch_tokens, steps=args.steps, seed=0,
         compile_model=False,  # fla chunk kernels fail torch.compile here (measured)
     )
-    data = data_generator("finewebedu10B/finewebedu_train_*.bin",
+    data = data_generator("data/finewebedu10B/finewebedu_train_*.bin",
                           cfg.microbatch_tokens, cfg.sequence_length)
     rec = train(cfg, spec, data, device="cuda").to_dict()
     rec.update(rec_extra)

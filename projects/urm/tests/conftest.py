@@ -1,8 +1,8 @@
 """Shared test fixtures and environment setup.
 
-The benchmark harnesses spawn ``python benchmarks/...`` subprocesses that import
+The benchmark harnesses spawn ``python -m train....`` subprocesses that import
 ``urm`` (from ``src/``) and project-level packages such as ``tests.fixtures`` and
-``benchmarks.comparators`` (from the project root). When the package is not
+``extra.comparators`` (from the project root). When the package is not
 installed (e.g. a bare source checkout), those subprocesses need both ``src/``
 and the project root on ``PYTHONPATH``; the pytest process itself gets ``src/``
 from ``pyproject.toml``'s ``pythonpath`` but does not export it to children.

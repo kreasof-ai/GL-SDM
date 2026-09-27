@@ -16,7 +16,7 @@ from urm.compiler.select.anchors import (
     AnchorRegistry,
     make_sparse_state_mixer_selector,
 )
-from benchmarks.comparators.anchors import (
+from extra.comparators.anchors import (
     SDM_SPARSE_STATE_FALLBACK_ANCHOR_NAME,
     UPSTREAM_ANCHORS,
     register_anchor_providers,

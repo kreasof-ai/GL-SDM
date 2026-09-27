@@ -14,7 +14,7 @@ import pytest
 torch = pytest.importorskip("torch")
 
 from architectures.rodimus import RodimusLayer
-from benchmarks.comparators.fla_k2 import fla_op
+from extra.comparators.fla_k2 import fla_op
 
 D_INNER, MEM = 32, 16
 

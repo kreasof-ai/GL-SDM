@@ -88,5 +88,5 @@ the level at which the pinned upstream defines the architecture.
 | yoco | — | |
 
 The pinned upstream checkouts live in `/tmp/urm-comparator-pins/` (reprovisioned by
-`benchmarks/provision_comparators.py`); the verified adapters live in
-`benchmarks/comparators/`.
+`extra/provision_comparators.py`); the verified adapters live in
+`extra/comparators/`.

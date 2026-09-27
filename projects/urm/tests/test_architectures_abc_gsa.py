@@ -31,7 +31,7 @@ def test_abc_matches_pinned_naive_recurrent():
     layer = ABCLayer(H, DK, DV, M)
     with torch.no_grad():
         actual = layer(q, k, v, s)
-    from benchmarks.comparators.fla_k2 import fla_op
+    from extra.comparators.fla_k2 import fla_op
     naive = fla_op("fla.ops.abc.naive.naive_recurrent_abc")
     # naive_recurrent_abc takes [B, H, T, *] and derives g from s when g=None.
     expected, _ = naive(q, k, v, s, g=None, scale=None)
@@ -46,7 +46,7 @@ def test_gsa_matches_pinned_naive_recurrent():
     layer = GSALayer(H, DK, DV, M)
     with torch.no_grad():
         actual = layer(q, k, v, s, g)
-    from benchmarks.comparators.fla_k2 import fla_op
+    from extra.comparators.fla_k2 import fla_op
     naive = fla_op("fla.ops.abc.naive.naive_recurrent_abc")
     expected, _ = naive(q, k, v, s, g=g, scale=None)
     err = (actual - expected).abs().max().item()

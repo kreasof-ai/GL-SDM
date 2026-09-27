@@ -34,7 +34,7 @@ def test_gdn2_matches_pinned_naive():
     with torch.no_grad():
         actual = layer(q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2),
                        g.transpose(1, 2), b.transpose(1, 2), w.transpose(1, 2))
-    from benchmarks.comparators.fla_k2 import fla_op
+    from extra.comparators.fla_k2 import fla_op
     naive = fla_op("fla.ops.gdn2.naive.naive_recurrent_gdn2")
     expected, _ = naive(q, k, v, g, b, w, scale=None)
     err = (actual.transpose(1, 2) - expected).abs().max().item()

@@ -35,7 +35,7 @@ def test_delta_product_matches_pinned_naive():
     with torch.no_grad():
         actual = layer(q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2),
                        g.transpose(1, 2), beta.transpose(1, 2), SCALE)
-    from benchmarks.comparators.fla_k2 import fla_op
+    from extra.comparators.fla_k2 import fla_op
     naive = fla_op("fla.ops.gated_delta_product.naive.naive_recurrent_gated_delta_product")
     expected, _ = naive(q, k, v, g, beta, SCALE, num_householder=R)
     err = (actual.transpose(1, 2) - expected).abs().max().item()

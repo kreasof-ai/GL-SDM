@@ -46,7 +46,7 @@ def test_deltaformer_matches_pinned_naive():
     layer = DeltaFormerLayer(H, D)
     with torch.no_grad():
         actual = layer(q, k, v, beta)
-    from benchmarks.comparators.fla_k2 import fla_op
+    from extra.comparators.fla_k2 import fla_op
     naive = fla_op("fla.ops.deltaformer.naive.naive_deltaformer_attn_head_first")
     expected = naive(q, k, v, beta)
     err = (actual - expected).abs().max().item()
@@ -105,7 +105,7 @@ def test_path_single_chunk_matches_pinned():
     layer = PaTHAttentionLayer(HQ, D)
     with torch.no_grad():
         actual = layer(q, k, v, w, beta, g, scale)
-    from benchmarks.comparators.fla_k2 import fla_op
+    from extra.comparators.fla_k2 import fla_op
     naive = fla_op("fla.ops.path_attn.naive.naive_path_attn")
     expected = naive(q, k, v, w, beta, g, scale, chunk_size=T)
     err = (actual - expected).abs().max().item()

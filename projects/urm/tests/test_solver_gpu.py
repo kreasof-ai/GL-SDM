@@ -8,9 +8,6 @@ CUDA or without the optional solver extra.
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
 import pytest
 
 torch = pytest.importorskip("torch")
@@ -31,11 +28,6 @@ from urm.compiler.solve.z3 import OptimizationPass, z3_available
 pytestmark = pytest.mark.skipif(
     not z3_available(), reason="z3-solver optional extra not installed"
 )
-
-BENCHMARKS = Path(__file__).parents[1] / "benchmarks"
-if str(BENCHMARKS) not in sys.path:
-    sys.path.insert(0, str(BENCHMARKS))
-
 
 def _reference(indices, weights, values, row_scale):
     base = torch.einsum("qk,qkd->qd", weights.float(), values.float()[indices.long()])

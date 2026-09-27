@@ -6,7 +6,7 @@ Start with the [documentation index](docs/README.md). The [compiler charter](doc
 
 ## Current boundary
 
-The [architecture registry](train/registry.py) carries 52 rows — 51 native-tier plus `mamba1` (reference-tier charter debt). The training-harness benchmark (`train/sweep.py`, `train/upstream.py`) has measured all 51 native rows (10-step 100M-class training, A10G) with checkpoint parity, and joined 49 upstream baselines at matched granularity — see the generated [training-harness report](results_report.md). This is harness-level measurement, not complete source-model qualification; [evidence.md](docs/evidence.md) states the exact claim boundaries. The machine-readable [architecture register](benchmarks/architecture-coverage.json) tracks 80 named rows, 76 of them mixer-relevant.
+The [architecture registry](train/registry.py) carries 52 rows — 51 native-tier plus `mamba1` (reference-tier charter debt). The training-harness benchmark (`train/sweep.py`, `train/upstream.py`) has measured all 51 native rows (10-step 100M-class training, A10G) with checkpoint parity, and joined 49 upstream baselines at matched granularity — see the generated [training-harness report](results_report.md). This is harness-level measurement, not complete source-model qualification; [evidence.md](docs/evidence.md) states the exact claim boundaries. The machine-readable [architecture register](extra/architecture-coverage.json) tracks 80 named rows, 76 of them mixer-relevant.
 
 ## Code map
 
@@ -18,7 +18,9 @@ The [architecture registry](train/registry.py) carries 52 rows — 51 native-tie
 | `src/urm/backends/` | Independent NumPy/Torch references and admitted native K1/K2/K3/K4 implementations |
 | `recipes/kernels/` | External declarative kernel-call fragments |
 | `architectures/`, `train/` | The 52-row catalog modules and the benchmark harness |
-| `benchmarks/`, `results/` | Pinned comparators, generated indexes and preserved measurements |
+| `extra/` | Pinned upstream comparators, provisioning, the architecture register and coverage generator |
+| `results/sweep/`, `results/upstream/` | Committed per-row campaign measurements feeding `results_report.md` |
+| `data/finewebedu10B/` | The finewebedu shards the harness trains on |
 
 ## CPU verification
 

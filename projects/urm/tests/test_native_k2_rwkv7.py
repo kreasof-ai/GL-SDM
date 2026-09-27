@@ -125,7 +125,7 @@ def test_native_rwkv7_low_rank_term_is_active():
 
 def test_native_rwkv7_matches_pinned_fla_naive():
     """Forward parity against the pinned fla DPLR naive recurrence (no CUDA build needed)."""
-    from benchmarks.comparators.fla_k2 import fla_op
+    from extra.comparators.fla_k2 import fla_op
 
     try:
         dplr = fla_op("fla.ops.generalized_delta_rule.dplr.naive.dplr_recurrence")
@@ -150,7 +150,7 @@ def test_native_rwkv7_matches_pinned_fla_naive():
 def test_native_rwkv7_matches_pinned_fla_fused_recurrent():
     """Forward parity against the pinned fla fused_recurrent_rwkv7 (the CUDA op the
     RWKV7Layer maps to), on identical operands."""
-    from benchmarks.comparators.fla_k2 import fla_op
+    from extra.comparators.fla_k2 import fla_op
 
     try:
         fused_rwkv7 = fla_op("fla.ops.rwkv7.fused_recurrent.fused_recurrent_rwkv7")

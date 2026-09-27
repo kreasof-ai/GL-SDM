@@ -31,7 +31,7 @@ def test_fox_matches_pinned_naive():
     layer = ForgettingAttentionLayer(H, D)
     with torch.no_grad():
         actual = layer(q, k, v, g)
-    from benchmarks.comparators.fla_k2 import fla_op
+    from extra.comparators.fla_k2 import fla_op
     naive = fla_op("fla.ops.forgetting_attn.naive.naive_forgetting_attn")
     expected = naive(q, k, v, g, scale=None)
     err = (actual - expected).abs().max().item()

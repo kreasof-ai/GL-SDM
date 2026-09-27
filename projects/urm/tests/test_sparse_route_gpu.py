@@ -9,12 +9,12 @@ pytest.importorskip("triton")
 if not torch.cuda.is_available():
     pytest.skip("CUDA is required", allow_module_level=True)
 
-from benchmarks.comparators.sdm.upstream import (
+from extra.comparators.sdm.upstream import (
     MODE_INFERENCE,
     UrmSparseDeltaMemoryAdapter,
     probe_sdm_support,
 )
-from benchmarks.comparators.sdm.reference import torch_product_key_highest_address
+from extra.comparators.sdm.reference import torch_product_key_highest_address
 from urm.runtime.certification import (
     CertifiedSparseRouteScores,
 )

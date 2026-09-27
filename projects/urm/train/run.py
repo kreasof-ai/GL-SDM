@@ -57,7 +57,7 @@ def main() -> None:
                                    cfg.vocab_size, device="cuda", seed=cfg.seed)
     else:
         get_data("finewebedu_train_000001.bin")
-        data = data_generator("finewebedu10B/finewebedu_train_*.bin",
+        data = data_generator("data/finewebedu10B/finewebedu_train_*.bin",
                               cfg.microbatch_tokens, cfg.sequence_length)
     result = train(cfg, mixer, data, device="cuda" if torch.cuda.is_available() else "cpu")
     report = result.to_dict()

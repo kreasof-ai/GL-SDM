@@ -18,7 +18,7 @@ torch = pytest.importorskip("torch")
 
 import architectures.samba_attention as urm_samba
 from architectures.samba_attention import SambaAttentionLayer
-from benchmarks.comparators import samba as samba_comparator
+from extra.comparators import samba as samba_comparator
 
 
 def _pinned_class():
