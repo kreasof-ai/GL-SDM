@@ -8,6 +8,13 @@ Can a weight-tied model allocate variable computation per token while repeatedly
 accessing one globally shared, model-scale sparse delta memory, improving the
 quality-compute-capacity frontier?
 
+## URM dependency
+
+Use the frozen [URM package](https://github.com/kreasof-ai/urm) pinned in
+[shared/requirements-urm.txt](../../shared/requirements-urm.txt).
+URM changes are developed separately; this project does not carry a local copy
+of its compiler or kernel implementations.
+
 ## This project owns
 
 - The global sparse address space and read operator.

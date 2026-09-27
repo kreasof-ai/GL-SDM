@@ -1,1 +1,0 @@
-fla's DeltaFormerAttention layer needs flash-attn; baseline is the pinned naive deltaformer op

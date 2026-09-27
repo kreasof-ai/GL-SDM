@@ -1,7 +1,0 @@
-{
-  "mixer": "deltaformer",
-  "measurement_version": 2,
-  "baseline_tier": "reference-implementation",
-  "status": "production-unavailable",
-  "reason": "fla's DeltaFormerAttention layer needs flash-attn; baseline is the pinned naive deltaformer op"
-}

@@ -1,7 +1,8 @@
 # Global Liquid SDM Research Program
 
-This repository is a research monorepo for the three independently falsifiable
-proposals described in the research program.
+This repository contains Global Liquid SDM and Consolidated SDM, two of the
+three proposals in the research program. The URM compiler and kernels live in
+the separate [kreasof-ai/urm repository](https://github.com/kreasof-ai/urm).
 
 ## Documentation
 
@@ -14,26 +15,30 @@ proposals described in the research program.
 | --- | --- | --- |
 | [Global Liquid SDM](projects/gl-sdm/README.md) | Global sparse memory, tied recurrent reasoning, adaptive depth, and snapshot-and-commit writes | Establishes the core memory semantics |
 | [Consolidated SDM](projects/csdm/README.md) | Fast/slow overlays, wake/sleep consolidation, stability, provenance, and rollback | Builds on GL-SDM semantics |
-| [Unified Routed Mixer](projects/urm/README.md) | Restricted routed-mixer IR, scheduling, and specialized kernels | Independently testable; GL-SDM is the flagship workload |
 
 Shared interfaces, benchmark definitions, experimental controls, and result
 schemas belong in [`shared/`](shared/README.md). Project-specific models,
 experiments, and acceptance tests stay within their project directory.
 
-## Dependency shape
+## Frozen URM dependency
 
-```text
-gl-sdm ───────> csdm
-   │
-   └──────────> urm (flagship workload)
+GL-SDM uses URM's sparse read/update primitives and defines its own transactional
+memory operator. CSDM consumes that GL-SDM contract and the same URM dependency.
+URM source is maintained in its own repository.
 
-shared <────── all projects
+The accepted baseline is pinned to commit
+[`604bfdf`](https://github.com/kreasof-ai/urm/tree/604bfdf5d2c827266a32ef142ca996cc712d70f0),
+also tagged `frozen-2026-09-27`. Install the core package from this repository root:
+
+```sh
+python -m pip install -r shared/requirements-urm.txt
 ```
 
-The arrow into CSDM is a semantic dependency: CSDM assumes the global address
-space and transactional memory behavior established by GL-SDM. URM remains a
-separate systems project so it can succeed or fail independently of the GL-SDM
-architecture.
+The pin is in [shared/requirements-urm.txt](shared/requirements-urm.txt).
+Torch/CUDA dependencies are installed separately for the chosen machine.
+Changes to URM require a separate URM task and an explicit update of this pin.
+The preserved benchmark report is in
+[URM results](https://github.com/kreasof-ai/urm/blob/604bfdf5d2c827266a32ef142ca996cc712d70f0/results/report.md).
 
 ## Program sequence
 
