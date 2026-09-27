@@ -1,10 +1,40 @@
 """Compile snapshot reads against the frozen, installed URM package."""
 from functools import lru_cache
 from importlib.metadata import distribution
+from contextlib import contextmanager
+from dataclasses import replace
+from threading import RLock
+from unittest.mock import patch
 import json
 
 URM_REVISION = "604bfdf5d2c827266a32ef142ca996cc712d70f0"
 URM_REPOSITORY = "https://github.com/kreasof-ai/urm.git"
+_compile_lock = RLock()
+
+
+@contextmanager
+def large_route_override(enabled):
+    """Experimental, temporary support declaration for F=512, K=8, FP32.
+
+    The normal compiler and native providers still execute the original shape.
+    Only this declared shape is extended; dependency/hardware checks are rerun
+    through the original probe. No installed source or dependency pin changes.
+    """
+    with _compile_lock:
+        if not enabled:
+            yield
+            return
+        verify_dependency()
+        from urm.backends.triton.k3.route_generation import TritonSparseRouteBackend
+        from urm.ir.program import DType
+        original = TritonSparseRouteBackend.support_status
+        def support(spec):
+            if (spec.factor_extent == 512 and spec.route_width == 8
+                    and spec.dtype is DType.FLOAT32 and spec.output_index_dtype is DType.INT32):
+                return original(replace(spec, source_extent=256 ** 2))
+            return original(spec)
+        with patch.object(TritonSparseRouteBackend, "support_status", staticmethod(support)):
+            yield
 
 
 @lru_cache(None)
@@ -53,7 +83,7 @@ def snapshot_read(values, addresses, weights):
 
 
 @lru_cache(maxsize=128)
-def routed_read_plan(partitions, sequence, slots, dim, width):
+def routed_read_plan(partitions, sequence, slots, dim, width, allow_large_route=False):
     """Compose the public route and read operations, including URM backward."""
     verify_dependency()
     from urm.compiler.pipeline import CompilationIntent, compile_graph
@@ -72,14 +102,15 @@ def routed_read_plan(partitions, sequence, slots, dim, width):
         SparseStateMixerAccess(name="snapshot", inputs=("read_addresses", "read_weights", "memory"),
             outputs=("readings", "updated_memory"), spec=read)),
         outputs=("readings", "read_addresses", "read_weights"))
-    return compile_graph(program, target="native", intent=CompilationIntent.TRAINING)
+    with large_route_override(allow_large_route):
+        return compile_graph(program, target="native", intent=CompilationIntent.TRAINING)
 
 
-def routed_snapshot_read(values, scores, width):
+def routed_snapshot_read(values, scores, width, allow_large_route=False):
     import torch
     B, H, S, D = values.shape
     T = scores.shape[1]
-    plan = routed_read_plan(B * H, T, S, D, width)
+    plan = routed_read_plan(B * H, T, S, D, width, allow_large_route)
     grad_enabled = torch.is_grad_enabled()
     with torch.inference_mode(False), torch.set_grad_enabled(grad_enabled):
         memory = values.reshape(B * H, S, D)

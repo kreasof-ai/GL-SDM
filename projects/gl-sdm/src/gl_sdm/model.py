@@ -12,7 +12,7 @@ from gl_sdm.runtime.compilation import compiled
 
 def _head_loss(x, targets, norm, weight):
     x = F.rms_norm(x, (x.shape[-1],), norm, eps=1e-6)
-    logits = F.linear(x, weight).float()
+    logits = F.linear(x.to(weight.dtype), weight).float()
     logits = 15 * logits * (logits.square() + 225).rsqrt()
     return F.cross_entropy(logits.flatten(0, 1), targets.flatten(), reduction="sum")
 
@@ -24,11 +24,17 @@ class Model(nn.Module):
     def __init__(self, cfg):
         super().__init__()
         self.cfg = dict(cfg)
+        self.is_layer_stack = cfg["arch_type"] == "gl_sdm" and "gl_layer_pattern" in cfg
         dim, layers = cfg["hidden_size"], cfg["num_hidden_layers"]
         if layers < 1 or dim % cfg["head_dim"]:
             raise ValueError("positive layer count and hidden_size divisible by head_dim required")
         self.embed = nn.Embedding(cfg["vocab_size"], dim)
-        if cfg["arch_type"] == "gl_sdm":
+        if self.is_layer_stack:
+            from gl_sdm.layers.stack import make_layers
+            from gl_sdm.memory import MemoryBank
+            self.blocks = nn.ModuleList(make_layers(cfg))
+            self.bank = MemoryBank(dim // cfg["head_dim"], cfg["gl_slots"], cfg["head_dim"])
+        elif cfg["arch_type"] == "gl_sdm":
             from gl_sdm.layers.global_memory import GlobalMemoryBlock
             if layers != 1:
                 raise ValueError("GL-SDM uses one tied block; set num_hidden_layers=1 and gl_max_steps for depth")
@@ -41,11 +47,16 @@ class Model(nn.Module):
         self.to(dtype=getattr(torch, cfg.get("dtype", "bfloat16")))
 
     def head(self, x):
-        logits = self.proj(self.norm(x)).float()
+        logits = self.proj(self.norm(x).to(self.proj.weight.dtype)).float()
         return 15 * logits * (logits.square() + 15 ** 2).rsqrt()
 
     def hidden(self, inputs, cache=None):
         x = self.embed(inputs)
+        if self.cfg.get("residual_dtype") == "float32":
+            x = x.float()
+        if self.is_layer_stack:
+            from gl_sdm.layers.stack import forward
+            return forward(self, x, None if cache is None else cache[0])
         reg, align = x.new_zeros(()), x.new_zeros(())
         for i, block in enumerate(self.blocks):
             state = cache if self.cfg["arch_type"] == "gdn2" else (None if cache is None else cache[i])
@@ -55,14 +66,14 @@ class Model(nn.Module):
 
     def forward(self, inputs, targets):
         x, reg, align = self.hidden(inputs)
-        if self.cfg["arch_type"] == "gl_sdm" and self.cfg.get("gl_compile", False) and x.is_cuda and not self.blocks[0].attn.reference:
+        if self.cfg["arch_type"] == "gl_sdm" and self.cfg.get("gl_compile", False) and x.is_cuda and not any(b.attn.reference for b in self.blocks):
             return _compiled_head_loss(x, targets, self.norm.weight, self.proj.weight), reg, align
         logits = self.head(x)
         return F.cross_entropy(logits.reshape(-1, logits.shape[-1]), targets.reshape(-1), reduction="sum"), reg, align
 
     def new_cache(self, batch_size):
         if self.cfg["arch_type"] == "gl_sdm":
-            return [self.blocks[0].bank.new_cache(batch_size)]
+            return [(self.bank if self.is_layer_stack else self.blocks[0].bank).new_cache(batch_size)]
         if self.cfg["arch_type"] == "gdn2":
             return FLACache()
         if self.cfg["arch_type"] == "transformer":
@@ -94,7 +105,7 @@ class Model(nn.Module):
         else:
             try:
                 for block in self.blocks:
-                    block.attn.reference = True
+                    block.attn.reference = not (self.is_layer_stack and hasattr(block.attn, "window") and self.cfg.get("dtype") != "float32")
                     if hasattr(block, "local_context"):
                         # BF16 memory integration shares its SDPA surround;
                         # discrete routes amplify tiny dense-vs-flash rounding.

@@ -13,7 +13,7 @@ the separate [kreasof-ai/urm repository](https://github.com/kreasof-ai/urm).
 
 | Project | Research focus | Relationship |
 | --- | --- | --- |
-| [Global Liquid SDM](projects/gl-sdm/README.md) | Global sparse memory, tied recurrent reasoning, adaptive depth, and snapshot-and-commit writes | Establishes the core memory semantics |
+| [Global Liquid SDM](projects/gl-sdm/README.md) | Shared sparse memory, local/global layers, and delayed writes | Establishes the core memory semantics |
 | [Consolidated SDM](projects/csdm/README.md) | Fast/slow overlays, wake/sleep consolidation, stability, provenance, and rollback | Builds on GL-SDM semantics |
 
 Shared interfaces, benchmark definitions, experimental controls, and result
@@ -24,14 +24,15 @@ experiments, and acceptance tests stay within their project directory.
 
 The [GL-SDM baseline suite](projects/gl-sdm/README.md#models-and-experiments)
 uses ordinary PyTorch SDPA, upstream CUDA SDM, and FLA GDN2, independently of URM.
-The [GL-SDM model](projects/gl-sdm/src/gl_sdm/layers/global_memory.py) has a tied reasoner,
-adaptive or fixed depth and one global memory bank with snapshot-and-commit
-writes. It uses the same experiment interfaces as the three baselines.
-GL-SDM defines its own [transactional memory operator](projects/gl-sdm/src/gl_sdm/memory/__init__.py);
-its chunk path compiles routing and snapshot reads, including backward, with
-frozen URM. PyTorch compiles the tied reasoner and proposal arithmetic; GL-SDM
-owns deterministic buffered commits. Token transactions remain a control. CSDM consumes the GL-SDM
-memory contract and the same URM dependency.
+The [GL-SDM model](projects/gl-sdm/src/gl_sdm/layers/stack.py) currently uses
+16 distinct local/global layers, rolling local attention and one shared memory
+bank with a 128-token snapshot-and-commit clock. Weight loops and adaptive
+per-token depth are deferred. It uses the same experiment interfaces as the
+three baselines. GL-SDM defines its own
+[transactional memory operator](projects/gl-sdm/src/gl_sdm/memory/__init__.py),
+compiles routing and snapshot reads with frozen URM, and owns buffered commits.
+Its larger-bank experiment records a narrow runtime support override without
+editing URM or updating the pin. CSDM consumes the GL-SDM memory contract.
 URM source is maintained in its own repository.
 
 The accepted baseline is pinned to commit

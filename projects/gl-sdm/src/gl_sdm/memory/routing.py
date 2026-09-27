@@ -53,7 +53,8 @@ def routed_read(block, memory, scores, width, physical=None):
                 result = routed_read(block, memory, piece.flatten(1, 2), width, physical)
                 parts.append(tuple(t.reshape(*piece.shape[:-1], t.shape[-1]) for t in result))
             return tuple(torch.cat([p[j] for p in parts], 1) for j in range(3))
-        output, index, weights = routed_snapshot_read(memory if physical is None else physical, scores, width)
+        output, index, weights = routed_snapshot_read(memory if physical is None else physical, scores, width,
+            allow_large_route=getattr(block.attn, "experimental_large_route", False))
         output = output[..., :memory.shape[-1]]
     else:
         shape = scores.shape

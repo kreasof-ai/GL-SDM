@@ -2,14 +2,14 @@
   "run_id": "transformer",
   "arch_type": "transformer",
   "vocab_size": 50304,
-  "hidden_size": 512,
+  "hidden_size": 768,
   "head_dim": 64,
-  "num_hidden_layers": 8,
+  "num_hidden_layers": 16,
   "dtype": "bfloat16",
   "tokenizer_name": "gpt2",
   "seq_len": 512,
   "batch_size": 8192,
-  "mbs": 4,
+  "mbs": 1,
   "num_chunks": 1,
   "max_steps": 1000,
   "val_tokens": 8192,
@@ -44,5 +44,7 @@
   "num_needle_trials": 16,
   "needle_val_len": 5,
   "eval_seed": 1234,
-  "eval_after_train": false
+  "eval_after_train": false,
+  "intermediate_size": 3328,
+  "residual_dtype": "float32"
 }

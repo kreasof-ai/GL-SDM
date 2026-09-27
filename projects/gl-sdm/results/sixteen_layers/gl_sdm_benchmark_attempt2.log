@@ -1,0 +1,41 @@
+[W927 20:47:47.025707429 CUDACachingAllocator.cpp:3934] memory allocation failed with OOM on device 0 while trying to allocate 8589934592 bytes (free: 3327590400, total: 23686938624).
+[W927 20:47:47.385495402 CUDACachingAllocator.cpp:3934] memory allocation failed with OOM on device 0 while trying to allocate 8589934592 bytes (free: 4822859776, total: 23686938624).
+[W927 20:47:47.420289027 CUDACachingAllocator.cpp:3934] memory allocation failed with OOM on device 0 while trying to allocate 8589934592 bytes (free: 4824956928, total: 23686938624).
+
+===ABLATION_ERROR_JSON===
+{"error": "Traceback (most recent call last):\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/cli.py\", line 79, in main\n    result = run(model, cfg, args.device, args.iterations, args.warmup, args.peak_tflops)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/benchmark.py\", line 54, in run\n    logits, _ = model.prefill(x, cache) if name == \"prefill\" else model.decode(y[:, :1], cache)\n                ^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/conda/lib/python3.12/site-packages/torch/utils/_contextlib.py\", line 124, in decorate_context\n    return func(*args, **kwargs)\n           ^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/model.py\", line 89, in prefill\n    x, _, _ = self.hidden(inputs, cache)\n              ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/model.py\", line 59, in hidden\n    return forward(self, x, None if cache is None else cache[0])\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/layers/stack.py\", line 65, in forward\n    cache.view = commit(snapshot, merge(snapshot, proposals), backend=\"torch\" if reference else backend)\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/memory/transactions.py\", line 83, in commit\n    updated = native_commit(view.values, idx, delta, keys)\n              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/memory/backends/commit.py\", line 58, in commit\n    return _Commit.apply(memory, indices, deltas, indices if keys is None else keys)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/memory/backends/commit.py\", line 41, in forward\n    output = memory.clone()\n             ^^^^^^^^^^^^^^\ntorch.OutOfMemoryError: CUDA out of memory. Tried to allocate 8.00 GiB. GPU 0 has a total capacity of 22.06 GiB of which 4.49 GiB is free. Including non-PyTorch memory, this process has 17.56 GiB memory in use. Of the allocated memory 9.19 GiB is allocated by PyTorch, and 8.06 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)\n"}
+===END===
+
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/cli.py", line 107, in <module>
+    main()
+  File "/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/cli.py", line 79, in main
+    result = run(model, cfg, args.device, args.iterations, args.warmup, args.peak_tflops)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/benchmark.py", line 54, in run
+    logits, _ = model.prefill(x, cache) if name == "prefill" else model.decode(y[:, :1], cache)
+                ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/model.py", line 89, in prefill
+    x, _, _ = self.hidden(inputs, cache)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/model.py", line 59, in hidden
+    return forward(self, x, None if cache is None else cache[0])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/layers/stack.py", line 65, in forward
+    cache.view = commit(snapshot, merge(snapshot, proposals), backend="torch" if reference else backend)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/memory/transactions.py", line 83, in commit
+    updated = native_commit(view.values, idx, delta, keys)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/memory/backends/commit.py", line 58, in commit
+    return _Commit.apply(memory, indices, deltas, indices if keys is None else keys)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/memory/backends/commit.py", line 41, in forward
+    output = memory.clone()
+             ^^^^^^^^^^^^^^
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 8.00 GiB. GPU 0 has a total capacity of 22.06 GiB of which 4.49 GiB is free. Including non-PyTorch memory, this process has 17.56 GiB memory in use. Of the allocated memory 9.19 GiB is allocated by PyTorch, and 8.06 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)

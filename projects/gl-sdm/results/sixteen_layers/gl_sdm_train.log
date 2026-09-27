@@ -1,0 +1,124 @@
+
+===ABLATION_CONFIG_JSON===
+{"run_id": "gl_sdm", "arch_type": "gl_sdm", "vocab_size": 50304, "hidden_size": 512, "head_dim": 64, "num_hidden_layers": 16, "dtype": "bfloat16", "tokenizer_name": "gpt2", "seq_len": 512, "batch_size": 8192, "mbs": 1, "num_chunks": 1, "max_steps": 20, "val_tokens": 8192, "val_freq": 10, "optimizer": "adamw", "adamw_lr": 0.0003, "adamw_beta1": 0.9, "adamw_beta2": 0.95, "adamw_eps": 1e-15, "adamw_weight_decay": 0.1, "adamw_lr_min_frac": 0.1, "adamw_warmup_frac": 0.05, "sigr_alpha": 0.0, "dist_align_loss_weight": 0.0, "seed": 1234, "train_data": "data/finewebedu10B/finewebedu_train_*.bin", "val_data": "data/finewebedu10B/finewebedu_val_*.bin", "clean_dataset": "codelion/finepdfs-100M", "eval_lengths": [512, 1024, 2048, 4096], "needle_distances": [512, 1024, 2048, 4096], "num_eval_docs": 16, "num_needle_trials": 16, "needle_val_len": 5, "eval_seed": 1234, "eval_after_train": false, "intermediate_size": 2048, "gl_layer_pattern": ["local", "local", "global", "local"], "gl_local_window": 128, "gl_chunk_size": 128, "gl_slots": 262144, "gl_reads": 8, "gl_writes": 8, "gl_memory_backend": "urm", "gl_urm_large_route_override": true, "gl_compile": false, "residual_dtype": "float32", "attn_type": "gl_sdm", "runtime": {"torch": "2.14.0+cu130", "cuda": "13.0", "reference_fallback": false, "residual_dtype": "float32", "implementation": "GL-SDM transaction kernels + frozen URM", "memory_backend": "urm", "transaction": "one commit per 128 tokens", "state_dtype": "float32", "optimized_kernel": true, "dense_compilation": false, "training_cuda_graph": false, "local_context": "rolling causal SDPA, window 128 including current token", "write_mass": "sum token/layer deltas; no averaging", "routing": "URM product-key top-k; highest address wins ties", "layer_pattern": ["local", "local", "global", "local"], "physical_layers": 16, "weight_loops": 0, "shared_memory_banks": 1, "route_projection": "model-dtype GEMM, FP32 scores for URM top-k", "inference_read_value_dim": 64, "urm_large_route_override": true, "source_sha256": "02c0805c6f4dbf90c7554d9868f2ac8ebd3ea96e6172feeaac4e852d9d96a231", "urm": {"repository": "https://github.com/kreasof-ai/urm.git", "revision": "604bfdf5d2c827266a32ef142ca996cc712d70f0", "experimental_support_override": {"factor_extent": 512, "route_width": 8, "score_dtype": "float32", "index_dtype": "int32", "scope": "compiler support declaration only"}}, "logical_value_dim": 64, "physical_read_value_dim": 128, "initial_batch_read_plan": {"program": "gl_sdm_routed_snapshot_read", "steps": [{"step_id": 0, "kind": "anchor_dispatch", "anchor": "urm_native_sparse_route_selection_v0", "exchanges": [], "note": "router", "launch_config": {"schedule_family": "row_owned_factor_topk_canonical_softmax", "block_half": 512, "block_route": 8, "block_pair": 64, "num_warps": 4, "num_stages": 2}}, {"step_id": 1, "kind": "anchor_dispatch", "anchor": "urm_native_sparse_state_mixer_v0", "exchanges": [], "note": "snapshot", "launch_config": {"schedule_family": "partition_owned_ordered_token_scan", "block_d": 128, "num_warps": 4, "num_stages": 3, "tokens_per_program": -1, "read_timing": "current_state", "state_layout": "partition_slot_value"}}], "obligations": [], "escape_hatch_count": 0}, "commit": "stable ordered sum per address; no forward atomics", "backward_storage": "URM saves one aliased snapshot per chunk; selected write rows", "gpu": "NVIDIA A10G"}}
+===END===
+
+
+===VALIDATION_JSON===
+{"step": 0, "val_loss": 10.825838088989258, "wall_s": 0.0}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 1, "train_loss": 10.825838088989258, "seconds": 7.706167473981623}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 2, "train_loss": 10.803369283676147, "seconds": 7.352418075024616}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 3, "train_loss": 10.743116080760956, "seconds": 7.455952764023095}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 4, "train_loss": 10.602515697479248, "seconds": 7.366852262988687}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 5, "train_loss": 10.383741199970245, "seconds": 7.364439430006314}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 6, "train_loss": 10.204762816429138, "seconds": 7.346938474976923}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 7, "train_loss": 10.067662537097931, "seconds": 7.36762837698916}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 8, "train_loss": 9.977804720401764, "seconds": 7.3456275159842335}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 9, "train_loss": 9.857049822807312, "seconds": 7.354199881025124}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 10, "train_loss": 9.728258669376373, "seconds": 7.361203575972468}
+===END===
+
+
+===VALIDATION_JSON===
+{"step": 10, "val_loss": 9.647778153419495, "wall_s": 74.02142783097224, "num_params": 287664960, "active_params": 153447232, "memory_params": 134217728, "physical_layers": 16, "global_layers": 4, "local_layers": 12, "weight_loops": 0, "once_params": 135553792, "write_params": 17893440, "write_tokens": 55296, "tokens": 73728, "seconds": 66.31526035699062, "tok_s": 1111.780299181589, "effective_active_params": 148973872.0, "estimated_training_flops_6nd": 65901273808896, "mfu_6nd_pct": 1.4196532798491406, "unique_parameter_6nd_pct": 1.4622823671561145, "unique_parameter_6nd_interpretation": "capacity-normalized throughput proxy; does not count tied-weight reuse", "peak_tflops": 70.0, "mfu_interpretation": "execution-weighted 6ND estimate; preserves the parameter-count convention, excludes attention and sparse state FLOPs", "mfu_formula": "6 * (tokens * once_params + write_tokens * write_params) / seconds / peak_flops", "mfu": 1.4196532798491406, "step_ms": 7368.362261887847}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 11, "train_loss": 9.671111822128296, "seconds": 7.560593831993174}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 12, "train_loss": 9.554369449615479, "seconds": 7.8082827950129285}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 13, "train_loss": 9.513551712036133, "seconds": 7.544341990025714}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 14, "train_loss": 9.465492963790894, "seconds": 7.360555046994705}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 15, "train_loss": 9.39410948753357, "seconds": 7.371162411989644}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 16, "train_loss": 9.421636521816254, "seconds": 7.356457957997918}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 17, "train_loss": 9.337477564811707, "seconds": 7.352812196011655}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 18, "train_loss": 9.218837678432465, "seconds": 7.365993704996072}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 19, "train_loss": 9.384972095489502, "seconds": 7.379282986978069}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 20, "train_loss": 9.328733682632446, "seconds": 7.3720263880095445}
+===END===
+
+
+===VALIDATION_JSON===
+{"step": 20, "val_loss": 9.262594938278198, "wall_s": 148.49293714098167, "num_params": 287664960, "active_params": 153447232, "memory_params": 134217728, "physical_layers": 16, "global_layers": 4, "local_layers": 12, "weight_loops": 0, "once_params": 135553792, "write_params": 17893440, "write_tokens": 61440, "tokens": 81920, "seconds": 74.47150931000942, "tok_s": 1100.01799022206, "effective_active_params": 148973872.0, "estimated_training_flops_6nd": 73223637565440, "mfu_6nd_pct": 1.4046337651974723, "unique_parameter_6nd_pct": 1.446811849283813, "unique_parameter_6nd_interpretation": "capacity-normalized throughput proxy; does not count tied-weight reuse", "peak_tflops": 70.0, "mfu_interpretation": "execution-weighted 6ND estimate; preserves the parameter-count convention, excludes attention and sparse state FLOPs", "mfu_formula": "6 * (tokens * once_params + write_tokens * write_params) / seconds / peak_flops", "mfu": 1.4046337651974723, "step_ms": 7447.150931000942}
+===END===
+
+
+===ABLATION_CURVE_JSON===
+[{"step": 0, "val_loss": 10.825838088989258, "wall_s": 0.0}, {"step": 10, "val_loss": 9.647778153419495, "wall_s": 74.02142783097224, "num_params": 287664960, "active_params": 153447232, "memory_params": 134217728, "physical_layers": 16, "global_layers": 4, "local_layers": 12, "weight_loops": 0, "once_params": 135553792, "write_params": 17893440, "write_tokens": 55296, "tokens": 73728, "seconds": 66.31526035699062, "tok_s": 1111.780299181589, "effective_active_params": 148973872.0, "estimated_training_flops_6nd": 65901273808896, "mfu_6nd_pct": 1.4196532798491406, "unique_parameter_6nd_pct": 1.4622823671561145, "unique_parameter_6nd_interpretation": "capacity-normalized throughput proxy; does not count tied-weight reuse", "peak_tflops": 70.0, "mfu_interpretation": "execution-weighted 6ND estimate; preserves the parameter-count convention, excludes attention and sparse state FLOPs", "mfu_formula": "6 * (tokens * once_params + write_tokens * write_params) / seconds / peak_flops", "mfu": 1.4196532798491406, "step_ms": 7368.362261887847}, {"step": 20, "val_loss": 9.262594938278198, "wall_s": 148.49293714098167, "num_params": 287664960, "active_params": 153447232, "memory_params": 134217728, "physical_layers": 16, "global_layers": 4, "local_layers": 12, "weight_loops": 0, "once_params": 135553792, "write_params": 17893440, "write_tokens": 61440, "tokens": 81920, "seconds": 74.47150931000942, "tok_s": 1100.01799022206, "effective_active_params": 148973872.0, "estimated_training_flops_6nd": 73223637565440, "mfu_6nd_pct": 1.4046337651974723, "unique_parameter_6nd_pct": 1.446811849283813, "unique_parameter_6nd_interpretation": "capacity-normalized throughput proxy; does not count tied-weight reuse", "peak_tflops": 70.0, "mfu_interpretation": "execution-weighted 6ND estimate; preserves the parameter-count convention, excludes attention and sparse state FLOPs", "mfu_formula": "6 * (tokens * once_params + write_tokens * write_params) / seconds / peak_flops", "mfu": 1.4046337651974723, "step_ms": 7447.150931000942}]
+===END===

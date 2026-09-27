@@ -1,0 +1,114 @@
+[
+  {
+    "arch_type": "transformer",
+    "status": "passed",
+    "batch": 1,
+    "length": 129,
+    "logits_max_abs": 0.015593945980072021,
+    "logits_relative_l2": 0.005029726307839155,
+    "gradient_max_abs": 0.000152587890625,
+    "continuation_max_abs": 0.023225903511047363,
+    "dtype": "bfloat16",
+    "log": "projects/gl-sdm/results/sixteen_layers/transformer_verify.log",
+    "dot_precision": "upstream default; FP32 inputs do not imply IEEE internal dots"
+  },
+  {
+    "arch_type": "transformer",
+    "status": "passed",
+    "batch": 1,
+    "length": 129,
+    "logits_max_abs": 2.86102294921875e-06,
+    "logits_relative_l2": 7.277870395228092e-07,
+    "gradient_max_abs": 1.862645149230957e-08,
+    "continuation_max_abs": 3.6954879760742188e-06,
+    "dtype": "float32",
+    "log": "projects/gl-sdm/results/sixteen_layers/transformer_verify_fp32.log",
+    "dot_precision": "upstream default; FP32 inputs do not imply IEEE internal dots"
+  },
+  {
+    "arch_type": "gdn2",
+    "status": "failed",
+    "batch": 1,
+    "length": 129,
+    "error": "Traceback (most recent call last):\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/cli.py\", line 62, in main\n    result = check(cfg, args.device, length)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py\", line 55, in check\n    return _check(cfg, device, length)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py\", line 71, in _check\n    result = _check_once(cfg, device, length)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py\", line 101, in _check_once\n    errors[\"logits_max_abs\"] = compare(logits, expected, \"reference logits\", atol=5e-4 if cfg.get(\"dtype\") == \"float32\" else 0.03, rtol=0.003 if cfg.get(\"dtype\") == \"float32\" else 0.03)\n                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py\", line 14, in compare\n    torch.testing.assert_close(actual.float(), expected.float(), atol=atol, rtol=rtol, msg=lambda detail: f\"{label}\\n{detail}\")\n  File \"/opt/conda/lib/python3.12/site-packages/torch/testing/_comparison.py\", line 1689, in assert_close\n    raise error_metas[0].to_error(msg)\nAssertionError: reference logits\nTensor-likes are not close!\n\nMismatched elements: 5 / 6489216 (0.0%)\nGreatest absolute difference: 0.03735268861055374 at index (0, 67, 15998) (up to 0.03 allowed)\nGreatest relative difference: 13.371216773986816 at index (0, 79, 27585) (up to 0.03 allowed)\n",
+    "dtype": "bfloat16",
+    "log": "projects/gl-sdm/results/sixteen_layers/gdn2_verify.log",
+    "dot_precision": "upstream default; FP32 inputs do not imply IEEE internal dots"
+  },
+  {
+    "arch_type": "gdn2",
+    "status": "failed",
+    "batch": 1,
+    "length": 129,
+    "error": "Traceback (most recent call last):\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/cli.py\", line 62, in main\n    result = check(cfg, args.device, length)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py\", line 55, in check\n    return _check(cfg, device, length)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py\", line 71, in _check\n    result = _check_once(cfg, device, length)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py\", line 101, in _check_once\n    errors[\"logits_max_abs\"] = compare(logits, expected, \"reference logits\", atol=5e-4 if cfg.get(\"dtype\") == \"float32\" else 0.03, rtol=0.003 if cfg.get(\"dtype\") == \"float32\" else 0.03)\n                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py\", line 14, in compare\n    torch.testing.assert_close(actual.float(), expected.float(), atol=atol, rtol=rtol, msg=lambda detail: f\"{label}\\n{detail}\")\n  File \"/opt/conda/lib/python3.12/site-packages/torch/testing/_comparison.py\", line 1689, in assert_close\n    raise error_metas[0].to_error(msg)\nAssertionError: reference logits\nTensor-likes are not close!\n\nMismatched elements: 181249 / 6489216 (2.8%)\nGreatest absolute difference: 0.002590656280517578 at index (0, 113, 28814) (up to 0.0005 allowed)\nGreatest relative difference: 1352.2421875 at index (0, 90, 27917) (up to 0.003 allowed)\n",
+    "dtype": "float32",
+    "log": "projects/gl-sdm/results/sixteen_layers/gdn2_verify_fp32.log",
+    "dot_precision": "upstream default; FP32 inputs do not imply IEEE internal dots"
+  },
+  {
+    "arch_type": "sdm",
+    "status": "failed",
+    "batch": 1,
+    "length": 129,
+    "error": "Traceback (most recent call last):\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/cli.py\", line 62, in main\n    result = check(cfg, args.device, length)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py\", line 61, in check\n    result = _check(cfg, device, length)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py\", line 71, in _check\n    result = _check_once(cfg, device, length)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py\", line 99, in _check_once\n    errors[\"logits_max_abs\"], errors[\"logits_relative_l2\"] = compare_bf16_sdm(logits, expected, \"reference logits\")\n                                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py\", line 27, in compare_bf16_sdm\n    raise AssertionError(f\"{label}: BF16 relative L2 drift {relative.item():.6f} exceeds 5%\")\nAssertionError: reference logits: BF16 relative L2 drift 0.897321 exceeds 5%\n",
+    "dtype": "bfloat16",
+    "log": "projects/gl-sdm/results/sixteen_layers/sdm_verify.log",
+    "dot_precision": "upstream default; FP32 inputs do not imply IEEE internal dots"
+  },
+  {
+    "arch_type": "sdm",
+    "status": "failed",
+    "batch": 1,
+    "length": 129,
+    "error": "Traceback (most recent call last):\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/cli.py\", line 62, in main\n    result = check(cfg, args.device, length)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py\", line 61, in check\n    result = _check(cfg, device, length)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py\", line 71, in _check\n    result = _check_once(cfg, device, length)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py\", line 101, in _check_once\n    errors[\"logits_max_abs\"] = compare(logits, expected, \"reference logits\", atol=5e-4 if cfg.get(\"dtype\") == \"float32\" else 0.03, rtol=0.003 if cfg.get(\"dtype\") == \"float32\" else 0.03)\n                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py\", line 14, in compare\n    torch.testing.assert_close(actual.float(), expected.float(), atol=atol, rtol=rtol, msg=lambda detail: f\"{label}\\n{detail}\")\n  File \"/opt/conda/lib/python3.12/site-packages/torch/testing/_comparison.py\", line 1689, in assert_close\n    raise error_metas[0].to_error(msg)\nAssertionError: reference logits\nTensor-likes are not close!\n\nMismatched elements: 1566669 / 6489216 (24.1%)\nGreatest absolute difference: 0.6810310482978821 at index (0, 45, 984) (up to 0.0005 allowed)\nGreatest relative difference: 29324.15625 at index (0, 68, 16144) (up to 0.003 allowed)\n",
+    "dtype": "float32",
+    "log": "projects/gl-sdm/results/sixteen_layers/sdm_verify_fp32.log",
+    "dot_precision": "upstream default; FP32 inputs do not imply IEEE internal dots"
+  },
+  {
+    "arch_type": "gl_sdm",
+    "status": "failed",
+    "batch": 1,
+    "length": 129,
+    "error": "Traceback (most recent call last):\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/cli.py\", line 62, in main\n    result = check(cfg, args.device, length)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py\", line 37, in check\n    result = _check(cfg, device, length)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py\", line 71, in _check\n    result = _check_once(cfg, device, length)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py\", line 101, in _check_once\n    errors[\"logits_max_abs\"] = compare(logits, expected, \"reference logits\", atol=5e-4 if cfg.get(\"dtype\") == \"float32\" else 0.03, rtol=0.003 if cfg.get(\"dtype\") == \"float32\" else 0.03)\n                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py\", line 14, in compare\n    torch.testing.assert_close(actual.float(), expected.float(), atol=atol, rtol=rtol, msg=lambda detail: f\"{label}\\n{detail}\")\n  File \"/opt/conda/lib/python3.12/site-packages/torch/testing/_comparison.py\", line 1689, in assert_close\n    raise error_metas[0].to_error(msg)\nAssertionError: reference logits\nTensor-likes are not close!\n\nMismatched elements: 4077280 / 6489216 (62.8%)\nGreatest absolute difference: 1.4285529851913452 at index (0, 14, 35624) (up to 0.03 allowed)\nGreatest relative difference: 1640962.0 at index (0, 113, 35456) (up to 0.03 allowed)\n",
+    "dtype": "bfloat16",
+    "log": "projects/gl-sdm/results/sixteen_layers/gl_sdm_verify.log",
+    "dot_precision": "upstream default; FP32 inputs do not imply IEEE internal dots"
+  },
+  {
+    "arch_type": "gl_sdm",
+    "status": "passed",
+    "batch": 1,
+    "length": 129,
+    "logits_max_abs": 2.086162567138672e-06,
+    "logits_relative_l2": 5.177618049856392e-07,
+    "gradient_max_abs": 1.7695128917694092e-08,
+    "continuation_max_abs": 3.2186508178710938e-06,
+    "native_calls": {
+      "urm_route_read": 96,
+      "commit": 6
+    },
+    "memory_backend": "urm",
+    "dtype": "float32",
+    "log": "projects/gl-sdm/results/sixteen_layers/gl_sdm_verify_fp32.log",
+    "dot_precision": "upstream default; FP32 inputs do not imply IEEE internal dots"
+  },
+  {
+    "arch_type": "sdm",
+    "status": "passed",
+    "batch": 1,
+    "length": 129,
+    "logits_max_abs": 2.682209014892578e-06,
+    "logits_relative_l2": 7.749613359919749e-07,
+    "gradient_max_abs": 2.421438694000244e-08,
+    "continuation_max_abs": 4.0531158447265625e-06,
+    "cuda_calls": {
+      "sparse_inner_product": 224,
+      "warp_cooperative_gather": 0
+    },
+    "dtype": "float32",
+    "dot_precision": "TRITON_F32_DEFAULT=ieee",
+    "interpretation": "separate precision diagnostic; not the benchmark configuration",
+    "command": "PYTORCH_ALLOC_CONF=max_split_size_mb:512 TRITON_F32_DEFAULT=ieee gl-sdm verify --config projects/gl-sdm/results/sixteen_layers/sdm_verify_fp32_config.json --verify-batch-size 1 --length 129"
+  }
+]

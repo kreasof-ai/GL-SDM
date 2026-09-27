@@ -42,10 +42,44 @@ MFU is an explicit 6ND estimate with the sparse learned memory bank excluded.
 GL-SDM weights N by observed reasoning execution and write execution; it does
 not multiply embeddings, the vocabulary head or local context by tied depth.
 No Transformer attention FLOP proxy is assigned to recurrent baselines. A10G
-uses 70 dense BF16 TFLOP/s. All parameter counts are also recorded. Equal-width
-configs are starting points, **not parameter-matched quality claims**.
+uses 70 dense BF16 TFLOP/s. All parameter counts are also recorded. Earlier equal-width
+controls were not capacity matched. The current suite approximately matches
+parameter capacity, not FLOPs.
 
-## GL-SDM
+## Current GL-SDM stack
+
+`layers/stack.py` and `layers/global_layer.py` implement the current untied
+16-layer model. Twelve full local attention/MLP blocks alternate with four
+global read/MLP blocks according to the repeated local/local/global/local
+pattern. One learned FP32 bank is registered on the model. All global layers
+read a chunk-start snapshot; token/layer write deltas are summed without
+averaging and committed once per 128 tokens. Local attention has a rolling
+128-token window and absolute RoPE positions across commits.
+
+Routing and snapshot reads, including backward, use the installed frozen URM
+package. The project adapter temporarily extends only the factor-512,
+eight-route FP32/INT32 support declaration during compilation. The original
+probe still checks dependencies and hardware and is restored after compilation.
+The actual native route/read plan and override are recorded in artifacts.
+Dependency files and installed URM source are unchanged.
+
+Training pads logical read width 64 to physical width 128 to select the existing
+URM gradient schedule. Inference reads width 64 directly: it has no backward
+and padding would duplicate large banks unnecessarily. The existing ordered
+commit kernel is reused; the new stack adds no architecture-specific kernel.
+Dense projections and local SDPA use ordinary PyTorch. All four primary models
+use BF16 dense weights with FP32 residual accumulation. The smaller SDM test
+oracle executes the exact sequential update over the union of read/write rows;
+it is independently checked against the original dense equation and never
+used as a production fallback.
+
+The current stack counts each physical layer once in 6ND. Sparse bank entries
+are excluded, and unused terminal-chunk write projections are excluded.
+Capacity matching is not FLOP matching. Exact attention and sparse-state FLOPs
+remain outside this estimate. Reference failures remain failures; a performance
+or short training pilot is not a claim of converged quality or precision parity.
+
+## Earlier GL-SDM controls
 
 `layers/global_memory.py` and `memory/` implement this repository's proposed model;
 they do not wrap a baseline as GL-SDM. They reuse the ATMA model/head/block

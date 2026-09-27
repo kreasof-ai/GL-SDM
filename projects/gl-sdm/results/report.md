@@ -1,147 +1,132 @@
-# GL-SDM kernel results
+# Sixteen-layer experiments
 
-Corrected, execution-weighted **6ND MFU estimates are 50.53% for four reasoning
-passes and 38.08% for eight** on an NVIDIA A10G. The eight-pass configuration
-remains below the 40% target. Reasoning passes occur inside each training
-forward/backward; they are not optimizer updates.
-Long whole-model reference checks still fail their strict
-elementwise limits; this is a performance result with an unresolved precision
-limitation, not a claim that GL-SDM is ready to freeze for quality comparisons.
+All four models use **16 distinct layers with no weight loops**. They completed
+native-kernel benchmarks and a 20-update FineWeb-Edu training pilot. GL-SDM has
+12 local layers and four global layers, one shared bank, a rolling local window
+of 128 and a delayed write chunk of 128. Writes are summed without averaging.
 
-## Complete training steps
+**The 40% MFU target is not met.** GL-SDM measures 1.42% on this larger-bank,
+128-token-chunk workload. Its full-size FP32 reference check passes, but the
+BF16 check fails. GDN2 and SDM also fail the current default-precision gates.
+These timings therefore describe experimental implementations, not a validated
+quality comparison. No failed check was bypassed with a reference kernel.
 
-All rows use BF16, width 512, vocabulary 50,304, eight heads, 4,096 slots/head,
-eight read/write routes, chunk size 1,024, sequence length 2,048 and 8,192
-tokens/update with microbatch 4. They time forward, backward, clipping and AdamW.
-The model has 57,823,824 unique active parameters and 2,097,152 learned memory
-parameters. MFU now accounts for tied-weight reuse, using A10G's 70 dense BF16
-TFLOP/s. It estimates training work as:
+## Workload
 
-`6 × (tokens × once_params + reasoner_token_passes × reasoner_params + write_token_passes × write_params)`
+The [primary configs](../configs/) specify the sizes listed in the
+[project README](../README.md#models-and-experiments). SDM and GL-SDM each have
+134,217,728 learned bank entries; SDM splits them across 16 banks, while GL-SDM
+shares one bank across its four global layers. Transformer and GDN2 use width
+768 and FFN width 3,328; the memory models use width 512 and FFN width 2,048.
+Capacity is approximately matched. FLOPs are not matched.
 
-The once-only group has 53,088,256 parameters, the repeated reasoner 3,939,392,
-and write projections 796,176. The final training chunk omits writes, so only
-half the tokens execute write projections in these two-chunk configurations.
-Effective N is 70,438,176 for four passes and 87,788,096 for eight. ACT metrics
-use observed per-token depth and position rather than the maximum depth.
-This extends the forward/backward 6N estimate in
-[PaLM Appendix B](https://arxiv.org/html/2204.02311v5) by counting tied-weight execution.
+Measurements ran serially on one A10G, PyTorch 2.14.0+cu130 and Triton 3.8.
+Training uses BF16 dense weights, FP32 residuals, sequence length 512,
+8,192 tokens/update and microbatch one. Timings include forward, backward,
+gradient clipping and AdamW. There are three warmups and five measured updates.
+All models use `PYTORCH_ALLOC_CONF=max_split_size_mb:512`.
 
-This is still a 6ND parameter-count estimate: it includes embeddings, biases and
-normalization parameters under that convention, and excludes attention and
-sparse state FLOPs. It is not an exact GPU instruction count. The former
-41.48%/25.08% figures are retained as unique-parameter throughput proxies.
+MFU estimates **6ND** against 70 dense BF16 TFLOP/s. The sparse bank is excluded
+from N, and each physical layer counts once. GL-SDM omits unused write
+projections in the terminal training chunk, giving effective N = 148,973,872
+for length 512. Attention and sparse-state arithmetic are outside this estimate.
+MFU uses total measured time; the step column is the median, so the two need
+not be exact reciprocals.
 
-| Configuration | CUDA graph | Median step | Estimated MFU | Unique-parameter proxy |
-| --- | --- | ---: | ---: | ---: |
-| [Four passes, URM](gl_sdm_chunk_r4_benchmark.json) | Yes | 97.88 ms | **50.53%** | 41.48% |
-| [Eight passes, URM](gl_sdm_chunk_r8_benchmark.json) | Yes | 161.91 ms | **38.08%** | 25.08% |
-| [Four passes, PyTorch control](gl_sdm_chunk_r4_torch_control.json) | No | 125.85 ms | 39.34% | 32.30% |
-| [Four passes, URM control](gl_sdm_chunk_r4_urm_control.json) | No | 99.83 ms | 49.55% | 40.67% |
+## Throughput
 
-The first two rows have 10 warmups and 20 samples. The control pair has three
-warmups and five samples, with identical code/config except the memory backend;
-URM improves this matched training step by **1.26×**. GPU measurements run alone.
-A [fresh eight-pass check](gl_sdm_chunk_r8_mfu_check.json), with three warmups
-and five samples, records **37.98%** with the corrected live calculation.
-Step-end allocated memory is exactly flat in each artifact. Whole-benchmark
-peak allocation is about 8 GiB; peak reservation is 12.47 GiB for four passes and
-15.02 GiB for eight. Graph pools account for additional reserved memory.
-There are no OOM retries, smaller-workload substitutions or reference fallbacks.
-Four-pass URM prefill processes 8,192 tokens in 86.13 ms. Four-request decode
-after a 2,048-token context takes 5.97 ms. The matched PyTorch control takes
-114.48 ms and 6.70 ms respectively; inference uses the ordinary serving runner.
+| Model | Median update, ms | Training tokens/s | 6ND MFU | Peak allocated, GiB |
+| --- | ---: | ---: | ---: | ---: |
+| [Transformer](sixteen_layers/transformer_benchmark_attempt2.json) | 905.0 | 9,071 | 19.23% | 7.03 |
+| [GDN2](sixteen_layers/gdn2_benchmark_attempt2.json) | 2,021.0 | 4,055 | 9.04% | 6.73 |
+| [SDM](sixteen_layers/sdm_benchmark_attempt2.json) | 3,314.2 | 2,336 | 2.97% | 10.70 |
+| [GL-SDM](sixteen_layers/gl_sdm_benchmark_attempt4.json) | 7,366.2 | 1,108 | 1.42% | 17.20 |
 
-## What changed
+Inference measures 16 independent requests with 512-token prompts. Cache
+construction is outside timing; decode excludes its preparatory prefill.
 
-Tokens within a chunk reason in parallel against its immutable starting bank.
-A local causal SDPA surround supplies context within the chunk. Reasoning passes
-and chunk boundaries remain sequential. Writes become visible only at an
-absolute chunk boundary; this changes the write clock from the earlier token
-model. The token controls remain available as `gl_sdm_token*` configs. Their
-[historical results](token_results.md) are not a matched speed comparison.
+| Model | Prefill tokens/s | Decode tokens/s | Median decode batch, ms |
+| --- | ---: | ---: | ---: |
+| Transformer | 50,344 | 839 | 19.17 |
+| GDN2 | 48,151 | 583 | 27.49 |
+| SDM | 30,360 | 614 | 25.85 |
+| GL-SDM | 10,695 | 679 | 23.62 |
 
-The chunk path uses frozen URM's public product-key routing and snapshot-read
-operators, including both backwards. Its compiled graph contains two native
-operators and zero escapes. Padding logical read width 64 to physical width 128
-selects URM's existing vector schedule and avoids fragmented bank-gradient
-launches; retrieved width and capacity remain unchanged. URM source and its
-[dependency pin](../../../shared/requirements-urm.txt) are unchanged.
+The first GL-SDM inference attempt unnecessarily padded the full request bank.
+The next retained the preceding request cache in the timing loop and exhausted
+memory during a commit. Inference now reads logical width 64 directly, and the
+runner releases each request's cache and logits before constructing the next.
+The common allocator setting prevents fragmentation of large state blocks.
+Failed attempts remain in the [manifest](sixteen_layers/manifest.json).
+The successful run uses the same model, batch and sequence sizes; there is no
+OOM fallback. GL-SDM's five training step-end allocations are identical at
+2.377 GiB, with peak reserved memory 21.313 GiB across the benchmark stages.
 
-The project owns versioned buffered commits, which frozen URM cannot execute.
-Fixed-depth write projections are batched after reasoning; PyTorch compiles
-dense reasoning, proposal arithmetic and vocabulary loss. Optional CUDA graphs
-capture fixed-depth forward/backward. ACT compacts finished tokens and uses the
-regular runner. No new architecture-specific Triton kernel was added.
+## Training pilot
 
-## Correctness and precision
+Each model consumed 163,840 training tokens over 20 updates, with validation
+on 8,192 tokens at updates 0, 10 and 20. Checkpoints include optimizer, RNG and
+data position. Initial validation loss is 10.8258 nats/token for all models,
+consistent with ATMA's zero-initialized output head.
 
-All **77 tests pass**, including the three independent upstream baselines,
-causality, absolute chunk boundaries, cache continuation, canonical collision
-order, ACT compaction, checkpoints and CUDA-graph optimizer updates. The new
-production-bank operand test independently checks URM addresses, weights, reads
-and all read gradients against PyTorch at 4,096 slots/head and width 64, including
-the padded schedule. Native backward execution is observed explicitly.
+| Model | Validation loss after 20 updates, nats/token | Training time, s |
+| --- | ---: | ---: |
+| [Transformer](sixteen_layers/transformer_pilot.json) | 8.7441 | 18.39 |
+| [GDN2](sixteen_layers/gdn2_pilot.json) | 8.8024 | 41.31 |
+| [SDM](sixteen_layers/sdm_pilot.json) | 9.3461 | 66.72 |
+| [GL-SDM](sixteen_layers/gl_sdm_pilot.json) | 9.2626 | 148.49 |
 
-The [full-vocabulary smoke reference](gl_sdm_chunk_reference.json) passes its
-output and parameter-gradient gates. It records 0.158% BF16 relative L2 output
-drift and 0.790% split-continuation drift. BF16 shares production SDPA in this
-memory reference; an independent strict FP32 check also exercises dense causal
-attention. Changing SDPA/GEMM shapes reproduces approximately the same 0.790%
-continuation drift with the pure PyTorch memory backend. BF16 chunk continuation
-therefore has an explicit 1% relative L2 bound; output/gradient gates are unchanged.
+This is a pipeline pilot, not converged training or an architectural quality
+ranking. The configured 1,000-update budget and long-context/needle evaluations
+have not been run. Pilot configs preserve the primary model and workload;
+only the update budget and validation interval change.
 
-The [large-bank diagnostic](gl_sdm_chunk_large_bank_precision.json), at width
-512, four reasoning passes and 1,025 tokens spanning a commit, **fails** its strict output
-gate: BF16 relative L2 drift is 0.560%, but maximum logit difference is 0.160.
-Every BF16 parameter-gradient gate passes in that run. Its independent FP32
-whole-model check also fails, with maximum logit difference 0.0461. The
-[shorter-chunk diagnostic](gl_sdm_chunk_short_bank_precision.json) also fails
-BF16 output/gradient gates, while its strict FP32 check passes. Sparse route
-sensitivity is consistent with these results, but the long-model discrepancy
-is unresolved. Failed checks remain failed in their artifacts; passing operand
-tests and MFU do not replace a passing whole-model reference gate.
-The BF16 trace starts with identical selected addresses and a read difference
-of only 1.49e-8; later passes select different addresses. It records the propagation
-of that precision difference explicitly.
+## Reference checks
 
-## Training and inference
+These checks use the full parameter and bank sizes, batch one and length 129,
+so GL-SDM crosses a memory commit boundary. Existing tolerances are unchanged.
+The [verification summary](sixteen_layers/verification_summary.json) includes
+commands, errors and native-call evidence.
 
-[Three real FineWeb-Edu updates](gl_sdm_chunk_validation.json) process 24,576
-tokens, reaching an estimated 50.91–51.05% MFU after capture initialization. Validation
-CE falls from 10.8258 to 10.7670 nats/token. Strict checkpoint parameters reload
-exactly. A trained 1,030-token prefill crosses a commit boundary, split
-continuation differs by 0.241% relative L2, and four-token generation completes.
-Evaluation at lengths 1,024/2,048 and needle/absent-control execution also complete.
-The needle haystack is a validation stream for a protocol smoke check. These
-short runs establish execution, not converged quality or retrieval ability.
+| Model | BF16 weights / FP32 residuals | FP32 weights / default dot precision |
+| --- | --- | --- |
+| Transformer | Pass | Pass |
+| GDN2 | Fail: reference logits | Fail: reference logits |
+| SDM | Fail: relative L2 drift 89.7% | Fail: reference logits |
+| GL-SDM | Fail: reference logits | Pass |
 
-## Reproduction
+GL-SDM's [FP32 check](sixteen_layers/gl_sdm_verify_fp32.json) has maximum logit
+error 2.09e-6, gradient error 1.77e-8 and split-continuation error 3.22e-6.
+It exercises native URM routing/read backward, project-owned commits,
+causality, cache reset and checkpoint restoration. BF16 route sensitivity
+remains unresolved; FP32 correctness does not establish BF16 parity.
 
-PyTorch 2.14.0+cu130, Triton 3.8, A10G; dense TF32 disabled. Timing and training
-were measured at commit `8067f31`; their original runtime fingerprints remain.
-The correction recalculates only FLOP accounting from unchanged timings and
-measured fixed-depth telemetry. Each artifact records the accounting code's
-SHA-256 separately in `mfu_accounting`; no speedup is claimed from this change.
-Those artifacts record complete configs, native plans, frozen URM revision
-`604bfdf5d2c827266a32ef142ca996cc712d70f0`, and the same source SHA-256
-`8440659792d33cb59ba909c36f55a7b99d787b2b45c00a866e445b59c1661122`.
+SDM's [separate FP32 IEEE-dot control](sixteen_layers/sdm_verify_fp32_ieee.json)
+passes with maximum logit error 2.68e-6 and gradient error 2.42e-8. Setting
+`TRITON_F32_DEFAULT=ieee` retains the actual upstream implementation, but changes
+its internal dot precision. The passing control identifies default TF32 dots
+as a cause of the FP32 failure; it is **not** the benchmark configuration.
+FLA also explicitly requests TF32 in its GDN2 triangular solve on A10G, so
+FP32 inputs alone do not imply IEEE arithmetic. GDN2's FP32 failure remains
+unresolved, as do the BF16 SDM and GL-SDM failures.
 
-```bash
-python -m pytest -q projects/gl-sdm/tests
-python projects/gl-sdm/scripts/recalculate_mfu.py projects/gl-sdm/results/gl_sdm_chunk_r8_benchmark.json
-gl-sdm benchmark --config projects/gl-sdm/configs/gl_sdm_chunk_r4.json \
-  --warmup 10 --iterations 20 --output /tmp/gl_sdm_r4.json
-gl-sdm benchmark --config projects/gl-sdm/configs/gl_sdm_chunk_r8.json \
-  --warmup 10 --iterations 20 --output /tmp/gl_sdm_r8.json
-python projects/gl-sdm/scripts/benchmark_chunk_controls.py --output-dir /tmp/gl_sdm_controls
-gl-sdm verify --config projects/gl-sdm/configs/gl_sdm_chunk_smoke.json
-python projects/gl-sdm/scripts/check_chunk_precision.py --output /tmp/gl_sdm_precision.json
-python projects/gl-sdm/scripts/check_chunk_precision.py --chunk-size 16 --length 65 \
-  --output /tmp/gl_sdm_short_precision.json
-```
+## GL-SDM bottleneck and validation
 
-The last two commands return nonzero when their unchanged strict gates fail,
-after saving the diagnostic. The Transformer remains ordinary PyTorch SDPA,
-SDM uses Meta's actual CUDA extensions, and GDN2 uses FLA; none uses URM.
-Their earlier [baseline integration results](smoke_validation.json) are preserved.
+A [one-microbatch profile](sixteen_layers/gl_sdm_memory_profile.json) attributes
+56.2% of GPU kernel time to FP32 additions and 21.8% to FP32 fills. Shape
+attribution shows repeated full-bank gradients and accumulation. The current
+training adapter pads width 64 to 128; each native read backward allocates a
+1 GiB dense bank gradient, although only routed rows contribute.
+[URM integration notes](urm_notes.md) distinguish this adapter cost from
+possible reusable URM improvements. The frozen dependency and its pin remain
+unchanged; the factor-512 support override is recorded explicitly.
+
+Automated tests cover the shared snapshot, unaveraged writes, all global-layer
+write gradients, sliding-window continuity, cache lifetime, large native URM
+routing/read gradients, support-probe restoration and checkpoint resume.
+The final test result and wheel build are recorded in
+[validation.json](sixteen_layers/validation.json).
+
+The [earlier tied-weight results](loop_results.md) are historical controls.
+Their repeated reasoning weights, smaller banks and different write clock do
+not describe this experiment or establish 40–50% MFU for the current model.

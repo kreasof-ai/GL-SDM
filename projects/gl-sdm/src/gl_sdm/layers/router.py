@@ -28,6 +28,7 @@ class GlobalRouter(nn.Module):
         self.proj = nn.Linear(dim, dim)
         self.read_norm = RMSNorm(dk)
         self.backend = cfg.get("gl_memory_backend", "torch")
+        self.experimental_large_route = cfg.get("gl_urm_large_route_override", False)
         if self.backend not in {"torch", "urm"}:
             raise ValueError("gl_memory_backend must be torch or urm")
         if self.backend == "urm":

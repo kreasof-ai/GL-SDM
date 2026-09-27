@@ -30,7 +30,7 @@ def run(model, cfg, device, iterations=10, warmup=3, peak=None):
         times.append(time.perf_counter() - t0)
         if torch.device(device).type == "cuda":
             allocations.append(torch.cuda.memory_allocated() / 1024**3)
-        if cfg["arch_type"] == "gl_sdm":
+        if cfg["arch_type"] == "gl_sdm" and not model.is_layer_stack:
             # Keep telemetry on CPU so the allocation trace measures model
             # state rather than an ever-growing list of GPU depth tensors.
             depths.append(model.last_training_depth.cpu())
@@ -39,6 +39,9 @@ def run(model, cfg, device, iterations=10, warmup=3, peak=None):
         result["training"]["step_end_allocated_gib"] = allocations
     del opts
     model.eval()
+    if torch.device(device).type == "cuda":
+        # Training buffers need not fragment the much larger serving states.
+        torch.cuda.empty_cache()
     for name in ("prefill", "decode"):
         times = []
         with torch.inference_mode():
@@ -48,18 +51,22 @@ def run(model, cfg, device, iterations=10, warmup=3, peak=None):
                 # across independent requests.
                 cache = model.new_cache(x.shape[0])
                 if name == "decode":
-                    _, cache = model.prefill(x, cache)
+                    prefill_logits, cache = model.prefill(x, cache)
+                    del prefill_logits
                 synchronize(device)
                 t0 = time.perf_counter()
-                logits, _ = model.prefill(x, cache) if name == "prefill" else model.decode(y[:, :1], cache)
+                logits, cache = model.prefill(x, cache) if name == "prefill" else model.decode(y[:, :1], cache)
                 synchronize(device)
                 elapsed = time.perf_counter() - t0
                 if not torch.isfinite(logits).all():
                     raise FloatingPointError("non-finite benchmark logits")
                 if i >= warmup:
                     times.append(elapsed)
+                # Every timing sample owns one independent request. Retaining
+                # the returned cache in '_' keeps the preceding bank alive.
+                del logits, cache
             result[name] = {"median_ms": 1000 * statistics.median(times), "tokens_per_second": (x.numel() if name == "prefill" else x.shape[0]) * iterations / sum(times), "context_tokens": x.shape[1]}
-            if cfg["arch_type"] == "gl_sdm":
+            if cfg["arch_type"] == "gl_sdm" and not model.is_layer_stack:
                 result[name].update(model.blocks[0].reasoning_metrics())
     if torch.device(device).type == "cuda":
         result["peak_allocated_gib"] = torch.cuda.max_memory_allocated() / 1024**3

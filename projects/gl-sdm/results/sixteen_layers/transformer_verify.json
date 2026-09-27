@@ -1,0 +1,10 @@
+{
+  "arch_type": "transformer",
+  "status": "passed",
+  "batch": 1,
+  "length": 129,
+  "logits_max_abs": 0.015593945980072021,
+  "logits_relative_l2": 0.005029726307839155,
+  "gradient_max_abs": 0.000152587890625,
+  "continuation_max_abs": 0.023225903511047363
+}

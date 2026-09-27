@@ -4,15 +4,15 @@
   "vocab_size": 50304,
   "hidden_size": 64,
   "head_dim": 32,
-  "num_hidden_layers": 2,
+  "num_hidden_layers": 16,
   "dtype": "bfloat16",
   "tokenizer_name": "gpt2",
-  "seq_len": 65,
-  "batch_size": 130,
+  "seq_len": 129,
+  "batch_size": 258,
   "mbs": 2,
   "num_chunks": 1,
   "max_steps": 3,
-  "val_tokens": 130,
+  "val_tokens": 258,
   "val_freq": 1,
   "optimizer": "adamw",
   "adamw_lr": 0.0003,
@@ -29,22 +29,24 @@
   "val_data": "data/finewebedu10B/finewebedu_val_*.bin",
   "clean_dataset": "codelion/finepdfs-100M",
   "eval_lengths": [
-    65,
-    129
+    129,
+    257
   ],
   "needle_distances": [
-    65,
-    129
+    129,
+    257
   ],
   "num_eval_docs": 2,
   "num_needle_trials": 2,
   "needle_val_len": 5,
   "eval_seed": 1234,
   "eval_after_train": false,
-  "sdm_slots": 64,
+  "sdm_slots": 16,
   "sdm_reads": 4,
   "sdm_writes": 4,
   "sdm_chunk": 16,
   "sdm_output_gate": true,
-  "sdm_normalize_readings": true
+  "sdm_normalize_readings": true,
+  "residual_dtype": "float32",
+  "intermediate_size": 256
 }

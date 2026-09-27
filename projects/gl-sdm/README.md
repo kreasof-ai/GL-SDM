@@ -1,237 +1,135 @@
-# Project I: Global Liquid SDM
+# Global Liquid SDM
 
-[Read the complete proposal](../../docs/research-program.md#proposal-i).
-
-## Research question
-
-Can a weight-tied model allocate variable computation per token while repeatedly
-accessing one globally shared, model-scale sparse delta memory, improving the
-quality-compute-capacity frontier?
+The current experiment compares four models with **16 distinct physical layers,
+no weight loops**: a full Transformer, FLA GDN2, upstream CUDA SDM and GL-SDM.
+Adaptive per-token depth is deferred. The original research proposal is in
+[the research program](../../docs/research-program.md#proposal-i).
 
 ## Models and experiments
 
-The proposed [GL-SDM model](src/gl_sdm/layers/global_memory.py) is registered as
-`arch_type: gl_sdm` and runs through the same training, inference, reference,
-evaluation and benchmark commands as its baselines. Start with the
-[code guide](src/gl_sdm/README.md) to inspect the model and memory implementation.
+| Model | Width | FFN intermediate | Static parameters | Learned bank entries | Total parameters |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Transformer | 768 | 3,328 | 247,341,824 | 0 | 247,341,824 |
+| GDN2 | 768 | 3,328 | 260,036,544 | 0 | 260,036,544 |
+| SDM | 512 | 2,048 | 148,294,656 | 134,217,728 | 282,512,384 |
+| GL-SDM | 512 | 2,048 | 153,447,232 | 134,217,728 | 287,664,960 |
 
-The baseline suite has exactly three models: a full Transformer using ordinary
-PyTorch and SDPA, Meta's upstream CUDA SDM, and FLA's GDN2. Every layer uses the
-chosen mixer. These baselines have no URM calls. GL-SDM's chunk path uses frozen URM for routing and snapshot reads, including
-backward. PyTorch compiles the dense reasoner and write arithmetic; the project
-owns ordered sparse commits.
+All use vocabulary 50,304 and head dimension 64. Dense weights use BF16 with
+FP32 residual accumulation. Parameter capacity is comparable; FLOPs are not
+matched. The bank is sparse state, not a dense matrix multiplied by every token.
 
-Models follow ATMA's `embed`, `blocks`, `norm`, `proj` structure.
-`model(inputs, targets)` returns summed CE, regularization loss and an auxiliary
-loss; each block returns hidden states and the two auxiliary losses. ATMA-style
-evaluation can traverse the blocks directly. Checkpoints contain `config.json`,
-`run_config.json`, `weights.pt` with a `model` state dict, and tokenizer metadata.
-Logs retain `ABLATION_CONFIG_JSON`, `ABLATION_CURVE_JSON`, `ABLATION_EVAL_JSON`
-and `ABLATION_ERROR_JSON` blocks. See [source mapping](PROVENANCE.md).
+The Transformer uses ordinary PyTorch and SDPA in every layer. SDM uses Meta's
+actual CUDA implementation, with 16 separate banks of 16,384 slots/head. GDN2
+uses FLA's actual GatedDeltaNet2, including its short convolution. The three
+baselines have no URM calls. Source pins and adaptations are documented in
+[PROVENANCE.md](PROVENANCE.md).
 
-Install from the repository root:
+## GL-SDM forward
+
+The layer pattern **local → local → global → local** repeats four times:
+12 local sliding-window attention/MLP blocks and four global read/MLP blocks.
+Every block has its own weights. Only the learned memory and runtime bank are
+shared: eight heads, 262,144 slots/head, width 64, eight read/write routes.
+
+1. Freeze the shared bank at the start of each 128-token chunk.
+2. Execute layers 1 through 16 once. Each local layer attends to the current
+   token and up to 127 preceding tokens, including tokens in earlier chunks.
+3. Each global layer reads the same chunk-start snapshot and proposes a delta
+   from its updated hidden state. Writes are not visible between global layers.
+4. After the chunk finishes, sum token/layer deltas by address and commit once.
+   There is **no division by token count or global-layer count**. Learned gates
+   control update strength. Collisions are ordered by address, token and layer.
+
+Training processes chunks in sequence and tokens within a chunk in parallel.
+The last training chunk omits outgoing writes when there is no state consumer.
+Serving retains pending writes across calls, commits at absolute boundaries,
+and keeps each local layer's sliding KV history across commits. State is per
+request; the learned initializer is never mutated during inference.
+
+Start reading at [model.py](src/gl_sdm/model.py), then
+[layers/stack.py](src/gl_sdm/layers/stack.py) and
+[layers/global_layer.py](src/gl_sdm/layers/global_layer.py).
+The [code guide](src/gl_sdm/README.md) maps memory and experiment operations.
+The reusable [memory API](src/gl_sdm/memory/__init__.py) belongs to this project
+and remains available to CSDM.
+
+## Frozen URM
+
+GL-SDM compiles product-key routing and snapshot reads, including backward,
+through the exact [URM pin](../../shared/requirements-urm.txt). The project owns
+chunk scheduling, buffered deltas and deterministic commits. Width-64 reads
+are zero-padded to URM's existing width-128 vector schedule during training.
+Inference reads width 64 directly and avoids doubling the bank. Logical bank
+capacity stays unchanged. No new Triton kernel is introduced for this stack.
+
+URM's declared route support ends at factor extent 256. The production config
+explicitly enables `gl_urm_large_route_override`: a temporary compiler support
+monkeypatch for **factor 512, eight routes, FP32 scores and INT32 indices**.
+It preserves dependency/hardware checks, restores the original method after
+compilation, and executes the normal native plan with the actual larger shape.
+URM source and its pin are unchanged. Runtime artifacts record this experimental
+override and the compiled plan. It is not official upstream shape support.
+
+## Running
+
+Install from the repository root, then prepare the pinned baseline sources:
 
 ```bash
 python -m pip install -e 'projects/gl-sdm[test,urm]'
 python projects/gl-sdm/scripts/setup_sources.py
-```
-
-Upstream checkouts default to `~/.cache/gl-sdm/sources/{sdm,fla}`. Override them
-with `GL_SDM_SDM_ROOT` and `GL_SDM_FLA_ROOT`; revisions are checked. SDM needs a
-CUDA compiler compatible with the installed PyTorch CUDA version. Set
-`GL_SDM_CUDA_HOME` if it differs from the default compiler, and optionally
-`TORCH_EXTENSIONS_DIR` to reuse verified compiled extensions. Both actual CUDA
-extensions must load; build errors stop execution. A compiler cached at
-`~/.cache/gl-sdm/cuda` is detected automatically; extensions default to
-`~/.cache/gl-sdm/extensions`.
-
-Put GPT-2 FineWeb-Edu `.bin` shards in `data/finewebedu10B`, or set `train_data`
-and `val_data` in a config to absolute paths. The format is ATMA's 256-int32
-header followed by uint16/uint32 tokens. All commands run from the repo root:
-
-```bash
 python -m pytest -q projects/gl-sdm/tests
-gl-sdm verify --config projects/gl-sdm/configs/sdm_smoke.json
-gl-sdm verify --config projects/gl-sdm/configs/gl_sdm_smoke.json
-gl-sdm train --config projects/gl-sdm/configs/gl_sdm.json \
-  --output projects/gl-sdm/checkpoints/gl_sdm --log projects/gl-sdm/runs/gl_sdm.log
-gl-sdm infer --checkpoint projects/gl-sdm/checkpoints/gl_sdm \
-  --prompt 'The research question is' --tokens 64
-gl-sdm eval --checkpoint projects/gl-sdm/checkpoints/gl_sdm \
-  --output projects/gl-sdm/results/gl_sdm_eval.json
-gl-sdm benchmark --config projects/gl-sdm/configs/gl_sdm.json \
-  --output projects/gl-sdm/results/gl_sdm_benchmark.json
 ```
 
-Replace `gl_sdm` with `transformer`, `sdm` or `gdn2` for the baselines. Add
-`--checkpoint <directory>` to `train` to resume with the same config. Use the
-`*_smoke.json` configs for short integration runs. Training configs use AdamW
-by default; `optimizer: atma_muon` selects ATMA's optimizer arrangement, keeping
-the sparse learned SDM memory bank in AdamW. No architecture falls back to a
-reference kernel or a smaller workload on failure.
-
-Evaluation reports ATMA's `clean_ppl` and `junk_ppl` as **nats/token**, with true
-perplexity in separate fields, plus needle digit accuracy and its absent-needle
-control. The clean dataset is streamed and tokenized once for common nested
-prefixes. Evaluation aborts on OOM or non-finite values rather than omitting
-samples. It chunks the vocabulary head to bound logit memory.
-
-Inference keeps state per request: Transformer KV tensors, upstream SDM memory,
-or FLA recurrent and convolution state. `new_cache`, `prefill` and `decode`
-provide a common interface. This first runner supports batched generation;
-ATMA's paged serving scheduler and CUDA-graph serving engine are not ported.
-
-Benchmarks time complete forward/backward/optimizer steps after warmup, then
-prefill and single-token decode at a fixed context length. MFU is an estimated
-**6ND** percentage. For GL-SDM, N is weighted by execution: embeddings, head,
-input projection and local context are counted once per token; reasoner weights
-are counted per observed token/pass; write projections are counted only in
-chunks that execute writes. ACT uses observed depths, not the configured maximum.
-This retains the parameter-count approximation (including embeddings, biases
-and normalization parameters); it is not an exact GPU instruction count.
-Attention and sparse state FLOPs are excluded. The sparse learned bank is counted
-separately. `unique_parameter_6nd_pct` preserves the old capacity-normalized
-throughput proxy, which is unsuitable for comparing utilization across depths.
-A10G's denominator is 70 dense BF16 TFLOP/s; unknown
-GPUs require `--peak-tflops`. Equal-width configs are not parameter-matched
-quality comparisons. The runner records total, active and memory parameters.
-
-Reference checks compare outputs and every parameter gradient, verify causality,
-split-prefill/decode continuation, request reset and strict checkpoint reload.
-Chunk GL-SDM shares production SDPA in its BF16 memory reference, keeps the
-existing output/gradient limits, and independently checks dense attention and
-continuation in FP32. BF16 split continuation has a separate 1% relative L2
-bound: changing GEMM/SDPA shapes can change a discrete route even with the
-PyTorch memory control. Measured drift is recorded.
-The BF16 SDM check also runs FP32: chunked and sequential BF16 rounding can
-change later top-k routes, so its end-to-end check records relative L2 drift
-with a 5% bound rather than claiming bitwise equivalence. References are explicit
-test modes and never selected by production runners.
-
-[Kernel results](results/report.md) record the checked paths and their limits.
-The corrected estimate is 50.53% for four reasoning passes and 38.08% for eight;
-the eight-pass configuration remains below the 40% target.
-Large-bank whole-model reference gates still fail despite passing
-read-operand checks. Keep that precision limitation separate from throughput.
-
-## GL-SDM model
-
-GL-SDM has one learned FP32 memory bank, partitioned into heads, and one tied
-reasoner. `gl_max_steps` controls fixed reasoning depth or the maximum ACT depth.
-ACT removes finished tokens from later dense reasoner calls and returns a
-weighted latent output plus a summed ponder loss. The runner weights that loss
-with `auxiliary_loss_weight` and records actual depth.
-
-`gl_chunk_size` chooses when writes become visible. The main configs now use
-one transaction per chunk; `gl_sdm_token*` retains the per-token control. In
-chunk transactions, tokens reason in parallel against the chunk-start snapshot, then
-commit together at its absolute boundary. A causal SDPA surround runs once per
-chunk to supply within-chunk context. Its KV cache holds only the unfinished
-chunk and resets at commit. Chunking changes the model's write clock; it is an
-explicit architecture choice, not equivalent to the token control.
-
-Each proposal computes a sparse delta against the frozen snapshot. Merged
-writes have reasoning weights summing to one per token, divided by the fixed
-chunk size. `final` selects the last reasoning proposal with weight 1/chunk_size.
-`every_step` is available only for token transactions: exposing other tokens'
-writes during chunk reasoning would violate causality. Commits sum collisions
-in canonical address/token/depth order, return a new version and preserve the
-previous snapshot. Stale or unrelated buffers are rejected. Requests maintain
-independent states initialized from the same learned bank. The
-[memory API](src/gl_sdm/memory/__init__.py) remains reusable by CSDM.
-
-Prefill and decode use the same absolute chunk boundaries. An unfinished chunk
-retains its snapshot, sparse proposals and local KV tensors across calls. Future
-tokens cannot affect earlier outputs. When training has no outgoing-state
-consumer, the final chunk omits unused writes; all preceding writes and their
-gradients remain connected.
-
-## URM integration and optimization
-
-The chunk path composes URM's public product-key route and read operations into
-one native graph. Both operators and their backwards execute in frozen URM;
-ties choose the highest address, with selected addresses in ascending order.
-Token controls retain their earlier smaller-address tie rule and project read
-backward. These are explicit differences between configurations.
-
-URM remains pinned by [shared/requirements-urm.txt](../../shared/requirements-urm.txt).
-The adapter checks the installed package's exact Git origin and revision. It
-pads width-64 read values with zero channels to width 128: this selects URM's
-existing vector schedule instead of its four-value gradient fragments. Returned
-values and bank capacity retain their logical width. Runtime metadata records
-both widths and the actual compiled plan. No URM source or pin is changed.
-
-Fixed-depth writes are projected and routed together after reasoning finishes,
-since all their proposals use the same snapshot. `gl_compile: true` fuses dense
-reasoner, proposal and vocabulary-loss arithmetic through PyTorch, preserving
-BF16 rounding casts. `gl_cuda_graph: true` additionally captures fixed-depth
-forward/backward at a fixed batch shape. Gradient clipping, optimizer updates,
-data copies and finite checks remain in the measured training step. ACT uses
-the regular runner because its active token count varies.
-
-The project still owns sparse commit: frozen URM has no executable lowering for
-buffered versioned sparse transactions. The three baselines have no URM calls.
-Unsupported native workloads fail; reference execution is an explicit test mode.
-
-The optimized configs keep width 512, vocabulary 50,304, 4,096 slots/head and
-eight read/write routes. They use length 2,048, 8,192 tokens/update and microbatch
-4. [Four reasoning passes](configs/gl_sdm_chunk_r4.json) and
-[eight reasoning passes](configs/gl_sdm_chunk_r8.json) are separate depth controls; their
-performance must be reported separately. The `gl_sdm_token*` configs retain the earlier token controls.
-The estimated MFU counts tied weights for their repeated execution. Once-only
-weights are not multiplied by depth; terminal training chunks omit write work.
-The four-pass PyTorch/URM control pair disables CUDA graphs for both; reproduce
-it with `scripts/benchmark_chunk_controls.py --output-dir projects/gl-sdm/results`.
-See [results](results/report.md) for measured performance and limitations.
+Put ATMA-format GPT-2 FineWeb-Edu token shards under `data/finewebedu10B`.
+The four primary configs are `configs/{transformer,gdn2,sdm,gl_sdm}.json`.
+They all use length 512, 8,192 tokens/update and microbatch one. These are
+explicit common workloads, not retries after OOM. The `*_smoke.json` configs
+retain 16 layers with smaller widths and banks for integration checks.
 
 ```bash
-gl-sdm verify --config projects/gl-sdm/configs/gl_sdm_chunk_smoke.json
-gl-sdm train --config projects/gl-sdm/configs/gl_sdm_chunk_r4.json \
-  --output projects/gl-sdm/checkpoints/gl_sdm_chunk_r4
-gl-sdm benchmark --config projects/gl-sdm/configs/gl_sdm_chunk_r4.json \
-  --warmup 10 --iterations 20 \
-  --output projects/gl-sdm/results/gl_sdm_chunk_r4_benchmark.json
+python projects/gl-sdm/scripts/run_layer_experiments.py   --phases verify verify-fp32 benchmark train --warmup 3 --iterations 5 --train-steps 20
 ```
 
-Use `gl_sdm_chunk_r8.json` for the original eight-pass reasoning depth. These
-passes occur inside each forward/backward, independently of optimizer updates.
-A reference check
-must span a commit boundary to exercise write gradients; `verify` defaults to
-at least chunk_size+1 tokens, or accepts `--length`. Small fixtures independently
-check dense memory equations. Full chunk-model checks use vectorized PyTorch
-routing/gather and segmented commits, with independent dense causal attention
-in FP32, avoiding enormous
-one-hot matrices. Converged quality and learned adaptive depth remain unproven.
+This runs models serially in separate GPU processes and records every command,
+exit status and artifact in `results/sixteen_layers/manifest.json`. The suite
+uses the same `max_split_size_mb:512` CUDA allocator setting for all models,
+preventing small workspaces from splitting multi-GiB state blocks. Failures
+retain their logs; the runner never reduces a workload or substitutes a kernel.
+Twenty updates are a short pipeline pilot. Use `--train-steps 1000` for the
+primary configs' training budget. See [results/report.md](results/report.md)
+for measured results and the status of reference checks.
 
-## This project owns
+Individual commands use the same ATMA-style model, loss and checkpoint contract:
 
-- The global sparse address space and read operator.
-- Fixed and adaptive weight-tied recurrent reasoning.
-- Frozen-snapshot reads and buffered, transactional commits.
-- Memory sharing, capacity, routing-contention, and write-timing experiments.
-- Architecture-level throughput and HBM-residency measurements.
+```bash
+export PYTORCH_ALLOC_CONF=max_split_size_mb:512
+gl-sdm verify --config projects/gl-sdm/configs/gl_sdm.json   --verify-batch-size 1 --length 129
+gl-sdm train --config projects/gl-sdm/configs/gl_sdm.json   --output projects/gl-sdm/checkpoints/gl_sdm
+gl-sdm benchmark --config projects/gl-sdm/configs/gl_sdm.json
+gl-sdm infer --checkpoint projects/gl-sdm/checkpoints/gl_sdm   --prompt 'The research question is' --tokens 64
+gl-sdm eval --checkpoint projects/gl-sdm/checkpoints/gl_sdm
+```
 
-It does not own multi-timescale consolidation policy or a general mixer compiler.
-Those belong to CSDM and URM respectively.
+`model(inputs, targets)` returns summed CE, regularization and auxiliary loss.
+`new_cache`, `prefill` and `decode` share the interface across all models.
+Checkpoints include config, weights, tokenizer metadata, optimizer/RNG state
+and data position. Logs retain ATMA's structured JSON blocks. Evaluation reports
+nats/token, true perplexity and needle digit accuracy; it aborts on missing
+samples, non-finite values or OOM.
 
-## First milestone
+## Measurement and earlier work
 
-Build the smallest dense or small-memory reference model that can reproduce:
+MFU uses an estimated **6ND**, with the sparse initializer excluded from N.
+Each physical layer's weights count once; GL-SDM write projections count only
+where writes execute. Attention and sparse state arithmetic are excluded, so
+this is not exact instruction accounting. A10G's denominator is 70 dense BF16
+TFLOP/s. Complete-step timings include backward, clipping and optimizer updates.
+Training, prefill and decode speeds are reported separately. Fewer FLOPs do not
+guarantee faster execution when sparse memory or state movement dominates.
 
-1. the write-every-step versus snapshot-and-commit comparison; and
-2. the capacity comparison between layer-local and globally shared memory.
-
-Before scaling, fix one transaction scope, one halting objective, one fixed-depth
-control, and the key/versioning policy.
-
-## Acceptance gate
-
-Proceed when the implementation has deterministic snapshot/commit behavior and
-shows a reproducible improvement on a resource-matched quality/compute/capacity
-frontier. Treat collapsed halting, excessive global contention, or gains that
-vanish after bandwidth matching as negative results.
-
-## Expected output
-
-A paper-quality architecture study plus a reusable transactional memory operator
-that CSDM can extend and URM can use as a systems workload.
+The [earlier tied-weight controls](LOOP_CONTROLS.md) and
+[their results](results/loop_results.md) are preserved separately. Their four
+or eight reasoning passes, chunk size 1,024 and MFU figures do not apply to this
+16-layer experiment. Larger-bank support must be promoted to URM through a
+separately scoped task with dependent-workload validation before changing its
+frozen pin.

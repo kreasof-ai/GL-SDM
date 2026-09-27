@@ -1,0 +1,4 @@
+
+===REFERENCE_CHECK_JSON===
+{"arch_type": "gl_sdm", "status": "passed", "batch": 1, "length": 129, "logits_max_abs": 2.086162567138672e-06, "logits_relative_l2": 5.177618049856392e-07, "gradient_max_abs": 1.7695128917694092e-08, "continuation_max_abs": 3.2186508178710938e-06, "native_calls": {"urm_route_read": 96, "commit": 6}, "memory_backend": "urm"}
+===END===

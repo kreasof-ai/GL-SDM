@@ -14,10 +14,13 @@ class RMSNorm(nn.Module):
 
 
 class MLP(nn.Module):
-    def __init__(self, dim):
+    def __init__(self, dim, intermediate_size=None):
         super().__init__()
-        self.fc = nn.Linear(dim, 8 * dim)
-        self.proj = nn.Linear(4 * dim, dim)
+        inner = 4 * dim if intermediate_size is None else intermediate_size
+        if inner < 1:
+            raise ValueError("intermediate_size must be positive")
+        self.fc = nn.Linear(dim, 2 * inner)
+        self.proj = nn.Linear(inner, dim)
 
     def forward(self, x):
         x, gate = self.fc(x).chunk(2, -1)

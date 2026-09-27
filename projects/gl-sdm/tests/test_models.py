@@ -36,3 +36,22 @@ def test_upstream_model_reference_and_continuation(arch):
 def test_unknown_arch_fails():
     with pytest.raises(ValueError, match="unknown arch"):
         create_model(config("unknown"))
+
+
+def test_compact_sdm_reference_matches_dense_equation_and_all_gradients():
+    from gl_sdm.baselines.reference import sdm, sdm_dense
+    torch.manual_seed(17)
+    ki = torch.tensor([[[0, 2], [2, 3], [1, 3]], [[4, 6], [6, 7], [4, 7]]])
+    qi = torch.tensor([[[1, 2], [0, 3], [2, 3]], [[4, 5], [5, 6], [6, 7]]])
+    values = [torch.randn(8, 4), torch.randn(2, 3, 2).softmax(-1), torch.randn(2, 3, 4),
+              torch.rand(2, 3, 1), -torch.rand(2, 3, 1), torch.randn(2, 3, 2).softmax(-1)]
+    a = [v.requires_grad_() for v in values]
+    b = [v.detach().clone().requires_grad_() for v in values]
+    out, state = sdm(a[0], ki, a[1], a[2], a[3], a[4], qi, a[5])
+    expected, final = sdm_dense(b[0], ki, b[1], b[2], b[3], b[4], qi, b[5])
+    torch.testing.assert_close(out, expected, atol=1e-6, rtol=1e-5)
+    torch.testing.assert_close(state, final, atol=1e-6, rtol=1e-5)
+    (out.square().sum() + state.square().sum()).backward()
+    (expected.square().sum() + final.square().sum()).backward()
+    for actual, oracle in zip(a, b):
+        torch.testing.assert_close(actual.grad, oracle.grad, atol=2e-6, rtol=2e-5)

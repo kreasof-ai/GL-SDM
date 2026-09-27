@@ -66,10 +66,26 @@ def check(cfg, device="cuda", length=65):
 
 
 def _check(cfg, device="cuda", length=65):
+    # Release both production/oracle models before the additional FP32 run.
+    # Retaining them doubles peak memory for model-scale learned banks.
+    result = _check_once(cfg, device, length)
+    bf16_sdm = cfg["arch_type"] == "sdm" and cfg.get("dtype") == "bfloat16"
+    bf16_chunk = cfg["arch_type"] == "gl_sdm" and cfg.get("gl_chunk_size", 1) > 1 and cfg.get("dtype") == "bfloat16"
+    if bf16_sdm or bf16_chunk:
+        result["fp32_check"] = check({**cfg, "dtype": "float32"}, device, length)
+        result["bf16_note"] = ("5% relative L2 limit; strict FP32 check independently validates routing/recurrence integration" if bf16_sdm else
+            "output/gradient limits unchanged; BF16 uses the production SDPA surround and bounds split continuation at 1% relative L2; strict FP32 independently checks dense attention and continuation")
+    return result
+
+
+def _check_once(cfg, device="cuda", length=65):
     torch.manual_seed(1234)
     model = create_model(cfg).to(device)
     oracle = copy.deepcopy(model)
-    x = torch.randint(cfg["vocab_size"], (2, length), device=device)
+    batch = cfg.get("verify_batch_size", 2)
+    if batch < 1 or length < 20:
+        raise ValueError("positive verification batch and length >=20 required")
+    x = torch.randint(cfg["vocab_size"], (batch, length), device=device)
     targets = torch.randint(cfg["vocab_size"], x.shape, device=device)
     h, _, _ = model.hidden(x)
     logits = model.head(h)
@@ -98,7 +114,7 @@ def _check(cfg, device="cuda", length=65):
     before_inference = {name: p.detach().clone() for name, p in model.named_parameters()}
     with torch.inference_mode():
         full = model.head(model.hidden(x)[0])
-        cache = model.new_cache(2)
+        cache = model.new_cache(batch)
         # Nonaligned, multi-token continuation exercises partition-safe padding
         # and offset causal masks, followed by actual single-token decode.
         first, cache = model.prefill(x[:, :17], cache)
@@ -147,11 +163,4 @@ def _check(cfg, device="cuda", length=65):
                 errors["reload_max_abs"], errors["reload_relative_l2"] = compare_bf16_sdm(restored_logits, full, "checkpoint reload logits")
             else:
                 compare(restored_logits, full, "checkpoint reload logits", atol=1e-4 if cfg.get("dtype") == "float32" else 0.002, rtol=0.002)
-    if bf16_sdm:
-        fp32_cfg = {**cfg, "dtype": "float32"}
-        errors["fp32_check"] = check(fp32_cfg, device, length)
-        errors["bf16_note"] = "5% relative L2 limit; strict FP32 check independently validates routing/recurrence integration"
-    if bf16_chunk:
-        errors["fp32_check"] = check({**cfg, "dtype": "float32"}, device, length)
-        errors["bf16_note"] = "output/gradient limits unchanged; BF16 uses the production SDPA surround and bounds split continuation at 1% relative L2; strict FP32 independently checks dense attention and continuation"
-    return {"arch_type": cfg["arch_type"], "status": "passed", "batch": 2, "length": length, **errors}
+    return {"arch_type": cfg["arch_type"], "status": "passed", "batch": batch, "length": length, **errors}

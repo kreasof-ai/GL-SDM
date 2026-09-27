@@ -17,7 +17,7 @@ def shard(path, vocab=128):
     path.write_bytes(header.tobytes() + tokens.tobytes())
 
 
-@pytest.mark.parametrize("architecture,device", [("transformer", "cpu"), ("gl_sdm", "cpu"),
+@pytest.mark.parametrize("architecture,device", [("transformer", "cpu"), ("gl_sdm", "cpu"), ("gl_sdm_stack", "cpu"),
     pytest.param("gl_sdm", "cuda", marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable"))])
 def test_data_training_resume_eval_and_generation(tmp_path, architecture, device):
     path = tmp_path / "tokens.bin"
@@ -29,6 +29,11 @@ def test_data_training_resume_eval_and_generation(tmp_path, architecture, device
         cfg.update(arch_type="gl_sdm", num_hidden_layers=1, gl_reasoning="adaptive", gl_max_steps=3,
                    gl_slots=16, gl_reads=2, gl_writes=2, auxiliary_loss_weight=0.001,
                    gl_memory_backend="urm" if device == "cuda" else "torch")
+    if architecture == "gl_sdm_stack":
+        cfg.update(arch_type="gl_sdm", num_hidden_layers=16,
+                   gl_layer_pattern=["local", "local", "global", "local"],
+                   gl_local_window=12, gl_chunk_size=8, gl_slots=256,
+                   gl_reads=4, gl_writes=4, residual_dtype="float32")
     generator = data_generator(str(path), 32, 16, device)
     x, y = next(generator)
     assert torch.equal(x.flatten()[1:], y.flatten()[:-1])
@@ -67,12 +72,20 @@ def test_data_training_resume_eval_and_generation(tmp_path, architecture, device
     assert torch.equal(a, b) and a.shape[1] == 9
 
 
-def test_optimizer_roles_cover_every_parameter_once():
+@pytest.mark.parametrize("arch", ["transformer", "gl_sdm_stack"])
+def test_optimizer_roles_cover_every_parameter_once(arch):
     from gl_sdm.model import create_model
-    model = create_model(config())
+    cfg = config()
+    if arch == "gl_sdm_stack":
+        cfg.update(arch_type="gl_sdm", num_hidden_layers=16,
+                   gl_layer_pattern=["local", "local", "global", "local"], gl_slots=256)
+    model = create_model(cfg)
     opts = optimizers(model, {"optimizer": "atma_muon"}, "cpu")
     assigned = [p for o in opts for g in o.param_groups for p in g["params"]]
     assert len(assigned) == len(set(assigned)) == len(list(model.parameters()))
+    if arch == "gl_sdm_stack":
+        adam_ids = {id(p) for group in opts[0].param_groups for p in group["params"]}
+        assert id(model.bank.memory) in adam_ids
 
 
 def test_bad_shard_and_nonfinite_eval_fail(tmp_path):

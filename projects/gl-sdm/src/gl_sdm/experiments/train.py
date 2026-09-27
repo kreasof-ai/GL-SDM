@@ -19,11 +19,13 @@ def optimizers(model, cfg, device):
     if cfg.get("optimizer", "adamw") == "atma_muon":
         from gl_sdm.experiments.muon import Muon
         scalar = [p for p in model.parameters() if p.ndim < 2]
-        matrix = [p for p in model.blocks.parameters() if p.ndim >= 2]
         # SDM's learned memory is a sparse parameter bank, not a dense matrix
         # whose full SVD/polar update is justified. Keep it in AdamW.
-        banks = [p for p in matrix if getattr(p, "_sdm_memory_bank", False)]
-        matrix = [p for p in matrix if not getattr(p, "_sdm_memory_bank", False)]
+        from gl_sdm.memory import MemoryBank
+        bank_ids = {id(module.memory) for module in model.modules() if isinstance(module, MemoryBank)}
+        banks = [p for p in model.parameters() if id(p) in bank_ids or getattr(p, "_sdm_memory_bank", False)]
+        bank_ids.update(id(p) for p in banks)
+        matrix = [p for p in model.blocks.parameters() if p.ndim >= 2 and id(p) not in bank_ids]
         adam = torch.optim.AdamW([
             {"params": [model.embed.weight], "lr": 0.3},
             {"params": [model.proj.weight], "lr": 1 / 320},
@@ -70,7 +72,7 @@ def update(model, opts, inputs, targets, cfg):
     depths = []
     for i in range(0, inputs.shape[0], mbs):
         loss, reg, align = model(inputs[i:i + mbs], targets[i:i + mbs])
-        if model.cfg["arch_type"] == "gl_sdm":
+        if model.cfg["arch_type"] == "gl_sdm" and not model.is_layer_stack:
             depths.append(model.blocks[0].last_depth)
         if not torch.isfinite(loss):
             raise FloatingPointError("non-finite training loss")
@@ -174,7 +176,7 @@ def run(cfg, device, directory, emit, resume=None, peak=None):
         if step > start:
             seconds += elapsed
             measured_tokens += y.numel()
-            if cfg["arch_type"] == "gl_sdm":
+            if cfg["arch_type"] == "gl_sdm" and not model.is_layer_stack:
                 measured_depth.append(model.last_training_depth)
         emit("TRAIN_STEP_JSON", {"step": step + 1, "train_loss": train_loss, "seconds": elapsed})
     emit("ABLATION_CURVE_JSON", curve)

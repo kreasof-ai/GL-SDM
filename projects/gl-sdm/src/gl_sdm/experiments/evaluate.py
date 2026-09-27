@@ -7,6 +7,9 @@ from gl_sdm.experiments.data import data_generator
 
 
 def _blocks_forward(model, inputs):
+    if model.is_layer_stack:
+        # Shared-bank transactions require chunk-major layer execution.
+        return model.hidden(inputs)[0]
     x = model.embed(inputs)
     for block in model.blocks:
         x, _, _ = block(x)

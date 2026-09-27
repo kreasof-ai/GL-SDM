@@ -12,7 +12,8 @@ def parameter_counts(model):
     banks = {id(p) for p in model.parameters() if getattr(p, "_sdm_memory_bank", False)}
     if model.cfg["arch_type"] == "gl_sdm":
         # Parameter deepcopy does not retain arbitrary Python attributes.
-        banks.update(id(block.bank.memory) for block in model.blocks)
+        from gl_sdm.memory import MemoryBank
+        banks.update(id(module.memory) for module in model.modules() if isinstance(module, MemoryBank))
     memory = sum(p.numel() for p in model.parameters() if id(p) in banks)
     total = sum(p.numel() for p in model.parameters())
     return {"num_params": total, "active_params": total - memory, "memory_params": memory}
@@ -88,7 +89,24 @@ def utilization(model, tokens, seconds, peak, depth=None):
     counts = parameter_counts(model)
     extra = {}
     parameter_uses = counts["active_params"] * tokens
-    if model.cfg["arch_type"] == "gl_sdm":
+    if model.is_layer_stack:
+        from gl_sdm.layers.global_layer import GlobalLayer
+        globals_ = [b for b in model.blocks if isinstance(b, GlobalLayer)]
+        write_ids = {id(p) for block in globals_ for module in
+                     (block.attn.k, block.attn.v, block.attn.beta, block.attn.decay)
+                     for p in module.parameters()}
+        writes = sum(p.numel() for p in model.parameters() if id(p) in write_ids)
+        length = model.cfg.get("seq_len")
+        if not length or tokens % length:
+            raise ValueError("stack MFU requires complete sequences and positive seq_len")
+        prefix = ((length - 1) // model.cfg.get("gl_chunk_size", 128)) * model.cfg.get("gl_chunk_size", 128)
+        write_tokens = tokens // length * prefix
+        once = counts["active_params"] - writes
+        parameter_uses = once * tokens + writes * write_tokens
+        extra = {"physical_layers": len(model.blocks), "global_layers": len(globals_),
+                 "local_layers": len(model.blocks) - len(globals_), "weight_loops": 0,
+                 "once_params": once, "write_params": writes, "write_tokens": write_tokens}
+    elif model.cfg["arch_type"] == "gl_sdm":
         observed, calls = gl_execution_counts(model, tokens, depth)
         groups = gl_parameter_groups(model)
         parameter_uses = (groups["once_params"] * tokens
@@ -103,4 +121,6 @@ def utilization(model, tokens, seconds, peak, depth=None):
             "unique_parameter_6nd_interpretation": "capacity-normalized throughput proxy; does not count tied-weight reuse",
             "peak_tflops": None if peak is None else peak / 1e12,
             "mfu_interpretation": "execution-weighted 6ND estimate; preserves the parameter-count convention, excludes attention and sparse state FLOPs",
-            "mfu_formula": "6 * (tokens * once_params + reasoner_token_passes * reasoner_params + write_token_passes * write_params) / seconds / peak_flops" if extra else "6 * active_params * tokens / seconds / peak_flops"}
+            "mfu_formula": ("6 * (tokens * once_params + write_tokens * write_params) / seconds / peak_flops" if model.is_layer_stack else
+                "6 * (tokens * once_params + reasoner_token_passes * reasoner_params + write_token_passes * write_params) / seconds / peak_flops" if extra else
+                "6 * active_params * tokens / seconds / peak_flops")}

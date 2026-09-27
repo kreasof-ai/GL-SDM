@@ -14,6 +14,9 @@ class Transformer(nn.Module):
         super().__init__()
         dim, dk = cfg["hidden_size"], cfg["head_dim"]
         self.head_dim, self.num_heads = dk, dim // dk
+        self.window = cfg.get("attention_window")
+        if self.window is not None and self.window < 1:
+            raise ValueError("attention_window must be positive")
         self.num_kv_heads = cfg.get("num_key_value_heads", self.num_heads)
         if self.num_heads % self.num_kv_heads or dk % 4:
             raise ValueError("head_dim must be divisible by 4; KV heads must divide query heads")
@@ -43,21 +46,28 @@ class Transformer(nn.Module):
         q, gate = self.q(x).view(B, T, self.num_heads, 2 * self.head_dim).chunk(2, -1)
         k = self.k(x).view(B, T, self.num_kv_heads, self.head_dim)
         v = self.v(x).view_as(k).transpose(1, 2)
-        offset = 0 if cache is None or not cache else cache["k"].shape[2]
+        previous = 0 if cache is None or not cache else cache["k"].shape[2]
+        offset = 0 if cache is None else cache.get("tokens", previous)
         q = self.rotary(F.rms_norm(q, (self.head_dim,)), offset).transpose(1, 2)
         k = self.rotary(F.rms_norm(k, (self.head_dim,)), offset).transpose(1, 2)
         if cache is not None:
             if cache:
                 k, v = torch.cat((cache["k"], k), 2), torch.cat((cache["v"], v), 2)
-            cache.update(k=k, v=v)
+            keep = k.shape[2] if self.window is None else min(self.window - 1, k.shape[2])
+            cache.update(k=k[:, :, -keep:] if keep else k[:, :, :0],
+                         v=v[:, :, -keep:] if keep else v[:, :, :0], tokens=offset + T)
         groups = self.num_heads // self.num_kv_heads
         if groups != 1:
             k, v = k.repeat_interleave(groups, 1), v.repeat_interleave(groups, 1)
         # Cached multi-token prefill needs an offset causal mask. SDPA's default
         # causal mask is aligned to the upper left, which is wrong here.
         mask = None
-        if offset or self.reference:
-            mask = torch.arange(k.shape[2], device=x.device)[None, :] <= torch.arange(offset, offset + T, device=x.device)[:, None]
+        if offset or self.reference or self.window is not None:
+            key_positions = torch.arange(offset - previous, offset + T, device=x.device)[None, :]
+            query_positions = torch.arange(offset, offset + T, device=x.device)[:, None]
+            mask = key_positions <= query_positions
+            if self.window is not None:
+                mask = mask & (key_positions > query_positions - self.window)
         if self.reference:
             scores = (q.float() @ k.float().transpose(-1, -2)) * self.head_dim ** -0.5
             out = scores.masked_fill(~mask, -torch.inf).softmax(-1) @ v.float()

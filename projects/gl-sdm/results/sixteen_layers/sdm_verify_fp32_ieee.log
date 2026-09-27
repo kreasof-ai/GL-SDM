@@ -1,0 +1,4 @@
+
+===REFERENCE_CHECK_JSON===
+{"arch_type": "sdm", "status": "passed", "batch": 1, "length": 129, "logits_max_abs": 2.682209014892578e-06, "logits_relative_l2": 7.749613359919749e-07, "gradient_max_abs": 2.421438694000244e-08, "continuation_max_abs": 4.0531158447265625e-06, "cuda_calls": {"sparse_inner_product": 224, "warp_cooperative_gather": 0}}
+===END===

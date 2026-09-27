@@ -17,6 +17,7 @@ def main():
     parser.add_argument("--iterations", type=int, default=10)
     parser.add_argument("--warmup", type=int, default=3)
     parser.add_argument("--length", type=int, help="reference check token count; defaults to at least one full transaction plus a continuation")
+    parser.add_argument("--verify-batch-size", type=int, default=2, help="explicit reference-check batch size")
     parser.add_argument("--memory-backend", choices=("torch", "urm"), help="explicit GL-SDM control for a config-based train/verify/benchmark run")
     parser.add_argument("--prompt", default="The research question is")
     parser.add_argument("--tokens", type=int, default=64)
@@ -56,6 +57,7 @@ def main():
                 parser.error("verify requires --config")
             from gl_sdm.experiments.verify import check
             cfg = read_config()
+            cfg["verify_batch_size"] = args.verify_batch_size
             length = args.length or max(65, cfg.get("gl_chunk_size", 1) + 1)
             result = check(cfg, args.device, length)
             emit("REFERENCE_CHECK_JSON", result)

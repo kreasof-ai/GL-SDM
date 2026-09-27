@@ -1,0 +1,25 @@
+
+===ABLATION_ERROR_JSON===
+{"error": "Traceback (most recent call last):\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/cli.py\", line 62, in main\n    result = check(cfg, args.device, length)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py\", line 61, in check\n    result = _check(cfg, device, length)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py\", line 71, in _check\n    result = _check_once(cfg, device, length)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py\", line 99, in _check_once\n    errors[\"logits_max_abs\"], errors[\"logits_relative_l2\"] = compare_bf16_sdm(logits, expected, \"reference logits\")\n                                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py\", line 27, in compare_bf16_sdm\n    raise AssertionError(f\"{label}: BF16 relative L2 drift {relative.item():.6f} exceeds 5%\")\nAssertionError: reference logits: BF16 relative L2 drift 0.897321 exceeds 5%\n"}
+===END===
+
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/cli.py", line 107, in <module>
+    main()
+  File "/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/cli.py", line 62, in main
+    result = check(cfg, args.device, length)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py", line 61, in check
+    result = _check(cfg, device, length)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py", line 71, in _check
+    result = _check_once(cfg, device, length)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py", line 99, in _check_once
+    errors["logits_max_abs"], errors["logits_relative_l2"] = compare_bf16_sdm(logits, expected, "reference logits")
+                                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py", line 27, in compare_bf16_sdm
+    raise AssertionError(f"{label}: BF16 relative L2 drift {relative.item():.6f} exceeds 5%")
+AssertionError: reference logits: BF16 relative L2 drift 0.897321 exceeds 5%
