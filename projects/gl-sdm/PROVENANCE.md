@@ -38,7 +38,9 @@ check kernel integration. They are never enabled by a production runner.
 Deliberate harness corrections: non-finite runs abort; evaluation never skips
 OOM samples; CPU and absolute shard paths work; checkpoints include optimizer,
 RNG and consumed-batch state; GPU timings synchronize and exclude warmup;
-MFU is explicit 6ND with the sparse learned memory bank excluded from active N.
+MFU is an explicit 6ND estimate with the sparse learned memory bank excluded.
+GL-SDM weights N by observed reasoning execution and write execution; it does
+not multiply embeddings, the vocabulary head or local context by tied depth.
 No Transformer attention FLOP proxy is assigned to recurrent baselines. A10G
 uses 70 dense BF16 TFLOP/s. All parameter counts are also recorded. Equal-width
 configs are starting points, **not parameter-matched quality claims**.
@@ -57,8 +59,12 @@ The PyTorch memory implementation uses stable address sorting, per-address
 segmented reduction and unique-address index updates. Its explicit oracle uses
 dense one-hot reads and writes. Snapshot identity and version are checked;
 memory and routing parameters are never changed during a forward transaction.
-Benchmark logs report actual reasoning depth and retain unique-parameter 6ND.
-Repeated tied-weight applications are not counted in that MFU estimate.
+Benchmark logs report actual reasoning depth. `mfu_6nd_pct` uses execution-weighted
+parameter counts; `unique_parameter_6nd_pct` retains the old capacity-normalized
+throughput proxy. Both preserve the approximate 6ND parameter-count convention,
+including embeddings/biases/norms and excluding attention and sparse state FLOPs.
+Saved fixed-depth timings can be recalculated with `scripts/recalculate_mfu.py`;
+the original measurement fingerprint remains, with separate accounting provenance.
 
 The chunk path in `chunk.py` composes routing and snapshot reads from the public
 frozen [URM revision 604bfdf](https://github.com/kreasof-ai/urm/tree/604bfdf5d2c827266a32ef142ca996cc712d70f0),

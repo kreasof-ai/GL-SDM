@@ -2,6 +2,9 @@
 
 These measurements describe the per-token implementation at commit `59f7146`.
 The current chunk implementation is reported in [report.md](report.md).
+The percentages below used unique-parameter 6ND. They are historical
+capacity-normalized throughput proxies, not execution-weighted utilization for
+the tied reasoner. Do not compare them across reasoning depths as MFU.
 
 # GL-SDM and baseline checks
 

@@ -145,15 +145,24 @@
       "max_reasoning_steps": 4.0,
       "executed_reasoner_calls": 32768,
       "gl_write_policy": "merged",
-      "mfu_interpretation": "unique-parameter 6ND; repeated applications of tied reasoner weights are not counted",
+      "mfu_interpretation": "execution-weighted 6ND estimate; preserves the parameter-count convention, excludes attention and sparse state FLOPs",
       "tokens": 8192,
       "seconds": 0.09714788896963,
       "tok_s": 84325.04387780317,
-      "mfu_6nd_pct": 41.79425567984887,
+      "mfu_6nd_pct": 50.911733844620755,
       "peak_tflops": 70.0,
-      "mfu_formula": "6 * active_params * tokens / seconds / peak_flops; excludes sparse learned memory bank and state work",
-      "mfu": 41.79425567984887,
-      "step_ms": 97.14788896963
+      "mfu_formula": "6 * (tokens * once_params + reasoner_token_passes * reasoner_params + write_token_passes * write_params) / seconds / peak_flops",
+      "mfu": 50.911733844620755,
+      "step_ms": 97.14788896963,
+      "once_params": 53088256,
+      "reasoner_params": 3939392,
+      "write_params": 796176,
+      "reasoner_token_passes": 32768,
+      "write_token_passes": 16384,
+      "effective_active_params": 70438176.0,
+      "estimated_training_flops_6nd": 3462177226752,
+      "unique_parameter_6nd_pct": 41.79425567984887,
+      "unique_parameter_6nd_interpretation": "capacity-normalized throughput proxy; does not count tied-weight reuse"
     },
     {
       "step": 3,
@@ -167,15 +176,24 @@
       "max_reasoning_steps": 4.0,
       "executed_reasoner_calls": 32768,
       "gl_write_policy": "merged",
-      "mfu_interpretation": "unique-parameter 6ND; repeated applications of tied reasoner weights are not counted",
+      "mfu_interpretation": "execution-weighted 6ND estimate; preserves the parameter-count convention, excludes attention and sparse state FLOPs",
       "tokens": 8192,
       "seconds": 0.09687981399474666,
       "tok_s": 84558.37869841713,
-      "mfu_6nd_pct": 41.9099040649939,
+      "mfu_6nd_pct": 51.05261109457506,
       "peak_tflops": 70.0,
-      "mfu_formula": "6 * active_params * tokens / seconds / peak_flops; excludes sparse learned memory bank and state work",
-      "mfu": 41.9099040649939,
-      "step_ms": 96.87981399474666
+      "mfu_formula": "6 * (tokens * once_params + reasoner_token_passes * reasoner_params + write_token_passes * write_params) / seconds / peak_flops",
+      "mfu": 51.05261109457506,
+      "step_ms": 96.87981399474666,
+      "once_params": 53088256,
+      "reasoner_params": 3939392,
+      "write_params": 796176,
+      "reasoner_token_passes": 32768,
+      "write_token_passes": 16384,
+      "effective_active_params": 70438176.0,
+      "estimated_training_flops_6nd": 3462177226752,
+      "unique_parameter_6nd_pct": 41.9099040649939,
+      "unique_parameter_6nd_interpretation": "capacity-normalized throughput proxy; does not count tied-weight reuse"
     }
   ],
   "strict_checkpoint_parameters": "exact",
@@ -218,5 +236,12 @@
       "trials": 2
     }
   },
-  "needle_absent_control_ce": 10.796807765960693
+  "needle_absent_control_ce": 10.796807765960693,
+  "mfu_accounting": {
+    "method": "execution-weighted 6ND; recalculated from unchanged original timings",
+    "implementation_sha256": "5474ec99d95ba97a69c830d866786033baacc16971a641591362d2ea2440d69a",
+    "measurement_source_sha256": "8440659792d33cb59ba909c36f55a7b99d787b2b45c00a866e445b59c1661122",
+    "depth_basis": "fixed config independently agrees with saved measured depth telemetry",
+    "timings_rerun": false
+  }
 }

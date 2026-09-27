@@ -81,10 +81,17 @@ provide a common interface. This first runner supports batched generation;
 ATMA's paged serving scheduler and CUDA-graph serving engine are not ported.
 
 Benchmarks time complete forward/backward/optimizer steps after warmup, then
-prefill and single-token decode at a fixed context length. MFU uses **6ND**,
-where N is the active parameter count and D is the processed training tokens;
-the sparse learned SDM memory bank is counted separately. State operations are
-not added to this figure. A10G's denominator is 70 dense BF16 TFLOP/s; unknown
+prefill and single-token decode at a fixed context length. MFU is an estimated
+**6ND** percentage. For GL-SDM, N is weighted by execution: embeddings, head,
+input projection and local context are counted once per token; reasoner weights
+are counted per observed token/pass; write projections are counted only in
+chunks that execute writes. ACT uses observed depths, not the configured maximum.
+This retains the parameter-count approximation (including embeddings, biases
+and normalization parameters); it is not an exact GPU instruction count.
+Attention and sparse state FLOPs are excluded. The sparse learned bank is counted
+separately. `unique_parameter_6nd_pct` preserves the old capacity-normalized
+throughput proxy, which is unsuitable for comparing utilization across depths.
+A10G's denominator is 70 dense BF16 TFLOP/s; unknown
 GPUs require `--peak-tflops`. Equal-width configs are not parameter-matched
 quality comparisons. The runner records total, active and memory parameters.
 
@@ -101,8 +108,9 @@ with a 5% bound rather than claiming bitwise equivalence. References are explici
 test modes and never selected by production runners.
 
 [Kernel results](results/report.md) record the checked paths and their limits.
-The optimized four-step configuration reaches the 40% MFU target; eight steps
-does not. Large-bank whole-model reference gates still fail despite passing
+The corrected estimate is 50.53% for four reasoning passes and 38.08% for eight;
+the eight-pass configuration remains below the 40% target.
+Large-bank whole-model reference gates still fail despite passing
 read-operand checks. Keep that precision limitation separate from throughput.
 
 ## GL-SDM model
@@ -166,11 +174,12 @@ Unsupported native workloads fail; reference execution is an explicit test mode.
 
 The optimized configs keep width 512, vocabulary 50,304, 4,096 slots/head and
 eight read/write routes. They use length 2,048, 8,192 tokens/update and microbatch
-4. [Four steps](configs/gl_sdm_chunk_r4.json) and
-[eight steps](configs/gl_sdm_chunk_r8.json) are separate depth controls; their
+4. [Four reasoning passes](configs/gl_sdm_chunk_r4.json) and
+[eight reasoning passes](configs/gl_sdm_chunk_r8.json) are separate depth controls; their
 performance must be reported separately. The `gl_sdm_token*` configs retain the earlier token controls.
-No depth multiplier or memory-state FLOPs are added to unique-parameter 6ND.
-The four-step PyTorch/URM control pair disables CUDA graphs for both; reproduce
+The estimated MFU counts tied weights for their repeated execution. Once-only
+weights are not multiplied by depth; terminal training chunks omit write work.
+The four-pass PyTorch/URM control pair disables CUDA graphs for both; reproduce
 it with `scripts/benchmark_chunk_controls.py --output-dir projects/gl-sdm/results`.
 See [results](results/report.md) for measured performance and limitations.
 
@@ -183,7 +192,9 @@ gl-sdm benchmark --config projects/gl-sdm/configs/gl_sdm_chunk_r4.json \
   --output projects/gl-sdm/results/gl_sdm_chunk_r4_benchmark.json
 ```
 
-Use `gl_sdm_chunk_r8.json` for the original eight-step depth. A reference check
+Use `gl_sdm_chunk_r8.json` for the original eight-pass reasoning depth. These
+passes occur inside each forward/backward, independently of optimizer updates.
+A reference check
 must span a commit boundary to exercise write gradients; `verify` defaults to
 at least chunk_size+1 tokens, or accepts `--length`. Small fixtures independently
 check dense memory equations. Full chunk-model checks use vectorized PyTorch

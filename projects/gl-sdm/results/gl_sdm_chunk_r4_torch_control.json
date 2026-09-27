@@ -89,13 +89,13 @@
     "max_reasoning_steps": 4.0,
     "executed_reasoner_calls": 163840,
     "gl_write_policy": "merged",
-    "mfu_interpretation": "unique-parameter 6ND; repeated applications of tied reasoner weights are not counted",
+    "mfu_interpretation": "execution-weighted 6ND estimate; preserves the parameter-count convention, excludes attention and sparse state FLOPs",
     "tokens": 40960,
     "seconds": 0.6285689090145752,
     "tok_s": 65163.89756568476,
-    "mfu_6nd_pct": 32.29736351993301,
+    "mfu_6nd_pct": 39.343080733522925,
     "peak_tflops": 70.0,
-    "mfu_formula": "6 * active_params * tokens / seconds / peak_flops; excludes sparse learned memory bank and state work",
+    "mfu_formula": "6 * (tokens * once_params + reasoner_token_passes * reasoner_params + write_token_passes * write_params) / seconds / peak_flops",
     "median_step_ms": 125.84467302076519,
     "loss": 9.368258476257324,
     "step_end_allocated_gib": [
@@ -104,7 +104,16 @@
       0.3648691177368164,
       0.3648691177368164,
       0.3648691177368164
-    ]
+    ],
+    "once_params": 53088256,
+    "reasoner_params": 3939392,
+    "write_params": 796176,
+    "reasoner_token_passes": 163840,
+    "write_token_passes": 81920,
+    "effective_active_params": 70438176.0,
+    "estimated_training_flops_6nd": 17310886133760,
+    "unique_parameter_6nd_pct": 32.29736351993301,
+    "unique_parameter_6nd_interpretation": "capacity-normalized throughput proxy; does not count tied-weight reuse"
   },
   "prefill": {
     "median_ms": 114.48498099343851,
@@ -127,5 +136,12 @@
     "gl_write_policy": "merged"
   },
   "peak_allocated_gib": 7.879436016082764,
-  "peak_reserved_gib": 12.6796875
+  "peak_reserved_gib": 12.6796875,
+  "mfu_accounting": {
+    "method": "execution-weighted 6ND; recalculated from unchanged original timings",
+    "implementation_sha256": "5474ec99d95ba97a69c830d866786033baacc16971a641591362d2ea2440d69a",
+    "measurement_source_sha256": "8440659792d33cb59ba909c36f55a7b99d787b2b45c00a866e445b59c1661122",
+    "depth_basis": "fixed config independently agrees with saved measured depth telemetry",
+    "timings_rerun": false
+  }
 }
