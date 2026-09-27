@@ -2,7 +2,7 @@
 
 Generated from the [machine register](../../extra/architecture-coverage.json). This is the source identity and construction backlog. The [architecture catalog](../catalog.md) maps the registered rows; [evidence rules](../evidence.md) define what each status can claim. Inclusion is not model support.
 
-Of 80 catalog rows, 76 are mixer-relevant and 4 are outside mixer scope. 19 rows map to live public-graph fragments and 57 retain the `pending_graph_migration` label. These figures do not qualify a complete source model. No K2 graph recipe is live. Parity and performance evidence for the current rows is the training-harness campaign (`results/sweep/`, `results/upstream/`, `results_report.md`).
+Of 80 catalog rows, 76 are mixer-relevant and 4 are outside mixer scope. 19 rows map to live public-graph fragments and 57 retain the `pending_graph_migration` label. These figures do not qualify a complete source model. No K2 graph recipe is live. Parity and performance evidence for the current rows is the training-harness campaign (`results/sweep/`, `results/upstream/`, `results/report.md`).
 
 Proposed lowerings in the register are hypotheses until closed descriptors, references and public plans qualify them.
 

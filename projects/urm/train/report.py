@@ -10,7 +10,7 @@ missing upstreams, and the environment/provenance block.
 
 Usage:
     PYTHONPATH=src:. python -m train.report --sweep-dir results/sweep \
-        --upstream-dir results/upstream --out results_report.md
+        --upstream-dir results/upstream --out results/report.md
 """
 
 from __future__ import annotations
@@ -72,7 +72,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--sweep-dir", default="results/sweep")
     ap.add_argument("--upstream-dir", default="results/upstream")
-    ap.add_argument("--out", default="results_report.md")
+    ap.add_argument("--out", default="results/report.md")
     args = ap.parse_args()
 
     ours = _load(args.sweep_dir)

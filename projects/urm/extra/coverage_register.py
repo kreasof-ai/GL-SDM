@@ -8,7 +8,7 @@ the machine-readable register. Regenerate with::
     python extra/coverage_register.py > docs/planning/coverage.md
 
 Current parity/performance measurements live under ``results/sweep/`` and
-``results/upstream/`` (joined in ``results_report.md``). This page is an index,
+``results/upstream/`` (joined in ``results/report.md``). This page is an index,
 not a current public-graph or complete-source-model coverage claim.
 """
 
@@ -84,7 +84,7 @@ def render_markdown(register: dict) -> str:
         "figures do not qualify a complete source model. No K2 graph recipe is live. "
         "Parity and performance evidence for the current rows is the "
         "training-harness campaign (`results/sweep/`, `results/upstream/`, "
-        "`results_report.md`)."
+        "`results/report.md`)."
     )
     out.append("")
     out.append(

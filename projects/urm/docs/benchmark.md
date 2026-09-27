@@ -27,7 +27,7 @@ Run from `projects/urm` with `PYTHONPATH=src:.`:
 python -m train.sweep --out-dir results/sweep                      # 51 native rows
 python -m train.upstream --out-dir results/upstream --subprocess   # 49 upstream baselines
 python -m train.report --sweep-dir results/sweep \
-    --upstream-dir results/upstream --out results_report.md        # the joined report
+    --upstream-dir results/upstream --out results/report.md         # the joined report
 ```
 
 - `train/sweep.py` — one subprocess per row (CUDA memory isolation), 8192→2048→1024
@@ -69,7 +69,7 @@ Every row reports, per run:
 
 ## Current results
 
-[results_report.md](../results_report.md) is generated from the committed JSONs
+[results/report.md](../results/report.md) is generated from the committed JSONs
 (`results/sweep/`, `results/upstream/`). Headline: 51/51 native rows complete;
 49 runnable upstream baselines + 1 environment-blocked (`log_linear_mamba2`) +
 `hla` with no upstream anywhere (empty pin). Native median MFU 0.28; 8 rows ≥ 0.40.

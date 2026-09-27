@@ -21,7 +21,7 @@ Architectures compose public kernel calls with external projections/MLP outside
   `architecture-coverage.json` + `coverage_register.py` (the source-identity
   register and its generated doc), `recipe_catalog.py` (recipes access).
 - `results/sweep/`, `results/upstream/` — committed per-row campaign JSONs +
-  logs feeding `results_report.md`. `data/finewebedu10B/` — the training shards.
+  logs feeding `results/report.md`. `data/finewebedu10B/` — the training shards.
 - `/tmp/urm-comparator-pins/` — the pinned upstream checkouts (fla, mamba, sdm/lingua,
   tucker, tpa, samba, kata, differential, hopfield, conformer, longformer,
   sparse_transformer, hla_higher_order (empty — paper only), …).
@@ -59,7 +59,7 @@ harness (`train/`) work continue freely.
 python -m pytest tests/ -q                                   # full suite (676 passed / 41 skipped)
 python -m train.sweep --out-dir results/sweep                # native rows (51)
 python -m train.upstream --out-dir results/upstream --subprocess   # upstream baselines (49 runnable + 1 blocked)
-python -m train.report --sweep-dir results/sweep --upstream-dir results/upstream --out results_report.md
+python -m train.report --sweep-dir results/sweep --upstream-dir results/upstream --out results/report.md
 ```
 
 Sweep driver: per-row subprocess isolation, 8192→2048→1024 microbatch fallback on

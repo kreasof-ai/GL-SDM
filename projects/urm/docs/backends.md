@@ -42,7 +42,7 @@ certified backward. Reference tiers (numpy/torch) are the parity oracles the
   (122 KB) and `log_linear_mamba2` chunk (196 KB) shared memory, fla's RWKV7 chunk
   (131 KB), the pinned Tucker fused kernel (294 KB) — all recorded as
   environment-blocked or run as reference implementations in the upstream arm
-  ([catalog](catalog.md), [report](../results_report.md)).
+  ([catalog](catalog.md), [report](../results/report.md)).
 - The lingua SDM sparse inner-product core is a `load_inline` CUDA extension;
   this environment's toolchain is mismatched (nvcc 12.9 vs cu13 headers, no toolkit
   include path) and source builds are excluded by policy — the sdm upstream baseline

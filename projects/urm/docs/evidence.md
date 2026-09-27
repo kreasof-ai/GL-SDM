@@ -2,7 +2,7 @@
 
 What a measurement in this repo is allowed to claim. The machine catalog is
 `extra/architecture-coverage.json`; the benchmark records are
-`results/sweep/` + `results/upstream/` + `results_report.md`.
+`results/sweep/` + `results/upstream/` + `results/report.md`.
 
 ## Five independent verdicts
 
@@ -33,7 +33,7 @@ policy, intent mode, shape and state initialization. Missing upstream modes are
 | Scope | Evidence | Claim allowed |
 |---|---|---|
 | Registry | 52 rows: 51 native-tier + 1 reference-tier (`mamba1`, charter debt) | Native execution of the 51 rows' mixers on the A10G |
-| Parity gates | `tests/` — 743 passed / 41 skipped; per-architecture gates verify each row against its pinned oracle | The rows' equations match the pinned sources at tested shapes |
+| Parity gates | `tests/` — 676 passed / 41 skipped; per-architecture gates verify each row against its pinned oracle | The rows' equations match the pinned sources at tested shapes |
 | Training-harness benchmark | 51/51 native rows complete the 10-step 100M-class run with checkpoint parity; 49 upstream baselines joined | Harness-level MFU/throughput/memory comparison at the stated config — **not** source-model performance qualification (verdict 5 is not claimed) |
 | Upstream coverage | 50/51 native rows have an upstream baseline (31 production-kernel, 18 reference-implementation, 1 environment-blocked); `hla` has no upstream anywhere | Row-level comparison at matched granularity with the labeled tier |
 
@@ -67,5 +67,5 @@ generators). The architecture register's per-row parity/profile evidence fields,
 which pointed at those artifacts, were stripped (schema v3 → v4); the register
 keeps its live role — source identity, pinned revisions and construction backlog.
 The current evidence is the training-harness campaign: `results/sweep/`,
-`results/upstream/`, `results_report.md`, gated by `tests/` (per-architecture
+`results/upstream/`, `results/report.md`, gated by `tests/` (per-architecture
 parity against `extra/comparators/`, plus the harness gates).

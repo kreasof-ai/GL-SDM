@@ -13,4 +13,4 @@ disagrees with the code is a bug in the docs; file an issue or fix the doc.
 | [evidence.md](evidence.md) | `tests/`, `extra/` | The claim policy (five independent verdicts) and what the current evidence supports |
 
 Top-level: [project README](../README.md), [agent notes](../AGENTS.md),
-[training-harness report](../results_report.md).
+[training-harness report](../results/report.md).
