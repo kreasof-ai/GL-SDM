@@ -442,7 +442,7 @@ def _kl_gate(cfg: TrainConfig, mixer: MixerSpec, model: URMDecoderLM, *,
     """KL(URM mixer ‖ pinned upstream) on identical operands; None where no kernel exists.
 
     The mixers are operations with no learned weights of their own, so the honest KL
-    gate is mixer-level (matching ``benchmarks/alignment_report.py``): run the public-path
+    gate is mixer-level (the comparators' pattern): run the public-path
     mixer and the pinned upstream op on the same projected operands, softmax both outputs
     over the feature dimension, and report the divergence. Near-zero KL means the public
     path produces the upstream output distribution. Architectures with no reference kernel

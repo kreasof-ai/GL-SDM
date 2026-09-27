@@ -74,8 +74,8 @@ def render_markdown(register: dict) -> str:
     out.append(
         "Generated from the [machine register](../../benchmarks/architecture-coverage.json). "
         "This is the source identity and construction backlog. The "
-        "[76-row composition ledger](architecture-composition.md) gives external "
-        "call graphs and unresolved internal axes; [evidence rules](../validation/evidence.md) "
+        "[architecture catalog](../catalog.md) maps the registered rows; "
+        "[evidence rules](../evidence.md) "
         "define what each status can claim. Inclusion is not model support."
     )
     out.append("")
@@ -140,7 +140,7 @@ def render_markdown(register: dict) -> str:
         "Represented, reference-executable, native-qualified, performance-qualified "
         "and source-model-qualified are separate verdicts. A fragment never covers "
         "its router, frontend, cache or full layer by implication. Training, prefill "
-        "and decode qualify separately. See the [evidence protocol](../validation/evidence.md) "
+        "and decode qualify separately. See the [evidence protocol](../evidence.md) "
         "and [generality axes](../compiler/generality-axes.md)."
     )
     out.append("")

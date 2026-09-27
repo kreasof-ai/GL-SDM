@@ -330,45 +330,6 @@ def test_committed_unsat_diagnostics_all_map() -> None:
     assert artifact["summary"]["all_unsat"]
     assert artifact["summary"]["all_cores_mapped"]
     assert artifact["summary"]["cases_run"] >= 9
-def test_inference_throughput_table_matches_committed_artifacts() -> None:
-    """The inference throughput + MFU doc must regenerate exactly.
-
-    The table is a rollup over the committed release-gate artifacts (native and
-    upstream wall times per case/dtype/mode); this keeps the serving comparison
-    from drifting from the validated measurements.
-    """
-    import inference_report
-
-    documented = (
-        PROJECT_ROOT / "docs" / "validation" / "inference-throughput.md"
-    ).read_text(encoding="utf-8")
-    regenerated = inference_report.render_markdown(inference_report.build_rows())
-    assert documented == regenerated, (
-        "docs/validation/inference-throughput.md is out of sync with the "
-        "committed artifacts; regenerate it with "
-        "`PYTHONPATH=src:benchmarks python benchmarks/inference_report.py`"
-    )
-
-
-def test_alignment_doc_matches_committed_artifacts() -> None:
-    """The gradient-alignment + decoding-KL doc must regenerate exactly.
-
-    The gradient-alignment rows come from the committed qualification artifacts;
-    the decoding KL divergence is a fixed-seed live measurement. This keeps the
-    alignment evidence from drifting from the validated numbers.
-    """
-    import alignment_report
-
-    documented = (
-        PROJECT_ROOT / "docs" / "validation" / "alignment.md"
-    ).read_text(encoding="utf-8")
-    regenerated = alignment_report.render_markdown(
-        alignment_report._gradient_rows(), alignment_report._kl_divergence_rows()
-    )
-    assert documented == regenerated, (
-        "docs/validation/alignment.md is out of sync; regenerate it with "
-        "`PYTHONPATH=src:benchmarks python benchmarks/alignment_report.py`"
-    )
 
 
 def _select_cases(data: dict | None, comparison: dict) -> tuple[list[dict], str | None]:

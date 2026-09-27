@@ -1,6 +1,6 @@
 # Source architecture index
 
-Generated from the [machine register](../../benchmarks/architecture-coverage.json). This is the source identity and construction backlog. The [76-row composition ledger](architecture-composition.md) gives external call graphs and unresolved internal axes; [evidence rules](../validation/evidence.md) define what each status can claim. Inclusion is not model support.
+Generated from the [machine register](../../benchmarks/architecture-coverage.json). This is the source identity and construction backlog. The [architecture catalog](../catalog.md) maps the registered rows; [evidence rules](../evidence.md) define what each status can claim. Inclusion is not model support.
 
 Of 80 catalog rows, 76 are mixer-relevant and 4 are outside mixer scope. 76 rows retain pinned **historical kernel-slice** comparisons; 4 retain native K1 fragment profiles. 19 rows map to live public-graph fragments and 57 retain the old `pending_graph_migration` label. These figures do not qualify a complete source model. No K2 graph recipe is live.
 
@@ -139,4 +139,4 @@ Each comparator is pinned to an exact revision; a resolved identity does not imp
 
 ## What counts as coverage
 
-Represented, reference-executable, native-qualified, performance-qualified and source-model-qualified are separate verdicts. A fragment never covers its router, frontend, cache or full layer by implication. Training, prefill and decode qualify separately. See the [evidence protocol](../validation/evidence.md) and [generality axes](../compiler/generality-axes.md).
+Represented, reference-executable, native-qualified, performance-qualified and source-model-qualified are separate verdicts. A fragment never covers its router, frontend, cache or full layer by implication. Training, prefill and decode qualify separately. See the [evidence protocol](../evidence.md) and [generality axes](../compiler/generality-axes.md).
