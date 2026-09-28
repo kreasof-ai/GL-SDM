@@ -1,4 +1,5 @@
 /tmp/
+/data/
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -7,6 +8,8 @@ build/
 dist/
 *.egg-info/
 .ipynb_checkpoints/
-projects/urm/data/*.bin
-projects/urm/finewebedu10B/
 *.bin
+*.pt
+*.so
+projects/gl-sdm/checkpoints/
+projects/gl-sdm/runs/

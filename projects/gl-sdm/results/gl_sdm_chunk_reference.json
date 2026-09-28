@@ -1,0 +1,151 @@
+{
+  "arch_type": "gl_sdm",
+  "status": "passed",
+  "batch": 2,
+  "length": 65,
+  "logits_max_abs": 0.015598177909851074,
+  "logits_relative_l2": 0.001580515643581748,
+  "gradient_max_abs": 0.000244140625,
+  "continuation_max_abs": 0.21626633405685425,
+  "continuation_relative_l2": 0.00790289044380188,
+  "fp32_check": {
+    "arch_type": "gl_sdm",
+    "status": "passed",
+    "batch": 2,
+    "length": 65,
+    "logits_max_abs": 9.5367431640625e-07,
+    "logits_relative_l2": 1.9221344871311885e-07,
+    "gradient_max_abs": 5.587935447692871e-09,
+    "continuation_max_abs": 1.3113021850585938e-06,
+    "native_calls": {
+      "urm_route_read": 180,
+      "commit": 24
+    },
+    "memory_backend": "urm"
+  },
+  "bf16_note": "output/gradient limits unchanged; BF16 uses the production SDPA surround and bounds split continuation at 1% relative L2; strict FP32 independently checks dense attention and continuation",
+  "native_calls": {
+    "urm_route_read": 360,
+    "commit": 48
+  },
+  "memory_backend": "urm",
+  "config": {
+    "run_id": "gl_sdm_chunk_smoke",
+    "arch_type": "gl_sdm",
+    "vocab_size": 50304,
+    "hidden_size": 64,
+    "head_dim": 32,
+    "num_hidden_layers": 1,
+    "dtype": "bfloat16",
+    "tokenizer_name": "gpt2",
+    "seq_len": 65,
+    "batch_size": 130,
+    "mbs": 2,
+    "num_chunks": 1,
+    "max_steps": 3,
+    "val_tokens": 130,
+    "val_freq": 1,
+    "optimizer": "adamw",
+    "adamw_lr": 0.0003,
+    "adamw_beta1": 0.9,
+    "adamw_beta2": 0.95,
+    "adamw_eps": 1e-15,
+    "adamw_weight_decay": 0.1,
+    "adamw_lr_min_frac": 0.1,
+    "adamw_warmup_frac": 0.05,
+    "sigr_alpha": 0.0,
+    "dist_align_loss_weight": 0.0,
+    "seed": 1234,
+    "train_data": "data/finewebedu10B/finewebedu_train_*.bin",
+    "val_data": "data/finewebedu10B/finewebedu_val_*.bin",
+    "clean_dataset": "codelion/finepdfs-100M",
+    "eval_lengths": [
+      65,
+      129
+    ],
+    "needle_distances": [
+      65,
+      129
+    ],
+    "num_eval_docs": 2,
+    "num_needle_trials": 2,
+    "needle_val_len": 5,
+    "eval_seed": 1234,
+    "eval_after_train": false,
+    "gl_reasoning": "adaptive",
+    "gl_max_steps": 3,
+    "gl_slots": 64,
+    "gl_reads": 4,
+    "gl_writes": 4,
+    "gl_write_policy": "merged",
+    "gl_halt_epsilon": 0.01,
+    "gl_halt_bias": -2.0,
+    "auxiliary_loss_weight": 0.001,
+    "gl_memory_backend": "urm",
+    "gl_chunk_size": 16,
+    "gl_compile": true
+  },
+  "runtime": {
+    "torch": "2.14.0+cu130",
+    "cuda": "13.0",
+    "reference_fallback": false,
+    "implementation": "GL-SDM transaction kernels + frozen URM",
+    "memory_backend": "urm",
+    "transaction": "one commit per 16 tokens",
+    "state_dtype": "float32",
+    "optimized_kernel": true,
+    "dense_compilation": true,
+    "training_cuda_graph": false,
+    "local_context": "causal SDPA within chunk",
+    "write_mass": "per-token reasoning mass divided by chunk size",
+    "routing": "URM product-key top-k; highest address wins ties",
+    "source_sha256": "8440659792d33cb59ba909c36f55a7b99d787b2b45c00a866e445b59c1661122",
+    "urm": {
+      "repository": "https://github.com/kreasof-ai/urm.git",
+      "revision": "604bfdf5d2c827266a32ef142ca996cc712d70f0"
+    },
+    "logical_value_dim": 32,
+    "physical_read_value_dim": 32,
+    "initial_batch_read_plan": {
+      "program": "gl_sdm_routed_snapshot_read",
+      "steps": [
+        {
+          "step_id": 0,
+          "kind": "anchor_dispatch",
+          "anchor": "urm_native_sparse_route_selection_v0",
+          "exchanges": [],
+          "note": "router",
+          "launch_config": {
+            "schedule_family": "row_owned_factor_topk_canonical_softmax",
+            "block_half": 8,
+            "block_route": 4,
+            "block_pair": 16,
+            "num_warps": 4,
+            "num_stages": 2
+          }
+        },
+        {
+          "step_id": 1,
+          "kind": "anchor_dispatch",
+          "anchor": "urm_native_sparse_state_mixer_v0",
+          "exchanges": [],
+          "note": "snapshot",
+          "launch_config": {
+            "schedule_family": "partition_owned_ordered_token_scan",
+            "block_d": 32,
+            "num_warps": 2,
+            "num_stages": 3,
+            "tokens_per_program": -1,
+            "read_timing": "current_state",
+            "state_layout": "partition_slot_value"
+          }
+        }
+      ],
+      "obligations": [],
+      "escape_hatch_count": 0
+    },
+    "commit": "stable ordered sum per address; no forward atomics",
+    "backward_storage": "URM saves one aliased snapshot per chunk; selected write rows",
+    "gpu": "NVIDIA A10G"
+  }
+}

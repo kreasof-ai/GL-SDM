@@ -1,7 +1,0 @@
-{
-  "mixer": "pattention",
-  "measurement_version": 2,
-  "baseline_tier": "reference-implementation",
-  "status": "production-unavailable",
-  "reason": "the pinned tokenformer Pattention equation hosted at reference tier (megatron source needs neox/mpu)"
-}

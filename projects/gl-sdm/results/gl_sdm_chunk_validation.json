@@ -1,0 +1,247 @@
+{
+  "status": "passed",
+  "config": {
+    "run_id": "gl_sdm_chunk_r4_validation",
+    "arch_type": "gl_sdm",
+    "vocab_size": 50304,
+    "hidden_size": 512,
+    "head_dim": 64,
+    "num_hidden_layers": 1,
+    "dtype": "bfloat16",
+    "tokenizer_name": "gpt2",
+    "seq_len": 2048,
+    "batch_size": 8192,
+    "mbs": 4,
+    "num_chunks": 1,
+    "max_steps": 3,
+    "val_tokens": 8192,
+    "val_freq": 1,
+    "optimizer": "adamw",
+    "adamw_lr": 0.0003,
+    "adamw_beta1": 0.9,
+    "adamw_beta2": 0.95,
+    "adamw_eps": 1e-15,
+    "adamw_weight_decay": 0.1,
+    "adamw_lr_min_frac": 0.1,
+    "adamw_warmup_frac": 0.05,
+    "sigr_alpha": 0.0,
+    "dist_align_loss_weight": 0.0,
+    "seed": 1234,
+    "train_data": "data/finewebedu10B/finewebedu_train_*.bin",
+    "val_data": "data/finewebedu10B/finewebedu_val_*.bin",
+    "clean_dataset": "codelion/finepdfs-100M",
+    "eval_lengths": [
+      1024,
+      2048
+    ],
+    "needle_distances": [
+      1024,
+      2048
+    ],
+    "num_eval_docs": 2,
+    "num_needle_trials": 2,
+    "needle_val_len": 5,
+    "eval_seed": 1234,
+    "eval_after_train": false,
+    "gl_reasoning": "fixed",
+    "gl_max_steps": 4,
+    "gl_slots": 4096,
+    "gl_reads": 8,
+    "gl_writes": 8,
+    "gl_write_policy": "merged",
+    "gl_halt_epsilon": 0.01,
+    "gl_halt_bias": -2.0,
+    "auxiliary_loss_weight": 0.0,
+    "gl_memory_backend": "urm",
+    "gl_chunk_size": 1024,
+    "gl_compile": true,
+    "gl_cuda_graph": true
+  },
+  "runtime": {
+    "torch": "2.14.0+cu130",
+    "cuda": "13.0",
+    "reference_fallback": false,
+    "implementation": "GL-SDM transaction kernels + frozen URM",
+    "memory_backend": "urm",
+    "transaction": "one commit per 1024 tokens",
+    "state_dtype": "float32",
+    "optimized_kernel": true,
+    "dense_compilation": true,
+    "training_cuda_graph": true,
+    "local_context": "causal SDPA within chunk",
+    "write_mass": "per-token reasoning mass divided by chunk size",
+    "routing": "URM product-key top-k; highest address wins ties",
+    "source_sha256": "8440659792d33cb59ba909c36f55a7b99d787b2b45c00a866e445b59c1661122",
+    "urm": {
+      "repository": "https://github.com/kreasof-ai/urm.git",
+      "revision": "604bfdf5d2c827266a32ef142ca996cc712d70f0"
+    },
+    "logical_value_dim": 64,
+    "physical_read_value_dim": 128,
+    "initial_batch_read_plan": {
+      "program": "gl_sdm_routed_snapshot_read",
+      "steps": [
+        {
+          "step_id": 0,
+          "kind": "anchor_dispatch",
+          "anchor": "urm_native_sparse_route_selection_v0",
+          "exchanges": [],
+          "note": "router",
+          "launch_config": {
+            "schedule_family": "row_owned_factor_topk_canonical_softmax",
+            "block_half": 64,
+            "block_route": 8,
+            "block_pair": 64,
+            "num_warps": 4,
+            "num_stages": 2
+          }
+        },
+        {
+          "step_id": 1,
+          "kind": "anchor_dispatch",
+          "anchor": "urm_native_sparse_state_mixer_v0",
+          "exchanges": [],
+          "note": "snapshot",
+          "launch_config": {
+            "schedule_family": "partition_owned_ordered_token_scan",
+            "block_d": 128,
+            "num_warps": 4,
+            "num_stages": 3,
+            "tokens_per_program": -1,
+            "read_timing": "current_state",
+            "state_layout": "partition_slot_value"
+          }
+        }
+      ],
+      "obligations": [],
+      "escape_hatch_count": 0
+    },
+    "commit": "stable ordered sum per address; no forward atomics",
+    "backward_storage": "URM saves one aliased snapshot per chunk; selected write rows",
+    "gpu": "NVIDIA A10G"
+  },
+  "training_steps": 3,
+  "training_tokens": 24576,
+  "curve": [
+    {
+      "step": 0,
+      "val_loss": 10.82583999633789,
+      "wall_s": 0.0
+    },
+    {
+      "step": 1,
+      "val_loss": 10.807533264160156,
+      "wall_s": 1.106165700010024
+    },
+    {
+      "step": 2,
+      "val_loss": 10.784406661987305,
+      "wall_s": 1.203313588979654,
+      "num_params": 59920976,
+      "active_params": 57823824,
+      "memory_params": 2097152,
+      "mean_reasoning_steps": 4.0,
+      "p95_reasoning_steps": 4.0,
+      "max_reasoning_steps": 4.0,
+      "executed_reasoner_calls": 32768,
+      "gl_write_policy": "merged",
+      "mfu_interpretation": "execution-weighted 6ND estimate; preserves the parameter-count convention, excludes attention and sparse state FLOPs",
+      "tokens": 8192,
+      "seconds": 0.09714788896963,
+      "tok_s": 84325.04387780317,
+      "mfu_6nd_pct": 50.911733844620755,
+      "peak_tflops": 70.0,
+      "mfu_formula": "6 * (tokens * once_params + reasoner_token_passes * reasoner_params + write_token_passes * write_params) / seconds / peak_flops",
+      "mfu": 50.911733844620755,
+      "step_ms": 97.14788896963,
+      "once_params": 53088256,
+      "reasoner_params": 3939392,
+      "write_params": 796176,
+      "reasoner_token_passes": 32768,
+      "write_token_passes": 16384,
+      "effective_active_params": 70438176.0,
+      "estimated_training_flops_6nd": 3462177226752,
+      "unique_parameter_6nd_pct": 41.79425567984887,
+      "unique_parameter_6nd_interpretation": "capacity-normalized throughput proxy; does not count tied-weight reuse"
+    },
+    {
+      "step": 3,
+      "val_loss": 10.767030715942383,
+      "wall_s": 1.3001934029744007,
+      "num_params": 59920976,
+      "active_params": 57823824,
+      "memory_params": 2097152,
+      "mean_reasoning_steps": 4.0,
+      "p95_reasoning_steps": 4.0,
+      "max_reasoning_steps": 4.0,
+      "executed_reasoner_calls": 32768,
+      "gl_write_policy": "merged",
+      "mfu_interpretation": "execution-weighted 6ND estimate; preserves the parameter-count convention, excludes attention and sparse state FLOPs",
+      "tokens": 8192,
+      "seconds": 0.09687981399474666,
+      "tok_s": 84558.37869841713,
+      "mfu_6nd_pct": 51.05261109457506,
+      "peak_tflops": 70.0,
+      "mfu_formula": "6 * (tokens * once_params + reasoner_token_passes * reasoner_params + write_token_passes * write_params) / seconds / peak_flops",
+      "mfu": 51.05261109457506,
+      "step_ms": 96.87981399474666,
+      "once_params": 53088256,
+      "reasoner_params": 3939392,
+      "write_params": 796176,
+      "reasoner_token_passes": 32768,
+      "write_token_passes": 16384,
+      "effective_active_params": 70438176.0,
+      "estimated_training_flops_6nd": 3462177226752,
+      "unique_parameter_6nd_pct": 41.9099040649939,
+      "unique_parameter_6nd_interpretation": "capacity-normalized throughput proxy; does not count tied-weight reuse"
+    }
+  ],
+  "strict_checkpoint_parameters": "exact",
+  "generation": {
+    "context_tokens": 1030,
+    "new_tokens": 4,
+    "last_token_ids": [
+      11,
+      290,
+      2987,
+      12449
+    ]
+  },
+  "cached_continuation_relative_l2": 0.0024078323040157557,
+  "cached_commits": 1,
+  "evaluation": {
+    "junk_ppl": {
+      "1024": 10.77153730392456,
+      "2048": 10.765253901481628
+    },
+    "junk_tokens": {
+      "1024": 2048,
+      "2048": 4096
+    },
+    "junk_perplexity": {
+      "1024": 47645.206405365636,
+      "2048": 47346.77097587793
+    }
+  },
+  "needle_haystack": "FineWeb-Edu validation stream; protocol smoke, not a clean dataset quality measurement",
+  "needle": {
+    "1024": {
+      "ce": 10.796388626098633,
+      "acc": 0.0,
+      "trials": 2
+    },
+    "2048": {
+      "ce": 10.797230243682861,
+      "acc": 0.0,
+      "trials": 2
+    }
+  },
+  "needle_absent_control_ce": 10.796807765960693,
+  "mfu_accounting": {
+    "method": "execution-weighted 6ND; recalculated from unchanged original timings",
+    "implementation_sha256": "5474ec99d95ba97a69c830d866786033baacc16971a641591362d2ea2440d69a",
+    "measurement_source_sha256": "8440659792d33cb59ba909c36f55a7b99d787b2b45c00a866e445b59c1661122",
+    "depth_basis": "fixed config independently agrees with saved measured depth telemetry",
+    "timings_rerun": false
+  }
+}

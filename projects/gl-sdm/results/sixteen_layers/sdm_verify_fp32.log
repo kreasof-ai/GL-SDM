@@ -1,0 +1,32 @@
+
+===ABLATION_ERROR_JSON===
+{"error": "Traceback (most recent call last):\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/cli.py\", line 62, in main\n    result = check(cfg, args.device, length)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py\", line 61, in check\n    result = _check(cfg, device, length)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py\", line 71, in _check\n    result = _check_once(cfg, device, length)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py\", line 101, in _check_once\n    errors[\"logits_max_abs\"] = compare(logits, expected, \"reference logits\", atol=5e-4 if cfg.get(\"dtype\") == \"float32\" else 0.03, rtol=0.003 if cfg.get(\"dtype\") == \"float32\" else 0.03)\n                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py\", line 14, in compare\n    torch.testing.assert_close(actual.float(), expected.float(), atol=atol, rtol=rtol, msg=lambda detail: f\"{label}\\n{detail}\")\n  File \"/opt/conda/lib/python3.12/site-packages/torch/testing/_comparison.py\", line 1689, in assert_close\n    raise error_metas[0].to_error(msg)\nAssertionError: reference logits\nTensor-likes are not close!\n\nMismatched elements: 1566669 / 6489216 (24.1%)\nGreatest absolute difference: 0.6810310482978821 at index (0, 45, 984) (up to 0.0005 allowed)\nGreatest relative difference: 29324.15625 at index (0, 68, 16144) (up to 0.003 allowed)\n"}
+===END===
+
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/cli.py", line 107, in <module>
+    main()
+  File "/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/cli.py", line 62, in main
+    result = check(cfg, args.device, length)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py", line 61, in check
+    result = _check(cfg, device, length)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py", line 71, in _check
+    result = _check_once(cfg, device, length)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py", line 101, in _check_once
+    errors["logits_max_abs"] = compare(logits, expected, "reference logits", atol=5e-4 if cfg.get("dtype") == "float32" else 0.03, rtol=0.003 if cfg.get("dtype") == "float32" else 0.03)
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sagemaker-user/GL-SDM/projects/gl-sdm/src/gl_sdm/experiments/verify.py", line 14, in compare
+    torch.testing.assert_close(actual.float(), expected.float(), atol=atol, rtol=rtol, msg=lambda detail: f"{label}\n{detail}")
+  File "/opt/conda/lib/python3.12/site-packages/torch/testing/_comparison.py", line 1689, in assert_close
+    raise error_metas[0].to_error(msg)
+AssertionError: reference logits
+Tensor-likes are not close!
+
+Mismatched elements: 1566669 / 6489216 (24.1%)
+Greatest absolute difference: 0.6810310482978821 at index (0, 45, 984) (up to 0.0005 allowed)
+Greatest relative difference: 29324.15625 at index (0, 68, 16144) (up to 0.003 allowed)

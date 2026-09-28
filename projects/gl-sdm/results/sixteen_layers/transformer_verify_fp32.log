@@ -1,0 +1,4 @@
+
+===REFERENCE_CHECK_JSON===
+{"arch_type": "transformer", "status": "passed", "batch": 1, "length": 129, "logits_max_abs": 2.86102294921875e-06, "logits_relative_l2": 7.277870395228092e-07, "gradient_max_abs": 1.862645149230957e-08, "continuation_max_abs": 3.6954879760742188e-06}
+===END===

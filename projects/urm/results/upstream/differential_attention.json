@@ -1,7 +1,0 @@
-{
-  "mixer": "differential_attention",
-  "measurement_version": 2,
-  "baseline_tier": "reference-implementation",
-  "status": "production-unavailable",
-  "reason": "the pinned Diff-Transformer MultiheadDiffAttn (research code, AST-extracted)"
-}

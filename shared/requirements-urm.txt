@@ -1,0 +1,2 @@
+# Frozen URM baseline. Update only for an explicitly scoped URM dependency change.
+urm-kernel-lab @ git+https://github.com/kreasof-ai/urm.git@604bfdf5d2c827266a32ef142ca996cc712d70f0

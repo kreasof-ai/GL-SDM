@@ -1,0 +1,38 @@
+[
+  {
+    "model": "gl_sdm",
+    "artifact": "projects/gl-sdm/results/sequence_2048/gl_sdm_memory_profile.json",
+    "sha256": "25aa92371009d8244023d49d94b1f53e47460da7eba018836f8e545d22e93242",
+    "command": [
+      "python",
+      "projects/gl-sdm/scripts/profile_layer_memory.py",
+      "--config",
+      "projects/gl-sdm/configs/gl_sdm.json",
+      "--output",
+      "projects/gl-sdm/results/sequence_2048/gl_sdm_memory_profile.json"
+    ],
+    "environment": {
+      "PYTORCH_ALLOC_CONF": "max_split_size_mb:512"
+    },
+    "scope": "one forward/backward microbatch; no clipping or optimizer",
+    "original_artifact_location": "/tmp/gl-sdm-profile-2048.json"
+  },
+  {
+    "model": "sdm",
+    "artifact": "projects/gl-sdm/results/sequence_2048/sdm_memory_profile.json",
+    "sha256": "555305c9da95ddd5fd8822c6b5619ef8c8311e5126f4b39f9eab177de86c2dff",
+    "command": [
+      "python",
+      "projects/gl-sdm/scripts/profile_layer_memory.py",
+      "--config",
+      "projects/gl-sdm/configs/sdm.json",
+      "--output",
+      "projects/gl-sdm/results/sequence_2048/sdm_memory_profile.json"
+    ],
+    "environment": {
+      "PYTORCH_ALLOC_CONF": "max_split_size_mb:512"
+    },
+    "scope": "one forward/backward microbatch; no clipping or optimizer",
+    "original_artifact_location": "/tmp/sdm-profile-2048.json"
+  }
+]

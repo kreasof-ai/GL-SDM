@@ -1,0 +1,56 @@
+{
+  "arch_type": "gl_sdm",
+  "runtime": {
+    "torch": "2.14.0+cu130",
+    "cuda": "13.0",
+    "reference_fallback": false,
+    "implementation": "project-owned PyTorch GL-SDM",
+    "transaction": "one token",
+    "state_dtype": "float32",
+    "optimized_kernel": false,
+    "gpu": "NVIDIA A10G"
+  },
+  "warmup": 2,
+  "iterations": 3,
+  "training": {
+    "num_params": 6509860,
+    "active_params": 6505764,
+    "memory_params": 4096,
+    "mean_reasoning_steps": 3.0,
+    "p95_reasoning_steps": 3.0,
+    "max_reasoning_steps": 3.0,
+    "executed_reasoner_calls": 1170,
+    "gl_write_policy": "merged",
+    "mfu_interpretation": "unique-parameter 6ND; repeated applications of tied reasoner weights are not counted",
+    "tokens": 390,
+    "seconds": 3.3249710840755142,
+    "tok_s": 117.29425313436579,
+    "mfu_6nd_pct": 0.006540760538129521,
+    "peak_tflops": 70.0,
+    "mfu_formula": "6 * active_params * tokens / seconds / peak_flops; excludes sparse learned memory bank and state work",
+    "median_step_ms": 1111.5354190114886,
+    "loss": 10.659168419471154
+  },
+  "prefill": {
+    "median_ms": 413.97310100728646,
+    "tokens_per_second": 313.73474758900215,
+    "context_tokens": 65,
+    "mean_reasoning_steps": 3.0,
+    "p95_reasoning_steps": 3.0,
+    "max_reasoning_steps": 3.0,
+    "executed_reasoner_calls": 390,
+    "gl_write_policy": "merged"
+  },
+  "decode": {
+    "median_ms": 6.843429000582546,
+    "tokens_per_second": 288.89999970151257,
+    "context_tokens": 65,
+    "mean_reasoning_steps": 3.0,
+    "p95_reasoning_steps": 3.0,
+    "max_reasoning_steps": 3.0,
+    "executed_reasoner_calls": 6,
+    "gl_write_policy": "merged"
+  },
+  "peak_allocated_gib": 0.24113798141479492,
+  "peak_reserved_gib": 0.291015625
+}

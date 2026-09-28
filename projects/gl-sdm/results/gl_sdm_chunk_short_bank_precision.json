@@ -1,0 +1,350 @@
+{
+  "status": "reference_failed",
+  "config": {
+    "run_id": "gl_sdm_chunk_r4",
+    "arch_type": "gl_sdm",
+    "vocab_size": 256,
+    "hidden_size": 512,
+    "head_dim": 64,
+    "num_hidden_layers": 1,
+    "dtype": "bfloat16",
+    "tokenizer_name": "gpt2",
+    "seq_len": 2048,
+    "batch_size": 8192,
+    "mbs": 4,
+    "num_chunks": 1,
+    "max_steps": 1000,
+    "val_tokens": 8192,
+    "val_freq": 100,
+    "optimizer": "adamw",
+    "adamw_lr": 0.0003,
+    "adamw_beta1": 0.9,
+    "adamw_beta2": 0.95,
+    "adamw_eps": 1e-15,
+    "adamw_weight_decay": 0.1,
+    "adamw_lr_min_frac": 0.1,
+    "adamw_warmup_frac": 0.05,
+    "sigr_alpha": 0.0,
+    "dist_align_loss_weight": 0.0,
+    "seed": 1234,
+    "train_data": "data/finewebedu10B/finewebedu_train_*.bin",
+    "val_data": "data/finewebedu10B/finewebedu_val_*.bin",
+    "clean_dataset": "codelion/finepdfs-100M",
+    "eval_lengths": [
+      512,
+      1024,
+      2048,
+      4096
+    ],
+    "needle_distances": [
+      512,
+      1024,
+      2048,
+      4096
+    ],
+    "num_eval_docs": 16,
+    "num_needle_trials": 16,
+    "needle_val_len": 5,
+    "eval_seed": 1234,
+    "eval_after_train": false,
+    "gl_reasoning": "fixed",
+    "gl_max_steps": 4,
+    "gl_slots": 4096,
+    "gl_reads": 8,
+    "gl_writes": 8,
+    "gl_write_policy": "merged",
+    "gl_halt_epsilon": 0.01,
+    "gl_halt_bias": -2.0,
+    "auxiliary_loss_weight": 0.0,
+    "gl_memory_backend": "urm",
+    "gl_chunk_size": 16,
+    "gl_compile": true,
+    "gl_cuda_graph": false
+  },
+  "runtime": {
+    "torch": "2.14.0+cu130",
+    "cuda": "13.0",
+    "reference_fallback": false,
+    "implementation": "GL-SDM transaction kernels + frozen URM",
+    "memory_backend": "urm",
+    "transaction": "one commit per 16 tokens",
+    "state_dtype": "float32",
+    "optimized_kernel": true,
+    "dense_compilation": true,
+    "training_cuda_graph": false,
+    "local_context": "causal SDPA within chunk",
+    "write_mass": "per-token reasoning mass divided by chunk size",
+    "routing": "URM product-key top-k; highest address wins ties",
+    "source_sha256": "8440659792d33cb59ba909c36f55a7b99d787b2b45c00a866e445b59c1661122",
+    "urm": {
+      "repository": "https://github.com/kreasof-ai/urm.git",
+      "revision": "604bfdf5d2c827266a32ef142ca996cc712d70f0"
+    },
+    "logical_value_dim": 64,
+    "physical_read_value_dim": 128,
+    "initial_batch_read_plan": {
+      "program": "gl_sdm_routed_snapshot_read",
+      "steps": [
+        {
+          "step_id": 0,
+          "kind": "anchor_dispatch",
+          "anchor": "urm_native_sparse_route_selection_v0",
+          "exchanges": [],
+          "note": "router",
+          "launch_config": {
+            "schedule_family": "row_owned_factor_topk_canonical_softmax",
+            "block_half": 64,
+            "block_route": 8,
+            "block_pair": 64,
+            "num_warps": 4,
+            "num_stages": 2
+          }
+        },
+        {
+          "step_id": 1,
+          "kind": "anchor_dispatch",
+          "anchor": "urm_native_sparse_state_mixer_v0",
+          "exchanges": [],
+          "note": "snapshot",
+          "launch_config": {
+            "schedule_family": "partition_owned_ordered_token_scan",
+            "block_d": 128,
+            "num_warps": 4,
+            "num_stages": 3,
+            "tokens_per_program": -1,
+            "read_timing": "current_state",
+            "state_layout": "partition_slot_value"
+          }
+        }
+      ],
+      "obligations": [],
+      "escape_hatch_count": 0
+    },
+    "commit": "stable ordered sum per address; no forward atomics",
+    "backward_storage": "URM saves one aliased snapshot per chunk; selected write rows",
+    "gpu": "NVIDIA A10G"
+  },
+  "batch": 2,
+  "length": 65,
+  "bf16_output": {
+    "max_abs": 0.17832742631435394,
+    "relative_l2": 0.03232933580875397,
+    "status": "failed",
+    "failure": "reference logits\nTensor-likes are not close!\n\nMismatched elements: 1783 / 33280 (5.4%)\nGreatest absolute difference: 0.17832742631435394 at index (0, 56, 246) (up to 0.03 allowed)\nGreatest relative difference: 171.79833984375 at index (0, 53, 43) (up to 0.03 allowed)"
+  },
+  "bf16_parameter_gradients": {
+    "embed.weight": {
+      "max_abs": 5.91278076171875e-05,
+      "relative_l2": 0.025353772565722466,
+      "status": "passed"
+    },
+    "blocks.0.attn.q.weight": {
+      "max_abs": 0.0012798309326171875,
+      "relative_l2": 0.08740708976984024,
+      "status": "passed"
+    },
+    "blocks.0.attn.q.bias": {
+      "max_abs": 0.00040435791015625,
+      "relative_l2": 0.08142658323049545,
+      "status": "passed"
+    },
+    "blocks.0.attn.k.weight": {
+      "max_abs": 2.47955322265625e-05,
+      "relative_l2": 0.1269267052412033,
+      "status": "passed"
+    },
+    "blocks.0.attn.k.bias": {
+      "max_abs": 9.894371032714844e-06,
+      "relative_l2": 0.13033944368362427,
+      "status": "passed"
+    },
+    "blocks.0.attn.v.weight": {
+      "max_abs": 2.0742416381835938e-05,
+      "relative_l2": 0.11339128762483597,
+      "status": "passed"
+    },
+    "blocks.0.attn.v.bias": {
+      "max_abs": 8.702278137207031e-06,
+      "relative_l2": 0.08175448328256607,
+      "status": "passed"
+    },
+    "blocks.0.attn.beta.weight": {
+      "max_abs": 1.722574234008789e-05,
+      "relative_l2": 0.09403998404741287,
+      "status": "passed"
+    },
+    "blocks.0.attn.beta.bias": {
+      "max_abs": 7.62939453125e-06,
+      "relative_l2": 0.10526760667562485,
+      "status": "passed"
+    },
+    "blocks.0.attn.decay.weight": {
+      "max_abs": 1.0728836059570312e-06,
+      "relative_l2": 0.11273141205310822,
+      "status": "passed"
+    },
+    "blocks.0.attn.decay.bias": {
+      "max_abs": 4.0605664253234863e-07,
+      "relative_l2": 0.10339167714118958,
+      "status": "passed"
+    },
+    "blocks.0.attn.proj.weight": {
+      "max_abs": 0.000946044921875,
+      "relative_l2": 0.0666632205247879,
+      "status": "passed"
+    },
+    "blocks.0.attn.proj.bias": {
+      "max_abs": 0.0001983642578125,
+      "relative_l2": 0.01843155361711979,
+      "status": "passed"
+    },
+    "blocks.0.attn.read_norm.weight": {
+      "max_abs": 0.000431060791015625,
+      "relative_l2": 0.054832033812999725,
+      "status": "passed"
+    },
+    "blocks.0.bank.memory": {
+      "max_abs": 0.0015358042437583208,
+      "relative_l2": 0.06715410947799683,
+      "status": "passed"
+    },
+    "blocks.0.norm1.weight": {
+      "max_abs": 0.000171661376953125,
+      "relative_l2": 0.08838492631912231,
+      "status": "passed"
+    },
+    "blocks.0.norm2.weight": {
+      "max_abs": 4.1961669921875e-05,
+      "relative_l2": 0.029822316020727158,
+      "status": "passed"
+    },
+    "blocks.0.mlp.fc.weight": {
+      "max_abs": 0.0001983642578125,
+      "relative_l2": 0.03178424388170242,
+      "status": "passed"
+    },
+    "blocks.0.mlp.fc.bias": {
+      "max_abs": 5.340576171875e-05,
+      "relative_l2": 0.027467744424939156,
+      "status": "passed"
+    },
+    "blocks.0.mlp.proj.weight": {
+      "max_abs": 0.00029754638671875,
+      "relative_l2": 0.030702129006385803,
+      "status": "passed"
+    },
+    "blocks.0.mlp.proj.bias": {
+      "max_abs": 0.00018310546875,
+      "relative_l2": 0.018779002130031586,
+      "status": "passed"
+    },
+    "blocks.0.input_proj.weight": {
+      "max_abs": 0.000335693359375,
+      "relative_l2": 0.020793115720152855,
+      "status": "passed"
+    },
+    "blocks.0.input_proj.bias": {
+      "max_abs": 0.00016021728515625,
+      "relative_l2": 0.01876399666070938,
+      "status": "passed"
+    },
+    "blocks.0.local_context.q.weight": {
+      "max_abs": 3.4332275390625e-05,
+      "relative_l2": 0.024772213771939278,
+      "status": "passed"
+    },
+    "blocks.0.local_context.q.bias": {
+      "max_abs": 1.71661376953125e-05,
+      "relative_l2": 0.024719741195440292,
+      "status": "passed"
+    },
+    "blocks.0.local_context.k.weight": {
+      "max_abs": 4.0531158447265625e-05,
+      "relative_l2": 0.024825356900691986,
+      "status": "passed"
+    },
+    "blocks.0.local_context.k.bias": {
+      "max_abs": 1.1444091796875e-05,
+      "relative_l2": 0.026529399678111076,
+      "status": "passed"
+    },
+    "blocks.0.local_context.v.weight": {
+      "max_abs": 8.58306884765625e-05,
+      "relative_l2": 0.029338466003537178,
+      "status": "passed"
+    },
+    "blocks.0.local_context.v.bias": {
+      "max_abs": 5.340576171875e-05,
+      "relative_l2": 0.023221541196107864,
+      "status": "passed"
+    },
+    "blocks.0.local_context.proj.weight": {
+      "max_abs": 6.866455078125e-05,
+      "relative_l2": 0.02876606397330761,
+      "status": "passed"
+    },
+    "blocks.0.local_context.proj.bias": {
+      "max_abs": 0.0001983642578125,
+      "relative_l2": 0.022029757499694824,
+      "status": "passed"
+    },
+    "blocks.0.local_norm.weight": {
+      "max_abs": 2.47955322265625e-05,
+      "relative_l2": 0.02694568783044815,
+      "status": "passed"
+    },
+    "norm.weight": {
+      "max_abs": 0.0002593994140625,
+      "relative_l2": 0.03205792233347893,
+      "status": "passed"
+    },
+    "proj.weight": {
+      "max_abs": 0.002777099609375,
+      "relative_l2": 0.03206976130604744,
+      "status": "failed",
+      "failure": "proj.weight\nTensor-likes are not close!\n\nMismatched elements: 2 / 131072 (0.0%)\nGreatest absolute difference: 0.00251007080078125 at index (171, 420) (up to 0.002 allowed)\nGreatest relative difference: 1.6785714626312256 at index (171, 420) (up to 0.12 allowed)"
+    }
+  },
+  "fp32_check": {
+    "arch_type": "gl_sdm",
+    "status": "passed",
+    "batch": 2,
+    "length": 65,
+    "logits_max_abs": 5.960464477539062e-07,
+    "logits_relative_l2": 2.1701248442695942e-07,
+    "gradient_max_abs": 1.1175870895385742e-08,
+    "continuation_max_abs": 5.364418029785156e-07,
+    "native_calls": {
+      "urm_route_read": 156,
+      "commit": 24
+    },
+    "memory_backend": "urm"
+  },
+  "bf16_first_chunk_routes": [
+    {
+      "step": 1,
+      "score_max_abs": 0.0,
+      "read_max_abs": 1.1175870895385742e-08,
+      "selected_address_disagreements": 0
+    },
+    {
+      "step": 2,
+      "score_max_abs": 0.0078125,
+      "read_max_abs": 0.00016866996884346008,
+      "selected_address_disagreements": 0
+    },
+    {
+      "step": 3,
+      "score_max_abs": 0.0078125,
+      "read_max_abs": 0.00019314046949148178,
+      "selected_address_disagreements": 0
+    },
+    {
+      "step": 4,
+      "score_max_abs": 0.0078125,
+      "read_max_abs": 0.00026148557662963867,
+      "selected_address_disagreements": 0
+    }
+  ],
+  "note": "Strict BF16 and FP32 gates are unchanged. Vocabulary is reduced for this diagnostic; all effective dimensions are saved in config."
+}

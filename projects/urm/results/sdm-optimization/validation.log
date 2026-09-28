@@ -1,7 +1,0 @@
-Native K3 integration validation
-
-Command: PYTHONPATH=src:. python -m pytest -o addopts='' -q tests/test_candidate_selection.py tests/test_provider_contract.py tests/test_graph_vertical_slice.py tests/test_sparse_state_mixer_contract.py tests/test_k3_chunked_native.py tests/test_sparse_state_mixer_gpu.py tests/test_sparse_state_mixer_upstream_gpu.py tests/test_k3_route_provenance.py tests/test_sdm_chunked.py tests/test_sdm_cuda_baseline.py tests/test_architectures_sdm.py tests/test_training_harness.py::test_stateful_sdm_lifecycle_and_metrics tests/test_benchmark_protocol.py::test_invalid_or_mismatched_results_never_enter_comparison
-
-................................................................................................................................................. [ 75%]
-................................................                                                                                                  [100%]
-193 passed, 1 skipped in 311.22s (0:05:11)

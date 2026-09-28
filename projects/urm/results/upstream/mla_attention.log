@@ -1,1 +1,0 @@
-fla's MLA layer hard-requires flash-attn; baseline is the pinned prefill equation in torch

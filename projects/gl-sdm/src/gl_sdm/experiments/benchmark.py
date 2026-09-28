@@ -1,0 +1,84 @@
+"""Whole-model training, prefill and decode timing, after explicit warmup."""
+import statistics
+import time
+import torch
+from gl_sdm.experiments.metrics import peak_flops, utilization
+from gl_sdm.experiments.train import optimizers, update, synchronize
+from gl_sdm.experiments.provenance import metadata
+
+
+def run(model, cfg, device, iterations=10, warmup=3, peak=None):
+    if iterations < 1 or warmup < 1:
+        raise ValueError("positive warmup and iterations required")
+    x = torch.randint(cfg["vocab_size"], (cfg["batch_size"] // cfg["seq_len"], cfg["seq_len"]), device=device)
+    y = torch.randint(cfg["vocab_size"], x.shape, device=device)
+    opts = optimizers(model, cfg, device)
+    result = {"arch_type": cfg["arch_type"], "runtime": metadata(cfg["arch_type"], cfg), "config": cfg, "warmup": warmup, "iterations": iterations}
+    if torch.device(device).type == "cuda":
+        torch.cuda.reset_peak_memory_stats()
+    model.train()
+    for _ in range(warmup):
+        update(model, opts, x, y, cfg)
+    synchronize(device)
+    times = []
+    depths = []
+    allocations = []
+    for _ in range(iterations):
+        t0 = time.perf_counter()
+        loss = update(model, opts, x, y, cfg)
+        synchronize(device)
+        times.append(time.perf_counter() - t0)
+        if torch.device(device).type == "cuda":
+            allocations.append(torch.cuda.memory_allocated() / 1024**3)
+        if cfg["arch_type"] == "gl_sdm" and not model.is_layer_stack:
+            # Keep telemetry on CPU so the allocation trace measures model
+            # state rather than an ever-growing list of GPU depth tensors.
+            depths.append(model.last_training_depth.cpu())
+    result["training"] = {**utilization(model, x.numel() * iterations, sum(times), peak_flops(peak) if torch.device(device).type == "cuda" else None, torch.cat(depths) if depths else None), "median_step_ms": 1000 * statistics.median(times), "loss": loss}
+    if allocations:
+        result["training"]["step_end_allocated_gib"] = allocations
+        result["training"].update(_memory_peaks())
+    del opts
+    model.eval()
+    if torch.device(device).type == "cuda":
+        # Training buffers need not fragment the much larger serving states.
+        torch.cuda.empty_cache()
+    for name in ("prefill", "decode"):
+        times = []
+        if torch.device(device).type == "cuda":
+            torch.cuda.reset_peak_memory_stats()
+        with torch.inference_mode():
+            for i in range(warmup + iterations):
+                # Rebuild outside the measurement so all samples start at the
+                # same context length. Stateful decode workspaces are not reused
+                # across independent requests.
+                cache = model.new_cache(x.shape[0])
+                if name == "decode":
+                    prefill_logits, cache = model.prefill(x, cache)
+                    del prefill_logits
+                synchronize(device)
+                t0 = time.perf_counter()
+                logits, cache = model.prefill(x, cache) if name == "prefill" else model.decode(y[:, :1], cache)
+                synchronize(device)
+                elapsed = time.perf_counter() - t0
+                if not torch.isfinite(logits).all():
+                    raise FloatingPointError("non-finite benchmark logits")
+                if i >= warmup:
+                    times.append(elapsed)
+                # Every timing sample owns one independent request. Retaining
+                # the returned cache in '_' keeps the preceding bank alive.
+                del logits, cache
+            result[name] = {"median_ms": 1000 * statistics.median(times), "tokens_per_second": (x.numel() if name == "prefill" else x.shape[0]) * iterations / sum(times), "context_tokens": x.shape[1]}
+            if torch.device(device).type == "cuda":
+                result[name].update(_memory_peaks())
+            if cfg["arch_type"] == "gl_sdm" and not model.is_layer_stack:
+                result[name].update(model.blocks[0].reasoning_metrics())
+    if torch.device(device).type == "cuda":
+        for key in ("peak_allocated_gib", "peak_reserved_gib"):
+            result[key] = max(result[stage][key] for stage in ("training", "prefill", "decode"))
+    return result
+
+
+def _memory_peaks():
+    return {"peak_allocated_gib": torch.cuda.max_memory_allocated() / 1024**3,
+            "peak_reserved_gib": torch.cuda.max_memory_reserved() / 1024**3}

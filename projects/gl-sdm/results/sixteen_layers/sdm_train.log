@@ -1,0 +1,124 @@
+
+===ABLATION_CONFIG_JSON===
+{"run_id": "sdm", "arch_type": "sdm", "vocab_size": 50304, "hidden_size": 512, "head_dim": 64, "num_hidden_layers": 16, "dtype": "bfloat16", "tokenizer_name": "gpt2", "seq_len": 512, "batch_size": 8192, "mbs": 1, "num_chunks": 1, "max_steps": 20, "val_tokens": 8192, "val_freq": 10, "optimizer": "adamw", "adamw_lr": 0.0003, "adamw_beta1": 0.9, "adamw_beta2": 0.95, "adamw_eps": 1e-15, "adamw_weight_decay": 0.1, "adamw_lr_min_frac": 0.1, "adamw_warmup_frac": 0.05, "sigr_alpha": 0.0, "dist_align_loss_weight": 0.0, "seed": 1234, "train_data": "data/finewebedu10B/finewebedu_train_*.bin", "val_data": "data/finewebedu10B/finewebedu_val_*.bin", "clean_dataset": "codelion/finepdfs-100M", "eval_lengths": [512, 1024, 2048, 4096], "needle_distances": [512, 1024, 2048, 4096], "num_eval_docs": 16, "num_needle_trials": 16, "needle_val_len": 5, "eval_seed": 1234, "eval_after_train": false, "sdm_slots": 16384, "sdm_reads": 8, "sdm_writes": 8, "sdm_chunk": 64, "sdm_output_gate": true, "sdm_normalize_readings": true, "residual_dtype": "float32", "intermediate_size": 2048, "attn_type": "sdm", "runtime": {"torch": "2.14.0+cu130", "cuda": "13.0", "reference_fallback": false, "residual_dtype": "float32", "repository": "https://github.com/facebookresearch/sparse-delta-memory", "revision": "183e7df809131b80ad4393741029d0f20fc3640b", "source": "/home/sagemaker-user/.cache/gl-sdm/sources/sdm", "cuda_extensions": {"sparse_ip_cuda": {"path": "/home/sagemaker-user/.cache/urm/sdm-extensions/sparse_ip_sorted/sparse_ip_sorted.so", "sha256": "5aa746d658f29a37d8d4139eb0a4c3ddfbd83cf780b2180f32195af9bff85570"}, "warp_cooperative_gather_cuda": {"path": "/home/sagemaker-user/.cache/urm/sdm-extensions/warp_cooperative_gather/warp_cooperative_gather.so", "sha256": "e4eb0e0af8ae95bab0015f3cebe6fe74389a8e32fefc176ddb1a499d756e8eb4"}}, "gpu": "NVIDIA A10G"}}
+===END===
+
+
+===VALIDATION_JSON===
+{"step": 0, "val_loss": 10.825838088989258, "wall_s": 0.0}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 1, "train_loss": 10.825838088989258, "seconds": 3.4647696139873005}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 2, "train_loss": 10.808934152126312, "seconds": 3.3234224370098673}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 3, "train_loss": 10.766680240631104, "seconds": 3.3109283989761025}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 4, "train_loss": 10.692063629627228, "seconds": 3.4519153350265697}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 5, "train_loss": 10.54812616109848, "seconds": 3.3305829990422353}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 6, "train_loss": 10.328331768512726, "seconds": 3.341447307029739}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 7, "train_loss": 10.150594830513, "seconds": 3.320832005003467}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 8, "train_loss": 10.053509593009949, "seconds": 3.307592403027229}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 9, "train_loss": 9.934880018234253, "seconds": 3.308670427999459}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 10, "train_loss": 9.809005379676819, "seconds": 3.3199691339978017}
+===END===
+
+
+===VALIDATION_JSON===
+{"step": 10, "val_loss": 9.727361261844635, "wall_s": 33.48013006109977, "num_params": 282512384, "active_params": 148294656, "memory_params": 134217728, "tokens": 73728, "seconds": 30.01536044711247, "tok_s": 2456.3423161254345, "effective_active_params": 148294656.0, "estimated_training_flops_6nd": 65600810385408, "mfu_6nd_pct": 3.1222494753262673, "unique_parameter_6nd_pct": 3.1222494753262673, "unique_parameter_6nd_interpretation": "capacity-normalized throughput proxy; does not count tied-weight reuse", "peak_tflops": 70.0, "mfu_interpretation": "execution-weighted 6ND estimate; preserves the parameter-count convention, excludes attention and sparse state FLOPs", "mfu_formula": "6 * active_params * tokens / seconds / peak_flops", "mfu": 3.1222494753262673, "step_ms": 3335.0400496791635}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 11, "train_loss": 9.751266419887543, "seconds": 3.3341215469990857}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 12, "train_loss": 9.63803780078888, "seconds": 3.3293897080002353}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 13, "train_loss": 9.596227705478668, "seconds": 3.3281800110125914}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 14, "train_loss": 9.549226701259613, "seconds": 3.325340609997511}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 15, "train_loss": 9.478344678878784, "seconds": 3.30906686198432}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 16, "train_loss": 9.504483044147491, "seconds": 3.312388145015575}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 17, "train_loss": 9.42312240600586, "seconds": 3.322267511044629}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 18, "train_loss": 9.309071063995361, "seconds": 3.303821926994715}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 19, "train_loss": 9.468854904174805, "seconds": 3.32917299203109}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 20, "train_loss": 9.415804266929626, "seconds": 3.350426588964183}
+===END===
+
+
+===VALIDATION_JSON===
+{"step": 20, "val_loss": 9.34612363576889, "wall_s": 66.7243059631437, "num_params": 282512384, "active_params": 148294656, "memory_params": 134217728, "tokens": 81920, "seconds": 33.244175902043935, "tok_s": 2464.1910282686044, "effective_active_params": 148294656.0, "estimated_training_flops_6nd": 72889789317120, "mfu_6nd_pct": 3.1322259501889627, "unique_parameter_6nd_pct": 3.1322259501889627, "unique_parameter_6nd_interpretation": "capacity-normalized throughput proxy; does not count tied-weight reuse", "peak_tflops": 70.0, "mfu_interpretation": "execution-weighted 6ND estimate; preserves the parameter-count convention, excludes attention and sparse state FLOPs", "mfu_formula": "6 * active_params * tokens / seconds / peak_flops", "mfu": 3.1322259501889627, "step_ms": 3324.4175902043935}
+===END===
+
+
+===ABLATION_CURVE_JSON===
+[{"step": 0, "val_loss": 10.825838088989258, "wall_s": 0.0}, {"step": 10, "val_loss": 9.727361261844635, "wall_s": 33.48013006109977, "num_params": 282512384, "active_params": 148294656, "memory_params": 134217728, "tokens": 73728, "seconds": 30.01536044711247, "tok_s": 2456.3423161254345, "effective_active_params": 148294656.0, "estimated_training_flops_6nd": 65600810385408, "mfu_6nd_pct": 3.1222494753262673, "unique_parameter_6nd_pct": 3.1222494753262673, "unique_parameter_6nd_interpretation": "capacity-normalized throughput proxy; does not count tied-weight reuse", "peak_tflops": 70.0, "mfu_interpretation": "execution-weighted 6ND estimate; preserves the parameter-count convention, excludes attention and sparse state FLOPs", "mfu_formula": "6 * active_params * tokens / seconds / peak_flops", "mfu": 3.1222494753262673, "step_ms": 3335.0400496791635}, {"step": 20, "val_loss": 9.34612363576889, "wall_s": 66.7243059631437, "num_params": 282512384, "active_params": 148294656, "memory_params": 134217728, "tokens": 81920, "seconds": 33.244175902043935, "tok_s": 2464.1910282686044, "effective_active_params": 148294656.0, "estimated_training_flops_6nd": 72889789317120, "mfu_6nd_pct": 3.1322259501889627, "unique_parameter_6nd_pct": 3.1322259501889627, "unique_parameter_6nd_interpretation": "capacity-normalized throughput proxy; does not count tied-weight reuse", "peak_tflops": 70.0, "mfu_interpretation": "execution-weighted 6ND estimate; preserves the parameter-count convention, excludes attention and sparse state FLOPs", "mfu_formula": "6 * active_params * tokens / seconds / peak_flops", "mfu": 3.1322259501889627, "step_ms": 3324.4175902043935}]
+===END===

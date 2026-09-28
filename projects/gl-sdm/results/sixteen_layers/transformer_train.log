@@ -1,0 +1,124 @@
+
+===ABLATION_CONFIG_JSON===
+{"run_id": "transformer", "arch_type": "transformer", "vocab_size": 50304, "hidden_size": 768, "head_dim": 64, "num_hidden_layers": 16, "dtype": "bfloat16", "tokenizer_name": "gpt2", "seq_len": 512, "batch_size": 8192, "mbs": 1, "num_chunks": 1, "max_steps": 20, "val_tokens": 8192, "val_freq": 10, "optimizer": "adamw", "adamw_lr": 0.0003, "adamw_beta1": 0.9, "adamw_beta2": 0.95, "adamw_eps": 1e-15, "adamw_weight_decay": 0.1, "adamw_lr_min_frac": 0.1, "adamw_warmup_frac": 0.05, "sigr_alpha": 0.0, "dist_align_loss_weight": 0.0, "seed": 1234, "train_data": "data/finewebedu10B/finewebedu_train_*.bin", "val_data": "data/finewebedu10B/finewebedu_val_*.bin", "clean_dataset": "codelion/finepdfs-100M", "eval_lengths": [512, 1024, 2048, 4096], "needle_distances": [512, 1024, 2048, 4096], "num_eval_docs": 16, "num_needle_trials": 16, "needle_val_len": 5, "eval_seed": 1234, "eval_after_train": false, "intermediate_size": 3328, "residual_dtype": "float32", "attn_type": "transformer", "runtime": {"torch": "2.14.0+cu130", "cuda": "13.0", "reference_fallback": false, "residual_dtype": "float32", "gpu": "NVIDIA A10G"}}
+===END===
+
+
+===VALIDATION_JSON===
+{"step": 0, "val_loss": 10.825838088989258, "wall_s": 0.0}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 1, "train_loss": 10.825838088989258, "seconds": 1.0274914529873058}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 2, "train_loss": 10.797490000724792, "seconds": 0.9145478950231336}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 3, "train_loss": 10.690238654613495, "seconds": 0.8955600030021742}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 4, "train_loss": 10.385072410106659, "seconds": 0.9084460530430079}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 5, "train_loss": 10.133568584918976, "seconds": 0.9353001429699361}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 6, "train_loss": 9.923076510429382, "seconds": 0.9050982290063985}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 7, "train_loss": 9.742341101169586, "seconds": 0.9131615770165808}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 8, "train_loss": 9.629427909851074, "seconds": 0.9249357240041718}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 9, "train_loss": 9.466900110244751, "seconds": 0.9063278169487603}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 10, "train_loss": 9.300103187561035, "seconds": 0.9172058450058103}
+===END===
+
+
+===VALIDATION_JSON===
+{"step": 10, "val_loss": 9.19875854253769, "wall_s": 9.24807473900728, "num_params": 247341824, "active_params": 247341824, "memory_params": 0, "tokens": 73728, "seconds": 8.220583286019973, "tok_s": 8968.706651921251, "effective_active_params": 247341824.0, "estimated_training_flops_6nd": 109416107999232, "mfu_6nd_pct": 19.014310818918304, "unique_parameter_6nd_pct": 19.014310818918304, "unique_parameter_6nd_interpretation": "capacity-normalized throughput proxy; does not count tied-weight reuse", "peak_tflops": 70.0, "mfu_interpretation": "execution-weighted 6ND estimate; preserves the parameter-count convention, excludes attention and sparse state FLOPs", "mfu_formula": "6 * active_params * tokens / seconds / peak_flops", "mfu": 19.014310818918304, "step_ms": 913.3981428911081}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 11, "train_loss": 9.231413066387177, "seconds": 0.9141655479907058}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 12, "train_loss": 9.076496303081512, "seconds": 0.9154460169957019}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 13, "train_loss": 9.03455662727356, "seconds": 0.9130329340114258}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 14, "train_loss": 8.981259226799011, "seconds": 0.9165792210260406}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 15, "train_loss": 8.890401303768158, "seconds": 0.9177246269537136}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 16, "train_loss": 8.941226243972778, "seconds": 0.9147009800071828}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 17, "train_loss": 8.828648567199707, "seconds": 0.914372903003823}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 18, "train_loss": 8.662789404392242, "seconds": 0.9173753889626823}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 19, "train_loss": 8.91013753414154, "seconds": 0.9073846490355209}
+===END===
+
+
+===TRAIN_STEP_JSON===
+{"step": 20, "train_loss": 8.832597613334656, "seconds": 0.9123684680089355}
+===END===
+
+
+===VALIDATION_JSON===
+{"step": 20, "val_loss": 8.744064688682556, "wall_s": 18.39122547500301, "num_params": 247341824, "active_params": 247341824, "memory_params": 0, "tokens": 81920, "seconds": 9.143150735995732, "tok_s": 8959.712287963119, "effective_active_params": 247341824.0, "estimated_training_flops_6nd": 121573453332480, "mfu_6nd_pct": 18.995242112742954, "unique_parameter_6nd_pct": 18.995242112742954, "unique_parameter_6nd_interpretation": "capacity-normalized throughput proxy; does not count tied-weight reuse", "peak_tflops": 70.0, "mfu_interpretation": "execution-weighted 6ND estimate; preserves the parameter-count convention, excludes attention and sparse state FLOPs", "mfu_formula": "6 * active_params * tokens / seconds / peak_flops", "mfu": 18.995242112742954, "step_ms": 914.3150735995732}
+===END===
+
+
+===ABLATION_CURVE_JSON===
+[{"step": 0, "val_loss": 10.825838088989258, "wall_s": 0.0}, {"step": 10, "val_loss": 9.19875854253769, "wall_s": 9.24807473900728, "num_params": 247341824, "active_params": 247341824, "memory_params": 0, "tokens": 73728, "seconds": 8.220583286019973, "tok_s": 8968.706651921251, "effective_active_params": 247341824.0, "estimated_training_flops_6nd": 109416107999232, "mfu_6nd_pct": 19.014310818918304, "unique_parameter_6nd_pct": 19.014310818918304, "unique_parameter_6nd_interpretation": "capacity-normalized throughput proxy; does not count tied-weight reuse", "peak_tflops": 70.0, "mfu_interpretation": "execution-weighted 6ND estimate; preserves the parameter-count convention, excludes attention and sparse state FLOPs", "mfu_formula": "6 * active_params * tokens / seconds / peak_flops", "mfu": 19.014310818918304, "step_ms": 913.3981428911081}, {"step": 20, "val_loss": 8.744064688682556, "wall_s": 18.39122547500301, "num_params": 247341824, "active_params": 247341824, "memory_params": 0, "tokens": 81920, "seconds": 9.143150735995732, "tok_s": 8959.712287963119, "effective_active_params": 247341824.0, "estimated_training_flops_6nd": 121573453332480, "mfu_6nd_pct": 18.995242112742954, "unique_parameter_6nd_pct": 18.995242112742954, "unique_parameter_6nd_interpretation": "capacity-normalized throughput proxy; does not count tied-weight reuse", "peak_tflops": 70.0, "mfu_interpretation": "execution-weighted 6ND estimate; preserves the parameter-count convention, excludes attention and sparse state FLOPs", "mfu_formula": "6 * active_params * tokens / seconds / peak_flops", "mfu": 18.995242112742954, "step_ms": 914.3150735995732}]
+===END===

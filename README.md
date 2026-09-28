@@ -1,7 +1,12 @@
 # Global Liquid SDM Research Program
 
-This repository is a research monorepo for the three independently falsifiable
-proposals described in the research program.
+This repository contains Global Liquid SDM and Consolidated SDM, two of the
+three proposals in the research program. The URM compiler and kernels live in
+the separate [kreasof-ai/urm repository](https://github.com/kreasof-ai/urm).
+
+GL-SDM development is paused as of 2026-09-27. The
+[optimization handoff](projects/gl-sdm/OPTIMIZATION_PLAN.md) records the current
+results and the work to resume on a larger GPU.
 
 ## Documentation
 
@@ -12,35 +17,48 @@ proposals described in the research program.
 
 | Project | Research focus | Relationship |
 | --- | --- | --- |
-| [Global Liquid SDM](projects/gl-sdm/README.md) | Global sparse memory, tied recurrent reasoning, adaptive depth, and snapshot-and-commit writes | Establishes the core memory semantics |
+| [Global Liquid SDM](projects/gl-sdm/README.md) | Shared sparse memory, local/global layers, and delayed writes | Establishes the core memory semantics |
 | [Consolidated SDM](projects/csdm/README.md) | Fast/slow overlays, wake/sleep consolidation, stability, provenance, and rollback | Builds on GL-SDM semantics |
-| [Unified Routed Mixer](projects/urm/README.md) | Restricted routed-mixer IR, scheduling, and specialized kernels | Independently testable; GL-SDM is the flagship workload |
 
 Shared interfaces, benchmark definitions, experimental controls, and result
 schemas belong in [`shared/`](shared/README.md). Project-specific models,
 experiments, and acceptance tests stay within their project directory.
 
-## Dependency shape
+## Frozen URM dependency
 
-```text
-gl-sdm ───────> csdm
-   │
-   └──────────> urm (flagship workload)
+The [GL-SDM baseline suite](projects/gl-sdm/README.md#models-and-experiments)
+uses ordinary PyTorch SDPA, upstream CUDA SDM, and FLA GDN2, independently of URM.
+The [GL-SDM model](projects/gl-sdm/src/gl_sdm/layers/stack.py) currently uses
+16 distinct local/global layers, rolling local attention and one shared memory
+bank with a 512-token snapshot-and-commit clock. Weight loops and adaptive
+per-token depth are deferred. It uses the same experiment interfaces as the
+three baselines. GL-SDM defines its own
+[transactional memory operator](projects/gl-sdm/src/gl_sdm/memory/__init__.py),
+compiles routing and snapshot reads with frozen URM, and owns buffered commits.
+Its larger-bank experiment records a narrow runtime support override without
+editing URM or updating the pin. CSDM consumes the GL-SDM memory contract.
+URM source is maintained in its own repository.
 
-shared <────── all projects
+The accepted baseline is pinned to commit
+[`604bfdf`](https://github.com/kreasof-ai/urm/tree/604bfdf5d2c827266a32ef142ca996cc712d70f0),
+also tagged `frozen-2026-09-27`. Install the core package from this repository root:
+
+```sh
+python -m pip install -r shared/requirements-urm.txt
 ```
 
-The arrow into CSDM is a semantic dependency: CSDM assumes the global address
-space and transactional memory behavior established by GL-SDM. URM remains a
-separate systems project so it can succeed or fail independently of the GL-SDM
-architecture.
+The pin is in [shared/requirements-urm.txt](shared/requirements-urm.txt).
+Torch/CUDA dependencies are installed separately for the chosen machine.
+Changes to URM require a separate URM task and an explicit update of this pin.
+The preserved benchmark report is in
+[URM results](https://github.com/kreasof-ai/urm/blob/604bfdf5d2c827266a32ef142ca996cc712d70f0/results/report.md).
 
 ## Program sequence
 
 1. Prove dense/small GL-SDM semantics on controlled tasks.
 2. Introduce sparse addressing and measure the memory/depth trade-off.
 3. Add CSDM overlays and consolidation after single-tier behavior is understood.
-4. Capture real routing traces before fixing URM's kernel API.
+4. Capture real routing traces to guide project-owned kernels against frozen URM.
 5. Scale only after each project passes its own acceptance gate.
 
 ## Repository rule

@@ -1,0 +1,94 @@
+[
+  {
+    "model": "transformer",
+    "phase": "benchmark",
+    "command": [
+      "/opt/conda/bin/python",
+      "-m",
+      "gl_sdm.cli",
+      "benchmark",
+      "--config",
+      "projects/gl-sdm/configs/transformer.json",
+      "--iterations",
+      "3",
+      "--warmup",
+      "1",
+      "--output",
+      "projects/gl-sdm/results/sequence_2048/transformer_benchmark.json"
+    ],
+    "attempt": 1,
+    "exit_code": 0,
+    "allocator_config": "max_split_size_mb:512",
+    "log": "projects/gl-sdm/results/sequence_2048/transformer_benchmark.log",
+    "artifact": "projects/gl-sdm/results/sequence_2048/transformer_benchmark.json"
+  },
+  {
+    "model": "gdn2",
+    "phase": "benchmark",
+    "command": [
+      "/opt/conda/bin/python",
+      "-m",
+      "gl_sdm.cli",
+      "benchmark",
+      "--config",
+      "projects/gl-sdm/configs/gdn2.json",
+      "--iterations",
+      "3",
+      "--warmup",
+      "1",
+      "--output",
+      "projects/gl-sdm/results/sequence_2048/gdn2_benchmark.json"
+    ],
+    "attempt": 1,
+    "exit_code": 0,
+    "allocator_config": "max_split_size_mb:512",
+    "log": "projects/gl-sdm/results/sequence_2048/gdn2_benchmark.log",
+    "artifact": "projects/gl-sdm/results/sequence_2048/gdn2_benchmark.json"
+  },
+  {
+    "model": "sdm",
+    "phase": "benchmark",
+    "command": [
+      "/opt/conda/bin/python",
+      "-m",
+      "gl_sdm.cli",
+      "benchmark",
+      "--config",
+      "projects/gl-sdm/configs/sdm.json",
+      "--iterations",
+      "3",
+      "--warmup",
+      "1",
+      "--output",
+      "projects/gl-sdm/results/sequence_2048/sdm_benchmark.json"
+    ],
+    "attempt": 1,
+    "exit_code": 0,
+    "allocator_config": "max_split_size_mb:512",
+    "log": "projects/gl-sdm/results/sequence_2048/sdm_benchmark.log",
+    "artifact": "projects/gl-sdm/results/sequence_2048/sdm_benchmark.json"
+  },
+  {
+    "model": "gl_sdm",
+    "phase": "benchmark",
+    "command": [
+      "/opt/conda/bin/python",
+      "-m",
+      "gl_sdm.cli",
+      "benchmark",
+      "--config",
+      "projects/gl-sdm/configs/gl_sdm.json",
+      "--iterations",
+      "3",
+      "--warmup",
+      "1",
+      "--output",
+      "projects/gl-sdm/results/sequence_2048/gl_sdm_benchmark.json"
+    ],
+    "attempt": 1,
+    "exit_code": 0,
+    "allocator_config": "max_split_size_mb:512",
+    "log": "projects/gl-sdm/results/sequence_2048/gl_sdm_benchmark.log",
+    "artifact": "projects/gl-sdm/results/sequence_2048/gl_sdm_benchmark.json"
+  }
+]

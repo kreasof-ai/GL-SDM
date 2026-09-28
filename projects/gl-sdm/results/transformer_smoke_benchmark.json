@@ -1,0 +1,36 @@
+{
+  "arch_type": "transformer",
+  "runtime": {
+    "torch": "2.14.0+cu130",
+    "cuda": "13.0",
+    "reference_fallback": false,
+    "gpu": "NVIDIA A10G"
+  },
+  "warmup": 2,
+  "iterations": 3,
+  "training": {
+    "num_params": 6580288,
+    "active_params": 6580288,
+    "memory_params": 0,
+    "tokens": 390,
+    "seconds": 0.026017891010269523,
+    "tok_s": 14989.68536097192,
+    "mfu_6nd_pct": 0.8454552574678217,
+    "peak_tflops": 70.0,
+    "mfu_formula": "6 * active_params * tokens / seconds / peak_flops; excludes sparse learned memory bank and state work",
+    "median_step_ms": 8.788119012024254,
+    "loss": 10.783653846153847
+  },
+  "prefill": {
+    "median_ms": 2.8442920302040875,
+    "tokens_per_second": 45501.8183226546,
+    "context_tokens": 65
+  },
+  "decode": {
+    "median_ms": 2.5055240257643163,
+    "tokens_per_second": 757.4475031645609,
+    "context_tokens": 65
+  },
+  "peak_allocated_gib": 0.2243514060974121,
+  "peak_reserved_gib": 0.427734375
+}

@@ -1,0 +1,18 @@
+{
+  "pytest": {
+    "command": "pytest -q projects/gl-sdm/tests",
+    "passed": 92,
+    "failed": 0,
+    "seconds": 70.69
+  },
+  "wheel": {
+    "path": "projects/gl-sdm/dist/gl_sdm-0.1.0-py3-none-any.whl",
+    "built": true,
+    "package_sources_match_current_tree": true
+  },
+  "urm": {
+    "revision": "604bfdf5d2c827266a32ef142ca996cc712d70f0",
+    "source_and_pin_changed": false
+  },
+  "precision_gates": "See verification_summary.json; pytest success does not imply BF16 full-model reference parity."
+}

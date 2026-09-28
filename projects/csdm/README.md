@@ -13,6 +13,13 @@ rollback and provenance?
 CSDM depends on the address-space and snapshot/commit semantics established by
 GL-SDM. It should consume that contract rather than redefine the core operator.
 
+## URM dependency
+
+Use the frozen [URM package](https://github.com/kreasof-ai/urm) pinned in
+[shared/requirements-urm.txt](../../shared/requirements-urm.txt).
+URM changes are developed separately; this project does not carry a local copy
+of its compiler or kernel implementations.
+
 ## This project owns
 
 - Aligned pretrained, slow, and fast memory tiers.
